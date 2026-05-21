@@ -1,0 +1,130 @@
+import type {
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationItem,
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationMode,
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationPayload,
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationRuntimeFlags,
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationStatus,
+} from "@/types/writer-persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation";
+import type {
+  WriterPersistenceAuthorizationRemediationCategory,
+  WriterPersistenceAuthorizationRemediationOwner,
+} from "@/types/writer-persistence-authorization-remediation";
+
+export type WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewMode =
+  "persistence_adapter_implementation_authorization_reconsideration_external_final_decision_archive_remediation_review_no_go_reconciliation_remediation_review_no_go_reconciliation_no_go_remediation_review_checklist_only";
+
+export type WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewStatus =
+  | "archive_remediation_review_no_go_reconciliation_remediation_review_no_go_reconciliation_no_go_remediation_review_external_evidence_missing"
+  | "archive_remediation_review_no_go_reconciliation_remediation_review_no_go_reconciliation_no_go_remediation_review_manual_reviewer_required";
+
+export type WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewItem =
+  {
+    id: string;
+    category: WriterPersistenceAuthorizationRemediationCategory;
+    title: string;
+    status: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewStatus;
+    owner: WriterPersistenceAuthorizationRemediationOwner;
+    sourceNoGoRemediationStatus: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationStatus;
+    sourceNoGoRemediationItemIds: string[];
+    sourceReconciliationNoGoItemIds: string[];
+    sourceReconciliationItemIds: string[];
+    sourceNoGoItemIds: string[];
+    sourceReviewItemIds: string[];
+    sourceRemediationItemIds: string[];
+    sourceArchiveNoGoItemIds: string[];
+    sourceArchiveRemediationItemIds: string[];
+    sourceArchiveItemIds: string[];
+    sourceDecisionItemIds: string[];
+    sourceNoGoItemIdsFromReconsideration: string[];
+    sourceReviewItemIdsFromReconsideration: string[];
+    sourceReconsiderationRemediationItemIds: string[];
+    sourcePreflightItemIds: string[];
+    sourceOriginalRemediationItemIds: string[];
+    sourceRefs: string[];
+    reviewQuestion: string;
+    currentFinding: string;
+    requiredExternalState: string;
+    safeEvidenceRefs: string[];
+    completenessChecks: string[];
+    manualReviewerChecks: string[];
+    redactionChecks: string[];
+    rejectionTriggers: string[];
+    nonAcceptanceClauses: string[];
+    passCriteriaForFutureReview: string[];
+    failCriteriaForCurrentReview: string[];
+    stillBlockedBecause: string[];
+    nextSafeAction: string;
+  };
+
+export type WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewRuntimeFlags =
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationRuntimeFlags & {
+    wouldAcceptFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReview: false;
+    wouldRecordFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReview: false;
+    wouldStoreFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewEvidence: false;
+    wouldMarkArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewed: false;
+    wouldPromoteToArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGo: false;
+  };
+
+export type WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewPayload =
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationPayload &
+    WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewRuntimeFlags & {
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewChecklistMode: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewMode;
+      sourceExternalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationMode: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationMode;
+      reviewItemCount: number;
+      externalEvidenceMissingCount: number;
+      manualReviewerRequiredCount: number;
+      reconciliationNoGoRemediationStillBlockedCount: number;
+      completenessCheckCount: number;
+      manualReviewerCheckCount: number;
+      redactionCheckCount: number;
+      rejectionTriggerCount: number;
+      passCriteriaCount: number;
+      failCriteriaCount: number;
+      stillBlockedReasonCount: number;
+      sourceNoGoRemediationItemCount: number;
+      sourceExternalReconciliationNoGoRemediationRequiredCount: number;
+      sourceManualReconciliationNoGoReviewRequiredCount: number;
+      sourceReconciliationNoGoStillBlockedCount: number;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewChecklistReady: true;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewChecklistOnly: true;
+      sourceExternalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationPlanReady: true;
+      sourceExternalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationPlanOnly: true;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewRecorded: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewComplete: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationRecorded: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationStatesAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationNoGoAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoReconciliationAccepted: false;
+      externalFinalDecisionArchiveRemediationReviewNoGoAccepted: false;
+      finalDecisionArchiveRemediationReviewAccepted: false;
+      externalFinalDecisionArchiveRemediationAccepted: false;
+      finalDecisionArchiveNoGoAccepted: false;
+      externalFinalDecisionArchiveAccepted: false;
+      authorizationReconsiderationFinalDecisionAccepted: false;
+      implementationAuthorizationGranted: false;
+      implementationAuthorized: false;
+      readyForAdapterImplementation: false;
+      allRuntimeEffectsBlocked: true;
+      archiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewChecklistRules: string[];
+      archiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewRejectionRules: string[];
+      sourceArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationPlanRules: string[];
+      sourceArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationItems: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationItem[];
+      archiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewItems: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewItem[];
+    };
+
+export type WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewProbeResult =
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewPayload & {
+    blocked: true;
+    itemId?: string;
+    itemTitle?: string;
+    itemStatus?: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewStatus;
+    summary: string;
+    archiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewItems: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewItem[];
+  };

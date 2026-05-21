@@ -1,0 +1,8 @@
+export type SupabaseMigrationPayload = {
+  filePath: string;
+  sql: string;
+  lineCount: number;
+  tableCount: number;
+  policyCount: number;
+  rlsEnabledCount: number;
+};

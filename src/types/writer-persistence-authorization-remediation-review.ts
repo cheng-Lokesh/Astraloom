@@ -1,0 +1,202 @@
+import type {
+  WriterPersistenceAuthorizationRemediationCategory,
+  WriterPersistenceAuthorizationRemediationMode,
+  WriterPersistenceAuthorizationRemediationOwner,
+} from "@/types/writer-persistence-authorization-remediation";
+
+export type WriterPersistenceAuthorizationRemediationReviewMode =
+  "persistence_adapter_implementation_authorization_remediation_review_checklist_only";
+
+export type WriterPersistenceAuthorizationRemediationReviewStatus =
+  | "external_evidence_missing"
+  | "manual_reviewer_required";
+
+export type WriterPersistenceAuthorizationRemediationReviewItem = {
+  id: string;
+  category: WriterPersistenceAuthorizationRemediationCategory;
+  title: string;
+  status: WriterPersistenceAuthorizationRemediationReviewStatus;
+  owner: WriterPersistenceAuthorizationRemediationOwner;
+  sourceRemediationItemIds: string[];
+  sourceNoGoItemIds: string[];
+  sourceRefs: string[];
+  reviewQuestion: string;
+  requiredExternalState: string;
+  safeExternalEvidenceRefs: string[];
+  completenessChecks: string[];
+  redactionChecks: string[];
+  rejectionTriggers: string[];
+  nonAcceptanceClauses: string[];
+  passCriteriaForFutureReview: string[];
+  failCriteriaForCurrentReview: string[];
+  stillBlockedBecause: string[];
+  nextGate: string;
+};
+
+export type WriterPersistenceAuthorizationRemediationReviewRuntimeFlags = {
+  allRuntimeEffectsBlocked: true;
+  wouldAcceptRemediationReview: false;
+  wouldRecordRemediationReview: false;
+  wouldStoreRemediationReviewEvidence: false;
+  wouldMarkExternalRemediationReviewed: false;
+  wouldPromoteToAuthorizationReconsideration: false;
+  wouldAcceptExternalRemediationState: false;
+  wouldAcceptExternalApprovalArchive: false;
+  wouldStoreApprovalArtifact: false;
+  wouldUploadApprovalArtifact: false;
+  wouldReadExternalArtifact: false;
+  wouldHashExternalArtifact: false;
+  wouldPersistArchiveIndex: false;
+  wouldMarkArchiveComplete: false;
+  wouldCreateAuthorizationRecord: false;
+  wouldRecordAuthorizationDecision: false;
+  wouldRecordAuthorizationNoGoDecision: false;
+  wouldAcceptAuthorizationNoGoDecision: false;
+  wouldAcceptRemediationPlan: false;
+  wouldRecordRemediationEvidence: false;
+  wouldMarkBlockerResolved: false;
+  wouldCreateRemediationTicket: false;
+  wouldDenyImplementationAuthorization: false;
+  wouldGrantImplementationAuthorization: false;
+  wouldRecordHumanDecision: false;
+  wouldAcceptHumanDecision: false;
+  wouldStoreDecisionArtifact: false;
+  wouldAcceptReleaseNoGo: false;
+  wouldRecordGoDecision: false;
+  wouldGrantReleaseApproval: false;
+  wouldEnableFeatureFlag: false;
+  wouldDeployCode: false;
+  wouldRunProductionWriter: false;
+  wouldCollectSignature: false;
+  wouldRecordOwnerApproval: false;
+  wouldGrantImplementationApproval: false;
+  wouldCreateApprovalRecord: false;
+  wouldAcceptPatchReview: false;
+  wouldReviewRealPatch: false;
+  wouldAcceptPatch: false;
+  wouldGeneratePatch: false;
+  wouldApplyPatch: false;
+  wouldModifyFiles: false;
+  wouldCreateFiles: false;
+  wouldDeleteFiles: false;
+  wouldRunGitCommand: false;
+  wouldCreateBranch: false;
+  wouldCheckoutBranch: false;
+  wouldCreatePullRequest: false;
+  wouldCreateTestFiles: false;
+  wouldRunAutomatedTests: false;
+  wouldCreateImplementationPlan: false;
+  wouldCreateImplementationBranch: false;
+  wouldCreateAdapterCode: false;
+  wouldImportRealWriterImplementation: false;
+  wouldRunTransaction: false;
+  wouldCreateServiceRoleClient: false;
+  wouldReadServiceRoleSecret: false;
+  wouldPersistEvidence: false;
+  wouldStoreRawPayload: false;
+  wouldStoreSecrets: false;
+  wouldWriteRows: false;
+  wouldWriteAuditRows: false;
+  wouldReserveIdempotencyKeys: false;
+  wouldWriteIdempotencyRows: false;
+  wouldWriteCompensationRows: false;
+  wouldCreateMigrationFile: false;
+  wouldApplyMigration: false;
+  wouldCreateTables: false;
+  wouldEnableWriters: false;
+  wouldCallAi: false;
+  wouldCallStripe: false;
+  wouldUnlockReports: false;
+};
+
+export type WriterPersistenceAuthorizationRemediationReviewPayload =
+  WriterPersistenceAuthorizationRemediationReviewRuntimeFlags & {
+    safeMode: true;
+    readOnly: true;
+    remediationReviewChecklistMode: WriterPersistenceAuthorizationRemediationReviewMode;
+    sourceRemediationPlanMode: WriterPersistenceAuthorizationRemediationMode;
+    checkedAt: string;
+    reviewItemCount: number;
+    externalEvidenceMissingCount: number;
+    manualReviewerRequiredCount: number;
+    reconsiderationBlockedCount: number;
+    completenessCheckCount: number;
+    redactionCheckCount: number;
+    rejectionTriggerCount: number;
+    sourceRemediationItemCount: number;
+    sourceExternalRemediationRequiredCount: number;
+    sourceManualReviewRequiredCount: number;
+    reviewChecklistReady: true;
+    reviewChecklistOnly: true;
+    sourceRemediationPlanReady: true;
+    sourceRemediationPlanOnly: true;
+    sourceAuthorizationNoGoPacketReady: true;
+    sourceReleaseStillBlocked: true;
+    externalRemediationStatesAccepted: false;
+    remediationReviewAccepted: false;
+    remediationReviewComplete: false;
+    implementationAuthorizationReconsiderationReady: false;
+    implementationAuthorizationRemediationAccepted: false;
+    implementationAuthorizationDecisionReady: false;
+    implementationAuthorizationDecisionRecorded: false;
+    implementationAuthorizationNoGoAccepted: false;
+    implementationAuthorizationDenied: false;
+    implementationAuthorizationGranted: false;
+    implementationAuthorized: false;
+    authorizationDecisionRecorded: false;
+    authorizationArtifactStored: false;
+    externalApprovalArchiveAccepted: false;
+    archiveCompletenessAccepted: false;
+    implementationApprovalGranted: false;
+    implementationBranchApproved: false;
+    implementationPlanApproved: false;
+    readyToApplyPatch: false;
+    readyToCreateImplementationBranch: false;
+    readyForAdapterImplementation: false;
+    readyForReleaseExecution: false;
+    adapterImplemented: false;
+    adapterImplementationApproved: false;
+    adapterImplementationAllowed: false;
+    implementationReviewComplete: false;
+    allOwnerApprovalsComplete: false;
+    allBlockingEvidenceReady: false;
+    blockedCodes: string[];
+    reviewChecklistRules: string[];
+    currentRejectionRules: string[];
+    sourceBlockedCodes: string[];
+    reviewItems: WriterPersistenceAuthorizationRemediationReviewItem[];
+  };
+
+export type WriterPersistenceAuthorizationRemediationReviewProbeResult =
+  WriterPersistenceAuthorizationRemediationReviewRuntimeFlags & {
+    safeMode: true;
+    readOnly: true;
+    blocked: true;
+    remediationReviewChecklistMode: WriterPersistenceAuthorizationRemediationReviewMode;
+    itemId?: string;
+    itemTitle?: string;
+    itemStatus?: WriterPersistenceAuthorizationRemediationReviewStatus;
+    summary: string;
+    reviewChecklistOnly: true;
+    sourceReleaseStillBlocked: true;
+    externalRemediationStatesAccepted: false;
+    remediationReviewAccepted: false;
+    remediationReviewComplete: false;
+    implementationAuthorizationReconsiderationReady: false;
+    implementationAuthorizationGranted: false;
+    implementationAuthorized: false;
+    authorizationDecisionRecorded: false;
+    authorizationArtifactStored: false;
+    externalApprovalArchiveAccepted: false;
+    archiveCompletenessAccepted: false;
+    readyToCreateImplementationBranch: false;
+    readyForAdapterImplementation: false;
+    readyForReleaseExecution: false;
+    adapterImplemented: false;
+    adapterImplementationApproved: false;
+    adapterImplementationAllowed: false;
+    allOwnerApprovalsComplete: false;
+    allBlockingEvidenceReady: false;
+    blockedCodes: string[];
+    reviewItems: WriterPersistenceAuthorizationRemediationReviewItem[];
+  };

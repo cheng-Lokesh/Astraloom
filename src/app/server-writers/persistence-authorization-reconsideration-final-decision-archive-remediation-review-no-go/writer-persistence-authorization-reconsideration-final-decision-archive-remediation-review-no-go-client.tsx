@@ -1,0 +1,642 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+import { AppShell } from "@/components/app-shell";
+import { useLanguage } from "@/components/language-provider";
+import { StatusPill } from "@/components/status-pill";
+import type {
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoItem,
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoPayload,
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoProbeResult,
+  WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoStatus,
+} from "@/types/writer-persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go";
+
+type ClientPageProps = {
+  payload: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoPayload;
+};
+
+const copy = {
+  en: {
+    title: "Persistence authorization archive remediation review no-go",
+    badge: "No-go packet only",
+    body: "This packet explains why the external final decision archive remediation review still cannot unlock implementation authorization. It remains read-only and cannot accept review outcomes, record no-go decisions, accept archives, grant authorization, or write data.",
+    yes: "Yes",
+    no: "No",
+    mode: "Mode",
+    sourceMode: "Source review mode",
+    checkedAt: "Checked at",
+    noGoItems: "No-go items",
+    archiveNoGo: "Archive review no-go",
+    externalNoGo: "External evidence no-go",
+    manualNoGo: "Manual reviewer no-go",
+    stillBlocked: "Still blocked",
+    sourceItems: "Source review items",
+    sourceExternal: "Source external evidence missing",
+    sourceManual: "Source manual reviewer required",
+    sourceBlocked: "Source archive review blocked",
+    blockerEvidence: "Blocker evidence",
+    unresolvedGaps: "Unresolved gaps",
+    forbidden: "Forbidden shortcuts",
+    prerequisites: "Future prerequisites",
+    redaction: "Redaction rules",
+    rules: "No-go rules",
+    rejectionRules: "Rejection rules",
+    safetyState: "Safety state",
+    runtimeState: "Runtime state",
+    question: "No-go question",
+    conclusion: "No-go conclusion",
+    safeRefs: "Safe no-go refs",
+    clauses: "Non-acceptance clauses",
+    sourceIds: "Source ids",
+    sourceRefs: "Source refs",
+    nextSafeAction: "Next safe action",
+    owner: "Owner",
+    probe: "Probe no-go",
+    probing: "Checking",
+    probePanel: "Blocked probe result",
+    probeBody:
+      "Probe one no-go item to confirm this packet remains read-only and blocked.",
+    openSourceReview: "Open source review",
+    openRemediation: "Open remediation plan",
+    openDashboard: "Back to dashboard",
+    statusLabels: {
+      archive_remediation_review_no_go_external_evidence_missing:
+        "External evidence no-go",
+      archive_remediation_review_no_go_manual_reviewer_required:
+        "Manual reviewer no-go",
+    } satisfies Record<
+      WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoStatus,
+      string
+    >,
+  },
+  zh: {
+    title: "持久化授权归档补救复核 No-go",
+    badge: "仅 No-go 包",
+    body: "这份包说明外部最终决策归档补救复核为什么仍不能解锁实现授权。它保持只读，不能接受复核结果、记录 No-go 决策、接受归档、授予授权或写入数据。",
+    yes: "是",
+    no: "否",
+    mode: "模式",
+    sourceMode: "来源复核模式",
+    checkedAt: "检查时间",
+    noGoItems: "No-go 项",
+    archiveNoGo: "归档复核 No-go",
+    externalNoGo: "外部证据 No-go",
+    manualNoGo: "人工复核 No-go",
+    stillBlocked: "仍然阻断",
+    sourceItems: "来源复核项",
+    sourceExternal: "来源缺少外部证据",
+    sourceManual: "来源需要人工复核",
+    sourceBlocked: "来源归档复核阻断",
+    blockerEvidence: "阻断证据",
+    unresolvedGaps: "未解决缺口",
+    forbidden: "禁止捷径",
+    prerequisites: "后续前置条件",
+    redaction: "脱敏规则",
+    rules: "No-go 规则",
+    rejectionRules: "拒绝规则",
+    safetyState: "安全状态",
+    runtimeState: "运行时状态",
+    question: "No-go 问题",
+    conclusion: "No-go 结论",
+    safeRefs: "安全 No-go 引用",
+    clauses: "非接受条款",
+    sourceIds: "来源 ID",
+    sourceRefs: "来源引用",
+    nextSafeAction: "下一步安全动作",
+    owner: "负责人",
+    probe: "探测 No-go",
+    probing: "检查中",
+    probePanel: "阻断探测结果",
+    probeBody: "探测一个 No-go 项，确认该包仍然只读并保持阻断。",
+    openSourceReview: "打开来源复核",
+    openRemediation: "打开补救计划",
+    openDashboard: "返回工作台",
+    statusLabels: {
+      archive_remediation_review_no_go_external_evidence_missing:
+        "外部证据 No-go",
+      archive_remediation_review_no_go_manual_reviewer_required:
+        "人工复核 No-go",
+    } satisfies Record<
+      WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoStatus,
+      string
+    >,
+  },
+} as const;
+
+type Copy = (typeof copy)[keyof typeof copy];
+
+function statusTone(
+  status: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoStatus,
+) {
+  return status ===
+    "archive_remediation_review_no_go_external_evidence_missing"
+    ? "blocked"
+    : "planned";
+}
+
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-2 break-words text-lg font-semibold text-slate-950">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function BooleanPill({
+  value,
+  label,
+  copy,
+  readyWhenTrue = true,
+}: {
+  value: boolean;
+  label: string;
+  copy: Copy;
+  readyWhenTrue?: boolean;
+}) {
+  const ready = readyWhenTrue ? value : !value;
+
+  return (
+    <StatusPill tone={ready ? "ready" : "blocked"}>
+      {label}: {value ? copy.yes : copy.no}
+    </StatusPill>
+  );
+}
+
+function TextList({ items }: { items: readonly string[] }) {
+  return (
+    <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+      {items.map((item) => (
+        <li key={item} className="rounded-md bg-slate-50 px-3 py-2">
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function NoGoItemCard({
+  item,
+  copy,
+  onProbe,
+  probingId,
+}: {
+  item: WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoItem;
+  copy: Copy;
+  onProbe: (itemId: string) => void;
+  probingId: string | null;
+}) {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-slate-950">
+            {item.title}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {copy.owner}: {item.owner}
+          </p>
+        </div>
+        <StatusPill tone={statusTone(item.status)}>
+          {copy.statusLabels[item.status]}
+        </StatusPill>
+      </div>
+
+      <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-950">
+        <p>
+          <span className="font-semibold">{copy.question}: </span>
+          {item.noGoQuestion}
+        </p>
+        <p className="mt-2">
+          <span className="font-semibold">{copy.conclusion}: </span>
+          {item.noGoConclusion}
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <section>
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.blockerEvidence}
+          </h4>
+          <TextList items={item.blockerEvidence} />
+        </section>
+        <section>
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.unresolvedGaps}
+          </h4>
+          <TextList items={item.unresolvedReviewGaps} />
+        </section>
+        <section>
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.forbidden}
+          </h4>
+          <TextList items={item.forbiddenShortcuts} />
+        </section>
+        <section>
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.prerequisites}
+          </h4>
+          <TextList items={item.futureResolutionPrerequisites} />
+        </section>
+        <section>
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.safeRefs}
+          </h4>
+          <TextList items={item.safeNoGoRefs} />
+        </section>
+        <section>
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.redaction}
+          </h4>
+          <TextList items={item.redactionRules} />
+        </section>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <section className="rounded-md border border-slate-200 bg-slate-50 p-4">
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.clauses}
+          </h4>
+          <TextList items={item.nonAcceptanceClauses} />
+        </section>
+        <section className="rounded-md border border-slate-200 bg-slate-50 p-4">
+          <h4 className="text-sm font-semibold text-slate-950">
+            {copy.sourceIds}
+          </h4>
+          <TextList
+            items={[
+              ...item.sourceReviewItemIds,
+              ...item.sourceRemediationItemIds,
+              ...item.sourceArchiveNoGoItemIds,
+              ...item.sourceArchiveItemIds,
+              ...item.sourceDecisionItemIds,
+            ]}
+          />
+          <h4 className="mt-4 text-sm font-semibold text-slate-950">
+            {copy.sourceRefs}
+          </h4>
+          <TextList items={item.sourceRefs} />
+          <p className="mt-4 rounded-md bg-white px-3 py-2 text-sm leading-6 text-slate-600">
+            <span className="font-semibold">{copy.nextSafeAction}: </span>
+            {item.nextSafeAction}
+          </p>
+        </section>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onProbe(item.id)}
+        disabled={probingId === item.id}
+        className="mt-5 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        {probingId === item.id ? copy.probing : copy.probe}
+      </button>
+    </article>
+  );
+}
+
+export function WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoClientPage({
+  payload,
+}: ClientPageProps) {
+  const { locale } = useLanguage();
+  const t = copy[locale];
+  const [probeResult, setProbeResult] =
+    useState<WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoProbeResult | null>(
+      null,
+    );
+  const [probingId, setProbingId] = useState<string | null>(null);
+
+  const trueFlags = [
+    {
+      value:
+        payload.externalFinalDecisionArchiveRemediationReviewNoGoPacketReady,
+      label: "externalFinalDecisionArchiveRemediationReviewNoGoPacketReady",
+    },
+    {
+      value:
+        payload.externalFinalDecisionArchiveRemediationReviewNoGoPacketOnly,
+      label: "externalFinalDecisionArchiveRemediationReviewNoGoPacketOnly",
+    },
+    {
+      value:
+        payload.sourceExternalFinalDecisionArchiveRemediationReviewChecklistReady,
+      label:
+        "sourceExternalFinalDecisionArchiveRemediationReviewChecklistReady",
+    },
+    {
+      value:
+        payload.sourceExternalFinalDecisionArchiveRemediationReviewChecklistOnly,
+      label:
+        "sourceExternalFinalDecisionArchiveRemediationReviewChecklistOnly",
+    },
+    {
+      value: payload.sourceExternalFinalDecisionArchiveRemediationPlanReady,
+      label: "sourceExternalFinalDecisionArchiveRemediationPlanReady",
+    },
+    {
+      value: payload.sourceExternalFinalDecisionArchiveRemediationPlanOnly,
+      label: "sourceExternalFinalDecisionArchiveRemediationPlanOnly",
+    },
+    {
+      value: payload.sourceExternalFinalDecisionArchiveNoGoPacketReady,
+      label: "sourceExternalFinalDecisionArchiveNoGoPacketReady",
+    },
+    {
+      value: payload.sourceExternalFinalDecisionArchiveNoGoPacketOnly,
+      label: "sourceExternalFinalDecisionArchiveNoGoPacketOnly",
+    },
+    { value: payload.allRuntimeEffectsBlocked, label: "allRuntimeEffectsBlocked" },
+  ];
+
+  const falseFlags = [
+    {
+      value: payload.externalFinalDecisionArchiveRemediationReviewNoGoAccepted,
+      label: "externalFinalDecisionArchiveRemediationReviewNoGoAccepted",
+    },
+    {
+      value: payload.externalFinalDecisionArchiveRemediationReviewNoGoRecorded,
+      label: "externalFinalDecisionArchiveRemediationReviewNoGoRecorded",
+    },
+    {
+      value: payload.finalDecisionArchiveRemediationReviewAccepted,
+      label: "finalDecisionArchiveRemediationReviewAccepted",
+    },
+    {
+      value: payload.finalDecisionArchiveRemediationReviewRecorded,
+      label: "finalDecisionArchiveRemediationReviewRecorded",
+    },
+    {
+      value: payload.finalDecisionArchiveRemediationReviewComplete,
+      label: "finalDecisionArchiveRemediationReviewComplete",
+    },
+    {
+      value: payload.externalFinalDecisionArchiveRemediationAccepted,
+      label: "externalFinalDecisionArchiveRemediationAccepted",
+    },
+    {
+      value: payload.externalFinalDecisionArchiveRemediationStatesAccepted,
+      label: "externalFinalDecisionArchiveRemediationStatesAccepted",
+    },
+    {
+      value: payload.finalDecisionArchiveNoGoAccepted,
+      label: "finalDecisionArchiveNoGoAccepted",
+    },
+    {
+      value: payload.externalFinalDecisionArchiveAccepted,
+      label: "externalFinalDecisionArchiveAccepted",
+    },
+    {
+      value: payload.authorizationReconsiderationFinalDecisionAccepted,
+      label: "authorizationReconsiderationFinalDecisionAccepted",
+    },
+    {
+      value: payload.implementationAuthorizationGranted,
+      label: "implementationAuthorizationGranted",
+    },
+    {
+      value: payload.readyForAdapterImplementation,
+      label: "readyForAdapterImplementation",
+    },
+  ];
+
+  const runtimeFlags = [
+    {
+      value: payload.wouldAcceptFinalDecisionArchiveRemediationReviewNoGo,
+      label: "wouldAcceptFinalDecisionArchiveRemediationReviewNoGo",
+    },
+    {
+      value: payload.wouldRecordFinalDecisionArchiveRemediationReviewNoGo,
+      label: "wouldRecordFinalDecisionArchiveRemediationReviewNoGo",
+    },
+    {
+      value:
+        payload.wouldDenyImplementationAuthorizationFromArchiveRemediationReview,
+      label: "wouldDenyImplementationAuthorizationFromArchiveRemediationReview",
+    },
+    {
+      value: payload.wouldPromoteArchiveRemediationReviewNoGoToFinalDecision,
+      label: "wouldPromoteArchiveRemediationReviewNoGoToFinalDecision",
+    },
+    {
+      value: payload.wouldAcceptFinalDecisionArchiveRemediationReview,
+      label: "wouldAcceptFinalDecisionArchiveRemediationReview",
+    },
+    {
+      value: payload.wouldAcceptExternalFinalDecisionArchiveRemediation,
+      label: "wouldAcceptExternalFinalDecisionArchiveRemediation",
+    },
+    {
+      value: payload.wouldCreateServiceRoleClient,
+      label: "wouldCreateServiceRoleClient",
+    },
+    { value: payload.wouldRunTransaction, label: "wouldRunTransaction" },
+    { value: payload.wouldWriteRows, label: "wouldWriteRows" },
+  ];
+
+  async function probeItem(itemId: string) {
+    setProbingId(itemId);
+    setProbeResult(null);
+
+    try {
+      const response = await fetch(
+        "/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId }),
+        },
+      );
+      const result =
+        (await response.json()) as WriterPersistenceAuthorizationReconsiderationFinalDecisionArchiveRemediationReviewNoGoProbeResult;
+      setProbeResult(result);
+    } finally {
+      setProbingId(null);
+    }
+  }
+
+  return (
+    <AppShell>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-950">{t.title}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            {t.body}
+          </p>
+        </div>
+        <StatusPill tone="blocked">{t.badge}</StatusPill>
+      </div>
+
+      <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Stat
+          label={t.mode}
+          value={payload.externalFinalDecisionArchiveRemediationReviewNoGoMode}
+        />
+        <Stat
+          label={t.sourceMode}
+          value={
+            payload.sourceExternalFinalDecisionArchiveRemediationReviewChecklistMode
+          }
+        />
+        <Stat label={t.noGoItems} value={payload.noGoItemCount} />
+        <Stat label={t.archiveNoGo} value={payload.archiveReviewNoGoCount} />
+        <Stat label={t.externalNoGo} value={payload.externalEvidenceNoGoCount} />
+        <Stat label={t.manualNoGo} value={payload.manualReviewerNoGoCount} />
+        <Stat
+          label={t.stillBlocked}
+          value={payload.archiveRemediationReviewStillBlockedCount}
+        />
+        <Stat label={t.sourceItems} value={payload.sourceReviewItemCount} />
+        <Stat
+          label={t.sourceExternal}
+          value={payload.sourceExternalEvidenceMissingCount}
+        />
+        <Stat
+          label={t.sourceManual}
+          value={payload.sourceManualReviewerRequiredCount}
+        />
+        <Stat
+          label={t.sourceBlocked}
+          value={payload.sourceArchiveRemediationStillBlockedCount}
+        />
+        <Stat
+          label={t.blockerEvidence}
+          value={payload.blockerEvidenceCount}
+        />
+        <Stat
+          label={t.unresolvedGaps}
+          value={payload.unresolvedReviewGapCount}
+        />
+        <Stat label={t.forbidden} value={payload.forbiddenShortcutCount} />
+        <Stat
+          label={t.prerequisites}
+          value={payload.futureResolutionPrerequisiteCount}
+        />
+        <Stat label={t.redaction} value={payload.redactionRuleCount} />
+        <Stat label={t.checkedAt} value={payload.checkedAt} />
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="space-y-5">
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-slate-950">
+              {t.rules}
+            </h2>
+            <TextList items={payload.archiveRemediationReviewNoGoRules} />
+          </section>
+
+          {payload.archiveRemediationReviewNoGoItems.map((item) => (
+            <NoGoItemCard
+              key={item.id}
+              item={item}
+              copy={t}
+              onProbe={probeItem}
+              probingId={probingId}
+            />
+          ))}
+        </section>
+
+        <aside className="space-y-5">
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-slate-950">
+              {t.safetyState}
+            </h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {trueFlags.map((flag) => (
+                <BooleanPill
+                  key={flag.label}
+                  value={flag.value}
+                  label={flag.label}
+                  copy={t}
+                />
+              ))}
+              {falseFlags.map((flag) => (
+                <BooleanPill
+                  key={flag.label}
+                  value={flag.value}
+                  label={flag.label}
+                  copy={t}
+                  readyWhenTrue={false}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-slate-950">
+              {t.runtimeState}
+            </h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {runtimeFlags.map((flag) => (
+                <BooleanPill
+                  key={flag.label}
+                  value={flag.value}
+                  label={flag.label}
+                  copy={t}
+                  readyWhenTrue={false}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-rose-200 bg-rose-50 p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-rose-950">
+              {t.rejectionRules}
+            </h2>
+            <TextList items={payload.archiveRemediationReviewNoGoRejectionRules} />
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-slate-950">
+              {t.probePanel}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {t.probeBody}
+            </p>
+            {probeResult ? (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                <p>blocked: {probeResult.blocked ? t.yes : t.no}</p>
+                <p>
+                  {t.mode}:{" "}
+                  {
+                    probeResult.externalFinalDecisionArchiveRemediationReviewNoGoMode
+                  }
+                </p>
+                {probeResult.itemTitle ? <p>{probeResult.itemTitle}</p> : null}
+                <p className="mt-2">{probeResult.summary}</p>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review"
+                className="rounded-md border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-800 transition hover:bg-teal-100"
+              >
+                {t.openSourceReview}
+              </Link>
+              <Link
+                href="/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation"
+                className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+              >
+                {t.openRemediation}
+              </Link>
+              <Link
+                href="/dashboard"
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+              >
+                {t.openDashboard}
+              </Link>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </AppShell>
+  );
+}
