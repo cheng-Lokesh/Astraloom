@@ -1,5 +1,6 @@
 import { loadAgentEcologyDraft } from "@/lib/agents/storage";
 import { loadBillingSupportDraft } from "@/lib/billing/storage";
+import { loadFeedbackLedgerDraft } from "@/lib/feedback/storage";
 import { loadKeyPeopleDraft } from "@/lib/people/storage";
 import { loadReportDraft } from "@/lib/reports/storage";
 import { loadSimulationRunDraft } from "@/lib/runs/storage";
@@ -14,6 +15,7 @@ export function loadLocalDraftBundle() {
     keyPeople: seedContext ? loadKeyPeopleDraft(seedContext.id) : null,
     agentEcology: seedContext ? loadAgentEcologyDraft(seedContext.id) : null,
     simulationRun: seedContext ? loadSimulationRunDraft(seedContext.id) : null,
+    feedback: seedContext ? loadFeedbackLedgerDraft(seedContext.id) : null,
     safetyReview: seedContext ? loadSafetyReviewDraft(seedContext.id) : null,
     report: seedContext ? loadReportDraft(seedContext.id) : null,
     billing: loadBillingSupportDraft(),

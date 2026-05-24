@@ -4,10 +4,10 @@ This is a compact map for resuming implementation without loading long chat hist
 
 ## Current Pointer
 
-- Last completed: Stage71
-- Next stage: Stage72
-- Next short internal route pattern: `p72-*`
-- Next public route intent: persistence adapter implementation authorization reconsideration external final decision archive remediation review no-go reconciliation remediation review no-go reconciliation no-go remediation review no-go remediation path
+- Last completed: Stage73
+- Next stage: Stage74
+- Next short internal route pattern: `p74-*`
+- Next public route intent: persistence adapter implementation authorization reconsideration external final decision archive remediation review no-go reconciliation remediation review no-go reconciliation no-go remediation review no-go remediation review no-go packet
 
 ## Stage Groups
 
@@ -24,14 +24,16 @@ This is a compact map for resuming implementation without loading long chat hist
 | Stage69 | Done | Read-only remediation plan for Stage68 no-go blockers. Uses short internal routes through `next.config.ts` rewrites and remains inert. |
 | Stage70 | Done | Read-only remediation review checklist for Stage69 remediation plan. Uses short internal routes through `next.config.ts` rewrites and remains inert. |
 | Stage71 | Done | Read-only remediation review no-go packet for Stage70 review blockers. Uses short internal routes through `next.config.ts` rewrites and remains inert. |
-| Stage72 | Next | Read-only remediation path for Stage71 no-go blockers. Must remain inert. |
+| Stage72 | Done | Read-only remediation path for Stage71 no-go blockers. Uses short internal routes through `next.config.ts` rewrites and remains inert. |
+| Stage73 | Done | Read-only remediation review checklist for Stage72 remediation plans. Uses short internal routes through `next.config.ts` rewrites and remains inert. |
+| Stage74 | Next | Read-only no-go packet for Stage73 remediation review blockers. Must remain inert. |
 
 ## Latest Build-Safe Route Rule
 
 Use short physical route names for new deep writer stages:
 
-- Page: `src/app/server-writers/p72-*/page.tsx`
-- API: `src/app/api/system-writers/p72-*/route.ts`
+- Page: `src/app/server-writers/p74-*/page.tsx`
+- API: `src/app/api/system-writers/p74-*/route.ts`
 - Public URL: expose the long semantic URL through `next.config.ts` rewrites.
 
 Do not create another physical folder with the full long public route name.
@@ -78,5 +80,23 @@ Do not create another physical folder with the full long public route name.
 - Internal API: `/api/system-writers/p71-reconciliation-no-go-remediation-review-no-go`
 - Public page: `/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go`
 - Public API: `/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go`
+- Counts: `10 / 5 / 5 / 10`
+- Required runtime flags: all acceptance/write/transaction/service-role flags remain false.
+
+## Stage72 Reference
+
+- Internal page: `/server-writers/p72-remediation`
+- Internal API: `/api/system-writers/p72-remediation`
+- Public page: `/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation`
+- Public API: `/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation`
+- Counts: `10 / 5 / 5 / 10`
+- Required runtime flags: all acceptance/write/transaction/service-role flags remain false.
+
+## Stage73 Reference
+
+- Internal page: `/server-writers/p73-remediation-review`
+- Internal API: `/api/system-writers/p73-remediation-review`
+- Public page: `/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation-review`
+- Public API: `/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation-review`
 - Counts: `10 / 5 / 5 / 10`
 - Required runtime flags: all acceptance/write/transaction/service-role flags remain false.

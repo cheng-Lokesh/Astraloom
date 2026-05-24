@@ -1,6 +1,6 @@
 export type Locale = "en" | "zh";
 
-export const defaultLocale: Locale = "en";
+export const defaultLocale: Locale = "zh";
 export const localeStorageKey = "mirofish.locale";
 
 export const languageOptions: Array<{ label: string; locale: Locale }> = [

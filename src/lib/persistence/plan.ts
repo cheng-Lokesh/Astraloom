@@ -22,7 +22,9 @@ export function buildPersistencePlan(
   syncState: PersistenceSyncState,
 ) {
   const keyPeopleCount = bundle.keyPeople?.people.length ?? 0;
+  const feedbackCount = bundle.feedback?.feedback.length ?? 0;
   const supportTicketCount = bundle.billing?.tickets.length ?? 0;
+  const syncedFeedbackCount = Object.keys(syncState.remoteFeedbackIds).length;
   const syncedSupportCount = Object.keys(syncState.remoteSupportTicketIds).length;
   const remoteSeedExists = Boolean(syncState.remoteSeedContextId);
 
@@ -84,6 +86,19 @@ export function buildPersistencePlan(
       remoteCount: 0,
       detail:
         "Reports and claims are read-only to users and should be created by the backend.",
+    },
+    {
+      id: "feedback_log",
+      capability: "client_writable",
+      status: getStatus(
+        feedbackCount > 0,
+        feedbackCount > 0 && syncedFeedbackCount >= feedbackCount,
+        false,
+      ),
+      localCount: feedbackCount,
+      remoteCount: Math.min(syncedFeedbackCount, feedbackCount),
+      detail:
+        "Feedback calibration is user-authored and can be saved without changing claims or evidence.",
     },
     {
       id: "payment_entitlement",

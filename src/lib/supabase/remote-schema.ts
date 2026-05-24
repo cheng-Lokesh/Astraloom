@@ -6,15 +6,18 @@ import type {
 } from "@/types/supabase-remote-schema";
 
 const expectedTables = [
+  "users",
   "profiles",
   "seed_contexts",
   "key_people",
   "agent_profiles",
   "relation_edges",
   "simulation_runs",
+  "simulation_ticks",
   "events",
   "claims",
   "reports",
+  "feedback_log",
   "payments",
   "support_tickets",
   "consent_events",

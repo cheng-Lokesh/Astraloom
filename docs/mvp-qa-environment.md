@@ -58,19 +58,23 @@ In Supabase SQL Editor, run:
 ```sql
 -- Copy the full contents of:
 -- supabase/migrations/0001_mvp_core_schema.sql
+-- supabase/migrations/0002_mvp_evidence_chain_contracts.sql
 ```
 
 After running it, verify these tables exist:
 
+- `users`
 - `profiles`
 - `seed_contexts`
 - `key_people`
 - `agent_profiles`
 - `relation_edges`
 - `simulation_runs`
+- `simulation_ticks`
 - `events`
 - `claims`
 - `reports`
+- `feedback_log`
 - `payments`
 - `support_tickets`
 - `consent_events`
@@ -83,6 +87,7 @@ Client-writable tables:
 
 - `seed_contexts`
 - `key_people`
+- `feedback_log`
 - `support_tickets`
 
 Browser read-only tables:
@@ -90,6 +95,7 @@ Browser read-only tables:
 - `agent_profiles`
 - `relation_edges`
 - `simulation_runs`
+- `simulation_ticks`
 - `events`
 - `claims`
 - `reports`
@@ -99,7 +105,7 @@ Browser read-only tables:
 Manual Supabase check:
 
 1. In Supabase, ensure RLS is enabled on every table listed above.
-2. Confirm `seed_contexts`, `key_people`, and `support_tickets` have `for all` policies scoped to `auth.uid() = user_id`.
+2. Confirm `seed_contexts`, `key_people`, `feedback_log`, and `support_tickets` have `for all` policies scoped to `auth.uid() = user_id`.
 3. Confirm generated/payment tables only have `for select` policies scoped to `auth.uid() = user_id`.
 4. Do not add insert/update/delete policies to generated/payment tables until server writer implementation is reviewed.
 

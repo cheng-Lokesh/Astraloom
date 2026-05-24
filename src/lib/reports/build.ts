@@ -1,3 +1,4 @@
+import { buildProductPreview } from "@/lib/preview/build";
 import type { ReportDraft } from "@/types/report";
 import type { SafetyReviewDraft } from "@/types/safety-review";
 import type { SeedContextDraft } from "@/types/seed-context";
@@ -21,6 +22,12 @@ export function buildReportDraft(
 ) {
   const now = new Date().toISOString();
   const reportId = `report_${hashText(`${simulationRun.id}:report`)}`;
+  const preview = buildProductPreview({
+    questionText: seedContext.questionText,
+    situationSummary: seedContext.situationSummary,
+    keyPeopleText: seedContext.keyPeopleText,
+    timeWindow: seedContext.timeWindow,
+  });
   const locked = !safetyReview.reportReady;
 
   return {
@@ -29,59 +36,55 @@ export function buildReportDraft(
     simulationRunId: simulationRun.id,
     status: locked ? "locked" : "ready_placeholder",
     reportJson: {
-      title: "Report shell",
+      title: "MiroFish 职场决策预览报告",
       executiveSummary: locked
-        ? "Report content is locked until SafetyVerifier marks this run as report-ready."
-        : "Report content placeholder. Real generated content is still disabled.",
+        ? preview.safetyMessage
+        : preview.previewSummary,
+      preview,
       sections: [
         {
+          id: "summary",
+          title: "免费预览",
+          body: preview.previewSummary,
+          locked: false,
+        },
+        {
           id: "timeline",
-          title: "Timeline",
-          body: locked
-            ? "Locked. No event narrative is available."
-            : "Placeholder timeline section.",
+          title: "时间线信号",
+          body:
+            preview.timelineEvents
+              .map((event) => `${event.window} ${event.signal}: ${event.detail}`)
+              .join("\n") || preview.safetyMessage,
           locked,
         },
         {
-          id: "claims",
-          title: "Claims",
-          body: locked
-            ? "Locked. No claims have been generated."
-            : "Placeholder claims section.",
-          locked,
-        },
-        {
-          id: "evidence",
-          title: "Evidence",
-          body: locked
-            ? "Locked. No evidence references have been generated."
-            : "Placeholder evidence references section.",
-          locked,
+          id: "paid",
+          title: "完整报告",
+          body: preview.lockedReportSections.join("\n"),
+          locked: true,
         },
       ],
     },
     safetyLevel: safetyReview.safetyLevel,
     safetyReviewId: safetyReview.id,
-    claims: [
-      {
-        id: `claim_${hashText(`${simulationRun.id}:placeholder`)}`,
-        simulationRunId: simulationRun.id,
-        claimText: "Locked placeholder. No model-generated claim exists.",
-        confidence: 0,
-        evidenceRefs: [
-          {
-            id: `evidence_${hashText(`${safetyReview.id}:report-lock`)}`,
-            sourceType: "safety",
-            sourceId: safetyReview.id,
-            label: "Safety review gate",
-          },
-        ],
-        createdAt: now,
-      },
-    ],
-    lockedReason: safetyReview.reportReady
-      ? "Report shell is structurally ready, but real generation is still disabled."
-      : safetyReview.reportBlockedReason,
+    claims: preview.scenarioPaths.map((path) => ({
+      id: `claim_${hashText(`${simulationRun.id}:${path.id}`)}`,
+      simulationRunId: simulationRun.id,
+      claimText: path.summary,
+      confidence: path.confidence,
+      evidenceRefs: [
+        {
+          id: `evidence_${hashText(`${path.id}:seed`)}`,
+          sourceType: "seed_context" as const,
+          sourceId: seedContext.id,
+          label: "用户输入与本地确定性预览",
+        },
+      ],
+      createdAt: now,
+    })),
+    lockedReason: locked
+      ? safetyReview.reportBlockedReason
+      : "免费预览可读；完整报告仍锁定，用于验证付费意向。",
     createdAt: now,
     updatedAt: now,
   } satisfies ReportDraft;
@@ -94,12 +97,9 @@ export function lockReportDraft(draft: ReportDraft, reason: string) {
     lockedReason: reason,
     reportJson: {
       ...draft.reportJson,
-      executiveSummary:
-        "Report content is locked until SafetyVerifier marks this run as report-ready.",
-      sections: draft.reportJson.sections.map((section) => ({
-        ...section,
-        locked: true,
-      })),
+      sections: draft.reportJson.sections.map((section) =>
+        section.id === "summary" ? section : { ...section, locked: true },
+      ),
     },
     updatedAt: new Date().toISOString(),
   };

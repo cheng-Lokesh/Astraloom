@@ -1,15 +1,19 @@
 ﻿# MVP Database Schema
 
-The first Supabase migration lives at:
+The Supabase migrations live at:
 
-`supabase/migrations/0001_mvp_core_schema.sql`
+- `supabase/migrations/0001_mvp_core_schema.sql`
+- `supabase/migrations/0002_mvp_evidence_chain_contracts.sql`
 
-This schema is intentionally minimal and follows the VibeCoding build pack:
+This schema is intentionally minimal but must preserve the MiroFish evidence chain:
 
 - `seed_contexts` is the first user-generated product object.
-- `key_people` comes next for chat-style person confirmation.
+- `key_people` comes next for structured person confirmation.
 - `agent_profiles`, `relation_edges`, `simulation_runs`, `events`, `claims`, and `reports` are defined early so future Codex tasks do not invent incompatible table names.
+- `simulation_ticks` stores tick snapshots before events are interpreted as reportable claims.
+- `feedback_log` stores post-report calibration feedback for claims, agents, relation judgments, strategy usefulness, and overall run quality.
 - `payments`, `support_tickets`, and `consent_events` are included because paid AI reports require support, refund, privacy, and consent traceability from the start.
+- `users` is the whitepaper account anchor, while `profiles` remains for compatibility with earlier app code.
 
 Current app behavior:
 
@@ -82,8 +86,21 @@ Current app behavior:
 - `/qa` and `docs/mvp-qa-environment.md` provide the acceptance checklist for local runtime, Supabase environment variables, RLS boundaries, route checks, and release blocks.
 - `/setup`, `/api/supabase-setup/status`, and `docs/supabase-auth-sync-setup.md` guide the real Supabase auth-sync configuration while keeping service-role, AI, and Stripe gates disabled.
 - `/api/supabase-setup/remote-schema` checks the hosted Supabase REST schema with the publishable key and reports whether expected MVP tables are present.
-- `/setup/migration` and `/api/supabase-setup/migration` expose the local MVP migration SQL as read-only implementation support for the Supabase SQL Editor.
+- `/setup/migration` and `/api/supabase-setup/migration` expose all local MVP migration SQL files as read-only implementation support for the Supabase SQL Editor.
 - The SQL migration is not applied automatically.
 - After Supabase is created and `.env.local` is configured, the app can sync safe user-authored drafts while keeping generated artifacts read-only.
 
 Do not add graph editing, model calls, real payment, unlocked reports, or actual service-role writes while implementing persistence.
+
+## Evidence-Chain Patch
+
+`0002_mvp_evidence_chain_contracts.sql` is an idempotent patch over the early schema. It adds:
+
+- missing whitepaper fields such as `version`, `trace_id`, `cost_estimate`, `error_code`, and JSON evidence refs;
+- `simulation_ticks` for tick snapshots;
+- `feedback_log` for feedback calibration;
+- explicit `evidence_event_ids` on `claims`;
+- read-only RLS policies for generated artifacts;
+- user-managed RLS for `feedback_log`.
+
+This patch does not enable service-role writes, LLM calls, Stripe writes, report unlocks, or user-editable relation edge weights.

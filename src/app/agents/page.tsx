@@ -1,520 +1,305 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { useLanguage } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
-import { buildAgentProfiles, getConfirmedPeople } from "@/lib/agents/build";
+import { buildAgentProfiles } from "@/lib/agents/build";
 import {
-  clearAgentEcologyDraft,
   loadAgentEcologyDraft,
   saveAgentEcologyDraft,
 } from "@/lib/agents/storage";
 import { loadKeyPeopleDraft } from "@/lib/people/storage";
 import { loadSeedContextDraft } from "@/lib/seed-context/storage";
-import type {
-  AgentEcologyDraft,
-  AgentProfileDraft,
-  AgentType,
-} from "@/types/agent-profile";
-import type { KeyPersonDraft } from "@/types/key-person";
-import type { SeedContextDraft } from "@/types/seed-context";
+import type { AgentProfileDraft } from "@/types/agent-profile";
 
-type AgentsPageContext = {
-  seedContext: SeedContextDraft | null;
-  confirmedPeople: KeyPersonDraft[];
-  savedEcology: AgentEcologyDraft | null;
-};
-
-const agentsCopy = {
-  en: {
-    title: "Agent ecology shell",
-    status: "Local shell",
-    body: "Create the living pieces of the sandbox before any simulation runs. This page only builds local shells; no model call or prediction is made.",
-    noSeedTitle: "Seed context required",
-    noSeedBody: "Create and save a seed context before building agents.",
-    noPeopleTitle: "Confirmed people required",
-    noPeopleBody:
-      "Confirm at least one key person before creating NPC placeholders.",
-    openIntake: "Open seed intake",
-    openPeople: "Confirm people",
-    openRuns: "Create run shell",
-    save: "Save ecology shell",
-    rebuild: "Rebuild shell",
-    reset: "Clear saved shell",
-    saved: "Agent ecology shell saved locally.",
-    rebuilt: "Agent ecology shell rebuilt from current confirmations.",
-    resetDone: "Saved agent shell cleared.",
-    parallelLabel: "Include parallel selves",
-    parallelHint:
-      "Adds cautious and decisive variants of the user self for later comparison.",
-    seedQuestion: "Seed question",
-    confirmedPeople: "Confirmed people",
-    agents: "Agents",
-    relationPreview: "Read-only ecology preview",
-    relationPending: "Relationship pending",
-    relationNote:
-      "Edges are placeholders only. Trust, hostility, influence, and confidence are generated later by system logic and are never manually edited here.",
-    typeLabels: {
-      self: "User self",
-      parallel_self: "Parallel self",
-      npc: "NPC",
-    },
-    stanceLabels: {
-      baseline: "Baseline",
-      cautious_parallel: "Cautious variant",
-      decisive_parallel: "Decisive variant",
-      confirmed_npc: "Confirmed participant",
-    },
-    sections: {
-      self: "Core self",
-      parallel: "Parallel selves",
-      npcs: "Confirmed NPCs",
-    },
-    counts: {
-      self: "Self",
-      parallel: "Parallel",
-      npc: "NPCs",
-    },
-    nextStep: "Next build step",
-    nextStepBody:
-      "Create the simulation run shell and event-log skeleton. Keep generation disabled until the prompt and safety checks are ready.",
-  },
-  zh: {
-    title: "Agent 个体生态外壳",
-    status: "本地外壳",
-    body: "在任何推演开始前，先把沙盘里的“活体个体”搭出来。这里仅生成本地外壳，不调用模型，也不做预测。",
-    noSeedTitle: "需要先保存种子上下文",
-    noSeedBody: "请先创建并保存种子上下文，然后再生成 Agent。",
-    noPeopleTitle: "需要先确认关键人物",
-    noPeopleBody: "请至少确认一个关键人物，再生成 NPC 占位。",
-    openIntake: "打开推演入口",
-    openPeople: "确认人物",
-    openRuns: "创建 run 外壳",
-    save: "保存生态外壳",
-    rebuild: "重建外壳",
-    reset: "清空已保存外壳",
-    saved: "Agent 生态外壳已保存到本地。",
-    rebuilt: "已根据当前人物确认重建 Agent 生态外壳。",
-    resetDone: "已清空保存的 Agent 外壳。",
-    parallelLabel: "包含平行自我",
-    parallelHint: "加入谨慎版和行动版自我，供后续推演对照。",
-    seedQuestion: "种子问题",
-    confirmedPeople: "已确认人物",
-    agents: "Agent",
-    relationPreview: "只读生态预览",
-    relationPending: "关系待生成",
-    relationNote:
-      "边只是占位。信任、敌意、影响力和置信度后续由系统逻辑生成，这里永远不让用户手动编辑。",
-    typeLabels: {
-      self: "用户自我",
-      parallel_self: "平行自我",
-      npc: "NPC",
-    },
-    stanceLabels: {
-      baseline: "基线版本",
-      cautious_parallel: "谨慎变体",
-      decisive_parallel: "行动变体",
-      confirmed_npc: "已确认参与者",
-    },
-    sections: {
-      self: "核心自我",
-      parallel: "平行自我",
-      npcs: "已确认 NPC",
-    },
-    counts: {
-      self: "自我",
-      parallel: "平行",
-      npc: "NPC",
-    },
-    nextStep: "下一步构建",
-    nextStepBody:
-      "创建 simulation run 外壳和事件日志骨架。在提示词和安全检查准备好之前，继续关闭真实生成。",
-  },
-} as const;
-
-function loadAgentsPageContext(): AgentsPageContext {
-  const seedContext = loadSeedContextDraft();
-  if (!seedContext) {
-    return {
-      seedContext: null,
-      confirmedPeople: [],
-      savedEcology: null,
-    };
-  }
-
-  const keyPeople = loadKeyPeopleDraft(seedContext.id);
-
-  return {
-    seedContext,
-    confirmedPeople: getConfirmedPeople(keyPeople?.people ?? []),
-    savedEcology: loadAgentEcologyDraft(seedContext.id),
-  };
+function metricAverage(values: number[]) {
+  if (!values.length) return 0;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
-function countByType(agents: AgentProfileDraft[], type: AgentType) {
-  return agents.filter((agent) => agent.agentType === type).length;
-}
-
-function getAgentGroups(agents: AgentProfileDraft[]) {
-  return {
-    self: agents.filter((agent) => agent.agentType === "self"),
-    parallel: agents.filter((agent) => agent.agentType === "parallel_self"),
-    npcs: agents.filter((agent) => agent.agentType === "npc"),
-  };
+function agentTone(agent: AgentProfileDraft) {
+  if (agent.agentType === "self") return "ready";
+  if (agent.agentType === "parallel_self") return "planned";
+  return agent.confidence >= 70 ? "ready" : "planned";
 }
 
 export default function AgentsPage() {
-  const { locale } = useLanguage();
-  const copy = agentsCopy[locale];
-  const [context] = useState(loadAgentsPageContext);
-  const initialIncludeParallel =
-    context.savedEcology?.includeParallelSelves ?? true;
-  const [includeParallelSelves, setIncludeParallelSelves] = useState(
-    initialIncludeParallel,
+  const [seedContext] = useState(() => loadSeedContextDraft());
+  const [keyPeople] = useState(() =>
+    seedContext ? loadKeyPeopleDraft(seedContext.id) : null,
   );
-  const [agents, setAgents] = useState<AgentProfileDraft[]>(() => {
-    if (!context.seedContext) {
-      return [];
-    }
-
-    return (
-      context.savedEcology?.agents ??
-      buildAgentProfiles(
-        context.seedContext,
-        context.confirmedPeople,
-        initialIncludeParallel,
-      )
-    );
+  const [includeParallelSelves, setIncludeParallelSelves] = useState(() => {
+    if (!seedContext) return true;
+    return loadAgentEcologyDraft(seedContext.id)?.includeParallelSelves ?? true;
   });
-  const [message, setMessage] = useState("");
+  const [savedAt, setSavedAt] = useState<string | null>(() => {
+    if (!seedContext) return null;
+    return loadAgentEcologyDraft(seedContext.id)?.updatedAt ?? null;
+  });
+  const [selectedId, setSelectedId] = useState("");
 
-  function rebuildShell(nextIncludeParallel = includeParallelSelves) {
-    if (!context.seedContext) {
-      return [];
-    }
+  const confirmedPeople = useMemo(
+    () =>
+      (keyPeople?.people ?? []).filter(
+        (person) => person.confirmed && person.status === "confirmed",
+      ),
+    [keyPeople],
+  );
 
-    const nextAgents = buildAgentProfiles(
-      context.seedContext,
-      context.confirmedPeople,
-      nextIncludeParallel,
-    );
+  const agents = useMemo(() => {
+    if (!seedContext) return [];
+    return buildAgentProfiles(seedContext, confirmedPeople, includeParallelSelves);
+  }, [confirmedPeople, includeParallelSelves, seedContext]);
 
-    setAgents(nextAgents);
-    setMessage(copy.rebuilt);
-    return nextAgents;
-  }
+  const selectedAgent =
+    agents.find((agent) => agent.id === selectedId) ?? agents[0] ?? null;
 
-  function updateParallelSetting(checked: boolean) {
-    setIncludeParallelSelves(checked);
-    rebuildShell(checked);
-  }
-
-  function saveShell() {
-    if (!context.seedContext) {
-      return;
-    }
-
+  function saveDraft() {
+    if (!seedContext) return;
+    const updatedAt = new Date().toISOString();
     saveAgentEcologyDraft({
-      seedContextId: context.seedContext.id,
+      seedContextId: seedContext.id,
       includeParallelSelves,
       agents,
-      updatedAt: new Date().toISOString(),
+      updatedAt,
     });
-    setMessage(copy.saved);
+    setSavedAt(updatedAt);
   }
 
-  function resetShell() {
-    if (!context.seedContext) {
-      return;
-    }
-
-    clearAgentEcologyDraft(context.seedContext.id);
-    setIncludeParallelSelves(true);
-    const nextAgents = buildAgentProfiles(
-      context.seedContext,
-      context.confirmedPeople,
-      true,
-    );
-    setAgents(nextAgents);
-    setMessage(copy.resetDone);
-  }
-
-  if (!context.seedContext) {
+  if (!seedContext) {
     return (
       <AppShell>
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <StatusPill tone="blocked">{copy.status}</StatusPill>
-          <h1 className="mt-4 text-2xl font-semibold text-slate-950">
-            {copy.noSeedTitle}
+        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+          <StatusPill tone="blocked">需要 Seed Context</StatusPill>
+          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            先输入一个真实局面。
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            {copy.noSeedBody}
+          <p className="mt-3 text-sm leading-7 text-[#62695d]">
+            Agent Profile 草稿必须来自本次输入和已确认人物。
           </p>
           <Link
-            href="/intake"
-            className="mt-5 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+            href="/app/new/intake"
+            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
           >
-            {copy.openIntake}
+            开始输入
           </Link>
         </section>
       </AppShell>
     );
   }
 
-  if (context.confirmedPeople.length === 0) {
+  if (!confirmedPeople.length) {
     return (
       <AppShell>
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <StatusPill tone="blocked">{copy.status}</StatusPill>
-          <h1 className="mt-4 text-2xl font-semibold text-slate-950">
-            {copy.noPeopleTitle}
+        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+          <StatusPill tone="blocked">需要确认人物</StatusPill>
+          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            先确认至少一个关键 NPC。
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            {copy.noPeopleBody}
+          <p className="mt-3 text-sm leading-7 text-[#62695d]">
+            白皮书要求重要人物先成为 Agent Profile。没有确认人物时，不能进入关系图谱。
           </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link
-              href="/people"
-              className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              {copy.openPeople}
-            </Link>
-            <Link
-              href="/intake"
-              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-            >
-              {copy.openIntake}
-            </Link>
-          </div>
+          <Link
+            href="/people"
+            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
+          >
+            返回人物确认
+          </Link>
         </section>
       </AppShell>
     );
   }
 
-  const groups = getAgentGroups(agents);
-
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-950">
-            {copy.title}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            {copy.body}
-          </p>
-        </div>
-        <StatusPill tone="planned">{copy.status}</StatusPill>
-      </div>
+      <div className="space-y-6">
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <main className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <StatusPill tone="ready">Agent Profile drafts</StatusPill>
+            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
+              已确认人物被装载为可行动的数字个体。
+            </h1>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
+              这是本地确定性草稿：不调用 LLM，不写后端，不推断第三方真实内心。每个 NPC 都保留来源、置信度、证据引用和缺失字段。
+            </p>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <label className="flex max-w-xl items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={includeParallelSelves}
-                  onChange={(event) =>
-                    updateParallelSetting(event.target.checked)
-                  }
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
-                />
-                <span>
-                  <span className="block text-sm font-semibold text-slate-950">
-                    {copy.parallelLabel}
-                  </span>
-                  <span className="mt-1 block text-sm leading-6 text-slate-600">
-                    {copy.parallelHint}
-                  </span>
-                </span>
-              </label>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => rebuildShell()}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-                >
-                  {copy.rebuild}
-                </button>
-                <button
-                  type="button"
-                  onClick={saveShell}
-                  className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  {copy.save}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetShell}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-                >
-                  {copy.reset}
-                </button>
-              </div>
+            <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-7 text-[#3f483d]">
+              {seedContext.questionText}
             </div>
-            {message ? (
-              <p className="mt-4 text-sm font-medium text-slate-600">
-                {message}
+          </main>
+
+          <aside className="rounded-lg bg-[#11150f] p-6 text-white">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#b7e6c6]">
+              Local ecology ledger
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <Metric label="Agents" value={agents.length} />
+              <Metric label="NPC" value={confirmedPeople.length} />
+              <Metric
+                label="Avg confidence"
+                value={metricAverage(agents.map((agent) => agent.confidence))}
+              />
+              <Metric
+                label="Evidence refs"
+                value={agents.reduce(
+                  (total, agent) => total + agent.evidenceRefs.length,
+                  0,
+                )}
+              />
+            </div>
+
+            <label className="mt-5 flex items-start gap-3 rounded-md border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-white/70">
+              <input
+                type="checkbox"
+                checked={includeParallelSelves}
+                onChange={(event) => setIncludeParallelSelves(event.target.checked)}
+                className="mt-1 h-4 w-4"
+              />
+              <span>加入谨慎/行动两个平行分身，用于后续路径稳定性对照。</span>
+            </label>
+
+            <button
+              type="button"
+              onClick={saveDraft}
+              className="mt-5 inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]"
+            >
+              保存本地 Agent 草稿
+            </button>
+            {savedAt ? (
+              <p className="mt-3 text-xs leading-5 text-white/50">
+                已保存：{new Date(savedAt).toLocaleString()}
               </p>
             ) : null}
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.relationPreview}
-            </h2>
-            <div className="mt-4 grid gap-4 xl:grid-cols-3">
-              <AgentColumn
-                title={copy.sections.self}
-                agents={groups.self}
-                copy={copy}
-              />
-              <AgentColumn
-                title={copy.sections.parallel}
-                agents={groups.parallel}
-                copy={copy}
-              />
-              <AgentColumn
-                title={copy.sections.npcs}
-                agents={groups.npcs}
-                copy={copy}
-              />
-            </div>
-
-            <div className="mt-5 space-y-2">
-              {groups.npcs.map((agent) => (
-                <div
-                  key={agent.id}
-                  className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
-                >
-                  <span className="font-semibold text-slate-900">
-                    User self
-                  </span>
-                  <span>→</span>
-                  <span className="font-semibold text-slate-900">
-                    {agent.label}
-                  </span>
-                  <StatusPill tone="planned">{copy.relationPending}</StatusPill>
-                </div>
-              ))}
-            </div>
-
-            <p className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
-              {copy.relationNote}
-            </p>
-          </section>
+            <Link
+              href="/app/new/graph"
+              className="mt-3 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+            >
+              查看只读关系图谱
+            </Link>
+          </aside>
         </section>
 
-        <aside className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.agents}
-            </h2>
-            <dl className="mt-4 space-y-4 text-sm">
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.seedQuestion}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {context.seedContext.questionText}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.confirmedPeople}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {context.confirmedPeople
-                    .map((person) => person.label)
-                    .join(", ")}
-                </dd>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-md bg-emerald-50 p-3">
-                  <dt className="text-xs font-semibold text-emerald-700">
-                    {copy.counts.self}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold text-emerald-900">
-                    {countByType(agents, "self")}
-                  </dd>
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(320px,0.45fr)]">
+          <main className="grid gap-4 md:grid-cols-2">
+            {agents.map((agent) => (
+              <button
+                key={agent.id}
+                type="button"
+                onClick={() => setSelectedId(agent.id)}
+                className={`rounded-lg border p-5 text-left transition ${
+                  selectedAgent?.id === agent.id
+                    ? "border-[#568262]/50 bg-[#eef5ee]"
+                    : "border-black/8 bg-white hover:border-[#568262]/30"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                      {agent.agentType}
+                    </div>
+                    <h2 className="mt-2 text-xl font-semibold text-[#11150f]">
+                      {agent.label}
+                    </h2>
+                  </div>
+                  <StatusPill tone={agentTone(agent)}>
+                    {agent.confidence}%
+                  </StatusPill>
                 </div>
-                <div className="rounded-md bg-sky-50 p-3">
-                  <dt className="text-xs font-semibold text-sky-700">
-                    {copy.counts.parallel}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold text-sky-900">
-                    {countByType(agents, "parallel_self")}
-                  </dd>
-                </div>
-                <div className="rounded-md bg-amber-50 p-3">
-                  <dt className="text-xs font-semibold text-amber-700">
-                    {copy.counts.npc}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold text-amber-900">
-                    {countByType(agents, "npc")}
-                  </dd>
-                </div>
-              </div>
-            </dl>
-          </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.nextStep}
+                <p className="mt-3 text-sm leading-6 text-[#62695d]">
+                  {agent.role} / {agent.relationshipToUser}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {agent.profileJson.traits.slice(0, 3).map((trait) => (
+                    <span
+                      key={trait}
+                      className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]"
+                    >
+                      {trait}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </main>
+
+          <aside className="h-fit rounded-lg border border-black/8 bg-white p-5">
+            <h2 className="text-sm font-semibold text-[#11150f]">
+              Agent 详情
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {copy.nextStepBody}
-            </p>
-            <Link
-              href="/runs"
-              className="mt-4 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              {copy.openRuns}
-            </Link>
-          </section>
-        </aside>
+            {selectedAgent ? (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                    {selectedAgent.profileJson.origin}
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold text-[#11150f]">
+                    {selectedAgent.label}
+                  </h3>
+                </div>
+
+                <Detail label="主要目标" value={selectedAgent.profileJson.motivation.primaryGoal} />
+                <Detail label="回避模式" value={selectedAgent.profileJson.motivation.avoidancePattern} />
+                <Detail label="当前意图" value={selectedAgent.profileJson.state.currentIntention} />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Score label="资源权力" value={selectedAgent.profileJson.resources.authority} />
+                  <Score label="信息量" value={selectedAgent.profileJson.resources.information} />
+                  <Score label="行动速度" value={selectedAgent.profileJson.behaviorPolicy.actionSpeed} />
+                  <Score label="当前压力" value={selectedAgent.profileJson.state.stress} />
+                </div>
+
+                <div className="rounded-md bg-[#f7f8f4] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                    Evidence refs
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {selectedAgent.evidenceRefs.map((ref) => (
+                      <code
+                        key={ref}
+                        className="block break-all text-xs text-[#3f483d]"
+                      >
+                        {ref}
+                      </code>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </aside>
+        </section>
       </div>
     </AppShell>
   );
 }
 
-type AgentColumnProps = {
-  title: string;
-  agents: AgentProfileDraft[];
-  copy: (typeof agentsCopy)["en"] | (typeof agentsCopy)["zh"];
-};
-
-function AgentColumn({ title, agents, copy }: AgentColumnProps) {
+function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <section className="min-h-40 rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
-      <div className="mt-3 space-y-3">
-        {agents.map((agent) => (
-          <article
-            key={agent.id}
-            className="rounded-md border border-slate-200 bg-white p-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-slate-950">
-                {agent.label}
-              </p>
-              <StatusPill tone={agent.agentType === "npc" ? "planned" : "ready"}>
-                {copy.typeLabels[agent.agentType]}
-              </StatusPill>
-            </div>
-            <p className="mt-2 text-xs font-medium text-slate-500">
-              {copy.stanceLabels[agent.profileJson.stance]}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {agent.profileJson.traits.join(", ")}
-            </p>
-          </article>
-        ))}
+    <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
+      <div className="text-xs text-white/48">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+        {label}
       </div>
-    </section>
+      <p className="mt-1 text-sm leading-6 text-[#62695d]">{value}</p>
+    </div>
+  );
+}
+
+function Score({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-black/8 p-3">
+      <div className="text-xs text-[#7d8578]">{label}</div>
+      <div className="mt-1 text-xl font-semibold text-[#11150f]">{value}</div>
+    </div>
   );
 }

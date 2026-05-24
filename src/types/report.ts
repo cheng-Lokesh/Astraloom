@@ -1,4 +1,5 @@
 import type { SafetyLevel } from "@/types/safety-review";
+import type { ProductPreview } from "@/types/product-preview";
 
 export type ReportStatus = "locked" | "ready_placeholder";
 
@@ -13,7 +14,7 @@ export type ClaimDraft = {
   id: string;
   simulationRunId: string;
   claimText: string;
-  confidence: 0;
+  confidence: number;
   evidenceRefs: EvidenceRefDraft[];
   createdAt: string;
 };
@@ -21,6 +22,7 @@ export type ClaimDraft = {
 export type ReportJsonDraft = {
   title: string;
   executiveSummary: string;
+  preview?: ProductPreview;
   sections: Array<{
     id: string;
     title: string;

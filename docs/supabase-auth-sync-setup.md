@@ -5,7 +5,7 @@ This is the next execution guide after the MVP QA checklist. It keeps the projec
 ## What This Step Enables
 
 - Magic-link login through Supabase Auth.
-- Client-writable sync for `seed_contexts`, `key_people`, and `support_tickets`.
+- Client-writable sync for `seed_contexts`, `key_people`, `feedback_log`, and `support_tickets`.
 - Read-only verification for system-owned generated/payment tables.
 
 ## What Must Stay Disabled
@@ -121,7 +121,8 @@ Expected:
 - `seed_contexts` receives one row for the logged-in user.
 - `key_people` receives rows tied to the seed context.
 - `support_tickets` receives only user-created support drafts.
-- `agent_profiles`, `relation_edges`, `simulation_runs`, `events`, `claims`, `reports`, and `payments` are not written by browser sync.
+- `feedback_log` receives only user-created calibration feedback.
+- `agent_profiles`, `relation_edges`, `simulation_runs`, `simulation_ticks`, `events`, `claims`, `reports`, and `payments` are not written by browser sync.
 - Service-role remains blank and AI/Stripe/system writer flags remain disabled.
 
 Verified in Codex:
@@ -129,7 +130,7 @@ Verified in Codex:
 - `seed_contexts=1`
 - `key_people=4`
 - `support_tickets=0`
-- Server-owned tables remained `0`: `agent_profiles`, `relation_edges`, `simulation_runs`, `events`, `claims`, `reports`, `payments`, and `consent_events`.
+- Server-owned tables remained `0`: `agent_profiles`, `relation_edges`, `simulation_runs`, `simulation_ticks`, `events`, `claims`, `reports`, `payments`, and `consent_events`.
 
 ## Step 7. Read-only RLS Verification
 
@@ -138,6 +139,7 @@ From the browser client, generated/payment tables must remain read-only:
 - `agent_profiles`
 - `relation_edges`
 - `simulation_runs`
+- `simulation_ticks`
 - `events`
 - `claims`
 - `reports`

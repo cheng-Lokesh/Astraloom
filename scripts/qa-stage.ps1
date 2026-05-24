@@ -327,6 +327,112 @@ function Assert-Stage71Api {
   Write-Output "STAGE71_API_OK"
 }
 
+function Assert-Stage72Api {
+  $apiPath = "/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation"
+  $uri = "$($BaseUrl.TrimEnd('/'))$apiPath"
+  $payload = Invoke-RestMethod -Uri $uri -Method Get -TimeoutSec 30
+  $itemId = $payload.stage72RemediationItems[0].id
+  $probe = Invoke-RestMethod -Uri $uri -Method Post -ContentType "application/json" -Body (@{ itemId = $itemId } | ConvertTo-Json -Compress) -TimeoutSec 30
+
+  $checks = [ordered]@{
+    remediationItemCount = $payload.remediationItemCount -eq 10
+    externalEvidenceRemediationRequiredCount = $payload.externalEvidenceRemediationRequiredCount -eq 5
+    manualReviewerRemediationRequiredCount = $payload.manualReviewerRemediationRequiredCount -eq 5
+    remediationStillBlockedCount = $payload.remediationStillBlockedCount -eq 10
+    sourceNoGoItemCount = $payload.sourceNoGoItemCount -eq 10
+    sourceExternalEvidenceReviewNoGoCount = $payload.sourceExternalEvidenceReviewNoGoCount -eq 5
+    sourceManualReviewerReviewNoGoCount = $payload.sourceManualReviewerReviewNoGoCount -eq 5
+    sourceRemediationReviewStillBlockedCount = $payload.sourceRemediationReviewStillBlockedCount -eq 10
+    remediationPlanReady = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationPlanReady -eq $true
+    remediationPlanOnly = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationPlanOnly -eq $true
+    sourceNoGoPacketReady = $payload.sourceExternalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoPacketReady -eq $true
+    sourceNoGoPacketOnly = $payload.sourceExternalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoPacketOnly -eq $true
+    remediationAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationAccepted -eq $false
+    remediationRecorded = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationRecorded -eq $false
+    remediationStatesAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationStatesAccepted -eq $false
+    sourceNoGoAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoAccepted -eq $false
+    sourceNoGoRecorded = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRecorded -eq $false
+    sourceReviewAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewAccepted -eq $false
+    sourceRemediationAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationAccepted -eq $false
+    finalAccepted = $payload.authorizationReconsiderationFinalDecisionAccepted -eq $false
+    authorizationGranted = $payload.implementationAuthorizationGranted -eq $false
+    implementationAuthorized = $payload.implementationAuthorized -eq $false
+    readyForAdapter = $payload.readyForAdapterImplementation -eq $false
+    allRuntimeEffectsBlocked = $payload.allRuntimeEffectsBlocked -eq $true
+    wouldAcceptRemediation = $payload.wouldAcceptFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediation -eq $false
+    wouldRecordRemediationEvidence = $payload.wouldRecordFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationEvidence -eq $false
+    wouldResolveBlocker = $payload.wouldMarkArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoBlockerResolved -eq $false
+    wouldCreateTicket = $payload.wouldCreateArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationTicket -eq $false
+    wouldAcceptRemediationState = $payload.wouldAcceptArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationState -eq $false
+    wouldPromoteToReview = $payload.wouldPromoteToArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReview -eq $false
+    wouldCreateServiceRoleClient = $payload.wouldCreateServiceRoleClient -eq $false
+    wouldRunTransaction = $payload.wouldRunTransaction -eq $false
+    wouldWriteRows = $payload.wouldWriteRows -eq $false
+    probeBlocked = $probe.blocked -eq $true
+    probeWouldWriteRows = $probe.wouldWriteRows -eq $false
+    probeRemediationAccepted = $probe.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationAccepted -eq $false
+  }
+
+  $failed = @($checks.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object { $_.Key })
+  if ($failed.Count -gt 0) {
+    throw "Stage72 API invariant failures: $($failed -join ', ')"
+  }
+
+  Write-Output "STAGE72_API_OK"
+}
+
+function Assert-Stage73Api {
+  $apiPath = "/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation-review"
+  $uri = "$($BaseUrl.TrimEnd('/'))$apiPath"
+  $payload = Invoke-RestMethod -Uri $uri -Method Get -TimeoutSec 30
+  $itemId = $payload.stage73RemediationReviewItems[0].id
+  $probe = Invoke-RestMethod -Uri $uri -Method Post -ContentType "application/json" -Body (@{ itemId = $itemId } | ConvertTo-Json -Compress) -TimeoutSec 30
+
+  $checks = [ordered]@{
+    reviewItemCount = $payload.reviewItemCount -eq 10
+    externalEvidenceStillMissingCount = $payload.externalEvidenceStillMissingCount -eq 5
+    manualReviewerStillRequiredCount = $payload.manualReviewerStillRequiredCount -eq 5
+    stage72RemediationStillBlockedCount = $payload.stage72RemediationStillBlockedCount -eq 10
+    sourceRemediationItemCount = $payload.sourceRemediationItemCount -eq 10
+    sourceExternalEvidenceRemediationRequiredCount = $payload.sourceExternalEvidenceRemediationRequiredCount -eq 5
+    sourceManualReviewerRemediationRequiredCount = $payload.sourceManualReviewerRemediationRequiredCount -eq 5
+    sourceRemediationStillBlockedCount = $payload.sourceRemediationStillBlockedCount -eq 10
+    checklistReady = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewChecklistReady -eq $true
+    checklistOnly = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewChecklistOnly -eq $true
+    sourcePlanReady = $payload.sourceExternalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationPlanReady -eq $true
+    sourcePlanOnly = $payload.sourceExternalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationPlanOnly -eq $true
+    reviewAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewAccepted -eq $false
+    reviewRecorded = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewRecorded -eq $false
+    reviewComplete = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewComplete -eq $false
+    remediationAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationAccepted -eq $false
+    remediationRecorded = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationRecorded -eq $false
+    remediationStatesAccepted = $payload.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationStatesAccepted -eq $false
+    finalAccepted = $payload.authorizationReconsiderationFinalDecisionAccepted -eq $false
+    authorizationGranted = $payload.implementationAuthorizationGranted -eq $false
+    implementationAuthorized = $payload.implementationAuthorized -eq $false
+    readyForAdapter = $payload.readyForAdapterImplementation -eq $false
+    allRuntimeEffectsBlocked = $payload.allRuntimeEffectsBlocked -eq $true
+    wouldAcceptReview = $payload.wouldAcceptFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReview -eq $false
+    wouldRecordReview = $payload.wouldRecordFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReview -eq $false
+    wouldStoreReviewEvidence = $payload.wouldStoreFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewEvidence -eq $false
+    wouldMarkReviewed = $payload.wouldMarkArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewed -eq $false
+    wouldPromoteToNoGo = $payload.wouldPromoteToArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewNoGo -eq $false
+    wouldCreateServiceRoleClient = $payload.wouldCreateServiceRoleClient -eq $false
+    wouldRunTransaction = $payload.wouldRunTransaction -eq $false
+    wouldWriteRows = $payload.wouldWriteRows -eq $false
+    probeBlocked = $probe.blocked -eq $true
+    probeWouldWriteRows = $probe.wouldWriteRows -eq $false
+    probeReviewAccepted = $probe.externalFinalDecisionArchiveRemediationReviewNoGoReconciliationRemediationReviewNoGoReconciliationNoGoRemediationReviewNoGoRemediationReviewAccepted -eq $false
+  }
+
+  $failed = @($checks.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object { $_.Key })
+  if ($failed.Count -gt 0) {
+    throw "Stage73 API invariant failures: $($failed -join ', ')"
+  }
+
+  Write-Output "STAGE73_API_OK"
+}
+
 Push-Location $repoRoot
 try {
   Invoke-CheckedCommand -Label "lint" -Command { & npm.cmd run lint }
@@ -370,6 +476,16 @@ try {
   if ($Stage -eq "71") {
     Write-Output "== stage 71 API invariants =="
     Assert-Stage71Api
+  }
+
+  if ($Stage -eq "72") {
+    Write-Output "== stage 72 API invariants =="
+    Assert-Stage72Api
+  }
+
+  if ($Stage -eq "73") {
+    Write-Output "== stage 73 API invariants =="
+    Assert-Stage73Api
   }
 
   Write-Output "QA_STAGE_OK"

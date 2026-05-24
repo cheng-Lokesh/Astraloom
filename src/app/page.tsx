@@ -3,97 +3,49 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { useLanguage } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
-import { isSupabaseConfigured } from "@/lib/env";
-
-const homeCopy = {
-  en: {
-    stage: "Stage 0/1",
-    supabaseReady: "Supabase configured",
-    supabaseBlocked: "Supabase needs env",
-    title:
-      "Build the MiroFish MVP as a controlled AI life simulation workspace.",
-    body: "This first scaffold only contains the application shell, login entry, environment contract, and empty operator workspace. Agent generation, graph simulation, payment, and reports stay out of scope until the foundation is verified.",
-    openWorkspace: "Open workspace",
-    testLogin: "Test login shell",
-    rulesTitle: "Non-negotiable build rules",
-    buildRules: [
-      "Agent ecology first: users, parallel selves, and NPCs are modeled as individuals.",
-      "Read-only relationship graph for MVP; no manual edge-weight editing.",
-      "Free daily climate stays low-cost; no background deep NPC scans.",
-      "SafetyVerifier cannot be bypassed by payment status.",
-    ],
-  },
-  zh: {
-    stage: "第 0/1 阶段",
-    supabaseReady: "Supabase 已配置",
-    supabaseBlocked: "Supabase 待配置",
-    title: "把 MiroFish MVP 搭成可控的 AI 生命沙盘工作台。",
-    body: "当前只完成应用外壳、登录入口、环境变量约定和空工作台。Agent 生成、关系图谱、支付和报告暂不进入本阶段，先把基础产品验证稳定。",
-    openWorkspace: "打开工作台",
-    testLogin: "检查登录外壳",
-    rulesTitle: "不可突破的开发规则",
-    buildRules: [
-      "个体生态优先：用户、平行自我和 NPC 都要作为独立个体建模。",
-      "MVP 关系图谱只读，不做手动边权编辑。",
-      "免费每日气象必须低成本，不做后台 NPC 深度扫描。",
-      "SafetyVerifier 不能被付费状态绕过。",
-    ],
-  },
-};
+import { TrialSampleButton } from "@/components/trial-sample-button";
 
 export default function Home() {
-  const configured = isSupabaseConfigured();
-  const { locale } = useLanguage();
-  const copy = homeCopy[locale];
-
   return (
     <AppShell>
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex flex-wrap items-center gap-3">
-            <StatusPill tone="ready">{copy.stage}</StatusPill>
-            <StatusPill tone={configured ? "ready" : "blocked"}>
-              {configured ? copy.supabaseReady : copy.supabaseBlocked}
-            </StatusPill>
-          </div>
-          <h1 className="max-w-3xl text-3xl font-semibold leading-tight text-slate-950">
-            {copy.title}
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <main className="rounded-lg border border-black/8 bg-white p-7 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+          <StatusPill tone="ready">MiroFish MVP</StatusPill>
+          <h1 className="mt-5 max-w-4xl text-5xl font-semibold leading-tight tracking-[-0.03em] text-[#11150f]">
+            AI Life Simulator for relationship and decision sandboxes.
           </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-            {copy.body}
+          <p className="mt-5 max-w-3xl text-sm leading-7 text-[#62695d]">
+            MiroFish turns one real decision into Key People, Agent Profiles, a read-only Relation Graph, Simulation Ticks,
+            Event Logs, and evidence-backed Claim drafts. It is not astrology, mind reading, therapy, or a generic chatbot.
           </p>
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-7 flex flex-wrap gap-3">
+            <TrialSampleButton className="rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a3026]">
+              Try a complete sample
+            </TrialSampleButton>
             <Link
-              href="/dashboard"
-              className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              href="/app/dashboard"
+              className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f] transition hover:border-[#11150f]"
             >
-              {copy.openWorkspace}
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-            >
-              {copy.testLogin}
+              Open sandbox
             </Link>
           </div>
-        </div>
+        </main>
 
-        <aside className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {copy.rulesTitle}
-          </h2>
-          <div className="mt-5 space-y-3">
-            {copy.buildRules.map((rule) => (
-              <div
-                key={rule}
-                className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700"
-              >
-                {rule}
-              </div>
-            ))}
-          </div>
+        <aside className="space-y-3">
+          {[
+            ["Agent first", "Every important person becomes an Agent Profile before simulation."],
+            ["Graph first", "Relationship edges are read-only and generated from Agent evidence."],
+            ["Evidence first", "Claims must reference evidence_event_ids from Event Logs."],
+          ].map(([title, body]) => (
+            <article
+              key={title}
+              className="rounded-lg border border-black/8 bg-white p-5 shadow-[0_16px_48px_rgba(17,21,15,0.05)]"
+            >
+              <h2 className="text-sm font-semibold text-[#11150f]">{title}</h2>
+              <p className="mt-2 text-sm leading-6 text-[#62695d]">{body}</p>
+            </article>
+          ))}
         </aside>
       </section>
     </AppShell>

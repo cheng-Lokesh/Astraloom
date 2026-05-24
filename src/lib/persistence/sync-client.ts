@@ -19,6 +19,10 @@ type SupportTicketRow = {
   id: string;
 };
 
+type FeedbackLogRow = {
+  id: string;
+};
+
 type BoundaryTable = {
   tableName: string;
   category: RemoteBoundaryCategory;
@@ -27,10 +31,12 @@ type BoundaryTable = {
 const boundaryTables: BoundaryTable[] = [
   { tableName: "seed_contexts", category: "client_writable" },
   { tableName: "key_people", category: "client_writable" },
+  { tableName: "feedback_log", category: "client_writable" },
   { tableName: "support_tickets", category: "client_writable" },
   { tableName: "agent_profiles", category: "server_owned" },
   { tableName: "relation_edges", category: "server_owned" },
   { tableName: "simulation_runs", category: "server_owned" },
+  { tableName: "simulation_ticks", category: "server_owned" },
   { tableName: "events", category: "server_owned" },
   { tableName: "claims", category: "server_owned" },
   { tableName: "reports", category: "server_owned" },
@@ -50,9 +56,14 @@ async function upsertSeedContext(
 
   const payload = {
     user_id: user.id,
+    version: "local-deterministic-v0",
     question_text: bundle.seedContext.questionText,
     track_type: bundle.seedContext.trackType,
+    simulation_track: bundle.seedContext.trackType,
     time_window: bundle.seedContext.timeWindow,
+    time_horizon: bundle.seedContext.timeWindow,
+    user_question: bundle.seedContext.questionText,
+    raw_context: bundle.seedContext.situationSummary,
     situation_summary: bundle.seedContext.situationSummary,
     key_people_text: bundle.seedContext.keyPeopleText,
     privacy_ack: bundle.seedContext.privacyAck,
@@ -108,20 +119,91 @@ async function replaceKeyPeople(
     throw deleteError;
   }
 
-  const rows = bundle.keyPeople.people.map((person) => ({
-    user_id: user.id,
-    seed_context_id: remoteSeedContextId,
-    label: person.label,
-    role: person.role,
-    confirmed: person.confirmed,
-    updated_at: new Date().toISOString(),
-  }));
+  const rows = bundle.keyPeople.people
+    .filter((person) => person.status !== "deleted" && person.status !== "merged")
+    .map((person) => ({
+      user_id: user.id,
+      seed_context_id: remoteSeedContextId,
+      label: person.label,
+      role: person.role,
+      display_name: person.label,
+      relationship_to_user: person.relationshipToUser,
+      role_type: person.roleType,
+      confidence: person.confidence,
+      known_evidence: person.knownEvidence ? [person.knownEvidence] : [],
+      missing_fields: person.missingFields,
+      status: person.status,
+      evidence_refs: person.evidenceRefs,
+      confirmed: person.confirmed,
+      updated_at: new Date().toISOString(),
+    }));
+
+  if (rows.length === 0) {
+    return;
+  }
 
   const { error } = await supabase.from("key_people").insert(rows);
 
   if (error) {
     throw error;
   }
+}
+
+async function syncFeedbackLog(
+  supabase: SupabaseClient,
+  user: User,
+  bundle: LocalDraftBundle,
+  remoteSeedContextId: string | null,
+) {
+  if (!remoteSeedContextId) {
+    return loadPersistenceSyncState().remoteFeedbackIds;
+  }
+
+  const state = loadPersistenceSyncState();
+  const nextIds = { ...state.remoteFeedbackIds };
+
+  for (const entry of bundle.feedback?.feedback ?? []) {
+    const payload = {
+      user_id: user.id,
+      seed_context_id: remoteSeedContextId,
+      simulation_run_id: null,
+      target_type: entry.targetType,
+      target_id: entry.targetId,
+      rating: entry.rating,
+      comment: entry.note,
+      agent_correction: {},
+      edge_correction_note: "",
+      updated_at: new Date().toISOString(),
+    };
+
+    if (nextIds[entry.id]) {
+      const { error } = await supabase
+        .from("feedback_log")
+        .update(payload)
+        .eq("id", nextIds[entry.id])
+        .eq("user_id", user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("feedback_log")
+      .insert(payload)
+      .select("id")
+      .single<FeedbackLogRow>();
+
+    if (error) {
+      throw error;
+    }
+
+    nextIds[entry.id] = data.id;
+  }
+
+  return nextIds;
 }
 
 async function syncSupportTickets(
@@ -141,6 +223,8 @@ async function syncSupportTickets(
       priority: ticket.priority,
       related_report_id: reportId,
       summary: ticket.summary,
+      subject: ticket.ticketType,
+      message: ticket.summary,
       updated_at: new Date().toISOString(),
     };
 
@@ -188,6 +272,12 @@ export async function syncClientWritableDrafts(
   );
 
   await replaceKeyPeople(supabase, user, bundle, remoteSeedContextId);
+  const remoteFeedbackIds = await syncFeedbackLog(
+    supabase,
+    user,
+    bundle,
+    remoteSeedContextId,
+  );
   const remoteSupportTicketIds = await syncSupportTickets(
     supabase,
     user,
@@ -197,6 +287,7 @@ export async function syncClientWritableDrafts(
 
   const nextState = {
     remoteSeedContextId,
+    remoteFeedbackIds,
     remoteSupportTicketIds,
     lastSyncedAt: new Date().toISOString(),
   };

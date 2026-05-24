@@ -4,6 +4,7 @@ const persistenceSyncStateKey = "mirofish.persistence-sync";
 
 export const emptyPersistenceSyncState: PersistenceSyncState = {
   remoteSeedContextId: null,
+  remoteFeedbackIds: {},
   remoteSupportTicketIds: {},
   lastSyncedAt: null,
 };

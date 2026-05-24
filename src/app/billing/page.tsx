@@ -5,459 +5,303 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { useLanguage } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
 import {
   activatePlaceholderEntitlement,
   blockPlaceholderEntitlement,
   buildBillingSupportDraft,
   createSupportTicket,
+  markCheckoutCreated,
 } from "@/lib/billing/build";
 import {
   clearBillingSupportDraft,
   loadBillingSupportDraft,
   saveBillingSupportDraft,
 } from "@/lib/billing/storage";
-import { loadReportDraft } from "@/lib/reports/storage";
+import { loadClaimLedgerDraft } from "@/lib/claims/storage";
 import { loadSeedContextDraft } from "@/lib/seed-context/storage";
-import type {
-  BillingSupportDraft,
-  PaymentEntitlementStatus,
-  SupportTicketStatus,
-  SupportTicketType,
-} from "@/types/billing-support";
-import type { ReportDraft } from "@/types/report";
-import type { SeedContextDraft } from "@/types/seed-context";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import type { BillingSupportDraft } from "@/types/billing-support";
 
-type BillingPageContext = {
-  seedContext: SeedContextDraft | null;
-  report: ReportDraft | null;
-  savedBilling: BillingSupportDraft | null;
-};
-
-const billingCopy = {
-  en: {
-    title: "Payment and support shell",
-    status: "Stripe placeholder",
-    body: "This page defines entitlement and support workflows without collecting money or calling Stripe.",
-    stripeNote:
-      "Stripe is configuration-only here. No checkout session, webhook, subscription, or charge is created.",
-    activate: "Activate placeholder entitlement",
-    block: "Block entitlement",
-    reset: "Clear billing draft",
-    activated: "Placeholder entitlement activated locally.",
-    blocked: "Entitlement marked blocked locally.",
-    resetDone: "Billing and support draft cleared.",
-    entitlementTitle: "Entitlement state",
-    provider: "Provider",
-    paymentStatus: "Payment status",
-    entitlementType: "Entitlement",
-    amount: "Amount",
-    reportGate: "Report access gate",
-    reportLocked:
-      "Report access remains locked until both SafetyVerifier and entitlement gates are real.",
-    reportAvailable:
-      "Report shell exists locally, but real report access is still gated.",
-    statusLabels: {
-      none: "None",
-      placeholder_active: "Placeholder active",
-      blocked: "Blocked",
-    },
-    ticketTitle: "Support ticket shell",
-    ticketType: "Request type",
-    ticketSummary: "Summary",
-    summaryPlaceholder:
-      "Describe the request. This stays local until support persistence is wired.",
-    submitTicket: "Create local ticket",
-    ticketCreated: "Support ticket created locally.",
-    ticketValidation: "Add a short summary before creating a ticket.",
-    ticketTypes: {
-      refund_request: "Refund request",
-      deletion_request: "Deletion request",
-      general_support: "General support",
-    },
-    ticketStatusLabels: {
-      draft: "Draft",
-      open: "Open",
-    },
-    tickets: "Tickets",
-    noTickets: "No local support tickets yet.",
-    priority: "Priority",
-    relatedReport: "Related report",
-    none: "None",
-    nextStep: "Next build step",
-    nextStepBody:
-      "Connect Supabase persistence and authentication so all local drafts can become user-owned records.",
-    openSync: "Open sync center",
-  },
-  zh: {
-    title: "支付权益与客服外壳",
-    status: "Stripe 占位",
-    body: "这个页面只定义权益和客服流程，不收钱，也不调用 Stripe。",
-    stripeNote:
-      "这里的 Stripe 只是配置占位。不会创建 checkout、webhook、订阅或扣款。",
-    activate: "激活占位权益",
-    block: "阻断权益",
-    reset: "清空支付草稿",
-    activated: "占位权益已保存到本地。",
-    blocked: "权益已在本地标记为阻断。",
-    resetDone: "支付与客服草稿已清空。",
-    entitlementTitle: "权益状态",
-    provider: "支付渠道",
-    paymentStatus: "支付状态",
-    entitlementType: "权益类型",
-    amount: "金额",
-    reportGate: "报告访问闸门",
-    reportLocked: "报告访问仍然锁定，直到 SafetyVerifier 和权益闸门都接入真实逻辑。",
-    reportAvailable: "本地报告外壳已存在，但真实报告访问仍受闸门控制。",
-    statusLabels: {
-      none: "无",
-      placeholder_active: "占位已激活",
-      blocked: "已阻断",
-    },
-    ticketTitle: "客服工单外壳",
-    ticketType: "请求类型",
-    ticketSummary: "摘要",
-    summaryPlaceholder: "描述你的请求。接入客服持久化之前，这只保存在本地。",
-    submitTicket: "创建本地工单",
-    ticketCreated: "客服工单已保存到本地。",
-    ticketValidation: "创建工单前请填写简短摘要。",
-    ticketTypes: {
-      refund_request: "退款请求",
-      deletion_request: "删除请求",
-      general_support: "通用客服",
-    },
-    ticketStatusLabels: {
-      draft: "草稿",
-      open: "已打开",
-    },
-    tickets: "工单",
-    noTickets: "当前还没有本地客服工单。",
-    priority: "优先级",
-    relatedReport: "关联报告",
-    none: "无",
-    nextStep: "下一步构建",
-    nextStepBody:
-      "接入 Supabase 持久化和登录认证，让所有本地草稿变成用户自己的数据库记录。",
-    openSync: "打开同步中心",
-  },
-} as const;
-
-function loadBillingPageContext(): BillingPageContext {
-  const seedContext = loadSeedContextDraft();
-  const report = seedContext ? loadReportDraft(seedContext.id) : null;
-
-  return {
-    seedContext,
-    report,
-    savedBilling: loadBillingSupportDraft(),
-  };
-}
-
-function getEntitlementTone(status: PaymentEntitlementStatus) {
-  if (status === "placeholder_active") {
-    return "ready";
-  }
-
-  if (status === "blocked") {
-    return "blocked";
-  }
-
-  return "planned";
-}
-
-function getTicketTone(status: SupportTicketStatus) {
-  return status === "open" ? "ready" : "planned";
-}
+const unlockModules = [
+  "Complete Event Log with every evidence event",
+  "NPC-specific path summaries",
+  "Relation before/after changes",
+  "Parallel-self differences",
+  "Key variables and strategy options",
+];
 
 export default function BillingPage() {
-  const { locale } = useLanguage();
-  const copy = billingCopy[locale];
-  const [context] = useState(loadBillingPageContext);
+  const [seedContext] = useState(() => loadSeedContextDraft());
+  const [claimLedger] = useState(() => {
+    const seed = loadSeedContextDraft();
+    return seed ? loadClaimLedgerDraft(seed.id) : null;
+  });
   const [billing, setBilling] = useState<BillingSupportDraft>(
-    () => context.savedBilling ?? buildBillingSupportDraft(),
+    () => loadBillingSupportDraft() ?? buildBillingSupportDraft(),
   );
-  const [ticketType, setTicketType] =
-    useState<SupportTicketType>("refund_request");
-  const [summary, setSummary] = useState("");
+  const [contact, setContact] = useState("");
   const [message, setMessage] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  function persistBilling(nextBilling: BillingSupportDraft, nextMessage: string) {
+  function persist(nextBilling: BillingSupportDraft, nextMessage: string) {
     saveBillingSupportDraft(nextBilling);
     setBilling(nextBilling);
     setMessage(nextMessage);
   }
 
-  function activateEntitlement() {
-    persistBilling(
+  function submitIntent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedContact = contact.trim();
+    if (trimmedContact.length < 4) {
+      setMessage("Add an email, handle, or phone number for beta follow-up.");
+      return;
+    }
+
+    const summary = [
+      `contact: ${trimmedContact}`,
+      `question: ${seedContext?.questionText ?? "not provided"}`,
+      `claims: ${claimLedger?.claims.length ?? 0}`,
+      "intent: beta unlock interest; no real payment created",
+    ].join("\n");
+    const ticket = createSupportTicket("unlock_intent", summary, null);
+    const nextPayment = activatePlaceholderEntitlement(billing.payment);
+
+    persist(
       {
         ...billing,
-        payment: activatePlaceholderEntitlement(billing.payment),
+        payment: nextPayment,
+        tickets: [ticket, ...billing.tickets],
+        unlockIntents: [ticket, ...(billing.unlockIntents ?? [])],
         updatedAt: new Date().toISOString(),
       },
-      copy.activated,
+      "Unlock intent recorded locally. No charge was made and claims were not changed.",
     );
+    setContact("");
   }
 
-  function blockEntitlement() {
-    persistBilling(
+  async function createCheckout() {
+    if (!seedContext) {
+      setMessage("Create or sync a Seed Context before starting checkout.");
+      return;
+    }
+
+    const supabase = createBrowserSupabaseClient();
+
+    if (!supabase) {
+      setMessage("Supabase is not configured, so Stripe checkout cannot start yet.");
+      return;
+    }
+
+    setCheckoutLoading(true);
+    setMessage("");
+
+    try {
+      const { data } = await supabase.auth.getSession();
+      const accessToken = data.session?.access_token;
+
+      if (!accessToken) {
+        setMessage("Sign in before starting checkout.");
+        return;
+      }
+
+      const response = await fetch("/api/payments/create-checkout-session", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          seedContextId: seedContext.id,
+          simulationRunId: null,
+        }),
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        checkout_url?: string;
+        checkout_session_id?: string;
+        error_code?: string;
+        blocked_codes?: string[];
+      };
+
+      if (!response.ok || !payload.ok || !payload.checkout_url) {
+        setMessage(
+          payload.blocked_codes?.join(", ") ||
+            payload.error_code ||
+            "Stripe checkout is not ready.",
+        );
+        return;
+      }
+
+      const nextPayment = markCheckoutCreated(
+        billing.payment,
+        payload.checkout_session_id ?? "stripe_checkout_pending",
+      );
+      persist(
+        { ...billing, payment: nextPayment, updatedAt: new Date().toISOString() },
+        "Stripe Checkout created. Entitlement will unlock only after webhook confirmation.",
+      );
+      window.location.href = payload.checkout_url;
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
+  function blockUnlock() {
+    persist(
       {
         ...billing,
         payment: blockPlaceholderEntitlement(billing.payment),
         updatedAt: new Date().toISOString(),
       },
-      copy.blocked,
+      "Unlock placeholder blocked. Safety gates and evidence rules still control output.",
     );
   }
 
-  function resetBilling() {
+  function reset() {
     clearBillingSupportDraft();
     setBilling(buildBillingSupportDraft());
-    setSummary("");
-    setMessage(copy.resetDone);
-  }
-
-  function createTicket(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (summary.trim().length < 4) {
-      setMessage(copy.ticketValidation);
-      return;
-    }
-
-    const nextTicket = createSupportTicket(
-      ticketType,
-      summary.trim(),
-      context.report?.id ?? null,
-    );
-
-    persistBilling(
-      {
-        ...billing,
-        tickets: [nextTicket, ...billing.tickets],
-        updatedAt: new Date().toISOString(),
-      },
-      copy.ticketCreated,
-    );
-    setSummary("");
+    setMessage("Local billing/support mock reset.");
   }
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-950">
-            {copy.title}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            {copy.body}
-          </p>
-        </div>
-        <StatusPill tone="planned">{copy.status}</StatusPill>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
-              {copy.stripeNote}
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={activateEntitlement}
-                className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                {copy.activate}
-              </button>
-              <button
-                type="button"
-                onClick={blockEntitlement}
-                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-              >
-                {copy.block}
-              </button>
-              <button
-                type="button"
-                onClick={resetBilling}
-                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-              >
-                {copy.reset}
-              </button>
-            </div>
-            {message ? (
-              <p className="mt-4 text-sm font-medium text-slate-600">
-                {message}
-              </p>
-            ) : null}
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.ticketTitle}
-            </h2>
-            <form onSubmit={createTicket} className="mt-4 space-y-4">
-              <label className="block">
-                <span className="text-sm font-semibold text-slate-900">
-                  {copy.ticketType}
-                </span>
-                <select
-                  value={ticketType}
-                  onChange={(event) =>
-                    setTicketType(event.target.value as SupportTicketType)
-                  }
-                  className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-slate-500"
-                >
-                  {(
-                    [
-                      "refund_request",
-                      "deletion_request",
-                      "general_support",
-                    ] as const
-                  ).map((type) => (
-                    <option key={type} value={type}>
-                      {copy.ticketTypes[type]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="text-sm font-semibold text-slate-900">
-                  {copy.ticketSummary}
-                </span>
-                <textarea
-                  value={summary}
-                  onChange={(event) => setSummary(event.target.value)}
-                  placeholder={copy.summaryPlaceholder}
-                  rows={4}
-                  className="mt-2 min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500"
-                />
-              </label>
-
-              <button
-                type="submit"
-                className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                {copy.submitTicket}
-              </button>
-            </form>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.tickets}
-            </h2>
-            {billing.tickets.length > 0 ? (
-              <div className="mt-4 space-y-3">
-                {billing.tickets.map((ticket) => (
-                  <article
-                    key={ticket.id}
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold text-slate-950">
-                        {copy.ticketTypes[ticket.ticketType]}
-                      </h3>
-                      <StatusPill tone={getTicketTone(ticket.status)}>
-                        {copy.ticketStatusLabels[ticket.status]}
-                      </StatusPill>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {ticket.summary}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                      <span>
-                        {copy.priority}: {ticket.priority}
-                      </span>
-                      <span>
-                        {copy.relatedReport}:{" "}
-                        {ticket.relatedReportId ?? copy.none}
-                      </span>
-                    </div>
-                  </article>
-                ))}
+      <div className="space-y-6">
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <main className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <StatusPill tone="ready">Stripe checkout gated</StatusPill>
+            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
+              Unlock deeper evidence and strategy, not stronger claims.
+            </h1>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
+              Stripe Checkout is now the real paid Beta path when server gates
+              are enabled. Checkout does not grant entitlement by itself; only a
+              verified webhook can unlock paid evidence sections.
+            </p>
+            {seedContext ? (
+              <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                  Current question
+                </p>
+                <p className="mt-2 text-sm leading-7 text-[#3f483d]">
+                  {seedContext.questionText}
+                </p>
               </div>
-            ) : (
-              <p className="mt-4 text-sm leading-6 text-slate-600">
-                {copy.noTickets}
-              </p>
-            )}
-          </section>
+            ) : null}
+          </main>
+
+          <form
+            onSubmit={submitIntent}
+            className="rounded-lg bg-[#11150f] p-6 text-white"
+          >
+            <h2 className="text-xl font-semibold">Join beta unlock list</h2>
+            <p className="mt-3 text-sm leading-6 text-white/62">
+              Start checkout for the current simulation. Paid unlock expands
+              evidence and strategy depth; it cannot change claim direction or
+              bypass safety downgrade.
+            </p>
+            <button
+              type="button"
+              onClick={createCheckout}
+              disabled={checkoutLoading}
+              className="mt-6 w-full rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {checkoutLoading ? "Creating checkout..." : "Start Stripe Checkout"}
+            </button>
+            <div className="my-5 h-px bg-white/10" />
+            <p className="text-sm leading-6 text-white/62">
+              If checkout is not enabled for your account yet, leave contact
+              info to create a support ticket without charging anything.
+            </p>
+            <label className="mt-6 block">
+              <span className="text-sm font-semibold text-white/78">Contact</span>
+              <input
+                value={contact}
+                onChange={(event) => setContact(event.target.value)}
+                placeholder="email / phone / handle"
+                className="mt-2 w-full rounded-md border border-white/12 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#b7e6c6]"
+              />
+            </label>
+            <button
+              type="submit"
+              className="mt-4 w-full rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+            >
+              Record unlock intent
+            </button>
+            <button
+              type="button"
+              onClick={blockUnlock}
+              className="mt-3 w-full rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+            >
+              Block unlock placeholder
+            </button>
+            {message ? <p className="mt-4 text-sm leading-6 text-white/62">{message}</p> : null}
+          </form>
         </section>
 
-        <aside className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-slate-950">
-                {copy.entitlementTitle}
-              </h2>
-              <StatusPill
-                tone={getEntitlementTone(billing.payment.entitlementStatus)}
-              >
-                {copy.statusLabels[billing.payment.entitlementStatus]}
-              </StatusPill>
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <main className="rounded-lg border border-black/8 bg-white p-6">
+            <h2 className="text-xl font-semibold tracking-[-0.01em] text-[#11150f]">
+              Unlock value
+            </h2>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {unlockModules.map((item) => (
+                <div
+                  key={item}
+                  className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
+                >
+                  <p className="text-sm font-semibold leading-6 text-[#11150f]">
+                    {item}
+                  </p>
+                </div>
+              ))}
             </div>
-            <dl className="mt-4 space-y-4 text-sm">
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.provider}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {billing.payment.provider}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.paymentStatus}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {billing.payment.status}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.entitlementType}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {billing.payment.entitlementType}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-900">{copy.amount}</dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  ${Number(billing.payment.amountCents / 100).toFixed(2)}
-                </dd>
-              </div>
+          </main>
+
+          <aside className="rounded-lg border border-black/8 bg-white p-6">
+            <h2 className="text-xl font-semibold tracking-[-0.01em] text-[#11150f]">
+              Local payment ledger
+            </h2>
+            <dl className="mt-5 space-y-4 text-sm leading-6 text-[#62695d]">
+              <LedgerRow label="Provider" value={billing.payment.provider} />
+              <LedgerRow label="Status" value={billing.payment.status} />
+              <LedgerRow label="Entitlement" value={billing.payment.entitlementStatus} />
+              <LedgerRow label="Amount" value={`${billing.payment.amountCents} cents`} />
+              <LedgerRow label="Unlock intents" value={`${billing.unlockIntents?.length ?? 0}`} />
             </dl>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.reportGate}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {context.report ? copy.reportAvailable : copy.reportLocked}
-            </p>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.nextStep}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {copy.nextStepBody}
-            </p>
-            <Link
-              href="/sync"
-              className="mt-4 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              {copy.openSync}
-            </Link>
-          </section>
-        </aside>
+            <div className="mt-6 flex flex-col gap-3">
+              <Link
+                href="/app/simulation/result"
+                className="inline-flex justify-center rounded-md bg-[#11150f] px-4 py-3 text-sm font-semibold text-white"
+              >
+                Back to Result Sandbox
+              </Link>
+              <Link
+                href="/app/support"
+                className="inline-flex justify-center rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f]"
+              >
+                Support / refund / delete
+              </Link>
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f]"
+              >
+                Reset local ledger
+              </button>
+            </div>
+          </aside>
+        </section>
       </div>
     </AppShell>
+  );
+}
+
+function LedgerRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="font-semibold text-[#11150f]">{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }

@@ -20,6 +20,14 @@ const stage71PublicPage =
   "/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go";
 const stage71PublicApi =
   "/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go";
+const stage72PublicPage =
+  "/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation";
+const stage72PublicApi =
+  "/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation";
+const stage73PublicPage =
+  "/server-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation-review";
+const stage73PublicApi =
+  "/api/system-writers/persistence-authorization-reconsideration-final-decision-archive-remediation-review-no-go-reconciliation-remediation-review-no-go-reconciliation-no-go-remediation-review-no-go-remediation-review";
 
 const nextConfig: NextConfig = {
   async rewrites() {
@@ -66,6 +74,22 @@ const nextConfig: NextConfig = {
         source: stage71PublicApi,
         destination:
           "/api/system-writers/p71-reconciliation-no-go-remediation-review-no-go",
+      },
+      {
+        source: stage72PublicPage,
+        destination: "/server-writers/p72-remediation",
+      },
+      {
+        source: stage72PublicApi,
+        destination: "/api/system-writers/p72-remediation",
+      },
+      {
+        source: stage73PublicPage,
+        destination: "/server-writers/p73-remediation-review",
+      },
+      {
+        source: stage73PublicApi,
+        destination: "/api/system-writers/p73-remediation-review",
       },
     ];
   },

@@ -55,3 +55,9 @@ Consequence: Public route semantics remain stable while Windows `.next` path len
 Decision: Persistent implementation memory lives in compact docs and scripts instead of long chat repetition.
 
 Consequence: Use `docs/implementation-state.md`, `docs/stage-index.md`, `docs/decision-log.md`, and `scripts/*.ps1` as the recovery source after context compaction.
+
+## DEC-010: Stability And Paid Value Are The Product Bar
+
+Decision: The project should progress deliberately toward a complete, stable, accurate product that creates payment pull before launch pressure.
+
+Consequence: Future work should improve user-visible value, reliability, safety, and cost control together; do not add expensive AI calls, Stripe writes, deployments, report unlocks, or privileged backend writes until the gates are explicit and verified.

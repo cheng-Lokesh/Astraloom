@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { useLanguage } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
 import {
   createManualPerson,
@@ -18,136 +17,47 @@ import {
   saveKeyPeopleDraft,
 } from "@/lib/people/storage";
 import { loadSeedContextDraft } from "@/lib/seed-context/storage";
-import type { KeyPersonDraft, KeyPersonStatus } from "@/types/key-person";
+import type { KeyPersonDraft } from "@/types/key-person";
 
-const peopleCopy = {
-  en: {
-    title: "Confirm key people",
-    status: "Local confirmation",
-    body: "This step turns the seed context into concrete people. It uses simple local extraction only; relation weights stay hidden and system-owned.",
-    noSeedTitle: "Seed context required",
-    noSeedBody:
-      "Create and save a seed context first. Person confirmation depends on the question, situation, and key people text.",
-    openIntake: "Open seed intake",
-    openAgents: "Build agent ecology",
-    systemName: "MiroFish system",
-    systemPrompt:
-      "I found possible people from your seed context. Confirm who is actually involved, adjust the role if needed, and exclude anything that is not a person.",
-    emptyPrompt:
-      "I did not find a clear person yet. Add one manually, or return to the seed intake and describe the key people involved.",
-    personLabel: "Person",
-    roleLabel: "Role",
-    rolePlaceholder: "manager, partner, investor, competitor...",
-    confirm: "Confirm person",
-    reject: "Not involved",
-    addTitle: "Add missing person",
-    addLabel: "Name or role",
-    addLabelPlaceholder: "Example: current manager",
-    addRolePlaceholder: "Role, if known",
-    addButton: "Add person",
-    reset: "Reset candidates",
-    saved: "Saved locally.",
-    resetDone: "Candidates reset from seed context.",
-    addValidation: "Enter at least two characters.",
-    source: "Source",
-    sourceLabels: {
-      key_people_text: "Key people text",
-      seed_context_text: "Seed context",
-      manual: "Manual entry",
-    },
-    statusLabels: {
-      candidate: "Candidate",
-      confirmed: "Confirmed",
-      rejected: "Excluded",
-    },
-    summaryTitle: "Confirmation summary",
-    seedQuestion: "Seed question",
-    confirmed: "Confirmed",
-    candidates: "Candidates",
-    excluded: "Excluded",
-    nextStep: "Next build step",
-    nextStepBody:
-      "Create agent profile shells from confirmed people. Do not generate simulation reports yet.",
-    relationNote:
-      "No trust, hostility, or influence sliders appear here. Those values are generated later by system logic and shown only as read-only evidence.",
-  },
-  zh: {
-    title: "确认关键人物",
-    status: "本地确认",
-    body: "这一步把种子上下文转成具体人物。这里只做本地轻量抽取；关系权重仍然隐藏，并由系统生成。",
-    noSeedTitle: "需要先保存种子上下文",
-    noSeedBody:
-      "请先创建并保存一次种子上下文。人物确认依赖主问题、当前处境和关键人物描述。",
-    openIntake: "打开推演入口",
-    openAgents: "生成 Agent 生态",
-    systemName: "MiroFish 系统",
-    systemPrompt:
-      "我从你的种子上下文里找到了可能涉及的人。请确认谁真的参与其中，必要时调整角色，并排除不是人物的项目。",
-    emptyPrompt:
-      "我暂时没有找到明确人物。你可以手动补一个，或回到推演入口补充关键人物描述。",
-    personLabel: "人物",
-    roleLabel: "角色",
-    rolePlaceholder: "上司、伴侣、投资人、竞争者……",
-    confirm: "确认此人",
-    reject: "不涉及",
-    addTitle: "补充遗漏人物",
-    addLabel: "姓名或角色",
-    addLabelPlaceholder: "例如：当前上司",
-    addRolePlaceholder: "角色，可选",
-    addButton: "添加人物",
-    reset: "重置候选",
-    saved: "已保存到本地。",
-    resetDone: "已根据种子上下文重置候选。",
-    addValidation: "至少输入两个字符。",
-    source: "来源",
-    sourceLabels: {
-      key_people_text: "关键人物描述",
-      seed_context_text: "种子上下文",
-      manual: "手动补充",
-    },
-    statusLabels: {
-      candidate: "候选",
-      confirmed: "已确认",
-      rejected: "已排除",
-    },
-    summaryTitle: "确认摘要",
-    seedQuestion: "种子问题",
-    confirmed: "已确认",
-    candidates: "候选中",
-    excluded: "已排除",
-    nextStep: "下一步构建",
-    nextStepBody: "从已确认人物生成 Agent Profile 外壳。暂不生成推演报告。",
-    relationNote:
-      "这里不会出现信任、敌意、影响力滑块。这些数值后续由系统逻辑生成，只作为只读证据展示。",
-  },
-} as const;
+function activePeople(people: KeyPersonDraft[]) {
+  return people.filter(
+    (person) => person.status !== "deleted" && person.status !== "merged",
+  );
+}
 
-function getStatusTone(status: KeyPersonStatus) {
-  if (status === "confirmed") {
-    return "ready";
-  }
+function confirmedCount(people: KeyPersonDraft[]) {
+  return people.filter((person) => person.status === "confirmed").length;
+}
 
-  if (status === "rejected") {
+function statusTone(status: KeyPersonDraft["status"]) {
+  if (status === "confirmed") return "ready";
+  if (status === "deleted" || status === "merged" || status === "rejected") {
     return "blocked";
   }
-
   return "planned";
 }
 
-function countByStatus(people: KeyPersonDraft[], status: KeyPersonStatus) {
-  return people.filter((person) => person.status === status).length;
+function statusLabel(status: KeyPersonDraft["status"]) {
+  const labels: Record<KeyPersonDraft["status"], string> = {
+    candidate: "待确认",
+    confirmed: "已确认",
+    deleted: "已删除",
+    merged: "已合并",
+    needs_confirmation: "需要确认",
+    rejected: "已排除",
+  };
+  return labels[status];
+}
+
+function mergeUnique<T>(left: T[], right: T[]) {
+  return Array.from(new Set([...left, ...right]));
 }
 
 export default function PeoplePage() {
-  const { locale } = useLanguage();
-  const copy = peopleCopy[locale];
   const [seedContext] = useState(() => loadSeedContextDraft());
   const [people, setPeople] = useState<KeyPersonDraft[]>(() => {
     const seed = loadSeedContextDraft();
-    if (!seed) {
-      return [];
-    }
-
+    if (!seed) return [];
     const saved = loadKeyPeopleDraft(seed.id);
     return mergePeopleCandidates(
       saved?.people ?? [],
@@ -158,11 +68,8 @@ export default function PeoplePage() {
   const [manualRole, setManualRole] = useState("");
   const [message, setMessage] = useState("");
 
-  function persistPeople(nextPeople: KeyPersonDraft[], nextMessage: string) {
-    if (!seedContext) {
-      return;
-    }
-
+  function persist(nextPeople: KeyPersonDraft[], nextMessage: string) {
+    if (!seedContext) return;
     saveKeyPeopleDraft({
       seedContextId: seedContext.id,
       people: nextPeople,
@@ -174,69 +81,93 @@ export default function PeoplePage() {
 
   function patchPerson(id: string, patch: Partial<KeyPersonDraft>) {
     const now = new Date().toISOString();
-    const nextPeople = people.map((person) =>
-      person.id === id ? { ...person, ...patch, updatedAt: now } : person,
+    persist(
+      people.map((person) =>
+        person.id === id ? { ...person, ...patch, updatedAt: now } : person,
+      ),
+      "已保存人物确认。",
     );
-    persistPeople(nextPeople, copy.saved);
   }
 
-  function confirmPerson(id: string) {
-    patchPerson(id, { confirmed: true, status: "confirmed" });
+  function mergePerson(sourceId: string, targetId: string) {
+    if (!targetId || sourceId === targetId) return;
+    const now = new Date().toISOString();
+    const source = people.find((person) => person.id === sourceId);
+    const target = people.find((person) => person.id === targetId);
+    if (!source || !target) return;
+
+    persist(
+      people.map((person) => {
+        if (person.id === sourceId) {
+          return {
+            ...person,
+            confirmed: false,
+            status: "merged" as const,
+            mergedIntoId: targetId,
+            updatedAt: now,
+          };
+        }
+
+        if (person.id === targetId) {
+          return {
+            ...person,
+            confidence: Math.max(person.confidence, source.confidence),
+            knownEvidence: [person.knownEvidence, source.knownEvidence]
+              .filter(Boolean)
+              .join("\n"),
+            evidenceText: [person.evidenceText, source.evidenceText]
+              .filter(Boolean)
+              .join("\n"),
+            evidenceRefs: mergeUnique(person.evidenceRefs, source.evidenceRefs),
+            missingFields: mergeUnique(person.missingFields, source.missingFields),
+            userNote: [person.userNote, source.userNote].filter(Boolean).join("\n"),
+            updatedAt: now,
+          };
+        }
+
+        return person;
+      }),
+      "已合并重复人物，并保留证据来源。",
+    );
   }
 
-  function rejectPerson(id: string) {
-    patchPerson(id, { confirmed: false, status: "rejected" });
-  }
-
-  function resetCandidates() {
-    if (!seedContext) {
-      return;
-    }
-
-    clearKeyPeopleDraft(seedContext.id);
-    persistPeople(extractPeopleCandidates(seedContext), copy.resetDone);
-  }
-
-  function addManualPerson(event: FormEvent<HTMLFormElement>) {
+  function addManual(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!seedContext) {
+    if (!seedContext || manualLabel.trim().length < 2) {
+      setMessage("请至少输入两字人物称谓。");
       return;
     }
 
-    if (manualLabel.trim().length < 2) {
-      setMessage(copy.addValidation);
-      return;
-    }
-
-    const manualPerson = createManualPerson(
-      seedContext.id,
-      manualLabel,
-      manualRole,
-    );
-    const nextPeople = mergePeopleCandidates(people, [manualPerson]);
-
+    const nextPeople = mergePeopleCandidates(people, [
+      createManualPerson(seedContext.id, manualLabel, manualRole),
+    ]);
     setManualLabel("");
     setManualRole("");
-    persistPeople(nextPeople, copy.saved);
+    persist(nextPeople, "已补充关键人物。");
+  }
+
+  function reset() {
+    if (!seedContext) return;
+    clearKeyPeopleDraft(seedContext.id);
+    persist(extractPeopleCandidates(seedContext), "已重新从输入中识别人物。");
   }
 
   if (!seedContext) {
     return (
       <AppShell>
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <StatusPill tone="blocked">{copy.status}</StatusPill>
-          <h1 className="mt-4 text-2xl font-semibold text-slate-950">
-            {copy.noSeedTitle}
+        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+          <StatusPill tone="blocked">需要输入</StatusPill>
+          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            先创建一次推演。
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            {copy.noSeedBody}
+          <p className="mt-3 max-w-xl text-sm leading-7 text-[#62695d]">
+            人物确认依赖你的问题、背景和关键人物提示。
           </p>
           <Link
-            href="/intake"
-            className="mt-5 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+            href="/app/new/intake"
+            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
           >
-            {copy.openIntake}
+            开始输入
           </Link>
         </section>
       </AppShell>
@@ -245,215 +176,267 @@ export default function PeoplePage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-950">
-            {copy.title}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            {copy.body}
-          </p>
-        </div>
-        <StatusPill tone="planned">{copy.status}</StatusPill>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="space-y-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-950">
-              {copy.systemName}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <main className="space-y-5">
+          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <StatusPill tone="planned">Key People</StatusPill>
+            <h1 className="mt-4 text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
+              这些人像不像你的真实局面？
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
+              你可以确认、删除、合并或补充人物。关系权重仍由系统后续根据 Agent 和事件生成，不能在这里手动编辑。
             </p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {people.length > 0 ? copy.systemPrompt : copy.emptyPrompt}
-            </p>
-          </div>
+            <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-7 text-[#3f483d]">
+              {seedContext.questionText}
+            </div>
+          </section>
 
-          {people.map((person) => (
-            <article
-              key={person.id}
-              className={`rounded-lg border bg-white p-5 shadow-sm ${
-                person.status === "rejected"
-                  ? "border-slate-200 opacity-70"
-                  : "border-slate-200"
-              }`}
-            >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill tone={getStatusTone(person.status)}>
-                    {copy.statusLabels[person.status]}
+          <section className="grid gap-4 md:grid-cols-2">
+            {people.map((person) => (
+              <article
+                key={person.id}
+                className={`rounded-lg border p-5 transition ${
+                  person.status === "confirmed"
+                    ? "border-[#568262]/35 bg-[#eef5ee]"
+                    : person.status === "deleted" || person.status === "merged"
+                      ? "border-black/8 bg-white opacity-60"
+                      : person.status === "needs_confirmation"
+                        ? "border-[#d49b4a]/35 bg-[#fff8ed]"
+                        : "border-black/8 bg-white"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <input
+                      value={person.label}
+                      onChange={(event) =>
+                        patchPerson(person.id, { label: event.target.value })
+                      }
+                      className="w-full border-0 bg-transparent p-0 text-lg font-semibold text-[#11150f] outline-none"
+                    />
+                    <p className="mt-1 text-xs text-[#7d8578]">
+                      {person.source === "manual"
+                        ? "用户补充"
+                        : person.source === "key_people_text"
+                          ? "明确提及"
+                          : "从文本识别"}
+                    </p>
+                  </div>
+                  <StatusPill tone={statusTone(person.status)}>
+                    {statusLabel(person.status)}
                   </StatusPill>
-                  <span className="text-xs font-medium text-slate-500">
-                    {copy.source}: {copy.sourceLabels[person.source]}
-                  </span>
                 </div>
-              </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="block">
-                  <span className="text-sm font-semibold text-slate-900">
-                    {copy.personLabel}
-                  </span>
-                  <input
-                    value={person.label}
-                    onChange={(event) =>
-                      patchPerson(person.id, { label: event.target.value })
-                    }
-                    className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-slate-500"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-semibold text-slate-900">
-                    {copy.roleLabel}
-                  </span>
-                  <input
-                    value={person.role === "unknown" ? "" : person.role}
-                    onChange={(event) =>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <Field
+                    label="关系"
+                    value={person.relationshipToUser}
+                    onChange={(value) =>
                       patchPerson(person.id, {
-                        role: event.target.value.trim() || "unknown",
+                        relationshipToUser: value.trim() || "unknown",
                       })
                     }
-                    placeholder={copy.rolePlaceholder}
-                    className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500"
+                  />
+                  <Field
+                    label="角色作用"
+                    value={person.role}
+                    onChange={(value) =>
+                      patchPerson(person.id, {
+                        role: value.trim() || "待确认角色",
+                        roleType: value.trim() || "待确认角色",
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="mt-4 rounded-md border border-black/8 bg-white/70 p-3">
+                  <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#62695d]">
+                    <span>置信度</span>
+                    <span>{person.confidence}%</span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-[#e8ebe3]">
+                    <div
+                      className="h-2 rounded-full bg-[#568262]"
+                      style={{ width: `${person.confidence}%` }}
+                    />
+                  </div>
+                  {person.missingFields.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {person.missingFields.map((field) => (
+                        <span
+                          key={field}
+                          className="rounded border border-[#d49b4a]/30 bg-[#fff8ed] px-2 py-1 text-xs font-medium text-[#7c5524]"
+                        >
+                          缺：{field}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <p className="mt-4 line-clamp-3 text-xs leading-5 text-[#7d8578]">
+                  证据：{person.knownEvidence || person.evidenceText || "来自本次输入"}
+                </p>
+
+                <label className="mt-4 block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                    补充一句事实
+                  </span>
+                  <textarea
+                    value={person.userNote}
+                    onChange={(event) =>
+                      patchPerson(person.id, { userNote: event.target.value })
+                    }
+                    rows={2}
+                    placeholder="例如：这个人最近掌握关键资源。"
+                    className="mt-2 w-full resize-none rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-[#11150f] outline-none focus:border-[#568262]"
                   />
                 </label>
-              </div>
 
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => confirmPerson(person.id)}
-                  className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  {copy.confirm}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => rejectPerson(person.id)}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-                >
-                  {copy.reject}
-                </button>
-              </div>
-            </article>
-          ))}
+                <label className="mt-4 block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                    合并重复人物
+                  </span>
+                  <select
+                    value=""
+                    onChange={(event) => mergePerson(person.id, event.target.value)}
+                    disabled={person.status === "deleted" || person.status === "merged"}
+                    className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-[#11150f] outline-none focus:border-[#568262] disabled:opacity-50"
+                  >
+                    <option value="">选择要合并到的人物</option>
+                    {activePeople(people)
+                      .filter((target) => target.id !== person.id)
+                      .map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patchPerson(person.id, {
+                        confirmed: true,
+                        status: "confirmed",
+                      })
+                    }
+                    className="rounded-md bg-[#11150f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#2a3026]"
+                  >
+                    放进沙盘
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patchPerson(person.id, {
+                        confirmed: false,
+                        status: "deleted",
+                      })
+                    }
+                    className="rounded-md border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold text-[#11150f] transition hover:border-[#11150f]"
+                  >
+                    本次不放
+                  </button>
+                </div>
+              </article>
+            ))}
+          </section>
 
           <form
-            onSubmit={addManualPerson}
-            className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            onSubmit={addManual}
+            className="rounded-lg border border-black/8 bg-white p-5"
           >
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.addTitle}
+            <h2 className="text-sm font-semibold text-[#11150f]">
+              补充遗漏人物
             </h2>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-semibold text-slate-900">
-                  {copy.addLabel}
-                </span>
-                <input
-                  value={manualLabel}
-                  onChange={(event) => setManualLabel(event.target.value)}
-                  placeholder={copy.addLabelPlaceholder}
-                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500"
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-slate-900">
-                  {copy.roleLabel}
-                </span>
-                <input
-                  value={manualRole}
-                  onChange={(event) => setManualRole(event.target.value)}
-                  placeholder={copy.addRolePlaceholder}
-                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500"
-                />
-              </label>
+              <input
+                value={manualLabel}
+                onChange={(event) => setManualLabel(event.target.value)}
+                placeholder="称谓，例如：前老板、合伙人、伴侣"
+                className="rounded-md border border-black/10 px-3 py-2 text-sm outline-none focus:border-[#568262]"
+              />
+              <input
+                value={manualRole}
+                onChange={(event) => setManualRole(event.target.value)}
+                placeholder="角色作用，可选"
+                className="rounded-md border border-black/10 px-3 py-2 text-sm outline-none focus:border-[#568262]"
+              />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="submit"
-                className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="rounded-md bg-[#11150f] px-4 py-2.5 text-sm font-semibold text-white"
               >
-                {copy.addButton}
+                添加并确认
               </button>
               <button
                 type="button"
-                onClick={resetCandidates}
-                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                onClick={reset}
+                className="rounded-md border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold text-[#11150f]"
               >
-                {copy.reset}
+                重新识别
               </button>
               {message ? (
-                <span className="text-sm font-medium text-slate-600">
-                  {message}
-                </span>
+                <span className="text-sm text-[#62695d]">{message}</span>
               ) : null}
             </div>
           </form>
-        </section>
+        </main>
 
-        <aside className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.summaryTitle}
-            </h2>
-            <dl className="mt-4 space-y-4 text-sm">
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.seedQuestion}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {seedContext.questionText}
-                </dd>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-md bg-emerald-50 p-3">
-                  <dt className="text-xs font-semibold text-emerald-700">
-                    {copy.confirmed}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold text-emerald-900">
-                    {countByStatus(people, "confirmed")}
-                  </dd>
-                </div>
-                <div className="rounded-md bg-slate-50 p-3">
-                  <dt className="text-xs font-semibold text-slate-600">
-                    {copy.candidates}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold text-slate-900">
-                    {countByStatus(people, "candidate")}
-                  </dd>
-                </div>
-                <div className="rounded-md bg-amber-50 p-3">
-                  <dt className="text-xs font-semibold text-amber-700">
-                    {copy.excluded}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold text-amber-900">
-                    {countByStatus(people, "rejected")}
-                  </dd>
-                </div>
-              </div>
-            </dl>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.nextStep}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {copy.nextStepBody}
-            </p>
-            <Link
-              href="/agents"
-              className="mt-4 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              {copy.openAgents}
-            </Link>
-            <p className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
-              {copy.relationNote}
-            </p>
-          </section>
+        <aside className="h-fit rounded-lg border border-black/8 bg-[#11150f] p-6 text-white shadow-[0_24px_80px_rgba(17,21,15,0.14)]">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#b7e6c6]">
+            Agent 装载进度
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <Metric label="候选人物" value={activePeople(people).length} />
+            <Metric label="已确认" value={confirmedCount(people)} />
+          </div>
+          <p className="mt-5 text-sm leading-7 text-white/68">
+            下一步会生成主分身、平行分身和关键 NPC，并进入只读关系图谱。图谱只展示证据，不允许手动调权。
+          </p>
+          <Link
+            href="/app/new/agents"
+            className="mt-6 inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]"
+          >
+            生成 Agent Profile
+          </Link>
         </aside>
       </div>
     </AppShell>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+        {label}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-[#11150f] outline-none focus:border-[#568262]"
+      />
+    </label>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
+      <div className="text-xs text-white/48">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
+    </div>
   );
 }

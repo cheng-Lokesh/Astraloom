@@ -23,9 +23,29 @@ export function buildSupabaseSetupStatus(): SupabaseSetupStatusPayload {
   const systemWritersEnabled = isTrue(process.env.ENABLE_SYSTEM_WRITERS);
   const aiGenerationEnabled = isTrue(process.env.ENABLE_AI_GENERATION);
   const stripeWritesEnabled = isTrue(process.env.ENABLE_STRIPE_WRITES);
-  const migrationFilePresent = existsSync(
+  const deepSeekConfigured = Boolean(process.env.DEEPSEEK_API_KEY);
+  const stripeSecretConfigured = Boolean(process.env.STRIPE_SECRET_KEY);
+  const stripeWebhookConfigured = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  const migrationFilePresent =
+    existsSync(
     path.join(process.cwd(), "supabase", "migrations", "0001_mvp_core_schema.sql"),
-  );
+    ) &&
+    existsSync(
+      path.join(
+        process.cwd(),
+        "supabase",
+        "migrations",
+        "0002_mvp_evidence_chain_contracts.sql",
+      ),
+    ) &&
+    existsSync(
+      path.join(
+        process.cwd(),
+        "supabase",
+        "migrations",
+        "0003_paid_beta_writers.sql",
+      ),
+    );
   const dangerousFlagsOff =
     !serviceRoleConfigured &&
     !systemWritersEnabled &&
@@ -58,8 +78,19 @@ export function buildSupabaseSetupStatus(): SupabaseSetupStatusPayload {
       id: "migration",
       status: migrationFilePresent ? "manual" : "missing",
       detail: migrationFilePresent
-        ? "Run supabase/migrations/0001_mvp_core_schema.sql in the Supabase SQL Editor."
-        : "Migration file is missing from the local workspace.",
+        ? "Run 0001, 0002, and 0003 from supabase/migrations in the Supabase SQL Editor."
+        : "One or more MVP migration files are missing from the local workspace.",
+    },
+    {
+      id: "paid_beta_keys",
+      status:
+        deepSeekConfigured && stripeSecretConfigured && stripeWebhookConfigured
+          ? "ready"
+          : "manual",
+      detail:
+        deepSeekConfigured && stripeSecretConfigured && stripeWebhookConfigured
+          ? "DeepSeek and Stripe secrets are configured. Keep writer gates off until QA passes."
+          : "Paid Beta needs DEEPSEEK_API_KEY, STRIPE_SECRET_KEY, and STRIPE_WEBHOOK_SECRET before gates can be enabled.",
     },
     {
       id: "auth",
@@ -72,7 +103,7 @@ export function buildSupabaseSetupStatus(): SupabaseSetupStatusPayload {
       id: "sync",
       status: supabaseConfigured ? "manual" : "missing",
       detail: supabaseConfigured
-        ? "Use /sync to write only seed_contexts, key_people, and support_tickets."
+        ? "Use /sync to write only seed_contexts, key_people, feedback_log, and support_tickets."
         : "Client-writable draft sync is unavailable until auth is configured.",
     },
   ];

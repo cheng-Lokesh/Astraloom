@@ -3,6 +3,7 @@ export type SupabaseSetupStepId =
   | "public_keys"
   | "dangerous_flags"
   | "migration"
+  | "paid_beta_keys"
   | "auth"
   | "sync";
 

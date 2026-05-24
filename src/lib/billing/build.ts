@@ -45,6 +45,21 @@ export function activatePlaceholderEntitlement(
   };
 }
 
+export function markCheckoutCreated(
+  payment: PaymentEntitlementDraft,
+  providerPaymentId: string,
+) {
+  return {
+    ...payment,
+    providerPaymentId,
+    amountCents: 990,
+    status: "checkout_created" as const,
+    entitlementType: "none" as const,
+    entitlementStatus: "checkout_pending" as const,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function blockPlaceholderEntitlement(payment: PaymentEntitlementDraft) {
   return {
     ...payment,
@@ -61,6 +76,7 @@ export function buildBillingSupportDraft(): BillingSupportDraft {
   return {
     payment: buildPaymentEntitlementDraft(),
     tickets: [],
+    unlockIntents: [],
     updatedAt: now,
   };
 }
@@ -76,7 +92,12 @@ export function createSupportTicket(
     id: `ticket_${hashText(`${ticketType}:${summary}:${now}`)}`,
     ticketType,
     status: "open",
-    priority: ticketType === "deletion_request" ? "p1" : "p2",
+    priority:
+      ticketType === "deletion_request"
+        ? "p1"
+        : ticketType === "unlock_intent"
+          ? "p3"
+          : "p2",
     relatedReportId,
     summary,
     createdAt: now,

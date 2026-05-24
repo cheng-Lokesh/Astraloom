@@ -14,6 +14,7 @@ export type SyncItemId =
   | "simulation_run"
   | "safety_review"
   | "report"
+  | "feedback_log"
   | "payment_entitlement"
   | "support_tickets";
 
@@ -28,6 +29,7 @@ export type SyncItem = {
 
 export type PersistenceSyncState = {
   remoteSeedContextId: string | null;
+  remoteFeedbackIds: Record<string, string>;
   remoteSupportTicketIds: Record<string, string>;
   lastSyncedAt: string | null;
 };

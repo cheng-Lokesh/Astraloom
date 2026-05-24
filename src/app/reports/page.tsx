@@ -1,471 +1,793 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { useLanguage } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
-import { buildReportDraft, lockReportDraft } from "@/lib/reports/build";
+import { TrialSampleButton } from "@/components/trial-sample-button";
+import { loadAgentEcologyDraft } from "@/lib/agents/storage";
+import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import {
-  clearReportDraft,
-  loadReportDraft,
-  saveReportDraft,
-} from "@/lib/reports/storage";
-import { loadSafetyReviewDraft } from "@/lib/safety/storage";
-import { loadSeedContextDraft } from "@/lib/seed-context/storage";
+  loadClaimLedgerDraft,
+  saveClaimLedgerDraft,
+} from "@/lib/claims/storage";
+import {
+  buildEmptyFeedbackLedgerDraft,
+  buildFeedbackDraft,
+} from "@/lib/feedback/build";
+import {
+  loadFeedbackLedgerDraft,
+  saveFeedbackLedgerDraft,
+} from "@/lib/feedback/storage";
+import { loadRelationGraphDraft } from "@/lib/relations/storage";
 import { loadSimulationRunDraft } from "@/lib/runs/storage";
-import type { ReportDraft, ReportStatus } from "@/types/report";
-import type { SafetyReviewDraft } from "@/types/safety-review";
-import type { SeedContextDraft } from "@/types/seed-context";
-import type { SimulationRunDraft } from "@/types/simulation-run";
+import { loadSeedContextDraft } from "@/lib/seed-context/storage";
+import type { AgentProfileDraft } from "@/types/agent-profile";
+import type { ClaimDraft, ClaimLedgerDraft } from "@/types/claim";
+import type {
+  FeedbackLedgerDraft,
+  FeedbackRating,
+  FeedbackTargetType,
+} from "@/types/feedback";
+import type { RelationEdgeDraft } from "@/types/relation-edge";
+import type { SimulationEventDraft } from "@/types/simulation-run";
 
-type ReportsPageContext = {
-  seedContext: SeedContextDraft | null;
-  simulationRun: SimulationRunDraft | null;
-  safetyReview: SafetyReviewDraft | null;
-  savedReport: ReportDraft | null;
-};
+const emptyClaims: ClaimDraft[] = [];
 
-const reportsCopy = {
-  en: {
-    title: "Report shell",
-    status: "Locked",
-    body: "This page is the final locked container for future reports. It does not generate narrative, claims, or advice.",
-    noSeedTitle: "Seed context required",
-    noSeedBody: "Create a seed context before a report shell can exist.",
-    noRunTitle: "Saved run shell required",
-    noRunBody: "Create and save a simulation run shell before opening reports.",
-    noSafetyTitle: "Saved safety review required",
-    noSafetyBody:
-      "Create and save a SafetyVerifier shell before the report shell can read readiness gates.",
-    openIntake: "Open seed intake",
-    openRuns: "Open run shell",
-    openSafety: "Open safety review",
-    openBilling: "Open billing support",
-    save: "Save report shell",
-    rebuild: "Rebuild report shell",
-    lock: "Keep report locked",
-    reset: "Clear saved report",
-    disabledGenerate: "Generate report disabled",
-    saved: "Report shell saved locally.",
-    rebuilt: "Report shell rebuilt from safety review.",
-    locked: "Report remains locked.",
-    resetDone: "Saved report shell cleared.",
-    statusLabels: {
-      locked: "Locked",
-      ready_placeholder: "Ready placeholder",
-    },
-    summaryTitle: "Report summary",
-    seedQuestion: "Seed question",
-    runStatus: "Run status",
-    safetyLevel: "Safety level",
-    reportReady: "Report ready",
-    no: "No",
-    yes: "Yes",
-    sectionsTitle: "Locked sections",
-    claimsTitle: "Claims placeholders",
-    evidenceTitle: "Evidence refs",
-    confidence: "Confidence",
-    lockedLabel: "Locked",
-    nextStep: "Next build step",
-    nextStepBody:
-      "Add payment entitlement and support workflows. Keep generation unavailable until the product gates are complete.",
-  },
-  zh: {
-    title: "报告外壳",
-    status: "已锁定",
-    body: "这是未来报告的最终锁定容器。这里不生成叙事、不生成 Claim，也不提供建议。",
-    noSeedTitle: "需要先保存种子上下文",
-    noSeedBody: "请先创建种子上下文，然后才能建立报告外壳。",
-    noRunTitle: "需要先保存 run 外壳",
-    noRunBody: "请先创建并保存 simulation run 外壳，然后再打开报告。",
-    noSafetyTitle: "需要先保存安全审查",
-    noSafetyBody: "请先创建并保存 SafetyVerifier 外壳，报告外壳才能读取就绪闸门。",
-    openIntake: "打开推演入口",
-    openRuns: "打开 run 外壳",
-    openSafety: "打开安全审查",
-    openBilling: "打开支付客服",
-    save: "保存报告外壳",
-    rebuild: "重建报告外壳",
-    lock: "保持报告锁定",
-    reset: "清空已保存报告",
-    disabledGenerate: "报告生成已禁用",
-    saved: "报告外壳已保存到本地。",
-    rebuilt: "已根据安全审查重建报告外壳。",
-    locked: "报告继续保持锁定。",
-    resetDone: "已清空保存的报告外壳。",
-    statusLabels: {
-      locked: "已锁定",
-      ready_placeholder: "占位就绪",
-    },
-    summaryTitle: "报告摘要",
-    seedQuestion: "种子问题",
-    runStatus: "Run 状态",
-    safetyLevel: "安全等级",
-    reportReady: "报告就绪",
-    no: "否",
-    yes: "是",
-    sectionsTitle: "锁定章节",
-    claimsTitle: "Claim 占位",
-    evidenceTitle: "证据引用",
-    confidence: "置信度",
-    lockedLabel: "锁定",
-    nextStep: "下一步构建",
-    nextStepBody:
-      "增加支付权益和客服流程。在产品闸门完成前，继续关闭真实生成。",
-  },
-} as const;
+const feedbackTargets: { value: FeedbackTargetType; label: string }[] = [
+  { value: "claim", label: "Selected claim" },
+  { value: "agent", label: "Highlighted agent" },
+  { value: "relation_edge", label: "Highlighted edge" },
+  { value: "strategy", label: "Strategy usefulness" },
+  { value: "overall", label: "Overall run" },
+];
 
-function loadReportsPageContext(): ReportsPageContext {
-  const seedContext = loadSeedContextDraft();
-  if (!seedContext) {
-    return {
-      seedContext: null,
-      simulationRun: null,
-      safetyReview: null,
-      savedReport: null,
-    };
-  }
+const feedbackRatings: { value: FeedbackRating; label: string }[] = [
+  { value: "accurate", label: "Accurate" },
+  { value: "partly_right", label: "Partly right" },
+  { value: "off", label: "Off" },
+  { value: "useful", label: "Useful" },
+  { value: "not_useful", label: "Not useful" },
+  { value: "unclear", label: "Unclear" },
+];
 
-  return {
-    seedContext,
-    simulationRun: loadSimulationRunDraft(seedContext.id),
-    safetyReview: loadSafetyReviewDraft(seedContext.id),
-    savedReport: loadReportDraft(seedContext.id),
-  };
+function riskTone(riskLevel: string) {
+  if (riskLevel === "high") return "blocked";
+  if (riskLevel === "medium") return "planned";
+  return "ready";
 }
 
-function getStatusTone(status: ReportStatus) {
-  if (status === "ready_placeholder") {
-    return "ready";
-  }
+function claimTitle(type: ClaimDraft["claimType"]) {
+  const titles: Record<ClaimDraft["claimType"], string> = {
+    risk_window: "Risk window",
+    opportunity_window: "Opportunity window",
+    friction_signal: "Friction signal",
+    coordination_signal: "Coordination signal",
+  };
+  return titles[type];
+}
 
-  return "blocked";
+function eventLabel(event: SimulationEventDraft) {
+  if (event.eventType === "graph_freeze") return "Graph freeze";
+  if (event.eventType === "relation_pressure") return "Relation pressure";
+  if (event.eventType === "agent_signal") return "Agent signal";
+  return "Empty event";
+}
+
+function formatDelta(event: SimulationEventDraft) {
+  const entries = Object.entries(event.edgeWeightDeltas).flatMap(([edgeId, delta]) =>
+    Object.entries(delta).map(
+      ([key, value]) =>
+        `${edgeId} / ${key} ${value && value > 0 ? "+" : ""}${value}`,
+    ),
+  );
+  return entries.length ? entries : ["No edge weight delta recorded."];
 }
 
 export default function ReportsPage() {
-  const { locale } = useLanguage();
-  const copy = reportsCopy[locale];
-  const [context] = useState(loadReportsPageContext);
-  const [report, setReport] = useState<ReportDraft | null>(() => {
-    if (!context.seedContext || !context.simulationRun || !context.safetyReview) {
-      return null;
-    }
-
-    return (
-      context.savedReport ??
-      buildReportDraft(
-        context.seedContext,
-        context.simulationRun,
-        context.safetyReview,
-      )
-    );
+  const [seedContext] = useState(() => loadSeedContextDraft());
+  const [simulationRun] = useState(() => {
+    const seed = loadSeedContextDraft();
+    return seed ? loadSimulationRunDraft(seed.id) : null;
   });
+  const [agentEcology] = useState(() => {
+    const seed = loadSeedContextDraft();
+    return seed ? loadAgentEcologyDraft(seed.id) : null;
+  });
+  const [relationGraph] = useState(() => {
+    const seed = loadSeedContextDraft();
+    return seed ? loadRelationGraphDraft(seed.id) : null;
+  });
+  const [ledger, setLedger] = useState<ClaimLedgerDraft | null>(() => {
+    const seed = loadSeedContextDraft();
+    const run = seed ? loadSimulationRunDraft(seed.id) : null;
+    if (!seed || !run) return null;
+    return loadClaimLedgerDraft(seed.id) ?? buildClaimLedgerDraft(seed.id, run);
+  });
+  const [feedbackLedger, setFeedbackLedger] =
+    useState<FeedbackLedgerDraft | null>(() => {
+      const seed = loadSeedContextDraft();
+      const run = seed ? loadSimulationRunDraft(seed.id) : null;
+      if (!seed || !run) return null;
+      return (
+        loadFeedbackLedgerDraft(seed.id) ??
+        buildEmptyFeedbackLedgerDraft(seed.id, run.id)
+      );
+    });
+  const [selectedClaimId, setSelectedClaimId] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [feedbackTarget, setFeedbackTarget] =
+    useState<FeedbackTargetType>("claim");
+  const [feedbackRating, setFeedbackRating] =
+    useState<FeedbackRating>("partly_right");
+  const [feedbackNote, setFeedbackNote] = useState("");
   const [message, setMessage] = useState("");
 
-  function persistReport(nextReport: ReportDraft, nextMessage: string) {
-    saveReportDraft(nextReport);
-    setReport(nextReport);
-    setMessage(nextMessage);
-  }
-
-  function saveReport() {
-    if (!report) {
-      return;
-    }
-
-    persistReport(report, copy.saved);
-  }
-
-  function rebuildReport() {
-    if (!context.seedContext || !context.simulationRun || !context.safetyReview) {
-      return;
-    }
-
-    persistReport(
-      buildReportDraft(
-        context.seedContext,
-        context.simulationRun,
-        context.safetyReview,
-      ),
-      copy.rebuilt,
+  const claims = ledger?.claims ?? emptyClaims;
+  const selectedClaim = useMemo(
+    () => claims.find((claim) => claim.id === selectedClaimId) ?? claims[0] ?? null,
+    [claims, selectedClaimId],
+  );
+  const selectedEvent = useMemo(() => {
+    const evidenceIds = selectedClaim?.evidenceEventIds ?? [];
+    return (
+      simulationRun?.events.find((event) => event.id === selectedEventId) ??
+      simulationRun?.events.find((event) => evidenceIds.includes(event.id)) ??
+      simulationRun?.events[0] ??
+      null
     );
+  }, [selectedClaim, selectedEventId, simulationRun]);
+
+  const highlightedAgentIds = useMemo(
+    () => selectedClaim?.relatedAgentIds ?? [],
+    [selectedClaim],
+  );
+  const highlightedEdgeIds = useMemo(
+    () => selectedClaim?.relatedRelationEdgeIds ?? [],
+    [selectedClaim],
+  );
+  const highlightedEventIds = useMemo(
+    () => selectedClaim?.evidenceEventIds ?? [],
+    [selectedClaim],
+  );
+  const feedbackTargetId = useMemo(() => {
+    if (feedbackTarget === "claim") return selectedClaim?.id ?? "";
+    if (feedbackTarget === "agent") return highlightedAgentIds[0] ?? "";
+    if (feedbackTarget === "relation_edge") return highlightedEdgeIds[0] ?? "";
+    if (feedbackTarget === "strategy") return simulationRun?.id ?? "";
+    return seedContext?.id ?? "";
+  }, [
+    feedbackTarget,
+    highlightedAgentIds,
+    highlightedEdgeIds,
+    selectedClaim,
+    seedContext,
+    simulationRun,
+  ]);
+
+  function saveLedger() {
+    if (!ledger) return;
+    saveClaimLedgerDraft(ledger);
+    setMessage("Result Sandbox saved. Claims remain tied to evidence_event_ids.");
   }
 
-  function lockReport() {
-    if (!report) {
+  function rebuildLedger() {
+    if (!seedContext || !simulationRun) return;
+    const nextLedger = buildClaimLedgerDraft(seedContext.id, simulationRun);
+    saveClaimLedgerDraft(nextLedger);
+    setLedger(nextLedger);
+    setSelectedClaimId("");
+    setSelectedEventId("");
+    setMessage("Rebuilt claims from the current Event Log.");
+  }
+
+  function saveFeedback() {
+    if (!seedContext || !simulationRun || !feedbackLedger || !feedbackTargetId) {
+      setMessage("Select a claim, agent, edge, or run target before saving feedback.");
       return;
     }
 
-    persistReport(lockReportDraft(report, report.lockedReason), copy.locked);
+    const entry = buildFeedbackDraft({
+      seedContextId: seedContext.id,
+      simulationRunId: simulationRun.id,
+      targetType: feedbackTarget,
+      targetId: feedbackTargetId,
+      rating: feedbackRating,
+      note: feedbackNote,
+    });
+    const nextLedger = {
+      ...feedbackLedger,
+      feedback: [entry, ...feedbackLedger.feedback].slice(0, 80),
+      updatedAt: new Date().toISOString(),
+    };
+    saveFeedbackLedgerDraft(nextLedger);
+    setFeedbackLedger(nextLedger);
+    setFeedbackNote("");
+    setMessage("Feedback calibration saved locally. It does not rewrite claims.");
   }
 
-  function resetReport() {
-    if (!context.seedContext || !context.simulationRun || !context.safetyReview) {
-      return;
-    }
-
-    clearReportDraft(context.seedContext.id);
-    setReport(
-      buildReportDraft(
-        context.seedContext,
-        context.simulationRun,
-        context.safetyReview,
-      ),
-    );
-    setMessage(copy.resetDone);
-  }
-
-  if (!context.seedContext) {
+  if (!seedContext || !simulationRun || !ledger) {
     return (
       <AppShell>
-        <ReportBlockedState
-          title={copy.noSeedTitle}
-          body={copy.noSeedBody}
-          href="/intake"
-          label={copy.openIntake}
-        />
+        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+          <StatusPill tone="blocked">Sandbox data required</StatusPill>
+          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            Generate a local run with Event Log first.
+          </h1>
+          <p className="mt-3 text-sm leading-7 text-[#62695d]">
+            Result Sandbox only reads frozen Agents, Relation Edges, Simulation
+            Ticks, Event Logs, and Claims. Without event evidence, no claim is
+            shown.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <TrialSampleButton className="rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white">
+              Load trial sample
+            </TrialSampleButton>
+            <Link
+              href="/app/simulation/running"
+              className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f]"
+            >
+              Open Event Log
+            </Link>
+          </div>
+        </section>
       </AppShell>
     );
-  }
-
-  if (!context.simulationRun) {
-    return (
-      <AppShell>
-        <ReportBlockedState
-          title={copy.noRunTitle}
-          body={copy.noRunBody}
-          href="/runs"
-          label={copy.openRuns}
-        />
-      </AppShell>
-    );
-  }
-
-  if (!context.safetyReview) {
-    return (
-      <AppShell>
-        <ReportBlockedState
-          title={copy.noSafetyTitle}
-          body={copy.noSafetyBody}
-          href="/safety"
-          label={copy.openSafety}
-        />
-      </AppShell>
-    );
-  }
-
-  if (!report) {
-    return null;
   }
 
   return (
     <AppShell>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">
-            {copy.title}
+          <StatusPill tone="ready">Result Sandbox v0</StatusPill>
+          <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
+            Your situation is now an evidence-linked relationship sandbox.
           </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            {copy.body}
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
+            Each claim card traces back to Event Logs, related Agents, and
+            Relation Edges. This is a scenario simulation surface, not a final
+            certainty statement.
           </p>
         </div>
-        <StatusPill tone={getStatusTone(report.status)}>
-          {copy.statusLabels[report.status]}
-        </StatusPill>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={saveLedger}
+            className="rounded-md bg-[#11150f] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Save result
+          </button>
+          <button
+            type="button"
+            onClick={rebuildLedger}
+            className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
+          >
+            Rebuild from events
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={saveReport}
-                className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                {copy.save}
-              </button>
-              <button
-                type="button"
-                onClick={rebuildReport}
-                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-              >
-                {copy.rebuild}
-              </button>
-              <button
-                type="button"
-                onClick={lockReport}
-                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-              >
-                {copy.lock}
-              </button>
-              <button
-                type="button"
-                onClick={resetReport}
-                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-              >
-                {copy.reset}
-              </button>
-              <button
-                type="button"
-                disabled
-                className="rounded-md bg-slate-300 px-4 py-2 text-sm font-semibold text-white"
-              >
-                {copy.disabledGenerate}
-              </button>
+      {message ? (
+        <p className="mb-5 rounded-md border border-[#568262]/20 bg-[#eef5ee] px-4 py-3 text-sm text-[#2f5d3d]">
+          {message}
+        </p>
+      ) : null}
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <main className="space-y-6">
+          <section className="grid gap-4 md:grid-cols-5">
+            <Metric label="Agents" value={agentEcology?.agents.length ?? simulationRun.agentIds.length} />
+            <Metric label="Edges" value={relationGraph?.edges.length ?? simulationRun.relationEdgeIds.length} />
+            <Metric label="Events" value={simulationRun.events.length} />
+            <Metric label="Claims" value={claims.length} />
+            <Metric label="Feedback" value={feedbackLedger?.feedback.length ?? 0} />
+          </section>
+
+          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <div className="flex items-start justify-between gap-5">
+              <div>
+                <h2 className="text-base font-semibold text-[#11150f]">
+                  Claim cards
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                  Select a card to highlight its Agents, Relation Edges, and
+                  evidence events.
+                </p>
+              </div>
+              <StatusPill tone={claims.length ? "ready" : "blocked"}>
+                evidence linked
+              </StatusPill>
             </div>
-            {message ? (
-              <p className="mt-4 text-sm font-medium text-slate-600">
-                {message}
+
+            {claims.length === 0 ? (
+              <p className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                No claim card is available yet. Run Simulation Tick first so the
+                Event Log contains relation evidence.
               </p>
-            ) : null}
-            <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-              {report.lockedReason}
-            </p>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.sectionsTitle}
-            </h2>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              {report.reportJson.sections.map((section) => (
-                <article
-                  key={section.id}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-slate-950">
-                      {section.title}
-                    </h3>
-                    {section.locked ? (
-                      <StatusPill tone="blocked">{copy.lockedLabel}</StatusPill>
-                    ) : null}
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                    {section.body}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.claimsTitle}
-            </h2>
-            <div className="mt-4 space-y-3">
-              {report.claims.map((claim) => (
-                <article
-                  key={claim.id}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-4"
-                >
-                  <p className="text-sm leading-6 text-slate-700">
-                    {claim.claimText}
-                  </p>
-                  <p className="mt-2 text-xs font-semibold text-slate-500">
-                    {copy.confidence}: {claim.confidence}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {claim.evidenceRefs.map((evidence) => (
-                      <StatusPill key={evidence.id} tone="planned">
-                        {evidence.label}
+            ) : (
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                {claims.map((claim) => (
+                  <button
+                    key={claim.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedClaimId(claim.id);
+                      setSelectedEventId(claim.evidenceEventIds[0] ?? "");
+                    }}
+                    className={`rounded-lg border p-5 text-left transition ${
+                      selectedClaim?.id === claim.id
+                        ? "border-[#568262]/50 bg-[#eef5ee]"
+                        : "border-black/8 bg-[#f7f8f4] hover:border-[#568262]/30"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                          {claimTitle(claim.claimType)}
+                        </p>
+                        <h3 className="mt-2 text-base font-semibold leading-7 text-[#11150f]">
+                          {claim.summary}
+                        </h3>
+                      </div>
+                      <StatusPill tone={riskTone(claim.riskLevel)}>
+                        {claim.riskLevel}
                       </StatusPill>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <MiniTag>confidence {claim.confidence}%</MiniTag>
+                      <MiniTag>events {claim.evidenceEventIds.length}</MiniTag>
+                      <MiniTag>edges {claim.relatedRelationEdgeIds.length}</MiniTag>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(300px,0.55fr)]">
+            <Timeline
+              events={simulationRun.events}
+              highlightedEventIds={highlightedEventIds}
+              selectedEventId={selectedEvent?.id ?? ""}
+              onSelect={(eventId) => setSelectedEventId(eventId)}
+            />
+            <AgentGraphSummary
+              agents={agentEcology?.agents ?? []}
+              edges={relationGraph?.edges ?? []}
+              highlightedAgentIds={highlightedAgentIds}
+              highlightedEdgeIds={highlightedEdgeIds}
+            />
+          </section>
+        </main>
+
+        <aside className="h-fit space-y-5">
+          <section className="rounded-lg border border-black/8 bg-[#11150f] p-6 text-white shadow-[0_24px_80px_rgba(17,21,15,0.14)]">
+            <h2 className="text-sm font-semibold text-[#b7e6c6]">
+              Evidence chain
+            </h2>
+            {selectedClaim ? (
+              <div className="mt-5 space-y-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
+                    selected claim
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-white/72">
+                    {selectedClaim.summary}
+                  </p>
+                </div>
+                <EvidenceList title="evidence_event_ids" values={selectedClaim.evidenceEventIds} />
+                <EvidenceCount count={selectedClaim.evidenceEventIds.length} />
+                <EvidenceList title="related_agent_ids" values={selectedClaim.relatedAgentIds} />
+                <EvidenceList title="related_relation_edge_ids" values={selectedClaim.relatedRelationEdgeIds} />
+              </div>
+            ) : (
+              <p className="mt-4 text-sm leading-6 text-white/62">
+                Select a claim card to inspect evidence.
+              </p>
+            )}
+          </section>
+
+          <section className="rounded-lg border border-black/8 bg-white p-5">
+            <h2 className="text-sm font-semibold text-[#11150f]">
+              Event detail
+            </h2>
+            {selectedEvent ? (
+              <div className="mt-4 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                      {eventLabel(selectedEvent)} / {selectedEvent.timeLabel}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                      {selectedEvent.summary}
+                    </p>
+                  </div>
+                  <StatusPill tone="planned">{selectedEvent.confidence}%</StatusPill>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                    edge deltas
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {formatDelta(selectedEvent).map((line) => (
+                      <code key={line} className="block break-all text-xs text-[#62695d]">
+                        {line}
+                      </code>
                     ))}
                   </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        </section>
-
-        <aside className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.summaryTitle}
-            </h2>
-            <dl className="mt-4 space-y-4 text-sm">
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.seedQuestion}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {context.seedContext.questionText}
-                </dd>
+                </div>
+                <Snapshot title="before" value={selectedEvent.beforeState.weights} />
+                <Snapshot title="after" value={selectedEvent.afterState.weights} />
               </div>
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.runStatus}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {context.simulationRun.status}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.safetyLevel}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {context.safetyReview.safetyLevel}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-900">
-                  {copy.reportReady}
-                </dt>
-                <dd className="mt-1 leading-6 text-slate-600">
-                  {context.safetyReview.reportReady ? copy.yes : copy.no}
-                </dd>
-              </div>
-            </dl>
+            ) : (
+              <p className="mt-4 text-sm leading-6 text-[#62695d]">
+                Select a timeline event to inspect before/after.
+              </p>
+            )}
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">
-              {copy.nextStep}
+          <FeedbackPanel
+            target={feedbackTarget}
+            targetId={feedbackTargetId}
+            rating={feedbackRating}
+            note={feedbackNote}
+            ledger={feedbackLedger}
+            onTargetChange={setFeedbackTarget}
+            onRatingChange={setFeedbackRating}
+            onNoteChange={setFeedbackNote}
+            onSave={saveFeedback}
+          />
+
+          <section className="rounded-lg border border-black/8 bg-[#dfe9dc] p-5">
+            <h2 className="text-sm font-semibold text-[#11150f]">
+              Paid boundary
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {copy.nextStepBody}
+            <p className="mt-3 text-sm leading-7 text-[#3f483d]">
+              A paid layer may reveal deeper evidence, complete event chains,
+              NPC paths, and strategy depth. It cannot change claim direction or
+              make unsupported claims stronger.
             </p>
-            <Link
-              href="/billing"
-              className="mt-4 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              {copy.openBilling}
-            </Link>
           </section>
         </aside>
-      </div>
+      </section>
     </AppShell>
   );
 }
 
-type ReportBlockedStateProps = {
-  title: string;
-  body: string;
-  href: string;
-  label: string;
-};
-
-function ReportBlockedState({
-  title,
-  body,
-  href,
-  label,
-}: ReportBlockedStateProps) {
+function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <StatusPill tone="blocked">Locked</StatusPill>
-      <h1 className="mt-4 text-2xl font-semibold text-slate-950">{title}</h1>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{body}</p>
-      <Link
-        href={href}
-        className="mt-5 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-      >
+    <div className="rounded-lg border border-black/8 bg-white p-5 shadow-[0_16px_48px_rgba(17,21,15,0.05)]">
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
         {label}
+      </div>
+      <div className="mt-2 text-3xl font-semibold text-[#11150f]">{value}</div>
+    </div>
+  );
+}
+
+function FeedbackPanel({
+  target,
+  targetId,
+  rating,
+  note,
+  ledger,
+  onTargetChange,
+  onRatingChange,
+  onNoteChange,
+  onSave,
+}: {
+  target: FeedbackTargetType;
+  targetId: string;
+  rating: FeedbackRating;
+  note: string;
+  ledger: FeedbackLedgerDraft | null;
+  onTargetChange: (target: FeedbackTargetType) => void;
+  onRatingChange: (rating: FeedbackRating) => void;
+  onNoteChange: (note: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold text-[#11150f]">
+            Feedback calibration
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            Mark what felt right or wrong. Feedback is stored as a calibration
+            ledger and never changes evidence-backed claims directly.
+          </p>
+        </div>
+        <StatusPill tone={ledger?.feedback.length ? "ready" : "planned"}>
+          {ledger?.feedback.length ?? 0} saved
+        </StatusPill>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+            target
+          </label>
+          <select
+            value={target}
+            onChange={(event) =>
+              onTargetChange(event.target.value as FeedbackTargetType)
+            }
+            className="mt-2 w-full rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-sm text-[#11150f]"
+          >
+            {feedbackTargets.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <code className="mt-2 block break-all rounded bg-[#f7f8f4] px-3 py-2 text-xs text-[#7d8578]">
+            {targetId || "Select evidence-linked content first."}
+          </code>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+            rating
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {feedbackRatings.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => onRatingChange(item.value)}
+                className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                  rating === item.value
+                    ? "border-[#568262]/50 bg-[#eef5ee] text-[#2f5d3d]"
+                    : "border-black/10 bg-white text-[#52594d] hover:border-[#568262]/30"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+            short note
+          </label>
+          <textarea
+            value={note}
+            onChange={(event) => onNoteChange(event.target.value)}
+            maxLength={280}
+            rows={3}
+            placeholder="What should the next run calibrate?"
+            className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-sm leading-6 text-[#11150f] outline-none focus:border-[#568262]"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!targetId}
+          className="w-full rounded-md bg-[#11150f] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9aa096]"
+        >
+          Save calibration feedback
+        </button>
+
+        {ledger?.feedback.length ? (
+          <div className="space-y-2 border-t border-black/8 pt-4">
+            {ledger.feedback.slice(0, 4).map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-md border border-black/8 bg-[#f7f8f4] p-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                    {entry.targetType}
+                  </span>
+                  <span className="text-xs font-semibold text-[#568262]">
+                    {entry.rating}
+                  </span>
+                </div>
+                <code className="mt-2 block break-all text-[11px] text-[#7d8578]">
+                  {entry.targetId}
+                </code>
+                {entry.note ? (
+                  <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                    {entry.note}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function MiniTag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs text-[#3f483d]">
+      {children}
+    </span>
+  );
+}
+
+function Timeline({
+  events,
+  highlightedEventIds,
+  selectedEventId,
+  onSelect,
+}: {
+  events: SimulationEventDraft[];
+  highlightedEventIds: string[];
+  selectedEventId: string;
+  onSelect: (eventId: string) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-5">
+      <h2 className="text-sm font-semibold text-[#11150f]">Timeline</h2>
+      <div className="mt-4 space-y-3">
+        {events.map((event) => {
+          const highlighted = highlightedEventIds.includes(event.id);
+          return (
+            <button
+              key={event.id}
+              type="button"
+              onClick={() => onSelect(event.id)}
+              className={`w-full rounded-md border p-4 text-left transition ${
+                selectedEventId === event.id
+                  ? "border-[#568262]/50 bg-[#eef5ee]"
+                  : highlighted
+                    ? "border-[#d49b4a]/40 bg-[#fff8ed]"
+                    : "border-black/8 bg-[#f7f8f4] hover:border-[#568262]/30"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-[#11150f]">
+                  Tick {event.tickIndex} / {eventLabel(event)}
+                </span>
+                <span className="text-xs font-semibold text-[#568262]">
+                  {event.timeLabel}
+                </span>
+              </div>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#62695d]">
+                {event.summary}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function AgentGraphSummary({
+  agents,
+  edges,
+  highlightedAgentIds,
+  highlightedEdgeIds,
+}: {
+  agents: AgentProfileDraft[];
+  edges: RelationEdgeDraft[];
+  highlightedAgentIds: string[];
+  highlightedEdgeIds: string[];
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold text-[#11150f]">
+            Agent / Graph summary
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            Graph data remains read-only. Highlighting comes from the selected
+            claim evidence chain.
+          </p>
+        </div>
+        <StatusPill tone="planned">{edges.length} edges</StatusPill>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {agents.slice(0, 7).map((agent) => {
+          const highlighted = highlightedAgentIds.includes(agent.id);
+          return (
+            <div
+              key={agent.id}
+              className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+                highlighted
+                  ? "border-[#568262]/50 bg-[#eef5ee]"
+                  : "border-black/8 bg-[#f7f8f4]"
+              }`}
+            >
+              <div>
+                <div className="text-sm font-semibold text-[#11150f]">
+                  {agent.label}
+                </div>
+                <div className="text-xs text-[#7d8578]">{agent.agentType}</div>
+              </div>
+              <span className="text-xs font-semibold text-[#568262]">
+                {agent.confidence}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {edges.slice(0, 7).map((edge) => {
+          const highlighted = highlightedEdgeIds.includes(edge.id);
+          return (
+            <div
+              key={edge.id}
+              className={`rounded-md border px-3 py-2 ${
+                highlighted
+                  ? "border-[#d49b4a]/45 bg-[#fff8ed]"
+                  : "border-black/8 bg-white"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-[#11150f]">
+                  {edge.relationshipType}
+                </span>
+                <span className="text-xs font-semibold text-[#568262]">
+                  {edge.confidence}%
+                </span>
+              </div>
+              <code className="mt-1 block break-all text-[11px] text-[#7d8578]">
+                {edge.id}
+              </code>
+            </div>
+          );
+        })}
+      </div>
+
+      <Link
+        href="/app/new/graph"
+        className="mt-4 inline-flex w-full justify-center rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f]"
+      >
+        Open read-only graph
       </Link>
     </section>
+  );
+}
+
+function EvidenceList({ title, values }: { title: string; values: string[] }) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
+        {title}
+      </div>
+      <div className="mt-2 space-y-1">
+        {values.map((value) => (
+          <code key={value} className="block break-all text-xs text-white/54">
+            {value}
+          </code>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceCount({ count }: { count: number }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
+        evidence count
+      </div>
+      <div className="mt-2 text-2xl font-semibold text-white">{count}</div>
+    </div>
+  );
+}
+
+function Snapshot({ title, value }: { title: string; value: unknown }) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+        {title}
+      </div>
+      <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-[#f7f8f4] p-3 text-xs leading-5 text-[#62695d]">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
   );
 }

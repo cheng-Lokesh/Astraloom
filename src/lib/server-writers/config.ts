@@ -6,6 +6,9 @@ export type ServerWriterConfig = {
   systemWritersEnabled: boolean;
   aiGenerationEnabled: boolean;
   stripeWritesEnabled: boolean;
+  deepSeekConfigured: boolean;
+  stripeSecretConfigured: boolean;
+  stripeWebhookConfigured: boolean;
 };
 
 export function getServerWriterConfig(): ServerWriterConfig {
@@ -15,5 +18,8 @@ export function getServerWriterConfig(): ServerWriterConfig {
     systemWritersEnabled: process.env.ENABLE_SYSTEM_WRITERS === "true",
     aiGenerationEnabled: process.env.ENABLE_AI_GENERATION === "true",
     stripeWritesEnabled: process.env.ENABLE_STRIPE_WRITES === "true",
+    deepSeekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
+    stripeSecretConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
+    stripeWebhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
   };
 }
