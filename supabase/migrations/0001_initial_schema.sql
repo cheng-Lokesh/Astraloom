@@ -423,6 +423,43 @@ create table if not exists public.audit_events (
   metadata jsonb not null default '{}'::jsonb
 );
 
+create table if not exists public.llm_rate_limits (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  job_type text not null,
+  window_started_at timestamptz not null,
+  count integer not null default 0 check (count >= 0),
+  idempotency_key text not null unique
+);
+
+do $$ declare table_name text;
+begin
+  foreach table_name in array array[
+    'agent_profiles',
+    'relation_edges',
+    'simulations',
+    'simulation_ticks',
+    'event_logs',
+    'claims',
+    'reports',
+    'model_call_logs',
+    'generation_jobs'
+  ]
+  loop
+    execute format(
+      'alter table public.%I add column if not exists writer_version text not null default %L',
+      table_name,
+      'untracked-legacy-writer'
+    );
+    execute format(
+      'alter table public.%I add column if not exists idempotency_key text not null default gen_random_uuid()::text',
+      table_name
+    );
+  end loop;
+end $$;
+
 create index if not exists user_profiles_user_id_idx on public.user_profiles(user_id);
 create index if not exists seed_contexts_user_id_idx on public.seed_contexts(user_id);
 create index if not exists key_people_user_seed_idx on public.key_people(user_id, seed_context_id);
@@ -441,6 +478,16 @@ create index if not exists consent_events_user_idx on public.consent_events(user
 create index if not exists model_call_logs_trace_idx on public.model_call_logs(trace_id);
 create index if not exists generation_jobs_trace_idx on public.generation_jobs(trace_id);
 create index if not exists audit_events_trace_idx on public.audit_events(trace_id);
+create index if not exists llm_rate_limits_user_job_window_idx on public.llm_rate_limits(user_id, job_type, window_started_at);
+create index if not exists agent_profiles_idempotency_idx on public.agent_profiles(user_id, idempotency_key);
+create index if not exists relation_edges_idempotency_idx on public.relation_edges(user_id, idempotency_key);
+create index if not exists simulations_idempotency_idx on public.simulations(user_id, idempotency_key);
+create index if not exists simulation_ticks_idempotency_idx on public.simulation_ticks(user_id, idempotency_key);
+create index if not exists event_logs_idempotency_idx on public.event_logs(user_id, idempotency_key);
+create index if not exists claims_idempotency_idx on public.claims(user_id, idempotency_key);
+create index if not exists reports_idempotency_idx on public.reports(user_id, idempotency_key);
+create index if not exists model_call_logs_idempotency_idx on public.model_call_logs(user_id, idempotency_key);
+create index if not exists generation_jobs_idempotency_idx on public.generation_jobs(user_id, idempotency_key);
 
 do $$ declare table_name text;
 begin
@@ -462,7 +509,8 @@ begin
     'consent_events',
     'model_call_logs',
     'generation_jobs',
-    'audit_events'
+    'audit_events',
+    'llm_rate_limits'
   ]
   loop
     execute format('alter table public.%I enable row level security', table_name);
@@ -546,6 +594,8 @@ create policy "generation_jobs_select_own" on public.generation_jobs
   for select to authenticated using (auth.uid() is not null and auth.uid() = user_id);
 create policy "audit_events_select_own" on public.audit_events
   for select to authenticated using (auth.uid() is not null and auth.uid() = user_id);
+create policy "llm_rate_limits_select_own" on public.llm_rate_limits
+  for select to authenticated using (auth.uid() is not null and auth.uid() = user_id);
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on
@@ -625,4 +675,7 @@ create trigger generation_jobs_set_updated_at
   for each row execute function public.set_updated_at();
 create trigger audit_events_set_updated_at
   before update on public.audit_events
+  for each row execute function public.set_updated_at();
+create trigger llm_rate_limits_set_updated_at
+  before update on public.llm_rate_limits
   for each row execute function public.set_updated_at();

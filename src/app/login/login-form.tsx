@@ -21,13 +21,13 @@ const formCopy = {
   zh: {
     email: "邮箱",
     placeholder: "founder@example.com",
-    submit: "发送魔法链接",
+    submit: "发送 magic link",
     sending: "发送中...",
     missingEnv: "请先在 .env.local 中填写 Supabase URL 和 anon key。",
     clientError: "无法创建 Supabase 客户端。",
-    sent: "魔法链接已发送，请检查邮箱继续。",
+    sent: "Magic link 已发送，请检查邮箱继续。",
     rateLimited:
-      "电子邮件发送已触发限流。请先等待一段时间再重新发送，并只使用最新邮件。",
+      "邮件发送触发限流。请稍后再发送，并只使用最新一封邮件。",
   },
 };
 
@@ -76,7 +76,7 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${appConfig.appUrl}/auth/callback?next=/app/dashboard`,
+        emailRedirectTo: `${appConfig.appUrl}/auth/callback?next=/sync`,
         shouldCreateUser: true,
       },
     });

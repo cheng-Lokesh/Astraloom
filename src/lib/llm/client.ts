@@ -49,6 +49,20 @@ export async function generateJsonWithLlm({
   const modelVersion = config.modelVersion;
   const inputEstimate = estimateTokenPair(`${systemPrompt}\n${userPrompt}`);
 
+  if (process.env.ENABLE_AI_GENERATION !== "true") {
+    return {
+      ok: false,
+      traceId,
+      rawText: null,
+      modelVersion,
+      latencyMs: Date.now() - startedAt,
+      inputTokenEstimate: inputEstimate.inputTokenEstimate,
+      outputTokenEstimate: 0,
+      costEstimate: 0,
+      errorCode: "ai_generation_disabled",
+    };
+  }
+
   if (!apiKey) {
     return {
       ok: false,

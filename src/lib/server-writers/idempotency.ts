@@ -1,6 +1,10 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { buildDisabledServiceRoleAdapterStatus } from "@/lib/server-writers/service-role-adapter";
+import type { GeneratedArtifactTable } from "@/lib/server-writers/writer-types";
 import type { ServiceRoleAdapterPlan } from "@/types/service-role-adapter";
 import type {
   WriterIdempotencyContract,
@@ -11,6 +15,86 @@ import type {
 import type { SystemWriterContractId } from "@/types/system-writer-contract";
 
 const futureTableName = "writer_idempotency_keys" as const;
+
+export type WriterIdempotencyCheckInput = {
+  supabase: SupabaseClient;
+  userId: string;
+  targetTable: GeneratedArtifactTable;
+  idempotencyKey: string;
+  requestHash: string;
+};
+
+export type WriterIdempotencyCheckResult =
+  | { ok: true; replay: false }
+  | { ok: true; replay: true; targetId: string }
+  | {
+      ok: false;
+      errorCode: "idempotency_conflict" | "idempotency_lookup_failed";
+    };
+
+export function createWriterRequestHash(payload: unknown) {
+  return `sha256:${createHash("sha256")
+    .update(stableStringify(payload))
+    .digest("hex")}`;
+}
+
+export async function checkWriterIdempotency({
+  supabase,
+  userId,
+  targetTable,
+  idempotencyKey,
+  requestHash,
+}: WriterIdempotencyCheckInput): Promise<WriterIdempotencyCheckResult> {
+  const { data, error } = await supabase
+    .from("audit_events")
+    .select("target_id, request_hash, gate_decision")
+    .eq("user_id", userId)
+    .eq("target_table", targetTable)
+    .eq("idempotency_key", idempotencyKey)
+    .eq("action", "writer.write_generated_artifact")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    return { ok: false, errorCode: "idempotency_lookup_failed" };
+  }
+
+  const existing = data?.[0];
+
+  if (!existing) {
+    return { ok: true, replay: false };
+  }
+
+  if (existing.request_hash !== requestHash) {
+    return { ok: false, errorCode: "idempotency_conflict" };
+  }
+
+  if (
+    existing.gate_decision === "write_succeeded" &&
+    typeof existing.target_id === "string" &&
+    existing.target_id
+  ) {
+    return { ok: true, replay: true, targetId: existing.target_id };
+  }
+
+  return { ok: false, errorCode: "idempotency_conflict" };
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
 
 const scopeByContract: Record<SystemWriterContractId, WriterIdempotencyScope> = {
   agent_profile_generation: "user_seed_context",

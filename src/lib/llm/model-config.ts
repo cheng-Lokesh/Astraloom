@@ -18,6 +18,10 @@ export const agentProfileDraftingModelConfig = {
   temperature: 0.15,
 };
 
+export function isAiGenerationEnabled() {
+  return process.env.ENABLE_AI_GENERATION === "true";
+}
+
 export function isKeyPeopleLlmConfigured() {
   return Boolean(process.env.DEEPSEEK_API_KEY);
 }

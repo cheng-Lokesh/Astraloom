@@ -55,6 +55,8 @@ Production table rules:
 
 - Every user-owned table includes `user_id`.
 - Every generated artifact includes `version`.
+- Every server-written generated artifact includes `writer_version` and
+  `idempotency_key`.
 - AI-generation records include `trace_id`.
 - `claims.evidence_event_ids` is required and must contain at least one event id
   before a claim can be persisted as reportable.
@@ -764,3 +766,24 @@ Audit event rules:
 - Service-role clients must live only in server-only modules and must be gated
   by environment flags, auth/webhook verification, idempotency, audit evidence,
   and stable `error_code` responses.
+
+## Server-Only Generated Artifact Writer
+
+Generated artifact writes for `agent_profiles`, `relation_edges`,
+`simulations`, `simulation_ticks`, `event_logs`, `claims`, `reports`,
+`model_call_logs`, and `generation_jobs` are owned by server-only writer code.
+
+Writer rules:
+
+- The service role key is read only from `SUPABASE_SERVICE_ROLE_KEY` in
+  `server-only` modules.
+- Browser clients must never receive the service role key and must not insert,
+  update, or delete generated artifacts directly.
+- Each write payload must include `user_id`, `trace_id`, `version`,
+  `writer_version`, and `idempotency_key`.
+- The writer checks referenced parent records belong to the same `user_id`
+  before inserting.
+- The writer records append-only `audit_events` for attempted, blocked,
+  failed, and successful writes.
+- The writer inserts only new generated artifacts; it does not allow admin or
+  browser mutation of Claim, EventLog, or Report conclusions.

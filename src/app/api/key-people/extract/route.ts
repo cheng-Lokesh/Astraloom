@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { generateJsonWithLlm } from "@/lib/llm/client";
-import { keyPeopleExtractionModelConfig } from "@/lib/llm/model-config";
+import {
+  isAiGenerationEnabled,
+  keyPeopleExtractionModelConfig,
+} from "@/lib/llm/model-config";
 import { buildExtractPeoplePrompt } from "@/lib/llm/prompts/extract-people";
+import { checkLlmRateLimit } from "@/lib/llm/rate-limit";
 import { logModelCall } from "@/lib/model-call-log/log-model-call";
 import { extractPeopleCandidates } from "@/lib/people/extract";
 import { verifySafety } from "@/lib/safety/safety-verifier";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   keyPeopleExtractionSchema,
   type KeyPeopleExtractionOutput,
@@ -79,17 +84,6 @@ export async function POST(request: NextRequest) {
   const parsed = requestSchema.safeParse(body);
 
   if (!parsed.success) {
-    await logModelCall({
-      traceId,
-      jobType: "key_people_extract",
-      promptVersion: keyPeopleExtractionModelConfig.promptVersion,
-      modelVersion: keyPeopleExtractionModelConfig.modelVersion,
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "invalid_request",
-      metadata: { validation: parsed.error.flatten() },
-    });
-
     return NextResponse.json(
       {
         ok: false,
@@ -101,16 +95,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (!parsed.data.seedContext) {
-    await logModelCall({
-      traceId,
-      jobType: "key_people_extract",
-      promptVersion: keyPeopleExtractionModelConfig.promptVersion,
-      modelVersion: keyPeopleExtractionModelConfig.modelVersion,
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "missing_seed_context",
-    });
-
     return NextResponse.json(
       {
         ok: false,
@@ -122,11 +106,18 @@ export async function POST(request: NextRequest) {
   }
 
   const seedContext = parsed.data.seedContext satisfies SeedContextDraft;
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    return fallbackOutput(seedContext, traceId, "auth_required");
+  }
+
   const safety = verifySafety({ seedContext });
 
   if (safety.safetyLevel === "downgraded" || safety.safetyLevel === "blocked") {
     await logModelCall({
       traceId,
+      userId,
       jobType: "key_people_extract",
       promptVersion: keyPeopleExtractionModelConfig.promptVersion,
       modelVersion: "not_called",
@@ -139,6 +130,53 @@ export async function POST(request: NextRequest) {
     return fallbackOutput(seedContext, traceId, `safety_${safety.safetyLevel}`);
   }
 
+  if (!isAiGenerationEnabled()) {
+    await logModelCall({
+      traceId,
+      userId,
+      jobType: "key_people_extract",
+      promptVersion: keyPeopleExtractionModelConfig.promptVersion,
+      modelVersion: "not_called",
+      latencyMs: 0,
+      costEstimate: 0,
+      errorCode: "ai_generation_disabled",
+    });
+
+    return fallbackOutput(seedContext, traceId, "ai_generation_disabled");
+  }
+
+  const rateLimit = await checkLlmRateLimit({
+    userId,
+    jobType: "key_people_extract",
+  });
+
+  if (!rateLimit.allowed) {
+    await logModelCall({
+      traceId,
+      userId,
+      jobType: "key_people_extract",
+      promptVersion: keyPeopleExtractionModelConfig.promptVersion,
+      modelVersion: "not_called",
+      latencyMs: 0,
+      costEstimate: 0,
+      errorCode: "rate_limited",
+      metadata: {
+        limit: rateLimit.limit,
+        reset_at: rateLimit.resetAt,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        trace_id: traceId,
+        error_code: "rate_limited",
+        retry_after: rateLimit.resetAt,
+      },
+      { status: 429 },
+    );
+  }
+
   const prompt = buildExtractPeoplePrompt(seedContext);
   const llmResult = await generateJsonWithLlm({
     traceId,
@@ -149,6 +187,7 @@ export async function POST(request: NextRequest) {
   if (!llmResult.ok) {
     await logModelCall({
       traceId,
+      userId,
       jobType: "key_people_extract",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -167,6 +206,7 @@ export async function POST(request: NextRequest) {
   if (!parsedJson.ok) {
     await logModelCall({
       traceId,
+      userId,
       jobType: "key_people_extract",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -187,6 +227,7 @@ export async function POST(request: NextRequest) {
 
     await logModelCall({
       traceId,
+      userId,
       jobType: "key_people_extract",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -205,6 +246,7 @@ export async function POST(request: NextRequest) {
   if (containsForbiddenMindReading(output)) {
     await logModelCall({
       traceId,
+      userId,
       jobType: "key_people_extract",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -228,6 +270,7 @@ export async function POST(request: NextRequest) {
 
   await logModelCall({
     traceId,
+    userId,
     jobType: "key_people_extract",
     promptVersion: prompt.promptVersion,
     modelVersion: llmResult.modelVersion,
@@ -252,6 +295,16 @@ export async function POST(request: NextRequest) {
     candidates,
     uncertainty_flags: output.uncertainty_flags,
   });
+}
+
+async function getAuthenticatedUserId() {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.auth.getUser();
+  if (error) return null;
+
+  return data.user?.id ?? null;
 }
 
 function parseLlmJson(rawText: string):
@@ -330,21 +383,51 @@ function normalizeRelationship(value: string) {
 
 function normalizeRoleType(value: string) {
   const lowered = value.toLowerCase();
-  if (/authority|boss|manager|棰嗗|涓婄骇/.test(lowered)) return "authority";
-  if (/resource|璧勬簮|鍒╃泭/.test(lowered)) return "resource";
-  if (/conflict|绔炰簤|鍐茬獊/.test(lowered)) return "conflict";
-  if (/support|鏀寔/.test(lowered)) return "support";
-  if (/opportunity|鏈轰細|offer/.test(lowered)) return "opportunity";
-  if (/emotion|鎯呮劅|浼翠荆|瀹朵汉/.test(lowered)) return "emotional";
+
+  if (matchesAny(lowered, ["authority", "boss", "manager", "老板", "领导", "上级"])) {
+    return "authority";
+  }
+
+  if (matchesAny(lowered, ["resource", "资源", "利益"])) return "resource";
+
+  if (matchesAny(lowered, ["conflict", "competitor", "竞争", "冲突"])) {
+    return "conflict";
+  }
+
+  if (matchesAny(lowered, ["support", "支持"])) return "support";
+
+  if (matchesAny(lowered, ["opportunity", "offer", "机会"])) {
+    return "opportunity";
+  }
+
+  if (matchesAny(lowered, ["emotion", "emotional", "情感", "伴侣", "家人"])) {
+    return "emotional";
+  }
+
   return "unknown";
 }
 
 function containsForbiddenMindReading(output: KeyPeopleExtractionOutput) {
-  const text = JSON.stringify(output);
+  const text = JSON.stringify(output).toLowerCase();
 
-  return /loves you|betray|deceiv|secretly wants|true intention|鐪熷疄鎯虫硶|鑳屽彌|娆洪獥|鐖变綘|涓嶇埍浣爘鐪熸鎰忓浘/.test(
-    text,
-  );
+  return matchesAny(text, [
+    "loves you",
+    "betray",
+    "deceiv",
+    "secretly wants",
+    "true intention",
+    "真实想法",
+    "背叛",
+    "欺骗",
+    "爱你",
+    "不爱你",
+    "真正意图",
+    "看穿",
+  ]);
+}
+
+function matchesAny(value: string, patterns: string[]) {
+  return patterns.some((pattern) => value.includes(pattern));
 }
 
 function hashText(value: string) {

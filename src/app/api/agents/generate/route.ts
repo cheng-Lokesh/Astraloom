@@ -3,10 +3,15 @@ import { z } from "zod";
 
 import { buildAgentProfiles } from "@/lib/agents/build";
 import { generateJsonWithLlm } from "@/lib/llm/client";
-import { agentProfileDraftingModelConfig } from "@/lib/llm/model-config";
+import {
+  agentProfileDraftingModelConfig,
+  isAiGenerationEnabled,
+} from "@/lib/llm/model-config";
 import { buildGenerateAgentsPrompt } from "@/lib/llm/prompts/generate-agents";
+import { checkLlmRateLimit } from "@/lib/llm/rate-limit";
 import { logModelCall } from "@/lib/model-call-log/log-model-call";
 import { verifySafety } from "@/lib/safety/safety-verifier";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   agentProfileDraftsSchema,
   llmAgentProfilesSchema,
@@ -97,17 +102,6 @@ export async function POST(request: NextRequest) {
   const parsed = requestSchema.safeParse(body);
 
   if (!parsed.success) {
-    await logModelCall({
-      traceId,
-      jobType: "agent_profiles_generate",
-      promptVersion: agentProfileDraftingModelConfig.promptVersion,
-      modelVersion: agentProfileDraftingModelConfig.modelVersion,
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "invalid_request",
-      metadata: { validation: parsed.error.flatten() },
-    });
-
     return NextResponse.json(
       { ok: false, trace_id: traceId, error_code: "invalid_request" },
       { status: 400 },
@@ -118,6 +112,18 @@ export async function POST(request: NextRequest) {
   const confirmedPeople = parsed.data.confirmedPeople.filter(
     (person) => person.confirmed && person.status === "confirmed",
   ) satisfies KeyPersonDraft[];
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    return fallbackResponse({
+      seedContext,
+      confirmedPeople,
+      traceId,
+      fallbackReason: "auth_required",
+      includeParallelSelves: parsed.data.includeParallelSelves,
+    });
+  }
+
   const safety =
     parsed.data.safetyResult?.safetyLevel === "blocked" ||
     parsed.data.safetyResult?.safetyLevel === "downgraded"
@@ -127,6 +133,7 @@ export async function POST(request: NextRequest) {
   if (safety.safetyLevel === "blocked") {
     await logModelCall({
       traceId,
+      userId,
       jobType: "agent_profiles_generate",
       promptVersion: agentProfileDraftingModelConfig.promptVersion,
       modelVersion: "not_called",
@@ -148,6 +155,7 @@ export async function POST(request: NextRequest) {
   if (safety.safetyLevel === "downgraded") {
     await logModelCall({
       traceId,
+      userId,
       jobType: "agent_profiles_generate",
       promptVersion: agentProfileDraftingModelConfig.promptVersion,
       modelVersion: "not_called",
@@ -166,6 +174,59 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  if (!isAiGenerationEnabled()) {
+    await logModelCall({
+      traceId,
+      userId,
+      jobType: "agent_profiles_generate",
+      promptVersion: agentProfileDraftingModelConfig.promptVersion,
+      modelVersion: "not_called",
+      latencyMs: 0,
+      costEstimate: 0,
+      errorCode: "ai_generation_disabled",
+    });
+
+    return fallbackResponse({
+      seedContext,
+      confirmedPeople,
+      traceId,
+      fallbackReason: "ai_generation_disabled",
+      includeParallelSelves: parsed.data.includeParallelSelves,
+    });
+  }
+
+  const rateLimit = await checkLlmRateLimit({
+    userId,
+    jobType: "agents_generate",
+  });
+
+  if (!rateLimit.allowed) {
+    await logModelCall({
+      traceId,
+      userId,
+      jobType: "agent_profiles_generate",
+      promptVersion: agentProfileDraftingModelConfig.promptVersion,
+      modelVersion: "not_called",
+      latencyMs: 0,
+      costEstimate: 0,
+      errorCode: "rate_limited",
+      metadata: {
+        limit: rateLimit.limit,
+        reset_at: rateLimit.resetAt,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        trace_id: traceId,
+        error_code: "rate_limited",
+        retry_after: rateLimit.resetAt,
+      },
+      { status: 429 },
+    );
+  }
+
   const prompt = buildGenerateAgentsPrompt({
     seedContext,
     confirmedPeople,
@@ -181,6 +242,7 @@ export async function POST(request: NextRequest) {
   if (!llmResult.ok) {
     await logModelCall({
       traceId,
+      userId,
       jobType: "agent_profiles_generate",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -205,6 +267,7 @@ export async function POST(request: NextRequest) {
   if (!parsedJson.ok) {
     await logModelCall({
       traceId,
+      userId,
       jobType: "agent_profiles_generate",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -233,6 +296,7 @@ export async function POST(request: NextRequest) {
 
     await logModelCall({
       traceId,
+      userId,
       jobType: "agent_profiles_generate",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -265,6 +329,7 @@ export async function POST(request: NextRequest) {
   if (!draftValidation.success || !hasRequiredAgents(agents, confirmedPeople)) {
     await logModelCall({
       traceId,
+      userId,
       jobType: "agent_profiles_generate",
       promptVersion: prompt.promptVersion,
       modelVersion: llmResult.modelVersion,
@@ -286,6 +351,7 @@ export async function POST(request: NextRequest) {
 
   await logModelCall({
     traceId,
+    userId,
     jobType: "agent_profiles_generate",
     promptVersion: prompt.promptVersion,
     modelVersion: llmResult.modelVersion,
@@ -308,6 +374,16 @@ export async function POST(request: NextRequest) {
     error_code: null,
     agents,
   });
+}
+
+async function getAuthenticatedUserId() {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.auth.getUser();
+  if (error) return null;
+
+  return data.user?.id ?? null;
 }
 
 function fallbackResponse({
@@ -640,6 +716,13 @@ function containsForbiddenInference(output: LlmAgentProfilesOutput) {
     "true intention",
     "will definitely",
     "guaranteed",
+    "真实想法",
+    "背叛",
+    "欺骗",
+    "爱你",
+    "不爱你",
+    "真正意图",
+    "看穿",
   ].some((pattern) => text.includes(pattern));
 }
 

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { recordModelCallEvent } from "@/lib/observability/audit-event";
+import { writeGeneratedArtifact } from "@/lib/server-writers/write-generated-artifact";
 
 export type ModelCallLogEntry = {
   traceId: string;
@@ -23,12 +24,13 @@ export type ModelCallLogEntry = {
 const localModelCallLogs: ModelCallLogEntry[] = [];
 
 export async function logModelCall(entry: ModelCallLogEntry) {
+  const userId = entry.userId?.trim();
   const normalizedEntry = {
     inputTokenEstimate: 0,
     outputTokenEstimate: 0,
-    userId: "local_or_unknown_user",
     jobId: null,
     ...entry,
+    userId: userId ?? null,
   };
 
   localModelCallLogs.unshift(normalizedEntry);
@@ -37,20 +39,52 @@ export async function logModelCall(entry: ModelCallLogEntry) {
     localModelCallLogs.length = 100;
   }
 
-  recordModelCallEvent({
-    traceId: normalizedEntry.traceId,
-    userId: normalizedEntry.userId,
-    jobId: normalizedEntry.jobId,
-    jobType: normalizedEntry.jobType,
-    promptVersion: normalizedEntry.promptVersion,
-    modelVersion: normalizedEntry.modelVersion,
-    latencyMs: normalizedEntry.latencyMs,
-    inputTokenEstimate: normalizedEntry.inputTokenEstimate,
-    outputTokenEstimate: normalizedEntry.outputTokenEstimate,
-    costEstimate: normalizedEntry.costEstimate,
-    errorCode: normalizedEntry.errorCode,
-    metadata: normalizedEntry.metadata,
-  });
+  if (normalizedEntry.userId) {
+    recordModelCallEvent({
+      traceId: normalizedEntry.traceId,
+      userId: normalizedEntry.userId,
+      jobId: normalizedEntry.jobId,
+      jobType: normalizedEntry.jobType,
+      promptVersion: normalizedEntry.promptVersion,
+      modelVersion: normalizedEntry.modelVersion,
+      latencyMs: normalizedEntry.latencyMs,
+      inputTokenEstimate: normalizedEntry.inputTokenEstimate,
+      outputTokenEstimate: normalizedEntry.outputTokenEstimate,
+      costEstimate: normalizedEntry.costEstimate,
+      errorCode: normalizedEntry.errorCode,
+      metadata: normalizedEntry.metadata,
+    });
+
+    await writeGeneratedArtifact({
+      table: "model_call_logs",
+      userId: normalizedEntry.userId,
+      traceId: normalizedEntry.traceId,
+      version: "model-call-log-v1",
+      writerVersion: "model-call-log-writer-v1",
+      idempotencyKey: `model_call_logs:${normalizedEntry.traceId}:${normalizedEntry.jobType}:${normalizedEntry.errorCode ?? "ok"}`,
+      artifact: {
+        job_type: normalizedEntry.jobType,
+        provider:
+          normalizedEntry.modelVersion === "not_called"
+            ? "not_called"
+            : "deepseek-openai-compatible",
+        prompt_version: normalizedEntry.promptVersion,
+        model_version: normalizedEntry.modelVersion,
+        latency_ms: normalizedEntry.latencyMs,
+        cost_estimate: normalizedEntry.costEstimate,
+        token_counts: {
+          input_token_estimate: normalizedEntry.inputTokenEstimate,
+          output_token_estimate: normalizedEntry.outputTokenEstimate,
+        },
+        input_refs: {
+          job_id: normalizedEntry.jobId,
+        },
+        output_refs: normalizedEntry.metadata ?? {},
+        safety_level: String(normalizedEntry.metadata?.safety_level ?? "normal"),
+        error_code: normalizedEntry.errorCode,
+      },
+    });
+  }
 
   console.info("[model_call_logs]", {
     trace_id: normalizedEntry.traceId,

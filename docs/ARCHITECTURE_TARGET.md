@@ -24,6 +24,8 @@ role usage, migrations, or removal of local flows.
 - Browser clients may write only user-authored drafts and requests.
 - Server-owned artifacts require backend validation, writer gates, idempotency,
   audit, trace ids, and stable error codes.
+- Service-role generated artifact writes live only in `server-only` modules and
+  are never exposed as direct browser write APIs.
 - SafetyVerifier is a hard gate before generation, simulation, report, and paid
   unlock.
 - Paid unlock reveals depth, not stronger truth.
@@ -56,6 +58,9 @@ Responsibilities:
 - RLS enforces ownership for all user-owned rows.
 - System-owned tables are not browser-writable unless explicitly approved.
 - Service-role access exists only in server-only modules with gates and audit.
+- Generated artifact writes use a server-only writer that validates ownership,
+  requires `trace_id`, `version`, `writer_version`, and `idempotency_key`, and
+  appends `audit_events`.
 
 Target data chain:
 
