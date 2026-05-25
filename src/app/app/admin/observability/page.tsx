@@ -23,6 +23,10 @@ function emptySummary(): ObservabilitySummary {
     failedTasks: [],
     averageCost: 0,
     averageCostCents: 0,
+    todayLlmCallCount: 0,
+    todayFallbackCount: 0,
+    todayCostEstimate: 0,
+    todayCostEstimateCents: 0,
     errorCodeDistribution: [],
     promptVersionDistribution: [],
     eventCount: 0,
@@ -113,18 +117,23 @@ export default function ObservabilityPage() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-4">
-          <Metric label="Events" value={merged.eventCount.toString()} />
           <Metric
-            label="Failed"
-            value={merged.failedTasks.length.toString()}
+            label="Today LLM calls"
+            value={merged.todayLlmCallCount.toString()}
           />
           <Metric
-            label="Avg cost"
-            value={`$${merged.averageCost.toFixed(6)}`}
+            label="Today fallback"
+            value={merged.todayFallbackCount.toString()}
           />
           <Metric
-            label="Avg cents"
-            value={merged.averageCostCents.toFixed(4)}
+            label="Today cost"
+            value={`$${merged.todayCostEstimate.toFixed(6)}`}
+          />
+          <Metric
+            label="Errors"
+            value={merged.errorCodeDistribution
+              .reduce((total, row) => total + (row.key === "none" ? 0 : row.count), 0)
+              .toString()}
           />
         </section>
 
@@ -211,6 +220,7 @@ function TaskList({
             <code>job: {event.jobId}</code>
             <code>prompt: {event.promptVersion ?? "none"}</code>
             <code>model: {event.modelVersion ?? "none"}</code>
+            <code>source: {event.source}</code>
             <code>latency: {event.latencyMs ?? 0}ms</code>
             <code>cost: ${event.costEstimate.toFixed(6)}</code>
             <code>input tokens: {event.inputTokenEstimate}</code>

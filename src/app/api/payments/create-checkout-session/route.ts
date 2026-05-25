@@ -11,14 +11,14 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   const gate = checkRuntimeGate("stripe");
 
-  if (!gate.allowed) {
-    return NextResponse.json(gateErrorResponse(gate), { status: 503 });
-  }
-
   const auth = await getAuthenticatedServerContext(request);
 
   if (!auth.ok) {
     return jsonError(auth.errorCode, gate.traceId, auth.status);
+  }
+
+  if (!gate.allowed) {
+    return NextResponse.json(gateErrorResponse(gate), { status: 503 });
   }
 
   const body = (await request.json().catch(() => null)) as {

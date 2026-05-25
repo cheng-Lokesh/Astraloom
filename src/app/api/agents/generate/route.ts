@@ -7,6 +7,7 @@ import {
   agentProfileDraftingModelConfig,
   isAiGenerationEnabled,
 } from "@/lib/llm/model-config";
+import { checkAiTesterAllowlist } from "@/lib/llm/ai-tester-allowlist.server";
 import { buildGenerateAgentsPrompt } from "@/lib/llm/prompts/generate-agents";
 import { checkLlmRateLimit } from "@/lib/llm/rate-limit";
 import { logModelCall } from "@/lib/model-call-log/log-model-call";
@@ -112,9 +113,9 @@ export async function POST(request: NextRequest) {
   const confirmedPeople = parsed.data.confirmedPeople.filter(
     (person) => person.confirmed && person.status === "confirmed",
   ) satisfies KeyPersonDraft[];
-  const userId = await getAuthenticatedUserId();
+  const authUser = await getAuthenticatedUser();
 
-  if (!userId) {
+  if (!authUser) {
     return fallbackResponse({
       seedContext,
       confirmedPeople,
@@ -124,6 +125,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const userId = authUser.id;
+
   const safety =
     parsed.data.safetyResult?.safetyLevel === "blocked" ||
     parsed.data.safetyResult?.safetyLevel === "downgraded"
@@ -131,67 +134,54 @@ export async function POST(request: NextRequest) {
       : verifySafety({ seedContext });
 
   if (safety.safetyLevel === "blocked") {
-    await logModelCall({
-      traceId,
-      userId,
-      jobType: "agent_profiles_generate",
-      promptVersion: agentProfileDraftingModelConfig.promptVersion,
-      modelVersion: "not_called",
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "safety_blocked",
-      metadata: { flags: safety.flags },
-    });
-
-    return fallbackResponse({
+    return logFallbackResponse({
       seedContext,
       confirmedPeople,
       traceId,
+      userId,
       fallbackReason: "safety_blocked",
       includeParallelSelves: false,
+      metadata: { flags: safety.flags },
     });
   }
 
   if (safety.safetyLevel === "downgraded") {
-    await logModelCall({
-      traceId,
-      userId,
-      jobType: "agent_profiles_generate",
-      promptVersion: agentProfileDraftingModelConfig.promptVersion,
-      modelVersion: "not_called",
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "safety_downgraded",
-      metadata: { flags: safety.flags },
-    });
-
-    return fallbackResponse({
+    return logFallbackResponse({
       seedContext,
       confirmedPeople,
       traceId,
+      userId,
       fallbackReason: "safety_downgraded",
       includeParallelSelves: false,
+      metadata: { flags: safety.flags },
     });
   }
 
   if (!isAiGenerationEnabled()) {
-    await logModelCall({
-      traceId,
-      userId,
-      jobType: "agent_profiles_generate",
-      promptVersion: agentProfileDraftingModelConfig.promptVersion,
-      modelVersion: "not_called",
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "ai_generation_disabled",
-    });
-
-    return fallbackResponse({
+    return logFallbackResponse({
       seedContext,
       confirmedPeople,
       traceId,
+      userId,
       fallbackReason: "ai_generation_disabled",
       includeParallelSelves: parsed.data.includeParallelSelves,
+    });
+  }
+
+  const aiTesterGate = checkAiTesterAllowlist({
+    userId,
+    email: authUser.email,
+  });
+
+  if (!aiTesterGate.allowed) {
+    return logFallbackResponse({
+      seedContext,
+      confirmedPeople,
+      traceId,
+      userId,
+      fallbackReason: "ai_tester_not_allowlisted",
+      includeParallelSelves: parsed.data.includeParallelSelves,
+      metadata: { email_allowlist_checked: Boolean(authUser.email) },
     });
   }
 
@@ -201,30 +191,18 @@ export async function POST(request: NextRequest) {
   });
 
   if (!rateLimit.allowed) {
-    await logModelCall({
+    return logFallbackResponse({
+      seedContext,
+      confirmedPeople,
       traceId,
       userId,
-      jobType: "agent_profiles_generate",
-      promptVersion: agentProfileDraftingModelConfig.promptVersion,
-      modelVersion: "not_called",
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "rate_limited",
+      fallbackReason: "rate_limited",
+      includeParallelSelves: parsed.data.includeParallelSelves,
       metadata: {
         limit: rateLimit.limit,
         reset_at: rateLimit.resetAt,
       },
     });
-
-    return NextResponse.json(
-      {
-        ok: false,
-        trace_id: traceId,
-        error_code: "rate_limited",
-        retry_after: rateLimit.resetAt,
-      },
-      { status: 429 },
-    );
   }
 
   const prompt = buildGenerateAgentsPrompt({
@@ -251,12 +229,14 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode: llmResult.errorCode,
+      source: "llm",
     });
 
-    return fallbackResponse({
+    return logFallbackResponse({
       seedContext,
       confirmedPeople,
       traceId,
+      userId,
       fallbackReason: llmResult.errorCode,
       includeParallelSelves: parsed.data.includeParallelSelves,
     });
@@ -276,12 +256,14 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode: parsedJson.errorCode,
+      source: "llm",
     });
 
-    return fallbackResponse({
+    return logFallbackResponse({
       seedContext,
       confirmedPeople,
       traceId,
+      userId,
       fallbackReason: parsedJson.errorCode,
       includeParallelSelves: parsed.data.includeParallelSelves,
     });
@@ -305,12 +287,14 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode,
+      source: "llm",
     });
 
-    return fallbackResponse({
+    return logFallbackResponse({
       seedContext,
       confirmedPeople,
       traceId,
+      userId,
       fallbackReason: errorCode,
       includeParallelSelves: parsed.data.includeParallelSelves,
     });
@@ -338,12 +322,14 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode: "invalid_agent_profile_draft",
+      source: "llm",
     });
 
-    return fallbackResponse({
+    return logFallbackResponse({
       seedContext,
       confirmedPeople,
       traceId,
+      userId,
       fallbackReason: "invalid_agent_profile_draft",
       includeParallelSelves: parsed.data.includeParallelSelves,
     });
@@ -360,6 +346,7 @@ export async function POST(request: NextRequest) {
     outputTokenEstimate: llmResult.outputTokenEstimate,
     costEstimate: llmResult.costEstimate,
     errorCode: null,
+    source: "llm",
     metadata: { agent_count: agents.length },
   });
 
@@ -376,14 +363,19 @@ export async function POST(request: NextRequest) {
   });
 }
 
-async function getAuthenticatedUserId() {
+async function getAuthenticatedUser() {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
 
   const { data, error } = await supabase.auth.getUser();
   if (error) return null;
 
-  return data.user?.id ?? null;
+  if (!data.user?.id) return null;
+
+  return {
+    id: data.user.id,
+    email: data.user.email ?? null,
+  };
 }
 
 function fallbackResponse({
@@ -421,6 +413,45 @@ function fallbackResponse({
     latency_ms: 0,
     error_code: fallbackReason,
     agents,
+  });
+}
+
+async function logFallbackResponse({
+  seedContext,
+  confirmedPeople,
+  traceId,
+  userId,
+  fallbackReason,
+  includeParallelSelves,
+  metadata,
+}: {
+  seedContext: SeedContextDraft;
+  confirmedPeople: KeyPersonDraft[];
+  traceId: string;
+  userId: string;
+  fallbackReason: string;
+  includeParallelSelves: boolean;
+  metadata?: Record<string, unknown>;
+}) {
+  await logModelCall({
+    traceId,
+    userId,
+    source: "local_fallback",
+    jobType: "agent_profiles_generate",
+    promptVersion: agentProfileDraftingModelConfig.promptVersion,
+    modelVersion: "not_called",
+    latencyMs: 0,
+    costEstimate: 0,
+    errorCode: fallbackReason,
+    metadata,
+  });
+
+  return fallbackResponse({
+    seedContext,
+    confirmedPeople,
+    traceId,
+    fallbackReason,
+    includeParallelSelves,
   });
 }
 

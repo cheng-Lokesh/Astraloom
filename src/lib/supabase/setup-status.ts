@@ -46,11 +46,13 @@ export function buildSupabaseSetupStatus(): SupabaseSetupStatusPayload {
         "0003_paid_beta_writers.sql",
       ),
     );
-  const dangerousFlagsOff =
+  const localAuthSyncFlagsOff =
     !serviceRoleConfigured &&
     !systemWritersEnabled &&
     !aiGenerationEnabled &&
     !stripeWritesEnabled;
+  const stagingBetaFlagsOff =
+    !systemWritersEnabled && !aiGenerationEnabled && !stripeWritesEnabled;
 
   const steps: SupabaseSetupStep[] = [
     {
@@ -69,10 +71,12 @@ export function buildSupabaseSetupStatus(): SupabaseSetupStatusPayload {
     },
     {
       id: "dangerous_flags",
-      status: dangerousFlagsOff ? "ready" : "blocked",
-      detail: dangerousFlagsOff
-        ? "Service-role, system writers, AI generation, and Stripe writes are disabled."
-        : "Disable service-role/system writer/AI/Stripe flags before testing auth sync.",
+      status: stagingBetaFlagsOff ? "ready" : "blocked",
+      detail: stagingBetaFlagsOff
+        ? serviceRoleConfigured
+          ? "Staging Beta mode: service-role is configured server-side, while system writers, AI generation, and Stripe writes are disabled."
+          : "Local auth-sync mode: service-role, system writers, AI generation, and Stripe writes are disabled."
+        : "Disable system writer/AI/Stripe flags before testing controlled Staging Beta.",
     },
     {
       id: "migration",
@@ -118,7 +122,9 @@ export function buildSupabaseSetupStatus(): SupabaseSetupStatusPayload {
     aiGenerationEnabled,
     stripeWritesEnabled,
     migrationFilePresent,
-    safeForAuthSync: supabaseConfigured && dangerousFlagsOff && migrationFilePresent,
+    safeForAuthSync: supabaseConfigured && localAuthSyncFlagsOff && migrationFilePresent,
+    safeForStagingBeta:
+      supabaseConfigured && stagingBetaFlagsOff && migrationFilePresent,
     steps,
   };
 }

@@ -7,6 +7,7 @@ import {
   keyPeopleExtractionModelConfig,
 } from "@/lib/llm/model-config";
 import { buildExtractPeoplePrompt } from "@/lib/llm/prompts/extract-people";
+import { checkAiTesterAllowlist } from "@/lib/llm/ai-tester-allowlist.server";
 import { checkLlmRateLimit } from "@/lib/llm/rate-limit";
 import { logModelCall } from "@/lib/model-call-log/log-model-call";
 import { extractPeopleCandidates } from "@/lib/people/extract";
@@ -78,6 +79,35 @@ function fallbackOutput(
   });
 }
 
+async function logFallbackOutput({
+  seedContext,
+  traceId,
+  userId,
+  fallbackReason,
+  metadata,
+}: {
+  seedContext: SeedContextDraft;
+  traceId: string;
+  userId: string;
+  fallbackReason: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await logModelCall({
+    traceId,
+    userId,
+    source: "local_fallback",
+    jobType: "key_people_extract",
+    promptVersion: keyPeopleExtractionModelConfig.promptVersion,
+    modelVersion: "not_called",
+    latencyMs: 0,
+    costEstimate: 0,
+    errorCode: fallbackReason,
+    metadata,
+  });
+
+  return fallbackOutput(seedContext, traceId, fallbackReason);
+}
+
 export async function POST(request: NextRequest) {
   const traceId = createTraceId();
   const body = await request.json().catch(() => null);
@@ -106,43 +136,48 @@ export async function POST(request: NextRequest) {
   }
 
   const seedContext = parsed.data.seedContext satisfies SeedContextDraft;
-  const userId = await getAuthenticatedUserId();
+  const authUser = await getAuthenticatedUser();
 
-  if (!userId) {
+  if (!authUser) {
     return fallbackOutput(seedContext, traceId, "auth_required");
   }
+
+  const userId = authUser.id;
 
   const safety = verifySafety({ seedContext });
 
   if (safety.safetyLevel === "downgraded" || safety.safetyLevel === "blocked") {
-    await logModelCall({
+    return logFallbackOutput({
+      seedContext,
       traceId,
       userId,
-      jobType: "key_people_extract",
-      promptVersion: keyPeopleExtractionModelConfig.promptVersion,
-      modelVersion: "not_called",
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: `safety_${safety.safetyLevel}`,
+      fallbackReason: `safety_${safety.safetyLevel}`,
       metadata: { flags: safety.flags },
     });
-
-    return fallbackOutput(seedContext, traceId, `safety_${safety.safetyLevel}`);
   }
 
   if (!isAiGenerationEnabled()) {
-    await logModelCall({
+    return logFallbackOutput({
+      seedContext,
       traceId,
       userId,
-      jobType: "key_people_extract",
-      promptVersion: keyPeopleExtractionModelConfig.promptVersion,
-      modelVersion: "not_called",
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "ai_generation_disabled",
+      fallbackReason: "ai_generation_disabled",
     });
+  }
 
-    return fallbackOutput(seedContext, traceId, "ai_generation_disabled");
+  const aiTesterGate = checkAiTesterAllowlist({
+    userId,
+    email: authUser.email,
+  });
+
+  if (!aiTesterGate.allowed) {
+    return logFallbackOutput({
+      seedContext,
+      traceId,
+      userId,
+      fallbackReason: "ai_tester_not_allowlisted",
+      metadata: { email_allowlist_checked: Boolean(authUser.email) },
+    });
   }
 
   const rateLimit = await checkLlmRateLimit({
@@ -151,30 +186,16 @@ export async function POST(request: NextRequest) {
   });
 
   if (!rateLimit.allowed) {
-    await logModelCall({
+    return logFallbackOutput({
+      seedContext,
       traceId,
       userId,
-      jobType: "key_people_extract",
-      promptVersion: keyPeopleExtractionModelConfig.promptVersion,
-      modelVersion: "not_called",
-      latencyMs: 0,
-      costEstimate: 0,
-      errorCode: "rate_limited",
+      fallbackReason: "rate_limited",
       metadata: {
         limit: rateLimit.limit,
         reset_at: rateLimit.resetAt,
       },
     });
-
-    return NextResponse.json(
-      {
-        ok: false,
-        trace_id: traceId,
-        error_code: "rate_limited",
-        retry_after: rateLimit.resetAt,
-      },
-      { status: 429 },
-    );
   }
 
   const prompt = buildExtractPeoplePrompt(seedContext);
@@ -196,9 +217,15 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode: llmResult.errorCode,
+      source: "llm",
     });
 
-    return fallbackOutput(seedContext, traceId, llmResult.errorCode);
+    return logFallbackOutput({
+      seedContext,
+      traceId,
+      userId,
+      fallbackReason: llmResult.errorCode,
+    });
   }
 
   const parsedJson = parseLlmJson(llmResult.rawText);
@@ -215,9 +242,15 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode: parsedJson.errorCode,
+      source: "llm",
     });
 
-    return fallbackOutput(seedContext, traceId, parsedJson.errorCode);
+    return logFallbackOutput({
+      seedContext,
+      traceId,
+      userId,
+      fallbackReason: parsedJson.errorCode,
+    });
   }
 
   const validated = keyPeopleExtractionSchema.safeParse(parsedJson.data);
@@ -236,9 +269,15 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode,
+      source: "llm",
     });
 
-    return fallbackOutput(seedContext, traceId, errorCode);
+    return logFallbackOutput({
+      seedContext,
+      traceId,
+      userId,
+      fallbackReason: errorCode,
+    });
   }
 
   const output = validated.data;
@@ -255,13 +294,15 @@ export async function POST(request: NextRequest) {
       outputTokenEstimate: llmResult.outputTokenEstimate,
       costEstimate: llmResult.costEstimate,
       errorCode: "llm_output_forbidden_inference",
+      source: "llm",
     });
 
-    return fallbackOutput(
+    return logFallbackOutput({
       seedContext,
       traceId,
-      "llm_output_forbidden_inference",
-    );
+      userId,
+      fallbackReason: "llm_output_forbidden_inference",
+    });
   }
 
   const candidates = output.people.map((person) =>
@@ -279,6 +320,7 @@ export async function POST(request: NextRequest) {
     outputTokenEstimate: llmResult.outputTokenEstimate,
     costEstimate: llmResult.costEstimate,
     errorCode: null,
+    source: "llm",
     metadata: { candidate_count: candidates.length },
   });
 
@@ -297,14 +339,19 @@ export async function POST(request: NextRequest) {
   });
 }
 
-async function getAuthenticatedUserId() {
+async function getAuthenticatedUser() {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
 
   const { data, error } = await supabase.auth.getUser();
   if (error) return null;
 
-  return data.user?.id ?? null;
+  if (!data.user?.id) return null;
+
+  return {
+    id: data.user.id,
+    email: data.user.email ?? null,
+  };
 }
 
 function parseLlmJson(rawText: string):

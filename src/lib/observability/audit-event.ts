@@ -26,6 +26,7 @@ export type ObservabilityEvent = {
   outputTokenEstimate: number;
   costEstimate: number;
   costCents: number;
+  source: "llm" | "local_fallback" | "not_applicable";
   errorCode: string | null;
   version?: string | null;
   engineVersion?: string | null;
@@ -41,6 +42,10 @@ export type ObservabilitySummary = {
   failedTasks: ObservabilityEvent[];
   averageCost: number;
   averageCostCents: number;
+  todayLlmCallCount: number;
+  todayFallbackCount: number;
+  todayCostEstimate: number;
+  todayCostEstimateCents: number;
   errorCodeDistribution: Array<{ key: string; count: number }>;
   promptVersionDistribution: Array<{ key: string; count: number }>;
   eventCount: number;
@@ -136,6 +141,13 @@ export function recordModelCallEvent(input: {
     inputTokenEstimate: input.inputTokenEstimate ?? 0,
     outputTokenEstimate: input.outputTokenEstimate ?? 0,
     costEstimate: input.costEstimate,
+    source:
+      input.metadata?.source === "local_fallback" ||
+      input.metadata?.source === "llm"
+        ? input.metadata.source
+        : input.modelVersion === "not_called"
+          ? "local_fallback"
+          : "llm",
     errorCode: input.errorCode,
     metadata: input.metadata,
   });
@@ -153,8 +165,18 @@ export function recordModelCallEvent(input: {
     inputTokenEstimate: event.inputTokenEstimate,
     outputTokenEstimate: event.outputTokenEstimate,
     costEstimate: input.costEstimate,
+    source:
+      input.metadata?.source === "local_fallback" ||
+      input.metadata?.source === "llm"
+        ? input.metadata.source
+        : input.modelVersion === "not_called"
+          ? "local_fallback"
+          : "llm",
     errorCode: input.errorCode,
-    metadata: { source: "model_call_log" },
+    metadata: {
+      source: event.source,
+      mirror_source: "model_call_log",
+    },
   });
 
   return event;
@@ -183,6 +205,7 @@ export function recordSimulationRunEvent(input: {
     outputTokenEstimate: 0,
     costEstimate: (input.costCents ?? 0) / 100,
     costCents: input.costCents ?? 0,
+    source: "not_applicable",
     errorCode: input.errorCode ?? null,
     version: input.version,
     engineVersion: input.engineVersion,
@@ -210,6 +233,7 @@ export function recordReportGenerationEvent(input: {
     inputTokenEstimate: 0,
     outputTokenEstimate: 0,
     costEstimate: 0,
+    source: "not_applicable",
     errorCode: input.errorCode ?? null,
     claimIds: input.claimIds,
     evidenceEventCount: input.evidenceEventCount,
@@ -248,12 +272,32 @@ export function summarizeObservabilityEvents(
             events.length
           ).toFixed(6),
         );
+  const todayPrefix = new Date().toISOString().slice(0, 10);
+  const todayEvents = events.filter((event) =>
+    event.createdAt.startsWith(todayPrefix),
+  );
+  const todayModelCallEvents = todayEvents.filter(
+    (event) => event.kind === "model_call",
+  );
+  const todayCostEstimate = Number(
+    todayModelCallEvents
+      .reduce((total, event) => total + event.costEstimate, 0)
+      .toFixed(6),
+  );
 
   return {
     recentTasks,
     failedTasks,
     averageCost,
     averageCostCents: estimateCostCents(averageCost),
+    todayLlmCallCount: todayModelCallEvents.filter(
+      (event) => event.source === "llm",
+    ).length,
+    todayFallbackCount: todayModelCallEvents.filter(
+      (event) => event.source === "local_fallback",
+    ).length,
+    todayCostEstimate,
+    todayCostEstimateCents: estimateCostCents(todayCostEstimate),
     errorCodeDistribution: distribution(events, (event) => event.errorCode),
     promptVersionDistribution: distribution(
       events,

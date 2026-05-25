@@ -41,10 +41,13 @@ Allowed operations:
 - Validate request and model output with Zod.
 - Attach a `trace_id` to every request.
 - Record a model call log entry with `prompt_version`, `model_version`,
-  `latency_ms`, `cost_estimate`, and `error_code`.
+  `latency_ms`, `cost_estimate`, `error_code`, and `source`.
+- `ENABLE_AI_GENERATION=true` only opens the global gate. The authenticated
+  user must also match `ALLOWED_AI_TESTER_EMAILS` or
+  `ALLOWED_AI_TESTER_USER_IDS` before the route may call a real model.
 - Fall back to local `extractPeopleCandidates` when the LLM is unavailable,
   times out, returns invalid JSON, fails schema validation, or is blocked by
-  SafetyVerifier.
+  SafetyVerifier, rate limits, disabled AI config, or the tester allowlist.
 
 Input:
 
@@ -141,7 +144,8 @@ Allowed operations:
 - Validate request and model output with Zod.
 - Fall back to local `buildAgentProfiles` when the LLM is unavailable, times
   out, returns invalid JSON, fails schema validation, violates safety language,
-  or SafetyVerifier downgrades the scenario.
+  SafetyVerifier downgrades the scenario, rate limits, disabled AI config, or
+  the tester allowlist.
 
 Forbidden:
 
@@ -208,6 +212,9 @@ Allowed operations:
 
 Forbidden:
 
+- Do not call an LLM from this route during controlled beta. Report copy must
+  come from the deterministic Report Engine unless a later task explicitly
+  approves a separate report-text gate.
 - Do not create strong claims without evidence.
 - Do not increase certainty for paid reports.
 - Do not accept Claims that lack `evidence_event_ids`.
@@ -358,6 +365,7 @@ Allowed operations:
 - List failed tasks.
 - Return average cost, `error_code` distribution, and `prompt_version`
   distribution.
+- Return today's LLM call count, fallback count, and cost estimate.
 - Return metadata only.
 
 Forbidden:

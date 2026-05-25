@@ -26,5 +26,6 @@ export type SupabaseSetupStatusPayload = {
   stripeWritesEnabled: boolean;
   migrationFilePresent: boolean;
   safeForAuthSync: boolean;
+  safeForStagingBeta: boolean;
   steps: SupabaseSetupStep[];
 };

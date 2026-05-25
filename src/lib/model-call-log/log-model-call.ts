@@ -7,6 +7,7 @@ export type ModelCallLogEntry = {
   traceId: string;
   userId?: string | null;
   jobId?: string | null;
+  source?: "llm" | "local_fallback";
   jobType:
     | "key_people_extract"
     | "agent_profiles_generate"
@@ -25,10 +26,13 @@ const localModelCallLogs: ModelCallLogEntry[] = [];
 
 export async function logModelCall(entry: ModelCallLogEntry) {
   const userId = entry.userId?.trim();
+  const source: "llm" | "local_fallback" =
+    entry.source ?? (entry.modelVersion === "not_called" ? "local_fallback" : "llm");
   const normalizedEntry = {
     inputTokenEstimate: 0,
     outputTokenEstimate: 0,
     jobId: null,
+    source,
     ...entry,
     userId: userId ?? null,
   };
@@ -52,7 +56,10 @@ export async function logModelCall(entry: ModelCallLogEntry) {
       outputTokenEstimate: normalizedEntry.outputTokenEstimate,
       costEstimate: normalizedEntry.costEstimate,
       errorCode: normalizedEntry.errorCode,
-      metadata: normalizedEntry.metadata,
+      metadata: {
+        ...(normalizedEntry.metadata ?? {}),
+        source: normalizedEntry.source,
+      },
     });
 
     await writeGeneratedArtifact({
@@ -79,7 +86,10 @@ export async function logModelCall(entry: ModelCallLogEntry) {
         input_refs: {
           job_id: normalizedEntry.jobId,
         },
-        output_refs: normalizedEntry.metadata ?? {},
+        output_refs: {
+          ...(normalizedEntry.metadata ?? {}),
+          source: normalizedEntry.source,
+        },
         safety_level: String(normalizedEntry.metadata?.safety_level ?? "normal"),
         error_code: normalizedEntry.errorCode,
       },
@@ -97,6 +107,7 @@ export async function logModelCall(entry: ModelCallLogEntry) {
     input_token_estimate: normalizedEntry.inputTokenEstimate,
     output_token_estimate: normalizedEntry.outputTokenEstimate,
     cost_estimate: normalizedEntry.costEstimate,
+    source: normalizedEntry.source,
     error_code: normalizedEntry.errorCode,
     metadata: normalizedEntry.metadata,
   });

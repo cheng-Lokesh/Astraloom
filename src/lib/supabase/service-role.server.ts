@@ -25,17 +25,17 @@ export function getServiceRoleSupabaseClient() {
 export async function getAuthenticatedServerContext(
   request: Request,
 ): Promise<AuthenticatedServerContext> {
-  const supabase = getServiceRoleSupabaseClient();
-
-  if (!supabase) {
-    return { ok: false, errorCode: "service_role_missing", status: 503 };
-  }
-
   const authorization = request.headers.get("authorization") ?? "";
   const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
 
   if (!token) {
     return { ok: false, errorCode: "auth_token_missing", status: 401 };
+  }
+
+  const supabase = getServiceRoleSupabaseClient();
+
+  if (!supabase) {
+    return { ok: false, errorCode: "service_role_missing", status: 503 };
   }
 
   const { data, error } = await supabase.auth.getUser(token);

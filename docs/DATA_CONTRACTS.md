@@ -63,8 +63,9 @@ Production table rules:
 - `reports.claim_ids` is required and must contain at least one claim id before
   a report can be persisted as reportable.
 - `model_call_logs` records `prompt_version`, `model_version`, `latency_ms`,
-  `input_token_estimate`, `output_token_estimate`, `cost_estimate`, and
-  `error_code`.
+  `input_token_estimate`, `output_token_estimate`, `cost_estimate`,
+  `error_code`, and `source` inside metadata/output refs. `source` is either
+  `llm` or `local_fallback`.
 - `support_tickets.ticket_type` supports `generation_failure`,
   `refund_request`, `safety_appeal`, `privacy_delete_request`,
   `billing_question`, and `general_support`.
@@ -674,6 +675,14 @@ Model call logging rules:
 - Every LLM route records `trace_id`, `user_id`, `job_id`, `prompt_version`,
   `model_version`, `latency_ms`, token estimates, `cost_estimate`, and
   `error_code`.
+- Key People extraction and Agent Profile drafting may call an LLM only when
+  `ENABLE_AI_GENERATION=true` and the authenticated user matches
+  `ALLOWED_AI_TESTER_EMAILS` or `ALLOWED_AI_TESTER_USER_IDS`.
+- Non-allowlisted users, anonymous users, safety-downgraded inputs,
+  rate-limited users, disabled AI environments, and failed model responses must
+  continue through deterministic `local_fallback`.
+- LLM routes must not generate Claims or Reports. Claims and Reports remain
+  downstream of Event Logs and the deterministic Report Engine.
 - Logs store token counts, ids, route/job metadata, and bounded output refs.
 - Logs must not store raw prompts, raw user source text, service keys, or
   unnecessary sensitive inputs.
