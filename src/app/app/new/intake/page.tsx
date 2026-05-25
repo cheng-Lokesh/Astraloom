@@ -13,12 +13,29 @@ import { verifySafety } from "@/lib/safety/safety-verifier";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
 
 const sample = {
+  situationSummary:
+    "I am deciding between a higher-paying new role and staying with my current team for a promised promotion. The decision affects my manager relationship, my reputation with the current team, and my ability to keep options open.",
   question:
-    "我应该接受一个更高薪但不确定的新机会，还是留在当前团队等待承诺中的晋升？",
-  context:
-    "新公司给了更高薪资和更大职责，但行业风险更高。现在团队稳定，直属上级口头支持晋升，但没有明确时间表。我担心跳槽影响长期声誉，也担心留下会错过窗口。",
-  people: "当前上级、招聘方、核心同事、伴侣",
+    "Should I accept the new role now, or stay with my current team while asking for a clearer promotion timeline?",
+  recentEvents:
+    "My manager said promotion support is likely but did not give a date. The recruiter asked for an answer next week. A trusted colleague hinted that budget approval may be slower than expected.",
+  people:
+    "Current manager: controls promotion timing. Recruiter: controls offer deadline. Trusted colleague: has internal budget context. Partner: affected by schedule and income changes.",
+  decisionOptions:
+    "Accept the new role. Stay and negotiate a written promotion timeline. Ask both sides for one more week before deciding.",
+  forbiddenActions:
+    "Do not burn bridges with the current team. Do not accept vague promises as confirmed evidence. Do not disclose confidential team information.",
+  desiredOutput:
+    "Show the main relationship pressure points, event evidence to watch, and low-risk communication options for the next 90 days.",
 };
+
+const timeWindows: Array<[TimeWindow, string, string]> = [
+  ["30_days", "30 days", "Track A"],
+  ["90_days", "90 days", "Track A"],
+  ["1_year", "1 year", "Track B"],
+  ["3_years", "3 years", "Track B"],
+  ["5_years", "5 years", "Track B"],
+];
 
 export default function IntakePage() {
   const [repos] = useState(() => getRepositories());
@@ -26,11 +43,28 @@ export default function IntakePage() {
     const result = repos.seedContexts.load();
     return result.ok ? result.data : null;
   });
+  const [situationSummary, setSituationSummary] = useState(
+    initialDraft?.situationSummary ?? "",
+  );
   const [question, setQuestion] = useState(initialDraft?.questionText ?? "");
-  const [context, setContext] = useState(initialDraft?.situationSummary ?? "");
+  const [recentEvents, setRecentEvents] = useState(
+    initialDraft?.recentEventsText ?? "",
+  );
   const [people, setPeople] = useState(initialDraft?.keyPeopleText ?? "");
+  const [decisionOptions, setDecisionOptions] = useState(
+    initialDraft?.decisionOptionsText ?? "",
+  );
+  const [forbiddenActions, setForbiddenActions] = useState(
+    initialDraft?.forbiddenActionsText ?? "",
+  );
+  const [desiredOutput, setDesiredOutput] = useState(
+    initialDraft?.desiredOutputText ?? "",
+  );
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(
     initialDraft?.timeWindow ?? "90_days",
+  );
+  const [privacySafetyAck, setPrivacySafetyAck] = useState(
+    initialDraft?.privacySafetyAck ?? initialDraft?.privacyAck ?? false,
   );
   const [message, setMessage] = useState("");
   const [safetyDecision, setSafetyDecision] = useState<SafetyDecision | null>(
@@ -38,8 +72,18 @@ export default function IntakePage() {
   );
 
   function save(status: SeedContextDraft["status"] = "submitted") {
+    if (situationSummary.trim().length < 20) {
+      setMessage("Add a short situation summary so agents have a clear starting point.");
+      return false;
+    }
+
     if (question.trim().length < 8) {
-      setMessage("请至少写下一个具体问题，系统才有足够上下文抽取人物。");
+      setMessage("Add one concrete scenario question for the simulation to orient around.");
+      return false;
+    }
+
+    if (!privacySafetyAck) {
+      setMessage("Acknowledge the privacy and safety boundary before saving this sandbox.");
       return false;
     }
 
@@ -52,10 +96,15 @@ export default function IntakePage() {
           ? "crossroad"
           : "life_climate",
       timeWindow,
-      situationSummary: context.trim(),
+      situationSummary: situationSummary.trim(),
+      recentEventsText: recentEvents.trim(),
       keyPeopleText: people.trim(),
-      privacyAck: true,
-      locale: "zh",
+      decisionOptionsText: decisionOptions.trim(),
+      forbiddenActionsText: forbiddenActions.trim(),
+      desiredOutputText: desiredOutput.trim(),
+      privacyAck: privacySafetyAck,
+      privacySafetyAck,
+      locale: "en",
       status,
       createdAt: initialDraft?.createdAt ?? now,
       updatedAt: now,
@@ -73,89 +122,107 @@ export default function IntakePage() {
       setMessage(`Save failed: ${result.errorCode}`);
       return false;
     }
+
     if (decision.safetyLevel === "downgraded") {
       setMessage(decision.userMessage);
       return true;
     }
-    setMessage("已保存局面信息。下一步请确认关键人物。");
+
+    setMessage(
+      "Scenario saved. The next page can use the richer context to extract better key people.",
+    );
     return true;
   }
 
   function useSample() {
+    setSituationSummary(sample.situationSummary);
     setQuestion(sample.question);
-    setContext(sample.context);
+    setRecentEvents(sample.recentEvents);
     setPeople(sample.people);
+    setDecisionOptions(sample.decisionOptions);
+    setForbiddenActions(sample.forbiddenActions);
+    setDesiredOutput(sample.desiredOutput);
     setTimeWindow("90_days");
-    setMessage("已载入样例，你可以直接保存并进入人物确认。");
+    setPrivacySafetyAck(true);
+    setMessage("Sample loaded. Save it or continue to people confirmation.");
   }
 
   return (
     <AppShell>
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <main className="rounded-lg border border-black/8 bg-white p-7 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-          <StatusPill tone="planned">Situation setup</StatusPill>
-          <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight tracking-[-0.03em] text-[#11150f]">
-            先讲清楚一个真实局面。
+          <StatusPill tone="planned">Structured situation intake</StatusPill>
+          <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight text-[#11150f]">
+            Give the sandbox enough real-world evidence to build useful agents.
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
-            本页只负责保存起始上下文，不生成 Agent、不调用 LLM、不生成报告。下一步会把关键人物变成可确认的 Agent 候选。
+            Tell the case in natural language, then add the signals that matter: recent events,
+            people, options, boundaries, and what you want the simulation to compare.
           </p>
 
           <div className="mt-7 space-y-5">
-            <label className="block">
-              <span className="text-sm font-semibold text-[#11150f]">
-                主问题
-              </span>
-              <textarea
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
+            <TextAreaField
+              label="Situation summary"
+              value={situationSummary}
+              onChange={setSituationSummary}
+              rows={4}
+              placeholder="In a few sentences, describe the scene, why it matters, and what relationship dynamics are involved."
+            />
+            <TextAreaField
+              label="Main question"
+              value={question}
+              onChange={setQuestion}
+              rows={3}
+              placeholder="Example: Should I accept the new role now, or stay and ask for a clearer promotion timeline?"
+            />
+            <TextAreaField
+              label="Recent key events"
+              value={recentEvents}
+              onChange={setRecentEvents}
+              rows={4}
+              placeholder="List observed events, promises, conflicts, deadlines, changed behavior, missing information, or new opportunities."
+            />
+            <TextAreaField
+              label="Key people hints"
+              value={people}
+              onChange={setPeople}
+              rows={3}
+              placeholder="Name people or roles, plus why each person matters in the scenario."
+            />
+            <div className="grid gap-5 md:grid-cols-2">
+              <TextAreaField
+                label="Decision options"
+                value={decisionOptions}
+                onChange={setDecisionOptions}
                 rows={4}
-                placeholder="例如：我要不要接受一个更高薪但不确定的新机会？"
-                className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-4 py-3 text-sm leading-7 text-[#11150f] outline-none focus:border-[#568262]"
+                placeholder="List the realistic options the simulation should compare."
               />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-[#11150f]">
-                背景和近期事件
-              </span>
-              <textarea
-                value={context}
-                onChange={(event) => setContext(event.target.value)}
-                rows={5}
-                placeholder="写下最近发生了什么、有哪些承诺、冲突、机会或限制。"
-                className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-4 py-3 text-sm leading-7 text-[#11150f] outline-none focus:border-[#568262]"
+              <TextAreaField
+                label="Forbidden actions"
+                value={forbiddenActions}
+                onChange={setForbiddenActions}
+                rows={4}
+                placeholder="List actions that should stay out of scope, such as bridges you will not burn or boundaries you will keep."
               />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-[#11150f]">
-                关键人物提示
-              </span>
-              <input
-                value={people}
-                onChange={(event) => setPeople(event.target.value)}
-                placeholder="例如：当前上级、招聘方、核心同事、伴侣"
-                className="mt-2 w-full rounded-md border border-black/10 bg-[#f7f8f4] px-4 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
-              />
-            </label>
+            </div>
+            <TextAreaField
+              label="Desired output"
+              value={desiredOutput}
+              onChange={setDesiredOutput}
+              rows={3}
+              placeholder="Example: Show pressure points, evidence to watch, and communication options for the next 90 days."
+            />
 
             <div>
               <div className="text-sm font-semibold text-[#11150f]">
-                时间视界
+                Time horizon
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {[
-                  ["30_days", "30 天"],
-                  ["90_days", "90 天"],
-                  ["1_year", "1 年"],
-                  ["3_years", "3 年"],
-                  ["5_years", "5 年"],
-                ].map(([value, label]) => (
+                {timeWindows.map(([value, label, trackLabel]) => (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setTimeWindow(value as TimeWindow)}
+                    onClick={() => setTimeWindow(value)}
                     className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
                       timeWindow === value
                         ? "border-[#11150f] bg-[#11150f] text-white"
@@ -163,10 +230,26 @@ export default function IntakePage() {
                     }`}
                   >
                     {label}
+                    <span className="ml-2 text-xs opacity-70">{trackLabel}</span>
                   </button>
                 ))}
               </div>
             </div>
+
+            <label className="flex gap-3 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+              <input
+                type="checkbox"
+                checked={privacySafetyAck}
+                onChange={(event) => setPrivacySafetyAck(event.target.checked)}
+                className="mt-1 h-4 w-4 shrink-0 accent-[#11150f]"
+              />
+              <span className="text-sm leading-6 text-[#52594d]">
+                I understand this local sandbox uses my text as scenario evidence for agents,
+                relationship graph, simulation events, and evidence-linked notes. I will avoid
+                entering secrets that are not needed, and I understand this is not professional
+                advice or a way to bypass safety boundaries.
+              </span>
+            </label>
           </div>
 
           <div className="mt-7 flex flex-wrap gap-3">
@@ -175,14 +258,14 @@ export default function IntakePage() {
               onClick={() => save()}
               className="rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a3026]"
             >
-              保存局面信息
+              Save scenario
             </button>
             <button
               type="button"
               onClick={useSample}
               className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f] transition hover:border-[#11150f]"
             >
-              使用样例文本
+              Use sample text
             </button>
             <Link
               href="/app/new/people"
@@ -191,7 +274,7 @@ export default function IntakePage() {
               }}
               className="rounded-md border border-[#568262]/30 bg-[#eef5ee] px-5 py-3 text-sm font-semibold text-[#2f5d3d] transition hover:border-[#568262]"
             >
-              进入人物确认
+              Confirm people
             </Link>
           </div>
 
@@ -202,7 +285,7 @@ export default function IntakePage() {
             <div className="mt-5">
               <SafetyDowngradeNotice
                 decision={safetyDecision}
-                title="Safety check before saving"
+                title="Safety check before simulation"
               />
             </div>
           ) : null}
@@ -210,16 +293,46 @@ export default function IntakePage() {
 
         <aside className="h-fit rounded-lg border border-black/8 bg-[#11150f] p-6 text-white">
           <h2 className="text-sm font-semibold text-[#b7e6c6]">
-            想快速体验完整形态？
+            Why these fields matter
           </h2>
-          <p className="mt-4 text-sm leading-7 text-white/64">
-            直接载入试用样例，会一次性生成 Agent、只读关系图谱、Event Log 和带证据的 Claim 草稿。
-          </p>
+          <div className="mt-5 space-y-4 text-sm leading-6 text-white/66">
+            <p>Events give the simulation evidence anchors instead of unsupported claims.</p>
+            <p>People hints improve agent candidates and reduce missing relationship roles.</p>
+            <p>Options and forbidden actions keep the sandbox focused on realistic branches.</p>
+            <p>Desired output tells the result page what evidence and strategy depth to emphasize.</p>
+          </div>
           <TrialSampleButton className="mt-5 inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]">
-            载入完整样例
+            Open sample sandbox
           </TrialSampleButton>
         </aside>
       </section>
     </AppShell>
+  );
+}
+
+function TextAreaField({
+  label,
+  value,
+  onChange,
+  rows,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows: number;
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-semibold text-[#11150f]">{label}</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-4 py-3 text-sm leading-7 text-[#11150f] outline-none focus:border-[#568262]"
+      />
+    </label>
   );
 }

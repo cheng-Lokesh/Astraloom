@@ -173,9 +173,17 @@ Must show execution stages:
 - Freeze graph.
 - Build tick queue.
 - Run agent interactions.
+- Update relation edges.
 - Write Event Log.
 - Build Claims.
 - Prepare report preview.
+
+Must show:
+
+- Tick previews.
+- Branch names: `baseline`, `cautious_self`, and `decisive_self`.
+- Generated Event Log count.
+- Concrete fixes for blocked or not-ready states.
 
 Must not:
 

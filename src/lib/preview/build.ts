@@ -1,5 +1,6 @@
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { KeyPersonDraft } from "@/types/key-person";
+import { getSeedContextNarrative } from "@/lib/seed-context/context-text";
 import type {
   PreviewAgent,
   PreviewRiskLevel,
@@ -335,7 +336,7 @@ export function buildPreviewFromSeed(
 ) {
   return buildProductPreview({
     questionText: seedContext.questionText,
-    situationSummary: seedContext.situationSummary,
+    situationSummary: getSeedContextNarrative(seedContext),
     keyPeopleText: seedContext.keyPeopleText,
     timeWindow: seedContext.timeWindow,
     people,

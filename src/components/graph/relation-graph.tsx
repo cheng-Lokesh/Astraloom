@@ -57,7 +57,7 @@ function edgeColor(edge: RelationEdgeDraft) {
   return palette.npc;
 }
 
-function edgeLabel(weights: RelationWeights) {
+function topWeightLabel(weights: RelationWeights) {
   const top = Object.entries(weights).sort((left, right) => right[1] - left[1])[0];
   return `${top[0]} ${top[1]}`;
 }
@@ -84,7 +84,7 @@ function toFlowEdges(
     id: edge.id,
     source: edge.fromAgentId,
     target: edge.toAgentId,
-    label: edgeLabel(edge.weights),
+    label: `${edge.relationshipType} / ${edge.confidence}% / ${topWeightLabel(edge.weights)}`,
     markerEnd: { type: MarkerType.ArrowClosed },
     animated: edge.trend.volatility > 42,
     style: {
@@ -114,10 +114,10 @@ export function RelationGraph({
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-black/8 p-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-            Read-only relationship ledger
+            Read-only scenario graph
           </p>
           <h2 className="mt-2 text-xl font-semibold text-[#11150f]">
-            Agent Profiles to Relation Edges
+            Agents to relationship evidence
           </h2>
         </div>
         <span
@@ -130,7 +130,7 @@ export function RelationGraph({
           {locked ? "Graph Lock: on" : "Graph Lock: draft"}
         </span>
       </div>
-      <div className="h-[620px] bg-[#f7f8f4]">
+      <div className="h-[640px] bg-[#f7f8f4]">
         <ReactFlow
           nodes={flowNodes}
           edges={flowEdges}

@@ -1,6 +1,7 @@
 import type { SafetyReviewDraft } from "@/types/safety-review";
 import type { SeedContextDraft } from "@/types/seed-context";
 import type { SimulationRunDraft } from "@/types/simulation-run";
+import { getSeedContextNarrative } from "@/lib/seed-context/context-text";
 
 function hashText(value: string) {
   let hash = 2166136261;
@@ -22,11 +23,7 @@ const highRiskPatterns = [
 ];
 
 function hasHighRiskContent(seedContext: SeedContextDraft) {
-  const combined = [
-    seedContext.questionText,
-    seedContext.situationSummary,
-    seedContext.keyPeopleText,
-  ].join("\n");
+  const combined = getSeedContextNarrative(seedContext);
 
   return highRiskPatterns.some((pattern) => pattern.test(combined));
 }

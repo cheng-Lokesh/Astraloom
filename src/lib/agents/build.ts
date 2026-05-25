@@ -5,6 +5,7 @@ import type {
   AgentType,
 } from "@/types/agent-profile";
 import type { KeyPersonDraft } from "@/types/key-person";
+import { getSeedContextNarrative } from "@/lib/seed-context/context-text";
 import type { SeedContextDraft } from "@/types/seed-context";
 
 function hashText(value: string) {
@@ -57,14 +58,19 @@ function createAgentProfile(
   };
 }
 
-function selfProfile(seedContext: SeedContextDraft, stance: AgentStance): AgentProfileJson {
+function selfProfile(
+  seedContext: SeedContextDraft,
+  stance: AgentStance,
+): AgentProfileJson {
+  const narrative = getSeedContextNarrative(seedContext);
   const stanceLabels: Record<AgentStance, string> = {
-    baseline: "当前叙事",
-    cautious_parallel: "谨慎平行自我",
-    decisive_parallel: "行动平行自我",
-    confirmed_npc: "确认 NPC",
+    baseline: "Current self",
+    cautious_parallel: "Cautious self variant",
+    decisive_parallel: "Decisive self variant",
+    confirmed_npc: "Confirmed NPC",
   };
-  const speed = stance === "cautious_parallel" ? 34 : stance === "decisive_parallel" ? 76 : 54;
+  const speed =
+    stance === "cautious_parallel" ? 34 : stance === "decisive_parallel" ? 76 : 54;
   const fieldSources = {
     stance: "default",
     role: "default",
@@ -93,19 +99,20 @@ function selfProfile(seedContext: SeedContextDraft, stance: AgentStance): AgentP
     motivation: {
       primaryGoal:
         seedContext.trackType === "crossroad"
-          ? "在当前路口降低后悔成本，并保留可逆选择。"
-          : "识别长期主题中的关系气候和准备窗口。",
-      fear: "误判关键人物反应，或在证据不足时过早承诺。",
+          ? "Keep the decision reversible while comparing near-term relationship dynamics."
+          : "Track the long-horizon relationship climate and preparation windows.",
+      fear:
+        "Acting before the evidence is strong enough, or misreading how key people affect the scenario.",
       avoidancePattern:
         stance === "cautious_parallel"
-          ? "延后冲突，等待更多信号。"
+          ? "Delays direct commitment until more signals are available."
           : stance === "decisive_parallel"
-            ? "更快试探机会，但可能压缩关系缓冲。"
-            : "在信息不足时反复权衡。",
+            ? "Tests options faster, with less buffer for relationship friction."
+            : "Keeps weighing options when evidence is incomplete.",
     },
     resources: {
       authority: scoreFromText(seedContext.questionText, `${stance}:authority`, 35, 65),
-      information: scoreFromText(seedContext.situationSummary, `${stance}:info`, 38, 78),
+      information: scoreFromText(narrative, `${stance}:info`, 38, 78),
       socialCapital: scoreFromText(seedContext.keyPeopleText, `${stance}:social`, 30, 70),
       emotionalLeverage: scoreFromText(seedContext.questionText, `${stance}:emotion`, 32, 76),
     },
@@ -121,13 +128,13 @@ function selfProfile(seedContext: SeedContextDraft, stance: AgentStance): AgentP
       hostilityToUser: 0,
       currentIntention:
         stance === "baseline"
-          ? "等待关系图谱冻结后进入模拟。"
-          : "作为平行策略参与稳定性对照。",
+          ? "Wait for the graph to freeze before simulation starts."
+          : "Act as a comparison branch during simulation.",
     },
-    traits: [stanceLabels[stance], "本地确定性草稿", "证据链输入"],
+    traits: [stanceLabels[stance], "local deterministic draft", "evidence-linked input"],
     constraints: [
-      "不代表确定人格判断。",
-      "不调用 LLM，不生成最终报告结论。",
+      "This is a simulation model, not a truth claim about a person.",
+      "No report claims are generated at the Agent Profile step.",
     ],
     missingFields: [],
   };
@@ -158,13 +165,13 @@ function npcProfile(person: KeyPersonDraft): AgentProfileJson {
 
   return {
     stance: "confirmed_npc",
-    role: person.role || "待确认角色",
+    role: person.role || "unconfirmed role",
     origin:
       person.source === "manual"
-        ? "用户手动补充"
+        ? "user_added"
         : person.source === "key_people_text"
-          ? "用户明确列出"
-          : "从上下文识别",
+          ? "named_in_intake"
+          : "detected_from_intake",
     relationshipToUser: person.relationshipToUser,
     source: {
       confidence: person.confidence,
@@ -173,11 +180,12 @@ function npcProfile(person: KeyPersonDraft): AgentProfileJson {
     },
     fieldSources,
     motivation: {
-      primaryGoal: `${person.role || "该节点"}在本局面中的资源、压力或信号保持可解释。`,
-      fear: "被误读为确定动机，因此必须保留置信度和证据引用。",
+      primaryGoal: `${person.role || "This actor"} stays represented as a resource, pressure, or signal in the scenario.`,
+      fear:
+        "The model may overread limited evidence, so confidence and evidence refs stay visible.",
       avoidancePattern: person.missingFields.length
-        ? "缺失字段未确认前只进入保守推演。"
-        : "等待关系图谱冻结后参与互动。",
+        ? "Uses conservative behavior until missing fields are confirmed."
+        : "Waits for the relationship graph and event rules to shape interactions.",
     },
     resources: {
       authority,
@@ -196,17 +204,17 @@ function npcProfile(person: KeyPersonDraft): AgentProfileJson {
       trustInUser: scoreFromText(person.label, `${person.id}:trust`, 24, 68),
       hostilityToUser: scoreFromText(person.role, `${person.id}:hostility`, 8, 42),
       currentIntention: person.userNote
-        ? `用户补充：${person.userNote}`
-        : "等待关系图谱生成时校准立场。",
+        ? `User note: ${person.userNote}`
+        : "Wait for graph generation to calibrate this actor's simulation role.",
     },
     traits: [
-      "已进入本次决策沙盘",
-      person.status === "confirmed" ? "用户确认存在" : "待确认节点",
-      `置信度 ${person.confidence}%`,
+      "confirmed for this sandbox",
+      person.status === "confirmed" ? "user-confirmed actor" : "candidate actor",
+      `confidence ${person.confidence}%`,
     ],
     constraints: [
-      "不推断第三方真实内心、忠诚或隐藏意图。",
-      "关系边权由系统生成，只读展示。",
+      "Do not infer private inner thoughts, loyalty, deception, or hidden intent as fact.",
+      "Relation weights are generated later and are read-only to the user.",
     ],
     missingFields: person.missingFields,
   };
@@ -229,8 +237,8 @@ export function buildAgentProfiles(
       seedContext.id,
       null,
       "self",
-      "当前的我",
-      "主分身",
+      "Current self",
+      "Decision owner",
       "self",
       86,
       [`seed:${seedContext.id}:self:baseline`],
@@ -245,8 +253,8 @@ export function buildAgentProfiles(
         seedContext.id,
         null,
         "parallel_self",
-        "谨慎的我",
-        "平行分身",
+        "Cautious self",
+        "Comparison branch",
         "self",
         72,
         [`seed:${seedContext.id}:self:cautious_parallel`],
@@ -257,8 +265,8 @@ export function buildAgentProfiles(
         seedContext.id,
         null,
         "parallel_self",
-        "行动的我",
-        "平行分身",
+        "Decisive self",
+        "Comparison branch",
         "self",
         72,
         [`seed:${seedContext.id}:self:decisive_parallel`],

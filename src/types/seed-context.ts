@@ -8,8 +8,13 @@ export type SeedContextDraft = {
   trackType: TrackType;
   timeWindow: TimeWindow;
   situationSummary: string;
+  recentEventsText?: string;
   keyPeopleText: string;
+  decisionOptionsText?: string;
+  forbiddenActionsText?: string;
+  desiredOutputText?: string;
   privacyAck: boolean;
+  privacySafetyAck?: boolean;
   locale: "en" | "zh";
   status: "draft" | "submitted";
   createdAt: string;

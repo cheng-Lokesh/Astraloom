@@ -30,8 +30,13 @@ const seedContextPayloadSchema = z.object({
     .enum(["30_days", "90_days", "1_year", "3_years", "5_years"])
     .default("90_days"),
   situationSummary: z.string().default(""),
+  recentEventsText: z.string().default(""),
   keyPeopleText: z.string().default(""),
+  decisionOptionsText: z.string().default(""),
+  forbiddenActionsText: z.string().default(""),
+  desiredOutputText: z.string().default(""),
   privacyAck: z.boolean().default(true),
+  privacySafetyAck: z.boolean().default(false),
   locale: z.enum(["en", "zh"]).default("zh"),
   status: z.enum(["draft", "submitted"]).default("submitted"),
   createdAt: z.string().default(() => new Date().toISOString()),

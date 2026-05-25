@@ -274,6 +274,18 @@ flow and must include:
 - `locked_at`
 - `updated_at`
 
+Local `SeedContextDraft` may carry additional structured intake fields before
+the production seed-context repository is enabled:
+
+- `recentEventsText`
+- `decisionOptionsText`
+- `forbiddenActionsText`
+- `desiredOutputText`
+- `privacySafetyAck`
+
+These local fields are folded into extraction, safety scanning, and local
+builder context. They do not add production backend writes.
+
 When `graph_locked` is true, the UI must treat the graph as frozen for the
 current run. Users can only supplement facts upstream and regenerate a new graph;
 they cannot directly edit people or edge weights from the graph surface.

@@ -10,19 +10,26 @@ import { TrialSampleButton } from "@/components/trial-sample-button";
 const tracks = [
   {
     id: "track-a",
-    title: "Track A / 具体路口",
-    horizon: "30 / 90 天",
-    body: "适合一次具体选择，重点看短中期关系动态。",
+    title: "Track A",
+    subtitle: "Concrete crossroads",
+    horizon: "30 or 90 days",
+    body: "Use this for one decision with a clear near-term action boundary and a small cast of people.",
   },
   {
     id: "track-b",
-    title: "Track B / 长期气候",
-    horizon: "1 / 3 / 5 年",
-    body: "适合一个主题域的粗粒度变化，不做确定性长期断言。",
+    title: "Track B",
+    subtitle: "Long-horizon climate",
+    horizon: "1, 3, or 5 years",
+    body: "Use this for one theme domain when you need coarse trend windows instead of precise daily outcomes.",
   },
 ];
 
-const scenarios = ["职业选择", "合作关系", "亲密/家庭边界", "自我方向"];
+const scenarios = [
+  "Career decision",
+  "Collaboration tension",
+  "Family or partner boundary",
+  "Personal direction",
+];
 
 export default function ScenePage() {
   const [track, setTrack] = useState(tracks[0].id);
@@ -32,12 +39,14 @@ export default function ScenePage() {
     <AppShell>
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <main className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-          <StatusPill tone="planned">New simulation</StatusPill>
-          <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            从一个沙盘框架开始，而不是做全人生预测。
+          <StatusPill tone="planned">New sandbox</StatusPill>
+          <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight text-[#11150f]">
+            Choose the sandbox shape before intake.
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
-            选择一个轨道和一个主题域，后续才会抽取人物、生成 Agent、冻结只读关系图谱并写入 Event Log。
+            A run starts with a track, one scenario domain, and a time horizon. Intake comes next,
+            then MiroFish extracts people, builds agents, freezes a read-only relationship graph,
+            runs simulation ticks, and shows event-backed notes.
           </p>
 
           <div className="mt-7 grid gap-4 md:grid-cols-2">
@@ -52,11 +61,11 @@ export default function ScenePage() {
                     : "border-black/8 bg-[#f7f8f4] hover:border-[#568262]/30"
                 }`}
               >
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#568262]">
+                <span className="text-xs font-semibold uppercase text-[#568262]">
                   {item.horizon}
                 </span>
                 <h2 className="mt-3 text-lg font-semibold text-[#11150f]">
-                  {item.title}
+                  {item.title}: {item.subtitle}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#62695d]">
                   {item.body}
@@ -67,7 +76,7 @@ export default function ScenePage() {
 
           <div className="mt-7">
             <h2 className="text-sm font-semibold text-[#11150f]">
-              单一主题域
+              One scenario domain
             </h2>
             <div className="mt-3 flex flex-wrap gap-2">
               {scenarios.map((item) => (
@@ -92,22 +101,22 @@ export default function ScenePage() {
               href="/app/new/intake"
               className="inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a3026]"
             >
-              继续输入局面
+              Continue to intake
             </Link>
             <TrialSampleButton className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f] transition hover:border-[#11150f]">
-              载入完整样例
+              Open sample sandbox
             </TrialSampleButton>
           </div>
         </main>
 
         <aside className="h-fit rounded-lg border border-black/8 bg-[#11150f] p-6 text-white">
           <h2 className="text-sm font-semibold text-[#b7e6c6]">
-            产品边界
+            What this will create
           </h2>
           <div className="mt-5 space-y-4 text-sm leading-6 text-white/68">
-            <p>当前试用版不调用 LLM、不收费、不写后端。</p>
-            <p>不是泛聊天、神秘化判断或专业建议工具。</p>
-            <p>一次运行必须锚定 Agent、关系图、事件日志和证据链。</p>
+            <p>Agents for you, optional parallel selves, and the important people in the scene.</p>
+            <p>A relationship graph that can be reviewed but not manually tuned.</p>
+            <p>Simulation event evidence before any scenario note is shown.</p>
           </div>
         </aside>
       </section>

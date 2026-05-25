@@ -1,5 +1,6 @@
 import type { KeyPersonDraft } from "@/types/key-person";
 import type { SeedContextDraft } from "@/types/seed-context";
+import { getSeedContextNarrative } from "@/lib/seed-context/context-text";
 
 type RoleRule = {
   label: string;
@@ -191,13 +192,7 @@ function splitKeyPeopleText(value: string) {
 export function extractPeopleCandidates(seedContext: SeedContextDraft) {
   const now = new Date().toISOString();
   const candidates = new Map<string, KeyPersonDraft>();
-  const combinedContext = [
-    seedContext.questionText,
-    seedContext.situationSummary,
-    seedContext.keyPeopleText,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const combinedContext = getSeedContextNarrative(seedContext);
 
   splitKeyPeopleText(seedContext.keyPeopleText).forEach((label) => {
     const rule = inferRule(label);

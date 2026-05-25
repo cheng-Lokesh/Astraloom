@@ -5,6 +5,7 @@ import {
   safeAllowedActions,
   safetyRules,
 } from "./safety-rules";
+import { getSeedContextNarrative } from "@/lib/seed-context/context-text";
 import type {
   SafetyDecision,
   SafetyFlag,
@@ -48,9 +49,7 @@ function buildSearchText(input: SafetyVerifierInput) {
     .join("\n");
 
   return [
-    seed.questionText,
-    seed.situationSummary,
-    seed.keyPeopleText,
+    getSeedContextNarrative(seed),
     claimText,
     agentText,
     relationText,

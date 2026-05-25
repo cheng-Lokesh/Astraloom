@@ -8,24 +8,35 @@ type RelationEdgeDrawerProps = {
 };
 
 const weightLabels: Record<keyof RelationEdgeDraft["weights"], string> = {
-  trust: "信任基础",
-  hostility: "冲突压力",
-  dependency: "依赖程度",
-  attraction: "吸引/靠近信号",
-  competition: "竞争强度",
-  informationGap: "信息差",
-  resourceControl: "资源控制",
-  emotionalDebt: "情绪债务",
+  trust: "Trust foundation",
+  hostility: "Conflict pressure",
+  dependency: "Dependency",
+  attraction: "Attraction or pull",
+  competition: "Competition",
+  informationGap: "Information gap",
+  resourceControl: "Resource control",
+  emotionalDebt: "Emotional debt",
+};
+
+const weightExplanations: Record<keyof RelationEdgeDraft["weights"], string> = {
+  trust: "Stable cooperation, credibility, or confidence available on this edge.",
+  hostility: "Friction, resistance, or conflict pressure present in the model.",
+  dependency: "Reliance on timing, access, support, approval, or permission from the other actor.",
+  attraction: "Pull, closeness, or desire to keep the relationship connected.",
+  competition: "Competition for attention, resources, status, or options.",
+  informationGap: "Important context that is missing or unevenly distributed between actors.",
+  resourceControl: "Control over money, timing, approval, access, or other leverage.",
+  emotionalDebt: "Unresolved obligation, guilt, or accumulated emotional cost.",
 };
 
 function explainWeight(key: keyof RelationEdgeDraft["weights"], value: number) {
   if (value >= 70) {
-    return `${weightLabels[key]}较高，需要在报告中谨慎解释。`;
+    return `${weightExplanations[key]} This signal is high, so later simulation should treat it carefully.`;
   }
   if (value >= 40) {
-    return `${weightLabels[key]}处在中段，适合作为观察信号。`;
+    return `${weightExplanations[key]} This signal is moderate and useful for event observation.`;
   }
-  return `${weightLabels[key]}较低，目前只作为背景信息。`;
+  return `${weightExplanations[key]} This signal is low and stays as background context.`;
 }
 
 export function RelationEdgeDrawer({ edge, locked }: RelationEdgeDrawerProps) {
@@ -46,12 +57,15 @@ export function RelationEdgeDrawer({ edge, locked }: RelationEdgeDrawerProps) {
     <section className="rounded-lg border border-black/8 bg-white p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+          <p className="text-xs font-semibold uppercase text-[#7d8578]">
             Selected relationship
           </p>
           <h2 className="mt-2 text-lg font-semibold text-[#11150f]">
             {edge.relationshipType}
           </h2>
+          <p className="mt-1 text-xs text-[#7d8578]">
+            confidence {edge.confidence}%
+          </p>
         </div>
         <span className="rounded border border-[#568262]/20 bg-[#eef5ee] px-2 py-1 text-xs font-semibold text-[#2f5d3d]">
           {locked ? "Graph locked" : "Draft"}
@@ -61,6 +75,17 @@ export function RelationEdgeDrawer({ edge, locked }: RelationEdgeDrawerProps) {
       <p className="mt-3 text-sm leading-6 text-[#62695d]">
         {edge.lastInteraction.summary}
       </p>
+
+      <div className="mt-4 rounded-md border border-black/8 bg-[#f7f8f4] p-3">
+        <div className="text-xs font-semibold uppercase text-[#7d8578]">
+          Trend
+        </div>
+        <p className="mt-2 text-sm leading-6 text-[#62695d]">
+          Volatility {edge.trend.volatility}; trust delta{" "}
+          {edge.trend.trustDelta3Ticks}; hostility delta{" "}
+          {edge.trend.hostilityDelta3Ticks}.
+        </p>
+      </div>
 
       <div className="mt-5 space-y-3">
         {Object.entries(edge.weights).map(([key, value]) => {
@@ -90,7 +115,7 @@ export function RelationEdgeDrawer({ edge, locked }: RelationEdgeDrawerProps) {
 
       <details className="mt-5 rounded-md border border-black/8 bg-white p-3">
         <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
-          Evidence refs
+          Evidence refs ({edge.evidenceRefs.length})
         </summary>
         <div className="mt-3 space-y-1">
           {edge.evidenceRefs.map((ref) => (

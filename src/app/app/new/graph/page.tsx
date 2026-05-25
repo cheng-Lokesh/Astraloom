@@ -44,6 +44,9 @@ export default function GraphPage() {
   const edges = graphLocked ? savedGraph?.edges ?? generatedEdges : generatedEdges;
   const selectedEdge =
     edges.find((edge) => edge.id === selectedEdgeId) ?? edges[0] ?? null;
+  const lockedAtLabel = savedGraph?.lockedAt
+    ? new Date(savedGraph.lockedAt).toLocaleString()
+    : null;
 
   function saveGraph(lock: boolean) {
     if (!seedContext) return;
@@ -68,6 +71,28 @@ export default function GraphPage() {
         ? "Relation ledger locked. To change facts, return to People and regenerate the graph."
         : "Draft relation ledger saved locally.",
     );
+  }
+
+  function regenerateFromUpstream() {
+    if (!seedContext) return;
+    const updatedAt = new Date().toISOString();
+    const nextGraph: RelationGraphDraft = {
+      seedContextId: seedContext.id,
+      version: "local-deterministic-v0",
+      agents,
+      edges: generatedEdges,
+      graphLocked: false,
+      lockedAt: null,
+      updatedAt,
+    };
+    const result = repos.relationGraphs.save(nextGraph);
+    if (!result.ok) {
+      setMessage(`Save failed: ${result.errorCode}`);
+      return;
+    }
+    setSavedGraph(nextGraph);
+    setSelectedEdgeId("");
+    setMessage("Graph regenerated from current Agent Profiles and upstream facts. Review and lock before simulation.");
   }
 
   if (!seedContext || !agentEcology?.agents.length) {
@@ -102,20 +127,29 @@ export default function GraphPage() {
             {graphLocked ? "Graph locked" : "Draft graph"}
           </StatusPill>
           <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Review the read-only relationship ledger.
+            Review the read-only scenario graph.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Nodes come from Agent Profiles. Edges come from deterministic
-            relation rules and can only be regenerated from updated facts on
-            the People page.
+            Nodes come from Agent Profiles. Edges come from deterministic relation rules,
+            confidence scores, and evidence refs. This is not a CRM: there are no edge
+            sliders, relation controls, or direct weight edits.
           </p>
         </div>
-        <Link
-          href="/app/new/people"
-          className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
-        >
-          Supplement facts
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={regenerateFromUpstream}
+            className="rounded-md border border-[#568262]/30 bg-[#eef5ee] px-4 py-2 text-sm font-semibold text-[#2f5d3d]"
+          >
+            Regenerate from upstream facts
+          </button>
+          <Link
+            href="/app/new/people"
+            className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
+          >
+            Supplement facts
+          </Link>
+        </div>
       </div>
 
       {message ? (
@@ -142,8 +176,32 @@ export default function GraphPage() {
         <aside className="h-fit space-y-5">
           <section className="rounded-lg border border-black/8 bg-[#11150f] p-6 text-white">
             <h2 className="text-sm font-semibold text-[#b7e6c6]">
-              Ledger summary
+              Graph lock state
             </h2>
+            <div
+              className={`mt-4 rounded-md border p-4 ${
+                graphLocked
+                  ? "border-[#b7e6c6]/30 bg-[#b7e6c6]/10"
+                  : "border-[#d49b4a]/35 bg-[#d49b4a]/10"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-white">
+                  {graphLocked ? "Locked for simulation" : "Draft review required"}
+                </span>
+                <StatusPill tone={graphLocked ? "ready" : "blocked"}>
+                  {graphLocked ? "Locked" : "Unlocked"}
+                </StatusPill>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-white/66">
+                {graphLocked
+                  ? "Simulation can start from this frozen graph snapshot."
+                  : "Simulation cannot start until this graph is locked."}
+              </p>
+              {lockedAtLabel ? (
+                <p className="mt-2 text-xs text-white/45">Locked {lockedAtLabel}</p>
+              ) : null}
+            </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Metric label="Agents" value={graphAgents.length} />
               <Metric label="Edges" value={edges.length} />
@@ -177,8 +235,7 @@ export default function GraphPage() {
               <div className="mt-5 rounded-md border border-white/10 bg-white/[0.06] p-4">
                 <p className="text-sm leading-6 text-white/72">
                   This graph is locked for the current run. To change people or
-                  relationship facts, go back to People and regenerate the
-                  graph.
+                  relationship facts, update upstream facts and regenerate a new draft graph.
                 </p>
                 <Link
                   href="/app/new/people"
@@ -186,6 +243,13 @@ export default function GraphPage() {
                 >
                   Update facts on People page
                 </Link>
+                <button
+                  type="button"
+                  onClick={regenerateFromUpstream}
+                  className="mt-3 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Regenerate draft from upstream
+                </button>
               </div>
             ) : (
               <div className="mt-5 grid gap-3">
@@ -208,7 +272,14 @@ export default function GraphPage() {
 
             <Link
               href="/app/simulation/running"
-              className="mt-3 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+              className={`mt-3 inline-flex w-full justify-center rounded-md px-4 py-3 text-sm font-semibold ${
+                graphLocked
+                  ? "border border-white/10 text-white"
+                  : "cursor-not-allowed border border-white/10 text-white/42"
+              }`}
+              onClick={(event) => {
+                if (!graphLocked) event.preventDefault();
+              }}
             >
               Continue to simulation
             </Link>

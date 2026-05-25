@@ -1,4 +1,5 @@
 import type { SeedContextDraft } from "@/types/seed-context";
+import { getSeedContextSections } from "@/lib/seed-context/context-text";
 
 import { keyPeopleExtractionModelConfig } from "../model-config";
 
@@ -20,7 +21,9 @@ export function buildExtractPeoplePrompt(seedContext: SeedContextDraft) {
             confidence: "number from 0.0 to 1.0",
             known_evidence: ["short evidence phrase from the user's text"],
             missing_fields: ["short missing detail"],
-            source_refs: ["questionText | situationSummary | keyPeopleText"],
+            source_refs: [
+              "questionText | situationSummary | recentEventsText | keyPeopleText | decisionOptionsText | forbiddenActionsText | desiredOutputText",
+            ],
           },
         ],
         uncertainty_flags: ["string"],
@@ -35,7 +38,12 @@ export function buildExtractPeoplePrompt(seedContext: SeedContextDraft) {
         id: seedContext.id,
         questionText: seedContext.questionText,
         situationSummary: seedContext.situationSummary,
+        recentEventsText: seedContext.recentEventsText ?? "",
         keyPeopleText: seedContext.keyPeopleText,
+        decisionOptionsText: seedContext.decisionOptionsText ?? "",
+        forbiddenActionsText: seedContext.forbiddenActionsText ?? "",
+        desiredOutputText: seedContext.desiredOutputText ?? "",
+        structuredNarrative: getSeedContextSections(seedContext),
         trackType: seedContext.trackType,
         timeWindow: seedContext.timeWindow,
         locale: seedContext.locale,

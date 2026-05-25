@@ -1,11 +1,13 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { StatusPill } from "@/components/status-pill";
+import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import { applyFeedbackToNextRun } from "@/lib/calibration/apply-feedback-to-next-run";
 import { loadCalibrationProfile } from "@/lib/calibration/calibration-engine";
 import { getRepositories } from "@/lib/repositories/repository-provider";
@@ -17,12 +19,81 @@ import {
 import type { SafetyDecision } from "@/lib/safety/safety-types";
 import { verifySafety } from "@/lib/safety/safety-verifier";
 import type { SafetySnapshot } from "@/lib/simulation/simulation-types";
-import type { SimulationRunDraft } from "@/types/simulation-run";
+import type {
+  SimulationBranchId,
+  SimulationRunDraft,
+} from "@/types/simulation-run";
+
+const simulationStages = [
+  {
+    id: "freeze_graph",
+    label: "Freeze graph",
+    detail:
+      "Lock the current Agent Profiles and read-only Relation Edges as the run snapshot.",
+  },
+  {
+    id: "build_tick_queue",
+    label: "Build tick queue",
+    detail:
+      "Create deterministic tick slots for baseline, cautious_self, and decisive_self.",
+  },
+  {
+    id: "run_agent_interactions",
+    label: "Run agent interactions",
+    detail:
+      "Apply branch policies to bounded Agent models. No user choices are requested mid-run.",
+  },
+  {
+    id: "update_relation_edges",
+    label: "Update relation edges",
+    detail:
+      "Apply rule-owned before/after deltas to graph snapshots without exposing edge controls.",
+  },
+  {
+    id: "write_event_log",
+    label: "Write Event Log",
+    detail:
+      "Persist local Event Logs with agents, edges, causes, deltas, and evidence refs.",
+  },
+  {
+    id: "build_claims",
+    label: "Build Claims",
+    detail:
+      "Build deterministic Claims only from saved Event Logs and evidence_event_ids.",
+  },
+  {
+    id: "prepare_report",
+    label: "Prepare report",
+    detail:
+      "Prepare the Result Sandbox shell. Report depth stays downstream of the same Claims.",
+  },
+] as const;
+
+const branchNames: SimulationBranchId[] = [
+  "baseline",
+  "cautious_self",
+  "decisive_self",
+];
 
 function statusTone(status: string) {
   if (status === "ready" || status === "queued") return "ready";
-  if (status === "blocked" || status === "missing") return "blocked";
+  if (status === "blocked" || status === "missing" || status === "failed") {
+    return "blocked";
+  }
   return "planned";
+}
+
+function branchLabel(branchId: SimulationBranchId) {
+  const labels: Record<SimulationBranchId, string> = {
+    baseline: "baseline",
+    cautious_self: "cautious_self",
+    decisive_self: "decisive_self",
+  };
+  return labels[branchId];
+}
+
+function eventTypeLabel(value: string) {
+  return value.replaceAll("_", " ");
 }
 
 function buildDraftFromLocalState(repos: ReturnType<typeof getRepositories>) {
@@ -35,6 +106,7 @@ function buildDraftFromLocalState(repos: ReturnType<typeof getRepositories>) {
   const ecology = ecologyResult.ok ? ecologyResult.data : null;
   const graph = graphResult.ok ? graphResult.data : null;
   if (!ecology || !graph) return null;
+  if (!graph.graphLocked) return null;
 
   const calibrated = applyFeedbackToNextRun({
     agentEcology: ecology,
@@ -60,6 +132,7 @@ function snapshotFromDecision(decision: SafetyDecision): SafetySnapshot {
 }
 
 export default function RunsPage() {
+  const router = useRouter();
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
     const result = repos.seedContexts.load();
@@ -98,6 +171,96 @@ export default function RunsPage() {
           })
         : null,
   );
+  const [processState, setProcessState] = useState<
+    "idle" | "running" | "complete" | "failed"
+  >("idle");
+  const [activeStageIndex, setActiveStageIndex] = useState(0);
+  const [processRun, setProcessRun] = useState<SimulationRunDraft | null>(null);
+  const [processError, setProcessError] = useState("");
+
+  const visibleRun = processRun ?? run;
+  const generatedEventCount = visibleRun?.events.length ?? 0;
+  const claimPreviewCount = useMemo(
+    () =>
+      visibleRun
+        ? buildClaimLedgerDraft(visibleRun.seedContextId, visibleRun).claims.length
+        : 0,
+    [visibleRun],
+  );
+  const branchEventCounts = useMemo(() => {
+    const counts = new Map<SimulationBranchId, number>();
+    branchNames.forEach((branchId) => counts.set(branchId, 0));
+    visibleRun?.events.forEach((event) => {
+      const branchId = event.branchId ?? "baseline";
+      counts.set(branchId, (counts.get(branchId) ?? 0) + 1);
+    });
+    return counts;
+  }, [visibleRun]);
+
+  useEffect(() => {
+    if (processState !== "complete") return;
+
+      const routeTimer = window.setTimeout(() => {
+        router.push("/app/simulation/result");
+      }, 900);
+      return () => window.clearTimeout(routeTimer);
+  }, [processState, router]);
+
+  useEffect(() => {
+    if (processState !== "running" || !processRun || !seedContext) return;
+
+    const timer = window.setTimeout(() => {
+      const stage = simulationStages[activeStageIndex];
+
+      if (stage.id === "write_event_log") {
+        const result = repos.simulations.save(processRun);
+        if (!result.ok) {
+          setProcessState("failed");
+          setProcessError(`Could not save Event Log: ${result.errorCode}`);
+          setMessage(`Save failed: ${result.errorCode}`);
+          return;
+        }
+      }
+
+      if (stage.id === "build_claims") {
+        const eventLogSaved = repos.simulations.load(seedContext.id);
+        const savedRun = eventLogSaved.ok ? eventLogSaved.data : null;
+        if (!savedRun || savedRun.events.length === 0) {
+          setProcessState("failed");
+          setProcessError(
+            "Claims were not built because the Event Log is missing. Re-run the simulation after locking the graph.",
+          );
+          return;
+        }
+
+        const ledger = buildClaimLedgerDraft(seedContext.id, savedRun);
+        const result = repos.reports.save(ledger);
+        if (!result.ok) {
+          setProcessState("failed");
+          setProcessError(`Could not save Claims: ${result.errorCode}`);
+          setMessage(`Save failed: ${result.errorCode}`);
+          return;
+        }
+      }
+
+      if (activeStageIndex === simulationStages.length - 1) {
+        setProcessState("complete");
+        setMessage("Simulation complete. Opening the Result Sandbox.");
+        return;
+      }
+
+      setActiveStageIndex((index) => index + 1);
+    }, activeStageIndex < 4 ? 620 : 760);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeStageIndex,
+    processRun,
+    processState,
+    repos,
+    router,
+    seedContext,
+  ]);
 
   if (!seedContext || !agentEcology) {
     return (
@@ -111,11 +274,50 @@ export default function RunsPage() {
             Simulation runs can only freeze confirmed Agent Profiles. The flow
             cannot jump directly from intake text to a report.
           </p>
+          <NotReadyPanel
+            title="Concrete fixes"
+            items={[
+              "Confirm Key People so candidates become usable actors.",
+              "Generate Agent Profiles for the user core, parallel selves, and confirmed NPCs.",
+              "Return here after the Agent Profile surface shows a saved ecology.",
+            ]}
+          />
           <Link
             href="/app/new/agents"
             className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
           >
             Open Agent Profiles
+          </Link>
+        </section>
+      </AppShell>
+    );
+  }
+
+  if (relationGraph && !relationGraph.graphLocked) {
+    return (
+      <AppShell>
+        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+          <StatusPill tone="blocked">Graph lock required</StatusPill>
+          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            Lock the scenario graph before running simulation ticks.
+          </h1>
+          <p className="mt-3 text-sm leading-7 text-[#62695d]">
+            The local tick engine must freeze a locked Relation Graph before it writes Event Logs.
+            Return to the graph, review the read-only edges, and lock the snapshot.
+          </p>
+          <NotReadyPanel
+            title="Concrete fixes"
+            items={[
+              "Review the read-only Relation Graph for missing actors or edges.",
+              "Use regenerate from upstream facts if Agent Profiles changed.",
+              "Lock the graph snapshot before opening the simulation process.",
+            ]}
+          />
+          <Link
+            href="/app/new/graph"
+            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
+          >
+            Lock Relation Graph
           </Link>
         </section>
       </AppShell>
@@ -128,12 +330,20 @@ export default function RunsPage() {
         <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
           <StatusPill tone="blocked">Needs Relation Graph</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            Save the read-only relation graph before running ticks.
+            Save and lock the read-only relation graph before running ticks.
           </h1>
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
             The local tick engine freezes Relation Edges, writes Event Logs,
             and keeps before/after snapshots for evidence review.
           </p>
+          <NotReadyPanel
+            title="Concrete fixes"
+            items={[
+              "Open Relation Graph and generate edges from the current Agent Profiles.",
+              "Confirm the graph is not empty.",
+              "Lock the graph so the simulation can freeze a stable snapshot.",
+            ]}
+          />
           <Link
             href="/app/new/graph"
             className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
@@ -194,6 +404,11 @@ export default function RunsPage() {
 
   function queueRun() {
     if (!run || !seedContext || !agentEcology || !relationGraph) return;
+    setProcessError("");
+    if (!relationGraph.graphLocked) {
+      setMessage("Lock the Relation Graph before running simulation ticks.");
+      return;
+    }
     const decision = runSafetyGate(run);
     if (!decision) return;
     const calibrated = applyFeedbackToNextRun({
@@ -208,14 +423,30 @@ export default function RunsPage() {
       run.status,
       snapshotFromDecision(decision),
     );
-    persist(
-      queueSimulationRunDraft(nextRun),
-      "Simulation Engine v1 run saved locally. It uses deterministic rules, not LLM conclusions.",
+    const queuedRun = queueSimulationRunDraft(nextRun);
+    if (queuedRun.events.length === 0) {
+      setProcessState("failed");
+      setProcessError(
+        "No Event Logs were generated. Confirm at least one NPC and lock a Relation Graph with at least one edge.",
+      );
+      return;
+    }
+    setRun(queuedRun);
+    setProcessRun(queuedRun);
+    setActiveStageIndex(0);
+    setProcessState("running");
+    setMessage(
+      "Simulation Engine v1 is running deterministic stages. Event Logs will be saved before Claims are built.",
     );
   }
 
   function rebuild() {
     if (!seedContext || !agentEcology || !relationGraph) return;
+    setProcessError("");
+    if (!relationGraph.graphLocked) {
+      setMessage("Lock the Relation Graph before rebuilding simulation ticks.");
+      return;
+    }
     const calibrated = applyFeedbackToNextRun({
       agentEcology,
       relationEdges: relationGraph.edges,
@@ -235,9 +466,22 @@ export default function RunsPage() {
       nextRun.status,
       snapshotFromDecision(decision),
     );
-    persist(
-      queueSimulationRunDraft(safeRun),
-      "Agent and Relation Edge snapshots were frozen again, then ticks and Event Logs were rebuilt.",
+    const queuedRun = queueSimulationRunDraft(safeRun);
+    if (queuedRun.events.length === 0) {
+      setProcessState("failed");
+      setProcessError(
+        "No Event Logs were generated. Confirm Key People, regenerate Agents, and lock a graph with usable edges.",
+      );
+      return;
+    }
+    repos.simulations.clearDraft(seedContext.id);
+    repos.reports.clearDraft(seedContext.id);
+    setRun(queuedRun);
+    setProcessRun(queuedRun);
+    setActiveStageIndex(0);
+    setProcessState("running");
+    setMessage(
+      "Rebuilding from the latest frozen Agents and Relation Edges, then writing Event Logs before Claims.",
     );
   }
 
@@ -256,6 +500,10 @@ export default function RunsPage() {
         calibrated.relationEdges,
       ),
     );
+    setProcessRun(null);
+    setProcessState("idle");
+    setActiveStageIndex(0);
+    setProcessError("");
     setMessage("Local simulation run draft cleared.");
   }
 
@@ -265,17 +513,23 @@ export default function RunsPage() {
         <div>
           <StatusPill tone="ready">Simulation run</StatusPill>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Freeze the relation graph and write local Event Logs.
+            Watch the scenario sandbox run.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            This page runs deterministic local ticks only: it freezes Agents
-            and Relation Edges, then creates before/after evidence events. It
-            does not create paid claims, generate a final report, or turn
-            low-confidence signals into certain predictions.
+            MiroFish freezes the locked graph, runs deterministic branch ticks,
+            writes Event Logs, then builds Claims from those events. No LLM
+            directly decides final claims, and there are no mid-run story
+            choices.
           </p>
         </div>
-        <StatusPill tone={statusTone(run.status)}>
-          {run.status === "queued" ? "Event Log ready" : "Draft only"}
+        <StatusPill tone={statusTone(processState === "failed" ? "failed" : run.status)}>
+          {processState === "running"
+            ? "Running"
+            : processState === "complete"
+              ? "Complete"
+              : run.status === "queued"
+                ? "Event Log ready"
+                : "Draft only"}
         </StatusPill>
       </div>
 
@@ -286,21 +540,24 @@ export default function RunsPage() {
               <button
                 type="button"
                 onClick={queueRun}
-                className="rounded-md bg-[#11150f] px-4 py-2 text-sm font-semibold text-white"
+                disabled={processState === "running"}
+                className="rounded-md bg-[#11150f] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9aa096]"
               >
-                Save ticks and Event Logs
+                Run visible simulation
               </button>
               <button
                 type="button"
                 onClick={rebuild}
-                className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
+                disabled={processState === "running"}
+                className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f] disabled:cursor-not-allowed disabled:bg-[#eef0ea] disabled:text-[#9aa096]"
               >
-                Rebuild frozen run
+                Regenerate and run
               </button>
               <button
                 type="button"
                 onClick={reset}
-                className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
+                disabled={processState === "running"}
+                className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f] disabled:cursor-not-allowed disabled:bg-[#eef0ea] disabled:text-[#9aa096]"
               >
                 Clear local draft
               </button>
@@ -316,14 +573,85 @@ export default function RunsPage() {
                 />
               </div>
             ) : null}
+            {processError ? (
+              <NotReadyPanel
+                title="Simulation could not finish"
+                items={[
+                  processError,
+                  "Return to the Relation Graph and confirm it is locked.",
+                  "Regenerate Agents if no confirmed NPC exists.",
+                ]}
+              />
+            ) : null}
+          </section>
+
+          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-[#11150f]">
+                  Simulation process
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                  Claims stay downstream of Event Logs. The stage list shows
+                  exactly where the local run is in the sandbox pipeline.
+                </p>
+              </div>
+              <StatusPill tone={processState === "failed" ? "blocked" : "planned"}>
+                {generatedEventCount} events generated
+              </StatusPill>
+            </div>
+            <div className="mt-5 space-y-3">
+              {simulationStages.map((stage, index) => {
+                const completed =
+                  processState === "complete" ||
+                  (processState === "running" && index < activeStageIndex);
+                const active =
+                  processState === "running" && index === activeStageIndex;
+                const blocked = processState === "failed" && index >= activeStageIndex;
+                return (
+                  <div
+                    key={stage.id}
+                    className={`rounded-md border p-4 ${
+                      completed
+                        ? "border-[#568262]/25 bg-[#eef5ee]"
+                        : active
+                          ? "border-[#d49b4a]/35 bg-[#fff8ed]"
+                          : blocked
+                            ? "border-red-200 bg-red-50"
+                            : "border-black/8 bg-[#f7f8f4]"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[#11150f]">
+                        {stage.label}
+                      </p>
+                      <StatusPill
+                        tone={
+                          blocked ? "blocked" : completed ? "ready" : "planned"
+                        }
+                      >
+                        {blocked ? "blocked" : completed ? "done" : active ? "running" : "waiting"}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                      {stage.detail}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </section>
 
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <h2 className="text-base font-semibold text-[#11150f]">
-              Scenario steps
+              Tick previews
             </h2>
+            <p className="mt-2 text-sm leading-6 text-[#62695d]">
+              These previews show the deterministic tick queue before the
+              Result Sandbox opens.
+            </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {run.ticks.map((tick) => (
+              {visibleRun?.ticks.map((tick) => (
                 <article
                   key={tick.id}
                   className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
@@ -347,10 +675,54 @@ export default function RunsPage() {
 
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <h2 className="text-base font-semibold text-[#11150f]">
+              Branch previews
+            </h2>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              {branchNames.map((branchId) => {
+                const branchEvents =
+                  visibleRun?.events.filter(
+                    (event) => (event.branchId ?? "baseline") === branchId,
+                  ) ?? [];
+                return (
+                  <article
+                    key={branchId}
+                    className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold text-[#11150f]">
+                        {branchLabel(branchId)}
+                      </h3>
+                      <StatusPill tone="planned">
+                        {branchEventCounts.get(branchId) ?? 0} events
+                      </StatusPill>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {branchEvents.slice(0, 3).map((event) => (
+                        <div
+                          key={event.id}
+                          className="rounded border border-black/8 bg-white p-3"
+                        >
+                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                            Tick {event.tickIndex} / {eventTypeLabel(event.eventType)}
+                          </div>
+                          <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#62695d]">
+                            {event.summary}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <h2 className="text-base font-semibold text-[#11150f]">
               Evidence timeline
             </h2>
             <div className="mt-4 space-y-3">
-              {run.events.map((event) => (
+              {visibleRun?.events.map((event) => (
                 <article
                   key={event.id}
                   className="rounded-md border border-black/8 bg-white p-4"
@@ -358,7 +730,8 @@ export default function RunsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-[#11150f]">
-                        {event.eventType} 路 {event.timeLabel}
+                        {branchLabel(event.branchId ?? "baseline")} /{" "}
+                        {eventTypeLabel(event.eventType)} / {event.timeLabel}
                       </p>
                       <p className="mt-1 text-xs text-[#7d8578]">
                         edges: {event.relationEdgeIds.join(", ") || "none"}
@@ -390,10 +763,12 @@ export default function RunsPage() {
             Run summary
           </h2>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <Metric label="Agents" value={run.frozenAgentProfileIds.length} />
-            <Metric label="Edges" value={run.frozenRelationEdgeIds.length} />
-            <Metric label="Ticks" value={run.tickCount} />
-            <Metric label="Events" value={run.events.length} />
+            <Metric label="Agents" value={visibleRun?.frozenAgentProfileIds.length ?? 0} />
+            <Metric label="Edges" value={visibleRun?.frozenRelationEdgeIds.length ?? 0} />
+            <Metric label="Ticks" value={visibleRun?.tickCount ?? 0} />
+            <Metric label="Events" value={generatedEventCount} />
+            <Metric label="Branches" value={branchNames.length} />
+            <Metric label="Claims" value={claimPreviewCount} />
           </div>
           <dl className="mt-5 space-y-4 text-sm">
             <div>
@@ -405,7 +780,7 @@ export default function RunsPage() {
             <div>
               <dt className="font-semibold text-white">Trace</dt>
               <dd className="mt-1 break-all font-mono text-xs leading-5 text-white/50">
-                {run.traceId}
+                {visibleRun?.traceId}
               </dd>
             </div>
             <div>
@@ -416,7 +791,7 @@ export default function RunsPage() {
             </div>
           </dl>
           <div className="mt-5 space-y-2">
-            {run.gates.map((gate) => (
+            {visibleRun?.gates.map((gate) => (
               <div
                 key={gate.id}
                 className="rounded-md border border-white/10 bg-white/[0.06] p-3"
@@ -437,7 +812,12 @@ export default function RunsPage() {
           </div>
           <Link
             href="/app/simulation/result"
-            className="mt-5 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+            onClick={(event) => {
+              if (processState === "running") event.preventDefault();
+            }}
+            className={`mt-5 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white ${
+              processState === "running" ? "cursor-not-allowed opacity-45" : ""
+            }`}
           >
             Continue to result
           </Link>
@@ -452,6 +832,19 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
       <div className="text-xs text-white/48">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
+function NotReadyPanel({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4">
+      <h3 className="text-sm font-semibold text-amber-950">{title}</h3>
+      <ul className="mt-3 space-y-2 text-sm leading-6 text-amber-900">
+        {items.map((item) => (
+          <li key={item}>- {item}</li>
+        ))}
+      </ul>
     </div>
   );
 }
