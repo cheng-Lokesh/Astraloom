@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  estimateLlmCostUsd,
+  estimateTokenPair,
+} from "@/lib/observability/cost-estimator";
+
 export type DeepSeekModelTier = "fast" | "deep";
 
 export type DeepSeekJsonResult<T> =
@@ -9,6 +14,9 @@ export type DeepSeekJsonResult<T> =
       traceId: string;
       modelVersion: string;
       promptVersion: string;
+      latencyMs: number;
+      inputTokenEstimate: number;
+      outputTokenEstimate: number;
       costEstimate: number;
       errorCode: null;
     }
@@ -17,6 +25,9 @@ export type DeepSeekJsonResult<T> =
       traceId: string;
       modelVersion: string;
       promptVersion: string;
+      latencyMs: number;
+      inputTokenEstimate: number;
+      outputTokenEstimate: number;
       costEstimate: number;
       errorCode: string;
     };
@@ -46,9 +57,11 @@ export async function generateDeepSeekJson<T>({
   userPrompt,
   maxTokens = 900,
 }: GenerateJsonInput): Promise<DeepSeekJsonResult<T>> {
+  const startedAt = Date.now();
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const modelVersion = getModelVersion(modelTier);
   const baseUrl = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
+  const inputEstimate = estimateTokenPair(`${systemPrompt}\n${userPrompt}`);
 
   if (!apiKey) {
     return {
@@ -56,6 +69,9 @@ export async function generateDeepSeekJson<T>({
       traceId,
       modelVersion,
       promptVersion,
+      latencyMs: Date.now() - startedAt,
+      inputTokenEstimate: inputEstimate.inputTokenEstimate,
+      outputTokenEstimate: 0,
       costEstimate: 0,
       errorCode: "missing_deepseek_api_key",
     };
@@ -88,6 +104,9 @@ export async function generateDeepSeekJson<T>({
         traceId,
         modelVersion,
         promptVersion,
+        latencyMs: Date.now() - startedAt,
+        inputTokenEstimate: inputEstimate.inputTokenEstimate,
+        outputTokenEstimate: 0,
         costEstimate: 0,
         errorCode: `deepseek_http_${response.status}`,
       };
@@ -95,9 +114,23 @@ export async function generateDeepSeekJson<T>({
 
     const body = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
-      usage?: { total_tokens?: number };
+      usage?: {
+        total_tokens?: number;
+        prompt_tokens?: number;
+        completion_tokens?: number;
+      };
     };
     const content = body.choices?.[0]?.message?.content;
+    const outputTokenEstimate =
+      body.usage?.completion_tokens ??
+      estimateTokenPair("", content ?? "").outputTokenEstimate;
+    const inputTokenEstimate =
+      body.usage?.prompt_tokens ?? inputEstimate.inputTokenEstimate;
+    const costEstimate = estimateCost({
+      totalTokens: body.usage?.total_tokens,
+      inputTokenEstimate,
+      outputTokenEstimate,
+    });
 
     if (!content) {
       return {
@@ -105,7 +138,10 @@ export async function generateDeepSeekJson<T>({
         traceId,
         modelVersion,
         promptVersion,
-        costEstimate: estimateCost(body.usage?.total_tokens),
+        latencyMs: Date.now() - startedAt,
+        inputTokenEstimate,
+        outputTokenEstimate,
+        costEstimate,
         errorCode: "empty_llm_response",
       };
     }
@@ -117,7 +153,10 @@ export async function generateDeepSeekJson<T>({
         traceId,
         modelVersion,
         promptVersion,
-        costEstimate: estimateCost(body.usage?.total_tokens),
+        latencyMs: Date.now() - startedAt,
+        inputTokenEstimate,
+        outputTokenEstimate,
+        costEstimate,
         errorCode: null,
       };
     } catch {
@@ -126,7 +165,10 @@ export async function generateDeepSeekJson<T>({
         traceId,
         modelVersion,
         promptVersion,
-        costEstimate: estimateCost(body.usage?.total_tokens),
+        latencyMs: Date.now() - startedAt,
+        inputTokenEstimate,
+        outputTokenEstimate,
+        costEstimate,
         errorCode: "invalid_llm_json",
       };
     }
@@ -136,16 +178,30 @@ export async function generateDeepSeekJson<T>({
       traceId,
       modelVersion,
       promptVersion,
+      latencyMs: Date.now() - startedAt,
+      inputTokenEstimate: inputEstimate.inputTokenEstimate,
+      outputTokenEstimate: 0,
       costEstimate: 0,
       errorCode: "deepseek_request_failed",
     };
   }
 }
 
-function estimateCost(totalTokens: number | undefined) {
-  if (!totalTokens) {
-    return 0;
+function estimateCost({
+  totalTokens,
+  inputTokenEstimate,
+  outputTokenEstimate,
+}: {
+  totalTokens: number | undefined;
+  inputTokenEstimate: number;
+  outputTokenEstimate: number;
+}) {
+  if (totalTokens) {
+    return estimateLlmCostUsd({
+      inputTokenEstimate: totalTokens,
+      outputTokenEstimate: 0,
+    });
   }
 
-  return Number(((totalTokens / 1000) * 0.001).toFixed(6));
+  return estimateLlmCostUsd({ inputTokenEstimate, outputTokenEstimate });
 }

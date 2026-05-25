@@ -11,7 +11,8 @@ export type FeedbackRating =
   | "off"
   | "useful"
   | "not_useful"
-  | "unclear";
+  | "unclear"
+  | "not_happened_yet";
 
 export type FeedbackDraft = {
   id: string;

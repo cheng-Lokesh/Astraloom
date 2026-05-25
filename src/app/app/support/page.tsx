@@ -1,113 +1,129 @@
 "use client";
 
 import type { FormEvent } from "react";
-import Link from "next/link";
 import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusPill } from "@/components/status-pill";
-import { buildBillingSupportDraft, createSupportTicket } from "@/lib/billing/build";
-import {
-  clearBillingSupportDraft,
-  loadBillingSupportDraft,
-  saveBillingSupportDraft,
-} from "@/lib/billing/storage";
-import { loadSeedContextDraft } from "@/lib/seed-context/storage";
 import type {
-  BillingSupportDraft,
+  SupportTicketAdminSummary,
   SupportTicketType,
-} from "@/types/billing-support";
+} from "@/lib/support/support-types";
 
-const supportTypes: Array<{
-  type: SupportTicketType;
-  title: string;
-  body: string;
+const ticketTypes: Array<{
+  value: SupportTicketType;
+  label: string;
+  helper: string;
 }> = [
   {
-    type: "general_support",
-    title: "Generation failure",
-    body: "Use when local run, graph, event, or claim output looks broken.",
+    value: "generation_failure",
+    label: "Generation failure",
+    helper: "Report a failed graph, simulation, claim, or report generation.",
   },
   {
-    type: "refund_request",
-    title: "Refund request",
-    body: "Visible before real payment launch so commercial risk is explicit.",
+    value: "refund_request",
+    label: "Refund request",
+    helper: "Record a refund request for manual review. No real refund is issued here.",
   },
   {
-    type: "deletion_request",
-    title: "Privacy deletion request",
-    body: "Records a local deletion request for the current simulation context.",
+    value: "privacy_delete_request",
+    label: "Delete data request",
+    helper: "Create an auditable deletion request. Data is not hard-deleted automatically.",
   },
   {
-    type: "general_support",
-    title: "Safety review",
-    body: "Use when the safety downgrade or report boundary needs review.",
+    value: "safety_appeal",
+    label: "Safety appeal",
+    helper: "Ask for review when a safety downgrade seems too restrictive.",
+  },
+  {
+    value: "billing_question",
+    label: "Billing question",
+    helper: "Ask about unlock status, receipts, or billing confusion.",
+  },
+  {
+    value: "general_support",
+    label: "General support",
+    helper: "Ask a product or account support question.",
   },
 ];
 
+type ApiTicketResponse = {
+  ok: boolean;
+  trace_id: string;
+  ticket?: SupportTicketAdminSummary;
+  error_code?: string;
+};
+
 export default function SupportPage() {
-  const [seedContext] = useState(() => loadSeedContextDraft());
-  const [billing, setBilling] = useState<BillingSupportDraft>(
-    () => loadBillingSupportDraft() ?? buildBillingSupportDraft(),
-  );
-  const [ticketType, setTicketType] = useState<SupportTicketType>("general_support");
-  const [summary, setSummary] = useState("");
+  const [ticketType, setTicketType] =
+    useState<SupportTicketType>("generation_failure");
+  const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [relatedReportId, setRelatedReportId] = useState("");
+  const [relatedSimulationId, setRelatedSimulationId] = useState("");
+  const [status, setStatus] = useState("");
+  const [tickets, setTickets] = useState<SupportTicketAdminSummary[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function persist(nextBilling: BillingSupportDraft, nextMessage: string) {
-    saveBillingSupportDraft(nextBilling);
-    setBilling(nextBilling);
-    setMessage(nextMessage);
-  }
-
-  function submitTicket(event: FormEvent<HTMLFormElement>) {
+  async function submitTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedSummary = summary.trim();
-    if (trimmedSummary.length < 8) {
-      setMessage("Add a short description so the support ticket is usable.");
+    setIsSubmitting(true);
+    setStatus("");
+
+    const endpoint =
+      ticketType === "privacy_delete_request"
+        ? "/api/privacy/delete-request"
+        : "/api/support/create";
+
+    const body =
+      ticketType === "privacy_delete_request"
+        ? {
+            subject: subject.trim() || "Delete data request",
+            message,
+            relatedReportId: relatedReportId.trim() || null,
+            relatedSimulationId: relatedSimulationId.trim() || null,
+          }
+        : {
+            ticketType,
+            subject,
+            message,
+            relatedReportId: relatedReportId.trim() || null,
+            relatedSimulationId: relatedSimulationId.trim() || null,
+          };
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+
+    if (!response) {
+      setIsSubmitting(false);
+      setStatus("Ticket could not be submitted. Please try again.");
       return;
     }
 
-    const ticket = createSupportTicket(
-      ticketType,
-      [
-        `summary: ${trimmedSummary}`,
-        `question: ${seedContext?.questionText ?? "not provided"}`,
-      ].join("\n"),
-      null,
-    );
+    const payload = (await response.json().catch(() => null)) as
+      | ApiTicketResponse
+      | null;
 
-    persist(
-      {
-        ...billing,
-        tickets: [ticket, ...billing.tickets],
-        updatedAt: new Date().toISOString(),
-      },
-      "Support ticket recorded locally.",
-    );
-    setSummary("");
-  }
+    setIsSubmitting(false);
 
-  function quickTicket(type: SupportTicketType, text: string) {
-    const ticket = createSupportTicket(
-      type,
-      [`summary: ${text}`, `question: ${seedContext?.questionText ?? "not provided"}`].join("\n"),
-      null,
-    );
-    persist(
-      {
-        ...billing,
-        tickets: [ticket, ...billing.tickets],
-        updatedAt: new Date().toISOString(),
-      },
-      `${text} recorded locally.`,
-    );
-  }
+    if (!response.ok || !payload?.ok || !payload.ticket) {
+      setStatus(`Ticket failed: ${payload?.error_code ?? "request_failed"}`);
+      return;
+    }
 
-  function reset() {
-    clearBillingSupportDraft();
-    setBilling(buildBillingSupportDraft());
-    setMessage("Local support ledger reset.");
+    setTickets((current) => [payload.ticket!, ...current]);
+    setSubject("");
+    setMessage("");
+    setRelatedReportId("");
+    setRelatedSimulationId("");
+    setStatus(
+      ticketType === "privacy_delete_request"
+        ? "Delete request recorded. This does not directly hard-delete data."
+        : "Support ticket created.",
+    );
   }
 
   return (
@@ -115,33 +131,37 @@ export default function SupportPage() {
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <main className="space-y-6">
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-            <StatusPill tone="planned">Support ledger</StatusPill>
+            <StatusPill tone="planned">Support</StatusPill>
             <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-              Failure, refund, deletion, and safety review are first-class MVP paths.
+              Support, refund, and data deletion requests
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-              This page records local support tickets. It does not send data to a
-              server yet, but it makes the required commercial and privacy
-              boundary visible before real payment launch.
+              Submit a support ticket for product issues, refund review, safety
+              review, billing questions, or deletion requests. MiroFish is not
+              medical, legal, investment, or psychotherapy advice.
             </p>
           </section>
 
-          <section className="grid gap-3 sm:grid-cols-2">
-            {supportTypes.map((item) => (
+          <section className="grid gap-3 md:grid-cols-2">
+            {ticketTypes.map((item) => (
               <button
-                key={`${item.type}:${item.title}`}
+                key={item.value}
                 type="button"
                 onClick={() => {
-                  setTicketType(item.type);
-                  setSummary(item.title);
+                  setTicketType(item.value);
+                  setSubject(item.label);
                 }}
-                className="rounded-lg border border-black/8 bg-white p-5 text-left transition hover:border-[#568262]/40 hover:bg-[#eef5ee]"
+                className={`rounded-lg border p-5 text-left transition ${
+                  ticketType === item.value
+                    ? "border-[#568262] bg-[#eef5ee]"
+                    : "border-black/8 bg-white hover:border-[#568262]/40"
+                }`}
               >
                 <h2 className="text-sm font-semibold text-[#11150f]">
-                  {item.title}
+                  {item.label}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                  {item.body}
+                  {item.helper}
                 </p>
               </button>
             ))}
@@ -151,13 +171,10 @@ export default function SupportPage() {
             onSubmit={submitTicket}
             className="rounded-lg border border-black/8 bg-white p-6"
           >
-            <h2 className="text-base font-semibold text-[#11150f]">
-              Create support ticket
-            </h2>
-            <div className="mt-4 grid gap-4 md:grid-cols-[240px_1fr]">
+            <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                  Type
+                  Ticket type
                 </span>
                 <select
                   value={ticketType}
@@ -166,65 +183,120 @@ export default function SupportPage() {
                   }
                   className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
                 >
-                  <option value="general_support">general_support</option>
-                  <option value="refund_request">refund_request</option>
-                  <option value="deletion_request">deletion_request</option>
-                  <option value="unlock_intent">unlock_intent</option>
+                  {ticketTypes.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                  Summary
+                  Subject
                 </span>
-                <textarea
-                  value={summary}
-                  onChange={(event) => setSummary(event.target.value)}
-                  rows={4}
-                  placeholder="Describe what happened or what you want reviewed."
-                  className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-3 text-sm leading-6 text-[#11150f] outline-none focus:border-[#568262]"
+                <input
+                  value={subject}
+                  onChange={(event) => setSubject(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
+                  placeholder="Short issue title"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                  Related report id
+                </span>
+                <input
+                  value={relatedReportId}
+                  onChange={(event) => setRelatedReportId(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
+                  placeholder="Optional"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                  Related simulation id
+                </span>
+                <input
+                  value={relatedSimulationId}
+                  onChange={(event) =>
+                    setRelatedSimulationId(event.target.value)
+                  }
+                  className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
+                  placeholder="Optional"
                 />
               </label>
             </div>
-            <div className="mt-4 flex flex-wrap gap-3">
+            <label className="mt-4 block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                Message
+              </span>
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                rows={5}
+                className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-3 text-sm leading-6 text-[#11150f] outline-none focus:border-[#568262]"
+                placeholder="Describe the issue. Avoid adding unnecessary private source text."
+              />
+            </label>
+            <div className="mt-5 flex flex-wrap gap-3">
               <button
                 type="submit"
-                className="rounded-md bg-[#11150f] px-4 py-3 text-sm font-semibold text-white"
+                disabled={isSubmitting}
+                className="rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
               >
-                Save ticket
+                {isSubmitting ? "Submitting..." : "Submit request"}
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  quickTicket("deletion_request", "Delete current simulation data")
-                }
-                className="rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f]"
+                onClick={() => {
+                  setTicketType("refund_request");
+                  setSubject("Refund request");
+                  setMessage("Please review this report unlock for refund eligibility.");
+                }}
+                className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f]"
               >
-                Quick deletion request
+                Refund shortcut
               </button>
               <button
                 type="button"
-                onClick={() => quickTicket("refund_request", "Refund request")}
-                className="rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f]"
+                onClick={() => {
+                  setTicketType("privacy_delete_request");
+                  setSubject("Delete data request");
+                  setMessage("Please record a deletion request for my account or selected run.");
+                }}
+                className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f]"
               >
-                Quick refund request
+                Delete request shortcut
               </button>
             </div>
-            {message ? (
-              <p className="mt-4 text-sm leading-6 text-[#62695d]">{message}</p>
+            {status ? (
+              <p className="mt-4 text-sm leading-6 text-[#62695d]">{status}</p>
             ) : null}
           </form>
         </main>
 
         <aside className="h-fit rounded-lg border border-black/8 bg-[#11150f] p-6 text-white">
           <h2 className="text-sm font-semibold text-[#b7e6c6]">
-            Local ticket ledger
+            Submitted requests
           </h2>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <Metric label="Tickets" value={billing.tickets.length} />
-            <Metric label="Unlocks" value={billing.unlockIntents?.length ?? 0} />
+            <Metric label="Tickets" value={tickets.length} />
+            <Metric
+              label="Delete"
+              value={
+                tickets.filter(
+                  (ticket) => ticket.ticketType === "privacy_delete_request",
+                ).length
+              }
+            />
           </div>
           <div className="mt-5 space-y-3">
-            {billing.tickets.slice(0, 6).map((ticket) => (
+            {tickets.length === 0 ? (
+              <p className="text-sm leading-6 text-white/56">
+                New requests will appear here with only a short preview.
+              </p>
+            ) : null}
+            {tickets.map((ticket) => (
               <article
                 key={ticket.id}
                 className="rounded-md border border-white/10 bg-white/[0.06] p-3"
@@ -234,29 +306,17 @@ export default function SupportPage() {
                     {ticket.ticketType}
                   </span>
                   <StatusPill tone={ticket.priority === "p1" ? "blocked" : "planned"}>
-                    {ticket.priority}
+                    {ticket.status}
                   </StatusPill>
                 </div>
-                <p className="mt-2 line-clamp-3 text-xs leading-5 text-white/52">
-                  {ticket.summary}
+                <p className="mt-2 text-xs font-semibold text-white/80">
+                  {ticket.subject}
+                </p>
+                <p className="mt-1 line-clamp-3 text-xs leading-5 text-white/52">
+                  {ticket.messagePreview}
                 </p>
               </article>
             ))}
-          </div>
-          <div className="mt-5 space-y-3">
-            <Link
-              href="/app/settings"
-              className="inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]"
-            >
-              Settings
-            </Link>
-            <button
-              type="button"
-              onClick={reset}
-              className="w-full rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
-            >
-              Reset local tickets
-            </button>
           </div>
         </aside>
       </section>

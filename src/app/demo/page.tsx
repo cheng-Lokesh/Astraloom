@@ -141,7 +141,7 @@ export default function DemoPage() {
                 {t.generate}
               </button>
               <Link
-                href="/intake"
+                href="/app/new/intake"
                 className="rounded-md border border-black/10 bg-[#f7f8f4] px-4 py-3 text-center text-sm font-semibold text-[#11150f] transition hover:border-[#11150f]"
               >
                 {t.fullFlow}
@@ -301,7 +301,7 @@ export default function DemoPage() {
                 ))}
               </div>
               <Link
-                href="/billing"
+                href="/app/billing"
                 className="mt-6 inline-flex w-full justify-center rounded-md bg-[#11150f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a3026]"
               >
                 {t.unlock}

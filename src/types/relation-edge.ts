@@ -52,5 +52,7 @@ export type RelationGraphDraft = {
   version: "local-deterministic-v0";
   agents: AgentProfileDraft[];
   edges: RelationEdgeDraft[];
+  graphLocked: boolean;
+  lockedAt: string | null;
   updatedAt: string;
 };

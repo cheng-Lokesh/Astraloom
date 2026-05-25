@@ -31,6 +31,62 @@ When high-risk content is detected:
 5. Encourage professional or emergency support where appropriate.
 6. Preserve a safe audit/support trail when relevant.
 
+## SafetyVerifier v1
+
+The Local MVP now uses a deterministic `SafetyVerifier` before key product
+actions. It is not an LLM classifier and does not connect to Supabase, payment,
+or external services.
+
+Verifier input:
+
+- `SeedContextDraft`
+- optional Agent Profiles
+- optional Relation Edges
+- optional Simulation Run
+- optional Claims
+
+Verifier output:
+
+- `safetyLevel`: `safe`, `caution`, `downgraded`, or `blocked`
+- `flags`
+- `userMessage`
+- `allowedActions`
+- `blockedActions`
+- `reportRestrictions`
+
+Required flags:
+
+- `self_harm`
+- `violence`
+- `stalking`
+- `surveillance`
+- `partner_monitoring`
+- `medical`
+- `legal`
+- `investment`
+- `therapy`
+- `minor_safety`
+- `revenge`
+- `coercion`
+- `third_party_mind_reading`
+- `deterministic_fate`
+- `guaranteed_reconciliation`
+
+Gate points:
+
+- Intake submit: blocked content stops progression before saving a runnable
+  scenario.
+- Simulation running: blocked content stops tick/Event Log generation.
+- Report rendering: blocked content stops report rendering; downgraded content
+  hides high-risk strong Claims.
+- Paid unlock: paid unlock must run SafetyVerifier first and cannot bypass
+  blocked or downgraded decisions.
+
+Downgraded mode allows only relationship structure review and low-risk
+communication options. It must not display monitoring, tracking, revenge,
+coercion, medical, legal, investment, therapy, third-party mind-reading, or
+deterministic fate instructions.
+
 ## Forbidden Safety Behavior
 
 - Do not present simulation output as professional advice.
@@ -75,4 +131,3 @@ Free preview must:
 - Stay coarse when evidence is incomplete.
 - Avoid deep NPC inference.
 - Avoid precise claims without Event Logs.
-

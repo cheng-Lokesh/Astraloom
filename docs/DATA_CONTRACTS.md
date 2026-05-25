@@ -6,7 +6,7 @@ This file defines the minimum data ledger for the MiroFish MVP. Any schema chang
 
 All important generated output must be traceable through this chain:
 
-`seed_contexts -> key_people -> agent_profiles -> relation_edges -> simulation_runs -> simulation_ticks/events -> claims -> reports -> feedback`
+`user_profiles -> seed_contexts -> key_people -> agent_profiles -> relation_edges -> simulations -> simulation_ticks/event_logs -> claims -> reports -> feedback_logs`
 
 ## Table Principles
 
@@ -20,13 +20,66 @@ All important generated output must be traceable through this chain:
 
 ## Minimum Tables
 
-### users
+## Production Schema v1
 
-Purpose: Account and profile anchor.
+The production Supabase schema is defined in
+`supabase/migrations/0001_initial_schema.sql`.
+
+The current Local MVP may continue using localStorage drafts while repository
+migration is incomplete. The production schema is the target data contract for
+authenticated, RLS-protected storage.
+
+Required production tables:
+
+- `user_profiles`
+- `calibration_profiles`
+- `seed_contexts`
+- `key_people`
+- `agent_profiles`
+- `relation_edges`
+- `simulations`
+- `simulation_ticks`
+- `event_logs`
+- `claims`
+- `reports`
+- `feedback_logs`
+- `entitlements`
+- `payments`
+- `support_tickets`
+- `consent_events`
+- `model_call_logs`
+- `generation_jobs`
+- `audit_events`
+
+Production table rules:
+
+- Every user-owned table includes `user_id`.
+- Every generated artifact includes `version`.
+- AI-generation records include `trace_id`.
+- `claims.evidence_event_ids` is required and must contain at least one event id
+  before a claim can be persisted as reportable.
+- `reports.claim_ids` is required and must contain at least one claim id before
+  a report can be persisted as reportable.
+- `model_call_logs` records `prompt_version`, `model_version`, `latency_ms`,
+  `input_token_estimate`, `output_token_estimate`, `cost_estimate`, and
+  `error_code`.
+- `support_tickets.ticket_type` supports `generation_failure`,
+  `refund_request`, `safety_appeal`, `privacy_delete_request`,
+  `billing_question`, and `general_support`.
+- `entitlements.entitlement_type` supports `free_preview`, `paid_report`,
+  `subscription`, and `admin_grant`.
+- RLS is enabled on every production table.
+- Browser clients must not receive or use a service role key.
+- Server clients are limited to server actions and route handlers.
+
+### user_profiles
+
+Purpose: Account and profile anchor for Supabase Auth users.
 
 Minimum fields:
 
 - `id`
+- `user_id`
 - `created_at`
 - `updated_at`
 - `email`
@@ -55,6 +108,40 @@ Minimum fields:
 - `forbidden_actions`
 - `desired_output`
 - `safety_flags`
+
+### calibration_profiles
+
+Purpose: Stores derived calibration parameters generated from user feedback.
+
+Minimum fields:
+
+- `id`
+- `user_id`
+- `seed_context_id`
+- `simulation_id`
+- `created_at`
+- `updated_at`
+- `version`
+- `source_reliability`
+- `agent_confidence_adjustment`
+- `edge_uncertainty_adjustment`
+- `strategy_preference`
+- `signals`
+- `calibration_snapshot`
+- `history_invariant`
+
+Calibration rules:
+
+- Feedback must not modify historical EventLogs.
+- Feedback must not modify historical Claims.
+- Feedback must not directly modify relation edge weights.
+- Feedback is user calibration input, not absolute fact.
+- CalibrationProfile may influence the next run's agent confidence, source
+  reliability, edge uncertainty, and strategy preference.
+- Repeated `off` feedback for a source type lowers that source type's next-run
+  confidence multiplier.
+- `useful` strategy feedback raises the same strategy type's next-run priority.
+- Historical reports must not be deleted or rewritten by calibration.
 
 ### key_people
 
@@ -102,6 +189,7 @@ Minimum fields:
 - `display_name`
 - `relationship_to_user`
 - `source`
+- `field_sources`
 - `psychology`
 - `motivation`
 - `resources`
@@ -118,6 +206,19 @@ Minimum fields:
 - `cost_estimate`
 - `error_code`
 
+Agent Profile source rules:
+
+- Every generated Agent Profile must include `evidence_refs` and `confidence`.
+- Every generated field must carry a source type in `field_sources`.
+- Allowed source types are `user_confirmed`, `chat_inferred`, `default`, and
+  `model_inferred`.
+- User-confirmed Key People fields override model-inferred fields.
+- Model-inferred fields must lower confidence and remain draft-only.
+- Default fields cannot be used as support for high-confidence Claims.
+- Safety downgraded mode may create only conservative Agent drafts and must not
+  infer third-party private thoughts, hidden motives, deterministic outcomes,
+  Claims, Reports, RelationEdges, or edge weights.
+
 Allowed `agent_type` values:
 
 - `user_core`
@@ -133,7 +234,7 @@ Minimum fields:
 
 - `id`
 - `user_id`
-- `simulation_run_id`
+- `simulation_id`
 - `from_agent_id`
 - `to_agent_id`
 - `created_at`
@@ -159,7 +260,22 @@ Weight keys:
 
 Users must never edit these weights directly.
 
-### simulation_runs
+Local `RelationGraphDraft` stores the generated edge ledger for the current
+flow and must include:
+
+- `seed_context_id`
+- `version`
+- `agents`
+- `edges`
+- `graph_locked`
+- `locked_at`
+- `updated_at`
+
+When `graph_locked` is true, the UI must treat the graph as frozen for the
+current run. Users can only supplement facts upstream and regenerate a new graph;
+they cannot directly edit people or edge weights from the graph surface.
+
+### simulations
 
 Purpose: Stores one frozen simulation attempt.
 
@@ -177,9 +293,24 @@ Minimum fields:
 - `tick_count`
 - `frozen_agent_profile_ids`
 - `frozen_relation_edge_ids`
+- `frozen_agent_profile_snapshot`
+- `frozen_relation_edge_snapshot`
+- `safety_snapshot`
+- `branches`
 - `safety_level`
 - `trace_id`
 - `error_code`
+
+Simulation Engine v1 rules:
+
+- `90_days` runs generate exactly 6 ticks per branch.
+- `30_days`, `1_year`, `3_years`, and `5_years` remain supported by policy
+  configuration and may use different tick counts.
+- Every run freezes Agent Profile, Relation Edge, and SafetyResult snapshots
+  before event generation.
+- Supported branches are `baseline`, `cautious_self`, and `decisive_self`.
+- LLM output may prepare upstream Agent/Profile drafts, but it must not directly
+  decide simulation transitions or final conclusions.
 
 ### simulation_ticks
 
@@ -189,7 +320,7 @@ Minimum fields:
 
 - `id`
 - `user_id`
-- `simulation_run_id`
+- `simulation_id`
 - `created_at`
 - `updated_at`
 - `version`
@@ -198,11 +329,17 @@ Minimum fields:
 - `environment_state`
 - `agent_state_snapshot`
 - `relation_graph_snapshot`
+- `branch_id`
+- `event_log_ids`
 - `summary`
 - `trace_id`
 - `error_code`
 
-### events
+Each tick stores environment state, agent state snapshot, relation graph
+snapshot, and the Event Log ids generated by deterministic rules. Non-empty
+ticks must include at least one Event Log.
+
+### event_logs
 
 Purpose: Stores evidence events created by Simulation Ticks.
 
@@ -210,7 +347,7 @@ Minimum fields:
 
 - `id`
 - `user_id`
-- `simulation_run_id`
+- `simulation_id`
 - `simulation_tick_id`
 - `created_at`
 - `updated_at`
@@ -218,13 +355,35 @@ Minimum fields:
 - `event_type`
 - `agent_ids`
 - `relation_edge_ids`
+- `participants`
+- `causes`
+- `action`
 - `summary`
 - `before_state`
 - `after_state`
 - `edge_weight_deltas`
+- `evidence`
+- `branch_id`
 - `confidence`
 - `source`
 - `trace_id`
+
+Allowed Simulation Engine v1 `event_type` values:
+
+- `graph_freeze`
+- `avoidance`
+- `cooperation`
+- `direct_conflict`
+- `disclosure`
+- `resource_competition`
+- `support`
+- `opportunity_signal`
+- `information_gap_widening`
+
+Every Event Log must be traceable to Agent, RelationEdge, and deterministic
+Rule sources through `participants`, `relation_edge_ids`, `causes`, `action`,
+`edge_weight_deltas`, and `evidence`. Claims must not be generated from ticks
+that do not have Event Logs.
 
 ### claims
 
@@ -234,7 +393,7 @@ Minimum fields:
 
 - `id`
 - `user_id`
-- `simulation_run_id`
+- `simulation_id`
 - `created_at`
 - `updated_at`
 - `version`
@@ -258,7 +417,7 @@ Minimum fields:
 
 - `id`
 - `user_id`
-- `simulation_run_id`
+- `simulation_id`
 - `created_at`
 - `updated_at`
 - `version`
@@ -277,85 +436,49 @@ Paid report sections must stay downstream of existing Claims. `paid_sections`
 may expand evidence and strategy depth, but it must not create stronger claims
 or increase certainty beyond the stored Claim records.
 
-### writer_audit_events
+Report Engine v1 local output:
 
-Purpose: Append-only audit ledger for privileged server writers.
+- `version` = `report-engine-v1`
+- `free_preview.claim_ids`
+- `free_preview.summary_claim_ids`
+- `free_preview.overall_risk`
+- `free_preview.vague_timeline`
+- `free_preview.limited_evidence_count`
+- `paid_report.claim_ids`
+- `paid_report.full_claims`
+- `paid_report.full_event_chain`
+- `paid_report.involved_agent_ids`
+- `paid_report.involved_relation_edge_ids`
+- `paid_report.branch_comparison`
+- `paid_report.strategy_options`
+- `invariant.claim_ids`
+- `invariant.paid_does_not_create_claims`
+- `invariant.paid_does_not_raise_confidence`
+- `invariant.paid_does_not_change_risk_level`
 
-Minimum fields:
+Report Engine v1 rules:
 
-- `id`
-- `created_at`
-- `updated_at`
-- `trace_id`
-- `contract_id`
-- `lifecycle`
-- `actor_type`
-- `user_id`
-- `user_id_hash`
-- `target_tables`
-- `idempotency_key`
-- `request_hash`
-- `gate_decision`
-- `blocked_codes`
-- `writer_version`
-- `model_version`
-- `prompt_version`
-- `cost_estimate`
-- `error_code`
-- `metadata`
+- Reports read Claims only.
+- Claims must come from EventLogs.
+- Claims without `evidence_event_ids` must not be shown.
+- Free preview and paid full report use the same `claim_id` set.
+- Paid unlock can reveal full evidence chain, involved agents, relation edge
+  deltas, branch comparison, and strategies.
+- Paid unlock must not create Claims, increase confidence, or change riskLevel.
+- Every strategy option must reference a `claim_id`.
 
-Browser clients must not insert, update, or delete audit rows.
+Allowed strategy types:
 
-### writer_idempotency_keys
+- `observe`
+- `communicate`
+- `delay`
+- `proceed`
+- `boundary`
+- `information_fill`
+- `resource_exchange`
+- `exit_prepare`
 
-Purpose: Prevent duplicate privileged writes, especially Stripe webhook and AI
-generation retries.
-
-Minimum fields:
-
-- `id`
-- `created_at`
-- `updated_at`
-- `key`
-- `trace_id`
-- `contract_id`
-- `user_id`
-- `request_hash`
-- `status`
-- `response_ref`
-- `error_code`
-- `expires_at`
-
-Duplicate webhook or generation events must return the existing result instead
-of writing a second entitlement or generated artifact.
-
-### generation_jobs
-
-Purpose: Records gated AI generation attempts and their cost/safety metadata.
-
-Minimum fields:
-
-- `id`
-- `user_id`
-- `seed_context_id`
-- `simulation_run_id`
-- `created_at`
-- `updated_at`
-- `trace_id`
-- `version`
-- `job_type`
-- `status`
-- `input_refs`
-- `output_refs`
-- `model_version`
-- `prompt_version`
-- `cost_estimate`
-- `error_code`
-- `safety_level`
-
-The table stores references and counts, not raw prompts or raw model responses.
-
-### feedback_log
+### feedback_logs
 
 Purpose: Stores user calibration feedback after report delivery.
 
@@ -364,7 +487,7 @@ Minimum fields:
 - `id`
 - `user_id`
 - `seed_context_id`
-- `simulation_run_id`
+- `simulation_id`
 - `created_at`
 - `updated_at`
 - `target_type`
@@ -384,6 +507,60 @@ Allowed `target_type` values:
 
 MVP local draft records may store these as `FeedbackLedgerDraft` until the Supabase feedback table is implemented.
 
+Allowed `rating` values:
+
+- `accurate`
+- `partly_right`
+- `off`
+- `useful`
+- `not_useful`
+- `unclear`
+- `not_happened_yet`
+
+Local feedback saves may generate a `calibration_snapshot` and a local
+`CalibrationProfile`, but the feedback log remains separate from EventLogs and
+Claims.
+
+### entitlements
+
+Purpose: Stores free preview, paid report, and subscription unlock state.
+
+Minimum fields:
+
+- `id`
+- `user_id`
+- `simulation_id`
+- `created_at`
+- `updated_at`
+- `entitlement_type`
+- `status`
+- `scope`
+- `starts_at`
+- `expires_at`
+- `source_payment_id`
+- `metadata`
+
+Allowed `entitlement_type` values:
+
+- `free_preview`
+- `paid_report`
+- `subscription`
+- `admin_grant`
+
+Entitlement must not change claim direction, confidence, or safety downgrade.
+
+Local Entitlement Engine v1 rules:
+
+- Users have `free_preview` by default.
+- Mock unlock may grant `paid_report` only for the current report scope.
+- `paid_report` unlocks complete evidence chain and strategy depth only.
+- Entitlement must not modify `claim_id`, Claim summary, confidence, riskLevel,
+  EventLog records, or SafetyVerifier decisions.
+- `downgraded` or `blocked` safety states keep paid report depth locked even
+  when an entitlement exists.
+- Mock entitlement does not connect to Stripe, create a real payment, or grant a
+  production entitlement.
+
 ### payments
 
 Purpose: Stores payment intent and entitlement state.
@@ -392,7 +569,8 @@ Minimum fields:
 
 - `id`
 - `user_id`
-- `simulation_run_id`
+- `simulation_id`
+- `entitlement_id`
 - `created_at`
 - `updated_at`
 - `status`
@@ -423,7 +601,27 @@ Minimum fields:
 - `status`
 - `subject`
 - `message`
-- `related_simulation_run_id`
+- `related_simulation_id`
+- `related_report_id`
+
+Allowed `ticket_type` values:
+
+- `refund_request`
+- `generation_failure`
+- `safety_appeal`
+- `privacy_delete_request`
+- `billing_question`
+- `general_support`
+
+Support ticket operations rules:
+
+- User support pages may create tickets and deletion requests.
+- Delete requests are auditable requests, not immediate hard deletion.
+- Admin/Ops views may list ticket metadata and short previews only.
+- Admin/Ops may mark ticket status but must not edit Claim, EventLog,
+  RelationEdge, Report, confidence, or risk fields.
+- Full sensitive source text should stay hidden unless a separate scoped review
+  workflow explicitly requires it.
 
 ### consent_events
 
@@ -440,11 +638,129 @@ Minimum fields:
 - `source`
 - `metadata`
 
+### model_call_logs
+
+Purpose: Stores AI call metadata for cost and prompt observability. It stores
+references and counts, not raw secrets.
+
+Minimum fields:
+
+- `id`
+- `user_id`
+- `created_at`
+- `updated_at`
+- `trace_id`
+- `job_id`
+- `job_type`
+- `version`
+- `user_id`
+- `provider`
+- `prompt_version`
+- `model_version`
+- `latency_ms`
+- `input_token_estimate`
+- `output_token_estimate`
+- `cost_estimate`
+- `token_counts`
+- `input_refs`
+- `output_refs`
+- `safety_level`
+- `error_code`
+
+Model call logging rules:
+
+- Every LLM route records `trace_id`, `user_id`, `job_id`, `prompt_version`,
+  `model_version`, `latency_ms`, token estimates, `cost_estimate`, and
+  `error_code`.
+- Logs store token counts, ids, route/job metadata, and bounded output refs.
+- Logs must not store raw prompts, raw user source text, service keys, or
+  unnecessary sensitive inputs.
+
+### generation_jobs
+
+Purpose: Records gated AI generation attempts and their cost/safety metadata.
+
+Minimum fields:
+
+- `id`
+- `user_id`
+- `job_id`
+- `seed_context_id`
+- `simulation_id`
+- `model_call_log_id`
+- `created_at`
+- `updated_at`
+- `trace_id`
+- `version`
+- `job_type`
+- `status`
+- `input_refs`
+- `output_refs`
+- `model_version`
+- `prompt_version`
+- `cost_estimate`
+- `error_code`
+- `safety_level`
+
+The table stores references and counts, not raw prompts or raw model responses.
+
+Generation observability rules:
+
+- LLM extraction and drafting jobs mirror their model call metadata into a
+  generation job or audit event.
+- Simulation runs record `trace_id`, `version`, `engine_version`,
+  `safety_level`, `cost_cents`, and `error_code`.
+- Report generation records `trace_id`, `claim_ids`, evidence EventLog count,
+  paid/free state, and `error_code`.
+- Admin/Ops observability is read-only and may show recent tasks, failed tasks,
+  average cost, `error_code` distribution, and `prompt_version` distribution.
+
+### audit_events
+
+Purpose: Append-only audit ledger for privileged or sensitive server-side
+actions.
+
+Minimum fields:
+
+- `id`
+- `user_id`
+- `created_at`
+- `updated_at`
+- `version`
+- `trace_id`
+- `job_id`
+- `actor_type`
+- `action`
+- `target_table`
+- `target_id`
+- `idempotency_key`
+- `request_hash`
+- `gate_decision`
+- `blocked_codes`
+- `model_version`
+- `prompt_version`
+- `cost_estimate`
+- `error_code`
+- `metadata`
+
+Browser clients may read only their own audit rows. Browser clients must not
+insert, update, or delete audit rows.
+
+Audit event rules:
+
+- Audit events record operational metadata and decisions only.
+- Audit events must not expose service-role keys, payment secrets, raw prompts,
+  or unnecessary sensitive user input.
+- Admin observability pages are read-only and cannot modify generation jobs,
+  Claims, EventLogs, Reports, payments, or entitlements.
+
 ## RLS Requirements
 
 - User-owned rows must only be readable by the owning user.
 - User-owned rows must only be writable by the owning user unless the table is system-owned.
 - System-owned generated artifacts must not become browser-writable unless explicitly approved.
+- Production RLS policies use `auth.uid() IS NOT NULL AND auth.uid() = user_id`
+  or the equivalent `user_profiles.user_id` ownership check.
 - Service-role clients must live only in server-only modules and must be gated
   by environment flags, auth/webhook verification, idempotency, audit evidence,
   and stable `error_code` responses.

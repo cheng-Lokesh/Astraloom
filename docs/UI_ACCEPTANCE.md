@@ -1,4 +1,4 @@
-# Project MiroFish UI Acceptance
+﻿# Project MiroFish UI Acceptance
 
 This file defines product and UX acceptance rules for MiroFish screens.
 
@@ -7,6 +7,38 @@ This file defines product and UX acceptance rules for MiroFish screens.
 The first impression must be a scenario sandbox, not a chatbot, not a fortune report, and not a marketing landing page.
 
 ## Required MVP Screens
+
+## Formal Product Routes
+
+Primary product navigation must use the formal route family:
+
+- `/`
+- `/login`
+- `/app/dashboard`
+- `/app/new/scene`
+- `/app/new/intake`
+- `/app/new/people`
+- `/app/new/agents`
+- `/app/new/graph`
+- `/app/simulation/running`
+- `/app/simulation/result`
+- `/app/archive`
+- `/app/settings`
+- `/app/support`
+- `/app/billing`
+- `/app/admin`
+
+Compatibility routes may remain for older links, but they must not be used as
+primary navigation:
+
+- `/people`
+- `/agents`
+- `/runs`
+- `/reports`
+
+The accepted main-flow path is:
+
+`/app/dashboard -> /app/new/scene -> /app/new/intake -> /app/new/people -> /app/new/agents -> /app/new/graph -> /app/simulation/running -> /app/simulation/result`
 
 ### Dashboard
 
@@ -95,7 +127,7 @@ Must optimize for:
 
 ### Relation Graph
 
-Must be read-only.
+Must be a read-only relation ledger, not a CRM-style relationship editor.
 
 Must show:
 
@@ -106,11 +138,32 @@ Must show:
 - Confidence.
 - Strength ranges.
 - Evidence entry points.
+- Graph Lock status.
+- Strongest pressure edge.
+- Largest information gap.
+- Most stable support edge.
+- Edge Drawer with user-language explanations:
+  - `trust` = 信任基础
+  - `hostility` = 冲突压力
+  - `dependency` = 依赖程度
+  - `informationGap` = 信息差
+  - `resourceControl` = 资源控制
+  - `emotionalDebt` = 情绪债务
+- `evidenceRefs` inside a collapsed disclosure area.
+
+Graph Lock rules:
+
+- Draft graph may be saved locally before simulation.
+- Locked graph state must persist with the relation graph draft.
+- After locking, the graph page must not provide controls to modify people or relation edges.
+- Users may only return to People to supplement facts, then regenerate the graph from the product flow.
+- The same graph components should be reusable in Result Sandbox surfaces.
 
 Must not show:
 
 - Edge-weight sliders.
 - Editable relation controls.
+- Direct inputs for `trust`, `hostility`, `dependency`, or any relation weight.
 - CRM-like relationship management UI.
 
 ### Simulation Running
@@ -139,6 +192,29 @@ Must prioritize:
 - Conclusion cards.
 - Evidence chain.
 - Paid unlock modules.
+
+Report Engine v1 must show:
+
+- Free preview and paid full-report depth from the same evidence-backed
+  `claim_id` set.
+- Overall risk in free preview.
+- 1-2 summary Claims in free preview.
+- Vague timeline and limited evidence count in free preview.
+- Unlock CTA that describes evidence and strategy depth only.
+- Full Claims in paid view.
+- Full EventLog chain in paid view.
+- Full involved agents and relation edge deltas in paid view.
+- Branch comparison in paid view.
+- Strategy options in paid view, with every strategy linked to a `claim_id`.
+- Evidence drawer for every visible Claim.
+
+Report Engine v1 must not:
+
+- Show Claims without `evidence_event_ids`.
+- Create new Claims during paid unlock.
+- Raise confidence during paid unlock.
+- Change `riskLevel` during paid unlock.
+- Frame paid depth as more certain than the free preview.
 
 Click behavior:
 
@@ -191,4 +267,3 @@ Before shipping a UI change, check:
 - No engineering jargon in primary user-facing copy.
 - No mojibake or encoding corruption.
 - User can see Agent, graph, timeline, evidence, or calibration value.
-

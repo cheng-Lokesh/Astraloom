@@ -9,17 +9,18 @@ type AppShellProps = {
 };
 
 const navItems = [
-  { href: "/app/dashboard", label: "Sandbox" },
-  { href: "/app/new/scene", label: "New" },
-  { href: "/people", label: "People" },
+  { href: "/app/dashboard", label: "Dashboard" },
+  { href: "/app/new/scene", label: "New run" },
+  { href: "/app/new/people", label: "People" },
   { href: "/app/new/agents", label: "Agents" },
   { href: "/app/new/graph", label: "Graph" },
-  { href: "/app/simulation/running", label: "Events" },
+  { href: "/app/simulation/running", label: "Simulation" },
   { href: "/app/simulation/result", label: "Result" },
-  { href: "/app/settings", label: "Feedback" },
-  { href: "/safety", label: "Safety" },
-  { href: "/billing", label: "Unlock" },
+  { href: "/app/archive", label: "Archive" },
+  { href: "/app/billing", label: "Billing" },
+  { href: "/app/settings", label: "Settings" },
   { href: "/app/support", label: "Support" },
+  { href: "/app/admin", label: "Admin" },
 ];
 
 export function AppShell({ children }: AppShellProps) {

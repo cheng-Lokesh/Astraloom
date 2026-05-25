@@ -5,37 +5,53 @@ import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusPill } from "@/components/status-pill";
-import { loadBillingSupportDraft } from "@/lib/billing/storage";
-import { loadClaimLedgerDraft } from "@/lib/claims/storage";
-import { loadFeedbackLedgerDraft } from "@/lib/feedback/storage";
-import { loadRelationGraphDraft } from "@/lib/relations/storage";
-import { loadSimulationRunDraft } from "@/lib/runs/storage";
-import { loadSafetyReviewDraft } from "@/lib/safety/storage";
-import { loadSeedContextDraft } from "@/lib/seed-context/storage";
+import { getRepositories } from "@/lib/repositories/repository-provider";
 
 export default function SettingsPage() {
-  const [seedContext] = useState(() => loadSeedContextDraft());
+  const [repos] = useState(() => getRepositories());
+  const [seedContext] = useState(() => {
+    const result = repos.seedContexts.load();
+    return result.ok ? result.data : null;
+  });
   const [simulationRun] = useState(() => {
-    const seed = loadSeedContextDraft();
-    return seed ? loadSimulationRunDraft(seed.id) : null;
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.simulations.load(seed.id);
+    return result.ok ? result.data : null;
   });
   const [relationGraph] = useState(() => {
-    const seed = loadSeedContextDraft();
-    return seed ? loadRelationGraphDraft(seed.id) : null;
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.relationGraphs.load(seed.id);
+    return result.ok ? result.data : null;
   });
   const [claimLedger] = useState(() => {
-    const seed = loadSeedContextDraft();
-    return seed ? loadClaimLedgerDraft(seed.id) : null;
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.reports.load(seed.id);
+    return result.ok ? result.data : null;
   });
   const [feedbackLedger] = useState(() => {
-    const seed = loadSeedContextDraft();
-    return seed ? loadFeedbackLedgerDraft(seed.id) : null;
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.feedback.load(seed.id);
+    return result.ok ? result.data : null;
   });
   const [safetyReview] = useState(() => {
-    const seed = loadSeedContextDraft();
-    return seed ? loadSafetyReviewDraft(seed.id) : null;
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.safetyReviews.load(seed.id);
+    return result.ok ? result.data : null;
   });
-  const [billingSupport] = useState(() => loadBillingSupportDraft());
+  const [billingSupport] = useState(() => {
+    const result = repos.billingSupport.load();
+    return result.ok ? result.data : null;
+  });
 
   const latestFeedback = feedbackLedger?.feedback.slice(0, 6) ?? [];
   const unlockStatus =

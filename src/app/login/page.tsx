@@ -17,8 +17,8 @@ const loginCopy = {
   zh: {
     authReady: "登录已就绪",
     setupRequired: "需要先配置",
-    title: "登录 MiroFish 工作台",
-    body: "当前登录外壳使用 Supabase 魔法链接。配置 `.env.local` 前，页面会保持设置模式，不会真的发送邮件。",
+    title: "登录 MiroFish 工作区",
+    body: "当前登录页使用 Supabase magic-link auth。配置 `.env.local` 前，页面会保持 setup 模式，不会发送邮件。",
   },
 };
 
@@ -39,9 +39,7 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold text-slate-950">
             {copy.title}
           </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {copy.body}
-          </p>
+          <p className="mt-3 text-sm leading-6 text-slate-600">{copy.body}</p>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

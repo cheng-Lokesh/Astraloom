@@ -6,6 +6,12 @@ export type AgentStance =
   | "decisive_parallel"
   | "confirmed_npc";
 
+export type AgentFieldSourceType =
+  | "user_confirmed"
+  | "chat_inferred"
+  | "default"
+  | "model_inferred";
+
 export type AgentProfileJson = {
   stance: AgentStance;
   role: string;
@@ -13,9 +19,10 @@ export type AgentProfileJson = {
   relationshipToUser: string;
   source: {
     confidence: number;
-    sourceType: "user_confirmed" | "chat_inferred" | "default";
+    sourceType: AgentFieldSourceType;
     evidenceRefs: string[];
   };
+  fieldSources: Record<string, AgentFieldSourceType>;
   motivation: {
     primaryGoal: string;
     fear: string;
@@ -57,8 +64,8 @@ export type AgentProfileDraft = {
   version: "local-deterministic-v0";
   traceId: string;
   profileJson: AgentProfileJson;
-  promptVersion: "unreleased";
-  modelVersion: "unreleased";
+  promptVersion: string;
+  modelVersion: string;
   createdAt: string;
   updatedAt: string;
 };

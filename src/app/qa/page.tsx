@@ -22,17 +22,27 @@ const phaseAccent: Record<QaPhaseId, string> = {
 
 const routeAcceptanceRoutes = [
   "/",
-  "/dashboard",
-  "/demo",
   "/login",
   "/auth/callback",
-  "/intake",
+  "/app/dashboard",
+  "/app/new/scene",
+  "/app/new/intake",
+  "/app/new/people",
+  "/app/new/agents",
+  "/app/new/graph",
+  "/app/simulation/running",
+  "/app/simulation/result",
+  "/app/archive",
+  "/app/settings",
+  "/app/support",
+  "/app/billing",
+  "/app/admin",
   "/people",
   "/agents",
   "/runs",
-  "/safety",
   "/reports",
-  "/billing",
+  "/safety",
+  "/demo",
   "/sync",
   "/server-writers",
   "/server-writers/contracts",
@@ -646,7 +656,7 @@ export default function QaPage() {
                 {copy.openSetup}
               </Link>
               <Link
-                href="/dashboard"
+                href="/app/dashboard"
                 className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
               >
                 {copy.openDashboard}

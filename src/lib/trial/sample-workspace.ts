@@ -37,6 +37,20 @@ function profileJson(
       sourceType: stance === "confirmed_npc" ? "user_confirmed" : "default",
       evidenceRefs,
     },
+    fieldSources: {
+      stance: "default",
+      role: stance === "confirmed_npc" ? "user_confirmed" : "default",
+      origin: "default",
+      relationshipToUser:
+        stance === "confirmed_npc" ? "user_confirmed" : "default",
+      motivation: "default",
+      resources: "default",
+      behaviorPolicy: "default",
+      state: "default",
+      traits: "default",
+      constraints: "default",
+      missingFields: "default",
+    },
     motivation: {
       primaryGoal: "Keep the decision reversible while improving the quality of information.",
       fear: "Committing too early before the relationship and timing evidence is clear.",
@@ -335,6 +349,8 @@ export function createTrialWorkspace() {
     version: "local-deterministic-v0" as const,
     agents,
     edges: relationEdges,
+    graphLocked: true,
+    lockedAt: now,
     updatedAt: now,
   };
   const simulationRun = queueSimulationRunDraft(

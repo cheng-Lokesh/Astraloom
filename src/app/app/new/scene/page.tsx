@@ -32,7 +32,7 @@ export default function ScenePage() {
     <AppShell>
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <main className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-          <StatusPill tone="planned">Seed Context</StatusPill>
+          <StatusPill tone="planned">New simulation</StatusPill>
           <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
             从一个沙盘框架开始，而不是做全人生预测。
           </h1>

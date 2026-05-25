@@ -37,16 +37,81 @@ Purpose: Extract candidate people from intake text.
 Allowed operations:
 
 - Return candidate people with confidence, evidence snippets, and missing fields.
-- Use DeepSeek fast model only when `ENABLE_SYSTEM_WRITERS`,
-  `ENABLE_AI_GENERATION`, service-role auth, and `DEEPSEEK_API_KEY` are ready.
-- Record `generation_jobs` with `trace_id`, `model_version`,
-  `prompt_version`, `cost_estimate`, and `error_code`.
+- Use an LLM only for candidate Key People extraction.
+- Validate request and model output with Zod.
+- Attach a `trace_id` to every request.
+- Record a model call log entry with `prompt_version`, `model_version`,
+  `latency_ms`, `cost_estimate`, and `error_code`.
+- Fall back to local `extractPeopleCandidates` when the LLM is unavailable,
+  times out, returns invalid JSON, fails schema validation, or is blocked by
+  SafetyVerifier.
+
+Input:
+
+```json
+{
+  "seedContextId": "string",
+  "seedContext": {
+    "id": "string",
+    "questionText": "string",
+    "trackType": "crossroad",
+    "timeWindow": "90_days",
+    "situationSummary": "string",
+    "keyPeopleText": "string",
+    "privacyAck": true,
+    "locale": "zh",
+    "status": "submitted",
+    "createdAt": "ISO string",
+    "updatedAt": "ISO string"
+  }
+}
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "trace_id": "string",
+  "source": "llm",
+  "model_version": "string",
+  "prompt_version": "extract-people-v1",
+  "latency_ms": 0,
+  "cost_estimate": 0,
+  "error_code": null,
+  "people": [
+    {
+      "display_name": "string",
+      "relationship_to_user": "boss",
+      "role_type": "authority",
+      "confidence": 0.82,
+      "known_evidence": ["string"],
+      "missing_fields": ["string"],
+      "source_refs": ["string"]
+    }
+  ],
+  "uncertainty_flags": ["string"]
+}
+```
+
+Fallback output keeps the same shape and uses:
+
+- `source: "local_fallback"`
+- `fallback_reason`
+- `model_version: "not_called"` when no model call was made
+- `candidates` as local `KeyPersonDraft[]` for the current MVP UI bridge
 
 Forbidden:
 
 - Do not create final Agent Profiles unless the task explicitly includes that transition.
 - Do not infer private facts as high-confidence truth.
 - Do not run when high-risk seed text requires safety downgrade.
+- Do not generate Claims.
+- Do not generate Reports.
+- Do not generate RelationEdges.
+- Do not modify edge weights.
+- Do not judge whether a third party loves, betrays, deceives, or secretly
+  intends something.
 
 ### `/api/key-people/confirm`
 
@@ -67,16 +132,26 @@ Purpose: Generate Agent Profile drafts from confirmed people.
 
 Allowed operations:
 
-- Create user core, user variants, NPC, or group agent drafts.
-- Include source, confidence, and evidence refs.
-- Record a gated generation job. The LLM output is advisory until validated and
-  persisted by backend rules.
+- Create Agent Profile drafts only.
+- Always include `user_core`.
+- Include at most one or two `parallel_self` drafts.
+- Create one `npc` draft for each confirmed Key Person.
+- Include `source_type`, `confidence`, and `evidence_refs` for generated
+  fields.
+- Validate request and model output with Zod.
+- Fall back to local `buildAgentProfiles` when the LLM is unavailable, times
+  out, returns invalid JSON, fails schema validation, violates safety language,
+  or SafetyVerifier downgrades the scenario.
 
 Forbidden:
 
 - Do not invent unsupported biography or hidden motives as fact.
 - Do not directly produce final report claims.
 - Do not modify Relation Edge weights.
+- Do not create Reports.
+- Do not run simulation.
+- Do not judge third-party private thoughts, betrayal, love, deception, or
+  deterministic future outcomes.
 
 ### `/api/graph/generate`
 
@@ -177,10 +252,50 @@ Purpose: Create support tickets.
 
 Allowed operations:
 
-- Refund request.
-- Generation failure report.
-- Safety appeal.
-- General support.
+- Create `generation_failure`, `refund_request`, `safety_appeal`,
+  `privacy_delete_request`, `billing_question`, or `general_support` tickets.
+- Link optional `report_id` or `simulation_id` references.
+- Return only ticket metadata and a short message preview.
+- Attach a `trace_id`.
+
+Input:
+
+```json
+{
+  "ticketType": "generation_failure",
+  "subject": "string",
+  "message": "string",
+  "relatedReportId": "string | null",
+  "relatedSimulationId": "string | null"
+}
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "trace_id": "string",
+  "ticket": {
+    "id": "string",
+    "ticketType": "generation_failure",
+    "status": "open",
+    "priority": "p1",
+    "subject": "string",
+    "messagePreview": "string",
+    "relatedReportId": "string | null",
+    "relatedSimulationId": "string | null",
+    "sensitiveInputHidden": true
+  }
+}
+```
+
+Forbidden:
+
+- Do not create a customer-service chat system.
+- Do not expose unnecessary sensitive source text in admin responses.
+- Do not modify Claims, EventLogs, report conclusions, payment records, or
+  entitlement state.
 
 ### `/api/privacy/delete-request`
 
@@ -188,11 +303,68 @@ Purpose: Record account or simulation deletion requests.
 
 Allowed operations:
 
-- Store deletion request and consent event.
+- Store a `privacy_delete_request` support ticket.
+- Store a deletion-related consent event.
+- Link optional `report_id` or `simulation_id` references.
+- Return `deletion_started: false` until a separate audited deletion workflow is
+  implemented.
 
 Forbidden:
 
 - Do not silently delete generated evidence without an auditable request state unless the task explicitly implements deletion.
+- Do not directly hard-delete all user data from this route.
+- Do not rewrite historical Claims, EventLogs, or Reports.
+
+### `/api/admin/support-tickets`
+
+Purpose: Minimal Admin/Ops support ticket queue.
+
+Access:
+
+- Requires `MIROFISH_ADMIN_TOKEN` to be configured server-side.
+- Requests must include `x-mirofish-admin-token`.
+- If the token is missing or incorrect, the route must not return ticket data.
+
+Allowed operations:
+
+- `GET`: list support ticket metadata, generation failures, and safety appeals.
+- `PATCH`: mark a ticket status as `open`, `triaged`, `in_review`,
+  `resolved`, or `closed`.
+- Return only short message previews and references.
+
+Forbidden:
+
+- Do not expose full raw intake or unnecessary private message text.
+- Do not allow admin edits to Claims, EventLogs, Reports, RelationEdges, or
+  report conclusions.
+- Do not issue real refunds.
+- Do not perform hard deletion.
+- Do not create a support chat system.
+
+### `/api/admin/observability`
+
+Purpose: Read generation-chain observability summaries.
+
+Access:
+
+- Requires `MIROFISH_ADMIN_TOKEN` to be configured server-side.
+- Requests must include `x-mirofish-admin-token`.
+- If the token is missing or incorrect, the route must not return generation,
+  support, or audit summaries.
+
+Allowed operations:
+
+- List recent generation tasks.
+- List failed tasks.
+- Return average cost, `error_code` distribution, and `prompt_version`
+  distribution.
+- Return metadata only.
+
+Forbidden:
+
+- Do not expose service keys.
+- Do not expose raw prompts or unnecessary sensitive input.
+- Do not allow admin mutation from observability views.
 
 ## Service Boundary
 

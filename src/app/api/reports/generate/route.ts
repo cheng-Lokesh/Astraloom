@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { generateDeepSeekJson } from "@/lib/llm/deepseek.server";
+import { logModelCall } from "@/lib/model-call-log/log-model-call";
+import { recordReportGenerationEvent } from "@/lib/observability/audit-event";
 import { recordGenerationJob } from "@/lib/server-writers/generation-jobs.server";
 import { checkRuntimeGate, gateErrorResponse } from "@/lib/server-writers/runtime-gates";
 import { isUuid, jsonError } from "@/lib/server-writers/validation";
@@ -89,6 +91,43 @@ export async function POST(request: NextRequest) {
       relation_edges: body.relationEdges,
     }),
     maxTokens: 1400,
+  });
+  const claimIds = body.claims
+    .map((claim) => (typeof claim.id === "string" ? claim.id : null))
+    .filter((claimId): claimId is string => Boolean(claimId));
+  const evidenceEventCount = body.claims.reduce((total, claim) => {
+    return (
+      total +
+      (Array.isArray(claim.evidence_event_ids)
+        ? claim.evidence_event_ids.length
+        : 0)
+    );
+  }, 0);
+
+  await logModelCall({
+    traceId: gate.traceId,
+    userId: auth.user.id,
+    jobType: "report_text_generate",
+    promptVersion: result.promptVersion,
+    modelVersion: result.modelVersion,
+    latencyMs: result.latencyMs,
+    inputTokenEstimate: result.inputTokenEstimate,
+    outputTokenEstimate: result.outputTokenEstimate,
+    costEstimate: result.costEstimate,
+    errorCode: result.errorCode,
+    metadata: {
+      claim_count: claimIds.length,
+      evidence_event_count: evidenceEventCount,
+      paid_state: "paid",
+    },
+  });
+
+  recordReportGenerationEvent({
+    traceId: gate.traceId,
+    claimIds,
+    evidenceEventCount,
+    paidState: "paid",
+    errorCode: result.errorCode,
   });
 
   await recordGenerationJob({

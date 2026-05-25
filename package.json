@@ -6,14 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "type-check": "next typegen && tsc --noEmit",
+    "check": "npm run lint && npm run type-check && npm run build"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
     "@xyflow/react": "^12.10.2",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

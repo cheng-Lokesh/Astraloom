@@ -5,14 +5,8 @@ import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusPill } from "@/components/status-pill";
+import { getRepositories } from "@/lib/repositories/repository-provider";
 import { buildSafetyReviewDraft, markSafetyBlocked } from "@/lib/safety/build";
-import {
-  clearSafetyReviewDraft,
-  loadSafetyReviewDraft,
-  saveSafetyReviewDraft,
-} from "@/lib/safety/storage";
-import { loadSeedContextDraft } from "@/lib/seed-context/storage";
-import { loadSimulationRunDraft } from "@/lib/runs/storage";
 import type { SafetyReviewDraft } from "@/types/safety-review";
 
 function toneForStatus(status: string) {
@@ -22,16 +16,26 @@ function toneForStatus(status: string) {
 }
 
 export default function SafetyPage() {
-  const [seedContext] = useState(() => loadSeedContextDraft());
+  const [repos] = useState(() => getRepositories());
+  const [seedContext] = useState(() => {
+    const result = repos.seedContexts.load();
+    return result.ok ? result.data : null;
+  });
   const [simulationRun] = useState(() => {
-    const seed = loadSeedContextDraft();
-    return seed ? loadSimulationRunDraft(seed.id) : null;
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.simulations.load(seed.id);
+    return result.ok ? result.data : null;
   });
   const [review, setReview] = useState<SafetyReviewDraft | null>(() => {
-    const seed = loadSeedContextDraft();
-    const run = seed ? loadSimulationRunDraft(seed.id) : null;
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    const runResult = seed ? repos.simulations.load(seed.id) : null;
+    const run = runResult?.ok ? runResult.data : null;
     if (!seed || !run) return null;
-    return loadSafetyReviewDraft(seed.id) ?? buildSafetyReviewDraft(seed, run);
+    const result = repos.safetyReviews.load(seed.id);
+    return (result.ok ? result.data : null) ?? buildSafetyReviewDraft(seed, run);
   });
   const [message, setMessage] = useState("");
 
@@ -59,7 +63,11 @@ export default function SafetyPage() {
   }
 
   function persist(nextReview: SafetyReviewDraft, nextMessage: string) {
-    saveSafetyReviewDraft(nextReview);
+    const result = repos.safetyReviews.save(nextReview);
+    if (!result.ok) {
+      setMessage(`Save failed: ${result.errorCode}`);
+      return;
+    }
     setReview(nextReview);
     setMessage(nextMessage);
   }
@@ -84,7 +92,7 @@ export default function SafetyPage() {
 
   function reset() {
     if (!seedContext || !simulationRun) return;
-    clearSafetyReviewDraft(seedContext.id);
+    repos.safetyReviews.clearDraft(seedContext.id);
     setReview(buildSafetyReviewDraft(seedContext, simulationRun));
     setMessage("Safety review reset.");
   }
@@ -218,7 +226,7 @@ export default function SafetyPage() {
               Open Result Sandbox
             </Link>
             <Link
-              href="/billing"
+              href="/app/billing"
               className="inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
             >
               Open unlock boundary

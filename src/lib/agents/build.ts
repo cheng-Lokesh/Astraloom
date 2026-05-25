@@ -65,6 +65,19 @@ function selfProfile(seedContext: SeedContextDraft, stance: AgentStance): AgentP
     confirmed_npc: "确认 NPC",
   };
   const speed = stance === "cautious_parallel" ? 34 : stance === "decisive_parallel" ? 76 : 54;
+  const fieldSources = {
+    stance: "default",
+    role: "default",
+    origin: "default",
+    relationshipToUser: "default",
+    motivation: "default",
+    resources: "default",
+    behaviorPolicy: "default",
+    state: "default",
+    traits: "default",
+    constraints: "default",
+    missingFields: "default",
+  } as const;
 
   return {
     stance,
@@ -76,6 +89,7 @@ function selfProfile(seedContext: SeedContextDraft, stance: AgentStance): AgentP
       sourceType: "default",
       evidenceRefs: [`seed:${seedContext.id}:self:${stance}`],
     },
+    fieldSources,
     motivation: {
       primaryGoal:
         seedContext.trackType === "crossroad"
@@ -126,6 +140,21 @@ function npcProfile(person: KeyPersonDraft): AgentProfileJson {
     person.relationshipToUser,
     `${person.id}:emotion`,
   );
+  const confirmedSource =
+    person.status === "confirmed" ? "user_confirmed" : "chat_inferred";
+  const fieldSources = {
+    stance: "default",
+    role: confirmedSource,
+    origin: confirmedSource,
+    relationshipToUser: confirmedSource,
+    motivation: "default",
+    resources: "default",
+    behaviorPolicy: "default",
+    state: "default",
+    traits: confirmedSource,
+    constraints: "default",
+    missingFields: confirmedSource,
+  } as const;
 
   return {
     stance: "confirmed_npc",
@@ -139,9 +168,10 @@ function npcProfile(person: KeyPersonDraft): AgentProfileJson {
     relationshipToUser: person.relationshipToUser,
     source: {
       confidence: person.confidence,
-      sourceType: person.status === "confirmed" ? "user_confirmed" : "chat_inferred",
+      sourceType: confirmedSource,
       evidenceRefs: person.evidenceRefs,
     },
+    fieldSources,
     motivation: {
       primaryGoal: `${person.role || "该节点"}在本局面中的资源、压力或信号保持可解释。`,
       fear: "被误读为确定动机，因此必须保留置信度和证据引用。",

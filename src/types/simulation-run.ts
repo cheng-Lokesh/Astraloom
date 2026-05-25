@@ -3,6 +3,8 @@ import type { TimeWindow, TrackType } from "@/types/seed-context";
 
 export type SimulationRunStatus = "not_ready" | "queued" | "blocked";
 
+export type SimulationBranchId = "baseline" | "cautious_self" | "decisive_self";
+
 export type SimulationGateId =
   | "agents"
   | "relation_graph"
@@ -20,25 +22,49 @@ export type SimulationGateDraft = {
 
 export type SimulationEventStatus = "empty" | "preview";
 
+export type SimulationEventType =
+  | "graph_freeze"
+  | "avoidance"
+  | "cooperation"
+  | "direct_conflict"
+  | "disclosure"
+  | "resource_competition"
+  | "support"
+  | "opportunity_signal"
+  | "information_gap_widening"
+  | "relation_pressure"
+  | "agent_signal"
+  | "empty_slot";
+
 export type SimulationTickDraft = {
   id: string;
   simulationRunId: string;
   version: "local-deterministic-v0";
+  branchId?: SimulationBranchId;
   tickIndex: number;
   timeLabel: string;
   environmentState: {
     trackType: TrackType;
     timeWindow: TimeWindow;
     focus: string;
+    branchId?: SimulationBranchId;
+    branchLabel?: string;
+    tickPolicy?: string;
+    tickIndex?: number;
+    safetyLevel?: string;
   };
   agentStateSnapshot: Array<{
     agentId: string;
+    branchId?: SimulationBranchId;
     confidence: number;
+    stance?: string;
+    stress?: number;
   }>;
   relationGraphSnapshot: Array<{
     edgeId: string;
     weights: RelationWeights;
   }>;
+  eventLogIds?: string[];
   summary: string;
   traceId: string;
   errorCode: null;
@@ -54,12 +80,12 @@ export type SimulationEventDraft = {
   timeWindow: TimeWindow;
   timeLabel: string;
   version: "local-deterministic-v0";
-  eventType:
-    | "graph_freeze"
-    | "relation_pressure"
-    | "agent_signal"
-    | "empty_slot";
+  branchId?: SimulationBranchId;
+  eventType: SimulationEventType;
   summary: string;
+  participants?: string[];
+  causes?: string[];
+  action?: string;
   agentIds: string[];
   involvedAgentIds: string[];
   relationEdgeIds: string[];
@@ -70,8 +96,14 @@ export type SimulationEventDraft = {
     weights: Record<string, RelationWeights>;
   };
   edgeWeightDeltas: Record<string, Partial<RelationWeights>>;
+  evidence?: {
+    sourceAgentIds: string[];
+    sourceRelationEdgeIds: string[];
+    ruleIds: string[];
+    evidenceRefs: string[];
+  };
   confidence: number;
-  source: "local_tick_engine_v0";
+  source: "local_tick_engine_v0" | "simulation_engine_v1";
   traceId: string;
   status: SimulationEventStatus;
   createdAt: string;
@@ -87,7 +119,22 @@ export type SimulationRunDraft = {
   tickCount: number;
   frozenAgentProfileIds: string[];
   frozenRelationEdgeIds: string[];
+  frozenAgentProfileSnapshot?: unknown[];
+  frozenRelationEdgeSnapshot?: unknown[];
+  safetySnapshot?: {
+    safetyLevel: "safe" | "caution" | "downgraded" | "blocked" | "unchecked";
+    flags: string[];
+    allowedActions: string[];
+    blockedActions: string[];
+    reportRestrictions: string[];
+  };
   safetyLevel: "unchecked" | "normal" | "blocked";
+  branches?: Array<{
+    id: SimulationBranchId;
+    label: string;
+    tickIds: string[];
+    eventIds: string[];
+  }>;
   traceId: string;
   modelVersion: "unreleased";
   promptVersion: "unreleased";
