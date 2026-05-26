@@ -1,9 +1,13 @@
 "use client";
 
 import type { RelationEdgeDraft } from "@/types/relation-edge";
+import type { AgentProfileDraft } from "@/types/agent-profile";
+
+import { EvidenceTag } from "@/components/ui-foundation";
 
 type GraphSummaryCardsProps = {
   edges: RelationEdgeDraft[];
+  agents?: AgentProfileDraft[];
   onSelectEdge?: (edgeId: string) => void;
 };
 
@@ -57,21 +61,31 @@ function edgeScore(edge: RelationEdgeDraft | undefined, kind: string) {
   return supportScore(edge);
 }
 
+function agentLabel(agents: AgentProfileDraft[], id: string) {
+  return agents.find((agent) => agent.id === id)?.label ?? "Unknown agent";
+}
+
+function edgeTitle(edge: RelationEdgeDraft | undefined, agents: AgentProfileDraft[]) {
+  if (!edge) return "No edge";
+  return `${agentLabel(agents, edge.fromAgentId)} -> ${agentLabel(agents, edge.toAgentId)}`;
+}
+
 export function GraphSummaryCards({
   edges,
+  agents = [],
   onSelectEdge,
 }: GraphSummaryCardsProps) {
   const cards = [
     {
       id: "pressure",
       title: "Strongest pressure edge",
-      body: "The edge where conflict, competition, and emotional debt cluster most strongly.",
+      body: "The relation where conflict pressure, competition, and emotional debt carry the most simulation weight.",
       edge: strongestPressureEdge(edges),
     },
     {
       id: "gap",
       title: "Largest information gap",
-      body: "The edge most likely to benefit from more observable facts before simulation.",
+      body: "The relation with the least even context between actors. More upstream facts can improve this model.",
       edge: largestInformationGap(edges),
     },
     {
@@ -83,7 +97,7 @@ export function GraphSummaryCards({
     {
       id: "dependency",
       title: "Highest dependency edge",
-      body: "The edge where timing, access, approval, or support depends most on another actor.",
+      body: "The relation where timing, access, approval, or support has the strongest dependency signal.",
       edge: highestDependencyEdge(edges),
     },
   ];
@@ -102,18 +116,21 @@ export function GraphSummaryCards({
             {card.title}
           </p>
           <h2 className="mt-2 text-sm font-semibold text-[#11150f]">
-            {card.edge?.relationshipType ?? "No edge"}
+            {edgeTitle(card.edge, agents)}
           </h2>
+          {card.edge ? (
+            <p className="mt-1 text-xs capitalize text-[#7d8578]">
+              {card.edge.relationshipType.replaceAll("_", " ")} / confidence {card.edge.confidence}%
+            </p>
+          ) : null}
           <p className="mt-2 min-h-[60px] text-xs leading-5 text-[#62695d]">
             {card.body}
           </p>
           <div className="mt-3 flex items-center justify-between gap-3">
             <code className="truncate text-[11px] text-[#7d8578]">
-              {card.edge?.id ?? "missing"}
+              {card.edge ? "View this edge" : "missing"}
             </code>
-            <span className="rounded border border-[#568262]/20 bg-[#eef5ee] px-2 py-1 text-xs font-semibold text-[#2f5d3d]">
-              {edgeScore(card.edge, card.id)}
-            </span>
+            <EvidenceTag>{edgeScore(card.edge, card.id)}</EvidenceTag>
           </div>
         </button>
       ))}

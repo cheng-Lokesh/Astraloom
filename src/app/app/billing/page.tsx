@@ -167,7 +167,7 @@ export default function BillingPage() {
         {safetyDecision && safetyDecision.safetyLevel !== "safe" ? (
           <SafetyDowngradeNotice
             decision={safetyDecision}
-            title="Paid unlock safety gate"
+            title="Full-depth safety gate"
           />
         ) : null}
 

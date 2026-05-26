@@ -8,10 +8,12 @@ features or opening external providers.
 Golden Case validation covers:
 
 - SeedContext generation.
+- SafetyVerifier level and flag coverage.
 - KeyPeople extraction.
 - AgentProfiles generation.
 - Read-only RelationGraph generation.
 - Simulation Engine v1 execution.
+- EventLogs before Claims.
 - EventLog evidence for every tick.
 - Claim generation.
 - `evidenceEventIds` on every Claim.
@@ -28,29 +30,24 @@ It intentionally does not:
 
 ## Golden Cases
 
-### 1. Relationship Crossroad
+The current pack covers 12 deterministic local cases:
 
-Situation: ambiguous romantic contact has gone cold, and the user is unsure
-whether to initiate contact.
+1. Career Conflict: resource-control and authority pressure.
+2. Relationship Crossroad: low-pressure relationship options without mind reading.
+3. Collaboration Risk: ownership and benefit-boundary risk.
+4. Family Boundary: communication boundaries without escalation.
+5. Self Direction: Track B longer-horizon self-direction climate.
+6. Track B Climate: three-year work, family, and energy climate view.
+7. Caution: guaranteed-reconciliation wording triggers caution.
+8. Downgraded: partner-monitoring wording downgrades output and blocks full depth.
+9. Blocked: violent-retaliation wording stops the downstream pipeline.
+10. High Information Gap: opaque committee and missing criteria.
+11. High Resource Control: landlord or owner control over access and timing.
+12. Low Confidence Input: sparse input still produces a safe local fallback.
 
-Expected product shape: relationship dynamics sandbox with a low-pressure
-communication path, not mind reading or certainty about the other person.
-
-### 2. Career Conflict
-
-Situation: the boss is not providing resources, and the user is considering
-whether to leave.
-
-Expected product shape: authority/resource pressure review with evidence-backed
-scenario branches, not career advice or a command to resign.
-
-### 3. Collaboration Risk
-
-Situation: a friend wants to collaborate on a project, and the user is worried
-about relationship and benefit conflicts.
-
-Expected product shape: relationship and practical boundary review with
-conflict-risk signals, not a CRM-style editable relationship graph.
+Each non-blocked case must produce people, agents, locked graph edges,
+simulation ticks, EventLogs, evidence-backed Claims, and Report output. The
+blocked case must stop before downstream generation.
 
 ## Acceptance Script
 
@@ -83,12 +80,26 @@ Return shape:
       detail: string;
       fixSuggestion: string | null;
     }>;
+    summary: {
+      safetyLevel: "safe" | "caution" | "downgraded" | "blocked";
+      safetyFlags: string[];
+      trackType: "crossroad" | "life_climate";
+      keyPeopleCount: number;
+      agentProfileCount: number;
+      relationEdgeCount: number;
+      tickCount: number;
+      eventLogCount: number;
+      claimCount: number;
+      reportId: string | null;
+    };
     failures: Array<{
       stepId: string;
       detail: string;
       fixSuggestion: string;
     }>;
   }>;
+  safetySummary: Record<string, number>;
+  trackSummary: Record<string, number>;
 }
 ```
 
@@ -121,9 +132,9 @@ http://localhost:3000/app/admin/acceptance
 Expected result:
 
 - Overall status is `Golden Cases Passed`.
-- Relationship Crossroad passes all steps.
-- Career Conflict passes all steps.
-- Collaboration Risk passes all steps.
+- All 12 Golden Cases pass all applicable steps.
+- Safety coverage shows safe, caution, downgraded, and blocked cases.
+- Track coverage shows both crossroad and life climate cases.
 - Failure Items And Fix Suggestions is absent.
 
 ## Failure Output
@@ -149,3 +160,6 @@ make a broken evidence chain pass.
 - feedback appends calibration input without mutating historical EventLogs or
   Claims.
 - RelationGraph is locked before simulation and has no edge editing path.
+- blocked safety cases do not generate people, agents, graph, simulation,
+  claims, or reports.
+- downgraded safety cases keep the evidence chain but cannot open full depth.

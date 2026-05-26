@@ -14,6 +14,14 @@ export type FeedbackRating =
   | "unclear"
   | "not_happened_yet";
 
+export type FeedbackCorrectionConfidence = "low" | "medium" | "high";
+
+export type FeedbackFieldCorrection = {
+  field: string;
+  suggestedValue: string;
+  confidence: FeedbackCorrectionConfidence;
+};
+
 export type FeedbackDraft = {
   id: string;
   seedContextId: string;
@@ -22,6 +30,8 @@ export type FeedbackDraft = {
   targetId: string;
   rating: FeedbackRating;
   note: string;
+  agentCorrection?: FeedbackFieldCorrection;
+  relationCorrection?: FeedbackFieldCorrection;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,3 +1,4 @@
+import { ConfidenceTag, EvidenceTag } from "@/components/ui-foundation";
 import type { ClaimDraft } from "@/types/claim";
 
 function riskClass(risk: ClaimDraft["riskLevel"]) {
@@ -15,6 +16,14 @@ export function ClaimCard({
   selected: boolean;
   onSelect: (claimId: string) => void;
 }) {
+  const titles: Record<string, string> = {
+    risk_window: "Risk window",
+    opportunity_window: "Opportunity window",
+    friction_signal: "Friction signal",
+    coordination_signal: "Coordination signal",
+  };
+  const title = titles[claim.claimType] ?? claim.claimType;
+
   return (
     <button
       type="button"
@@ -25,39 +34,36 @@ export function ClaimCard({
           : "border-black/8 bg-white hover:border-[#568262]/30"
       }`}
     >
+      <div className="mb-4 flex flex-wrap gap-2">
+        <EvidenceTag>evidence events {claim.evidenceEventIds.length}</EvidenceTag>
+        <ConfidenceTag value={claim.confidence} />
+        <span
+          className={`rounded-md border px-2 py-1 text-xs font-semibold ${riskClass(
+            claim.riskLevel,
+          )}`}
+        >
+          {claim.riskLevel} risk
+        </span>
+      </div>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-            {claim.claimType}
+            {title}
           </p>
           <h3 className="mt-2 text-base font-semibold leading-7 text-[#11150f]">
             {claim.summary}
           </h3>
         </div>
-        <span
-          className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${riskClass(
-            claim.riskLevel,
-          )}`}
-        >
-          {claim.riskLevel}
-        </span>
       </div>
       <p className="mt-4 text-sm leading-6 text-[#62695d]">
-        这条结论来自以下事件证据。若现有互动惯性不变，它只表示一个可复盘的沙盘信号。
+        This claim comes from Event Log evidence. It is a reviewable sandbox
+        signal, not a certain result.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Tag>confidence {claim.confidence}%</Tag>
-        <Tag>events {claim.evidenceEventIds.length}</Tag>
-        <Tag>claim_id {claim.id}</Tag>
+        <span className="mf-tag">agents {claim.relatedAgentIds.length}</span>
+        <span className="mf-tag">edges {claim.relatedRelationEdgeIds.length}</span>
+        <span className="mf-tag">claim_id {claim.id}</span>
       </div>
     </button>
-  );
-}
-
-function Tag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
-      {children}
-    </span>
   );
 }

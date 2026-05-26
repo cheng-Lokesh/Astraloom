@@ -1,12 +1,13 @@
 ﻿"use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
+import { TimelineFeed } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
+import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import { applyFeedbackToNextRun } from "@/lib/calibration/apply-feedback-to-next-run";
 import { loadCalibrationProfile } from "@/lib/calibration/calibration-engine";
@@ -75,6 +76,27 @@ const branchNames: SimulationBranchId[] = [
   "decisive_self",
 ];
 
+const branchMeta: Record<
+  SimulationBranchId,
+  { title: string; detail: string; classes: string }
+> = {
+  baseline: {
+    title: "baseline",
+    detail: "Uses the locked graph and current Agent Profile policies without a self-variant tilt.",
+    classes: "border-black/8 bg-[#f7f8f4]",
+  },
+  cautious_self: {
+    title: "cautious_self",
+    detail: "Uses the cautious parallel self policy to model higher risk-aversion from the same graph.",
+    classes: "border-[#5b7f9b]/30 bg-[#eef3f7]",
+  },
+  decisive_self: {
+    title: "decisive_self",
+    detail: "Uses the decisive parallel self policy to model higher risk-tolerance from the same graph.",
+    classes: "border-[#c4824a]/30 bg-[#fdf5ed]",
+  },
+};
+
 function statusTone(status: string) {
   if (status === "ready" || status === "queued") return "ready";
   if (status === "blocked" || status === "missing" || status === "failed") {
@@ -83,17 +105,20 @@ function statusTone(status: string) {
   return "planned";
 }
 
-function branchLabel(branchId: SimulationBranchId) {
-  const labels: Record<SimulationBranchId, string> = {
-    baseline: "baseline",
-    cautious_self: "cautious_self",
-    decisive_self: "decisive_self",
-  };
-  return labels[branchId];
-}
-
 function eventTypeLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function countByEventType(events: SimulationRunDraft["events"]) {
+  return events.reduce<Record<string, number>>((counts, event) => {
+    const label = eventTypeLabel(event.eventType);
+    return { ...counts, [label]: (counts[label] ?? 0) + 1 };
+  }, {});
+}
+
+function claimCountForRun(run: SimulationRunDraft | null) {
+  if (!run || run.events.length === 0) return 0;
+  return buildClaimLedgerDraft(run.seedContextId, run).claims.length;
 }
 
 function buildDraftFromLocalState(repos: ReturnType<typeof getRepositories>) {
@@ -181,11 +206,64 @@ export default function RunsPage() {
   const visibleRun = processRun ?? run;
   const generatedEventCount = visibleRun?.events.length ?? 0;
   const claimPreviewCount = useMemo(
-    () =>
-      visibleRun
-        ? buildClaimLedgerDraft(visibleRun.seedContextId, visibleRun).claims.length
-        : 0,
+    () => claimCountForRun(visibleRun),
     [visibleRun],
+  );
+  const canOpenResult =
+    processState === "complete" ||
+    (visibleRun?.status === "queued" &&
+      generatedEventCount > 0 &&
+      claimPreviewCount > 0);
+  const gateChecklist = useMemo(
+    () => [
+      {
+        id: "graph_locked",
+        label: "Graph locked",
+        ready: relationGraph?.graphLocked === true,
+        fix: "Lock the Relation Graph snapshot before running.",
+      },
+      {
+        id: "agents_ready",
+        label: "Agents ready",
+        ready:
+          (agentEcology?.agents.length ?? 0) > 0 &&
+          (agentEcology?.agents.some((agent) => agent.agentType === "npc") ??
+            false),
+        fix: "Confirm Key People and save Agent Profiles.",
+      },
+      {
+        id: "safety_checked",
+        label: "Safety checked",
+        ready: safetyDecision?.safetyLevel !== "blocked",
+        fix: "Revise the situation setup if SafetyVerifier blocks the run.",
+      },
+      {
+        id: "events_generated",
+        label: "Event Logs generated",
+        ready: generatedEventCount > 0,
+        fix: "Run the visible simulation after graph lock.",
+      },
+      {
+        id: "claims_built",
+        label: "Claims built from events",
+        ready: claimPreviewCount > 0,
+        fix: "Claims require saved Event Logs with relation edge evidence.",
+      },
+      {
+        id: "report_ready",
+        label: "Result preview prepared",
+        ready: canOpenResult,
+        fix: "Finish the stage sequence before opening results.",
+      },
+    ],
+    [
+      agentEcology?.agents,
+      canOpenResult,
+      claimPreviewCount,
+      generatedEventCount,
+      relationGraph?.graphLocked,
+      safetyDecision?.safetyLevel,
+    ],
   );
   const branchEventCounts = useMemo(() => {
     const counts = new Map<SimulationBranchId, number>();
@@ -265,7 +343,7 @@ export default function RunsPage() {
   if (!seedContext || !agentEcology) {
     return (
       <AppShell>
-        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Needs Agent Profiles</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
             Save usable Agent Profiles before running the simulation.
@@ -282,13 +360,10 @@ export default function RunsPage() {
               "Return here after the Agent Profile surface shows a saved ecology.",
             ]}
           />
-          <Link
-            href="/app/new/agents"
-            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
-          >
+          <ButtonLink href="/app/new/agents" className="mt-6 px-5 py-3">
             Open Agent Profiles
-          </Link>
-        </section>
+          </ButtonLink>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -296,7 +371,7 @@ export default function RunsPage() {
   if (relationGraph && !relationGraph.graphLocked) {
     return (
       <AppShell>
-        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Graph lock required</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
             Lock the scenario graph before running simulation ticks.
@@ -313,13 +388,10 @@ export default function RunsPage() {
               "Lock the graph snapshot before opening the simulation process.",
             ]}
           />
-          <Link
-            href="/app/new/graph"
-            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
-          >
+          <ButtonLink href="/app/new/graph" className="mt-6 px-5 py-3">
             Lock Relation Graph
-          </Link>
-        </section>
+          </ButtonLink>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -327,7 +399,7 @@ export default function RunsPage() {
   if (!relationGraph || !run) {
     return (
       <AppShell>
-        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Needs Relation Graph</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
             Save and lock the read-only relation graph before running ticks.
@@ -344,13 +416,10 @@ export default function RunsPage() {
               "Lock the graph so the simulation can freeze a stable snapshot.",
             ]}
           />
-          <Link
-            href="/app/new/graph"
-            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
-          >
+          <ButtonLink href="/app/new/graph" className="mt-6 px-5 py-3">
             Open Relation Graph
-          </Link>
-        </section>
+          </ButtonLink>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -361,15 +430,66 @@ export default function RunsPage() {
         <section className="mx-auto max-w-3xl space-y-5">
           <SafetyDowngradeNotice
             decision={safetyDecision}
-            title="Simulation stopped by SafetyVerifier"
+            title="Simulation is paused for safety"
           />
-          <Link
-            href="/app/new/intake"
-            className="inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
-          >
+          <ButtonLink href="/app/new/intake" className="px-5 py-3">
             Back to situation setup
-          </Link>
+          </ButtonLink>
         </section>
+      </AppShell>
+    );
+  }
+
+  if (!agentEcology.agents.some((agent) => agent.agentType === "npc")) {
+    return (
+      <AppShell>
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
+          <StatusPill tone="blocked">NPC required</StatusPill>
+          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            Add at least one confirmed NPC before running ticks.
+          </h1>
+          <p className="mt-3 text-sm leading-7 text-[#62695d]">
+            The simulation needs a user model and at least one confirmed NPC so Event Logs can connect agents through Relation Edges.
+          </p>
+          <NotReadyPanel
+            title="Concrete fixes"
+            items={[
+              "Return to Key People and confirm at least one person.",
+              "Regenerate Agent Profiles so confirmed people become NPC agents.",
+              "Regenerate and lock the Relation Graph before running again.",
+            ]}
+          />
+          <ButtonLink href="/app/new/people" className="mt-6 px-5 py-3">
+            Confirm Key People
+          </ButtonLink>
+        </SurfaceCard>
+      </AppShell>
+    );
+  }
+
+  if (relationGraph.edges.length === 0) {
+    return (
+      <AppShell>
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
+          <StatusPill tone="blocked">Edges required</StatusPill>
+          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            The locked graph needs at least one Relation Edge.
+          </h1>
+          <p className="mt-3 text-sm leading-7 text-[#62695d]">
+            Empty ticks cannot produce Event Logs, and Claims cannot be built from empty ticks.
+          </p>
+          <NotReadyPanel
+            title="Concrete fixes"
+            items={[
+              "Regenerate the Relation Graph from current Agent Profiles.",
+              "Check that the user core and NPC agents both exist.",
+              "Lock the regenerated graph before starting simulation.",
+            ]}
+          />
+          <ButtonLink href="/app/new/graph" className="mt-6 px-5 py-3">
+            Open Relation Graph
+          </ButtonLink>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -436,7 +556,7 @@ export default function RunsPage() {
     setActiveStageIndex(0);
     setProcessState("running");
     setMessage(
-      "Simulation Engine v1 is running deterministic stages. Event Logs will be saved before Claims are built.",
+      "Simulation Engine v1 is running deterministic stages. Event Logs are saved before Claims are built.",
     );
   }
 
@@ -537,30 +657,29 @@ export default function RunsPage() {
         <main className="space-y-6">
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <div className="flex flex-wrap gap-3">
-              <button
+              <Button
                 type="button"
                 onClick={queueRun}
                 disabled={processState === "running"}
-                className="rounded-md bg-[#11150f] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9aa096]"
               >
                 Run visible simulation
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={rebuild}
                 disabled={processState === "running"}
-                className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f] disabled:cursor-not-allowed disabled:bg-[#eef0ea] disabled:text-[#9aa096]"
               >
                 Regenerate and run
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={reset}
                 disabled={processState === "running"}
-                className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f] disabled:cursor-not-allowed disabled:bg-[#eef0ea] disabled:text-[#9aa096]"
               >
                 Clear local draft
-              </button>
+              </Button>
             </div>
             {message ? (
               <p className="mt-4 text-sm leading-6 text-[#62695d]">{message}</p>
@@ -608,10 +727,11 @@ export default function RunsPage() {
                 const active =
                   processState === "running" && index === activeStageIndex;
                 const blocked = processState === "failed" && index >= activeStageIndex;
+                const indicator = blocked ? "✕" : completed ? "✓" : active ? "◉" : "○";
                 return (
                   <div
                     key={stage.id}
-                    className={`rounded-md border p-4 ${
+                    className={`overflow-hidden rounded-md border ${
                       completed
                         ? "border-[#568262]/25 bg-[#eef5ee]"
                         : active
@@ -621,21 +741,59 @@ export default function RunsPage() {
                             : "border-black/8 bg-[#f7f8f4]"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-[#11150f]">
-                        {stage.label}
+                    <div className="p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`grid h-8 w-10 place-items-center rounded-full border text-[10px] font-semibold ${
+                              active
+                                ? "animate-pulse border-[#d49b4a]/45 bg-white text-[#7c5524]"
+                                : completed
+                                  ? "border-[#568262]/25 bg-white text-[#2f5d3d]"
+                                  : blocked
+                                    ? "border-red-200 bg-white text-red-900"
+                                    : "border-black/10 bg-white text-[#7d8578]"
+                            }`}
+                          >
+                            {indicator}
+                          </span>
+                          <p className="text-sm font-semibold text-[#11150f]">
+                            {stage.label}
+                          </p>
+                        </div>
+                        <StatusPill
+                          tone={
+                            blocked ? "blocked" : completed ? "ready" : "planned"
+                          }
+                        >
+                          {blocked
+                            ? "blocked"
+                            : completed
+                              ? "done"
+                              : active
+                                ? "running"
+                                : "waiting"}
+                        </StatusPill>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                        {stage.detail}
                       </p>
-                      <StatusPill
-                        tone={
-                          blocked ? "blocked" : completed ? "ready" : "planned"
-                        }
-                      >
-                        {blocked ? "blocked" : completed ? "done" : active ? "running" : "waiting"}
-                      </StatusPill>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                      {stage.detail}
-                    </p>
+                    {active ? (
+                      <div className="h-1 bg-[#f2dfbd]">
+                        <div
+                          className="h-full animate-stage-fill bg-[#d49b4a]"
+                          style={
+                            {
+                              "--stage-duration":
+                                activeStageIndex < 4 ? "620ms" : "760ms",
+                            } as CSSProperties
+                          }
+                        />
+                      </div>
+                    ) : completed ? (
+                      <div className="h-1 bg-[#568262]" />
+                    ) : null}
                   </div>
                 );
               })}
@@ -683,18 +841,41 @@ export default function RunsPage() {
                   visibleRun?.events.filter(
                     (event) => (event.branchId ?? "baseline") === branchId,
                   ) ?? [];
+                const typeCounts = countByEventType(branchEvents);
+                const meta = branchMeta[branchId];
                 return (
                   <article
                     key={branchId}
-                    className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
+                    className={`rounded-md border p-4 ${meta.classes}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-semibold text-[#11150f]">
-                        {branchLabel(branchId)}
+                        {meta.title}
                       </h3>
                       <StatusPill tone="planned">
                         {branchEventCounts.get(branchId) ?? 0} events
                       </StatusPill>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-[#62695d]">
+                      {meta.detail}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {Object.entries(typeCounts).length ? (
+                        Object.entries(typeCounts)
+                          .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
+                          .map(([type, count]) => (
+                            <span
+                              key={type}
+                              className="rounded border border-black/8 bg-white px-2 py-1 text-xs text-[#3f483d]"
+                            >
+                              {type}: {count}
+                            </span>
+                          ))
+                      ) : (
+                        <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs text-[#7d8578]">
+                          no events yet
+                        </span>
+                      )}
                     </div>
                     <div className="mt-3 space-y-2">
                       {branchEvents.slice(0, 3).map((event) => (
@@ -717,48 +898,17 @@ export default function RunsPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-            <h2 className="text-base font-semibold text-[#11150f]">
-              Evidence timeline
-            </h2>
-            <div className="mt-4 space-y-3">
-              {visibleRun?.events.map((event) => (
-                <article
-                  key={event.id}
-                  className="rounded-md border border-black/8 bg-white p-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[#11150f]">
-                        {branchLabel(event.branchId ?? "baseline")} /{" "}
-                        {eventTypeLabel(event.eventType)} / {event.timeLabel}
-                      </p>
-                      <p className="mt-1 text-xs text-[#7d8578]">
-                        edges: {event.relationEdgeIds.join(", ") || "none"}
-                      </p>
-                    </div>
-                    <StatusPill tone={event.status === "preview" ? "ready" : "planned"}>
-                      {event.confidence}%
-                    </StatusPill>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-[#62695d]">
-                    {event.summary}
-                  </p>
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    <pre className="overflow-auto rounded bg-[#f7f8f4] p-3 text-xs text-[#62695d]">
-                      {JSON.stringify(event.beforeState.weights, null, 2)}
-                    </pre>
-                    <pre className="overflow-auto rounded bg-[#f7f8f4] p-3 text-xs text-[#62695d]">
-                      {JSON.stringify(event.afterState.weights, null, 2)}
-                    </pre>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
+          <TimelineFeed
+            ticks={visibleRun?.ticks ?? []}
+            events={visibleRun?.events ?? []}
+            agents={agentEcology.agents}
+            edges={relationGraph.edges}
+            title="Evidence timeline"
+            description="Event Logs are grouped by tick and show agent refs, edge refs, confidence, evidence refs, and weight deltas."
+          />
         </main>
 
-        <aside className="h-fit rounded-lg border border-black/8 bg-[#11150f] p-6 text-white">
+        <aside className="mf-panel-dark h-fit p-6">
           <h2 className="text-sm font-semibold text-[#b7e6c6]">
             Run summary
           </h2>
@@ -790,37 +940,67 @@ export default function RunsPage() {
               </dd>
             </div>
           </dl>
-          <div className="mt-5 space-y-2">
-            {visibleRun?.gates.map((gate) => (
-              <div
-                key={gate.id}
-                className="rounded-md border border-white/10 bg-white/[0.06] p-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold text-white">
-                    {gate.id}
-                  </span>
-                  <StatusPill tone={statusTone(gate.status)}>
-                    {gate.status}
-                  </StatusPill>
+          <div className="mt-5 rounded-md border border-white/10 bg-white/[0.06] p-4">
+            <h3 className="text-sm font-semibold text-white">Gate checklist</h3>
+            <div className="mt-3 space-y-2">
+              {gateChecklist.map((gate) => (
+                <div key={gate.id} className="rounded border border-white/10 bg-white/[0.04] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-white">
+                      {gate.label}
+                    </span>
+                    <StatusPill tone={gate.ready ? "ready" : "blocked"}>
+                      {gate.ready ? "ready" : "fix needed"}
+                    </StatusPill>
+                  </div>
+                  {!gate.ready ? (
+                    <p className="mt-2 text-xs leading-5 text-white/50">
+                      {gate.fix}
+                    </p>
+                  ) : null}
                 </div>
-                <p className="mt-2 text-xs leading-5 text-white/50">
-                  {gate.detail}
-                </p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-          <Link
+          <details className="mt-5 rounded-md border border-white/10 bg-white/[0.06] p-4">
+            <summary className="cursor-pointer text-xs font-semibold text-white/42">
+              Engine gate debug
+            </summary>
+            <div className="mt-3 space-y-2">
+              {visibleRun?.gates.map((gate) => (
+                <div
+                  key={gate.id}
+                  className="rounded-md border border-white/10 bg-white/[0.06] p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-white">
+                      {gate.id}
+                    </span>
+                    <StatusPill tone={statusTone(gate.status)}>
+                      {gate.status}
+                    </StatusPill>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-white/50">
+                    {gate.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </details>
+          <ButtonLink
             href="/app/simulation/result"
+            variant="ghostOnDark"
             onClick={(event) => {
-              if (processState === "running") event.preventDefault();
+              if (!canOpenResult) event.preventDefault();
             }}
-            className={`mt-5 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white ${
-              processState === "running" ? "cursor-not-allowed opacity-45" : ""
+            className={`mt-5 w-full px-4 py-3 ${
+              canOpenResult ? "" : "cursor-not-allowed opacity-45"
             }`}
           >
-            Continue to result
-          </Link>
+            {canOpenResult
+              ? "Continue to Result Sandbox"
+              : "Complete Event Log and Claims first"}
+          </ButtonLink>
         </aside>
       </div>
     </AppShell>

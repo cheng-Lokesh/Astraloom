@@ -1,6 +1,5 @@
-import Link from "next/link";
-
 import type { EntitlementDecision } from "@/lib/entitlements/entitlement-types";
+import { ButtonLink } from "@/components/ui-foundation";
 
 export function PaidUnlockBoundary({
   decision,
@@ -31,12 +30,9 @@ export function PaidUnlockBoundary({
         and strategy options only. It does not create Claims, raise confidence,
         change riskLevel, or bypass safety restrictions.
       </p>
-      <Link
-        href="/app/billing"
-        className="mt-4 inline-flex w-full justify-center rounded-md bg-[#11150f] px-4 py-3 text-sm font-semibold text-white"
-      >
+      <ButtonLink href="/app/billing" className="mt-4 w-full px-4 py-3">
         Open billing unlock
-      </Link>
+      </ButtonLink>
     </section>
   );
 }

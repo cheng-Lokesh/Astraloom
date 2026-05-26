@@ -3,6 +3,7 @@ import type { FeedbackDraft, FeedbackLedgerDraft } from "@/types/feedback";
 import type { StrategyType } from "@/types/report";
 
 import type {
+  CalibrationCorrectionSummary,
   CalibrationProfile,
   CalibrationSignal,
   SourceReliabilityProfile,
@@ -44,6 +45,12 @@ function clamp(value: number, min = 0.35, max = 1.15) {
   return Math.max(min, Math.min(max, Number(value.toFixed(2))));
 }
 
+function correctionWeight(confidence: "low" | "medium" | "high") {
+  if (confidence === "high") return 0.135;
+  if (confidence === "medium") return 0.09;
+  return 0.045;
+}
+
 function sourceTypeFromFeedback(feedback: FeedbackDraft): AgentFieldSourceType {
   const text = `${feedback.targetId} ${feedback.note}`.toLowerCase();
   if (text.includes("model")) return "model_inferred";
@@ -62,7 +69,7 @@ export function strategyTypeFromFeedback(
   ) ?? strategyTypes.find((strategyType) => text.includes(strategyType)) ?? "observe";
 }
 
-function signalFromFeedback(feedback: FeedbackDraft): CalibrationSignal {
+function primarySignalFromFeedback(feedback: FeedbackDraft): CalibrationSignal {
   const sourceType = sourceTypeFromFeedback(feedback);
   const strategyType = strategyTypeFromFeedback(feedback);
 
@@ -145,13 +152,73 @@ function signalFromFeedback(feedback: FeedbackDraft): CalibrationSignal {
   };
 }
 
+function correctionSignalsFromFeedback(
+  feedback: FeedbackDraft,
+): CalibrationSignal[] {
+  const signals: CalibrationSignal[] = [];
+
+  if (feedback.agentCorrection) {
+    signals.push({
+      id: `signal_agent_correction_${hashText(feedback.id)}`,
+      feedbackId: feedback.id,
+      targetType: feedback.targetType,
+      targetId: feedback.targetId,
+      rating: feedback.rating,
+      effect: "agent_field_correction",
+      weight: correctionWeight(feedback.agentCorrection.confidence),
+      note: `${feedback.agentCorrection.field}:${feedback.agentCorrection.suggestedValue}`,
+    });
+  }
+
+  if (feedback.relationCorrection) {
+    signals.push({
+      id: `signal_relation_correction_${hashText(feedback.id)}`,
+      feedbackId: feedback.id,
+      targetType: feedback.targetType,
+      targetId: feedback.targetId,
+      rating: feedback.rating,
+      effect: "relation_field_correction",
+      weight: correctionWeight(feedback.relationCorrection.confidence),
+      note: `${feedback.relationCorrection.field}:${feedback.relationCorrection.suggestedValue}`,
+    });
+  }
+
+  return signals;
+}
+
+function signalsFromFeedback(feedback: FeedbackDraft): CalibrationSignal[] {
+  return [
+    primarySignalFromFeedback(feedback),
+    ...correctionSignalsFromFeedback(feedback),
+  ];
+}
+
+function correctionSummaryFromFeedback(
+  feedback: FeedbackDraft,
+  type: "agent" | "relation",
+): CalibrationCorrectionSummary | null {
+  const correction =
+    type === "agent" ? feedback.agentCorrection : feedback.relationCorrection;
+  if (!correction) return null;
+
+  return {
+    feedbackId: feedback.id,
+    targetId: feedback.targetId,
+    field: correction.field,
+    suggestedValue: correction.suggestedValue,
+    confidence: correction.confidence,
+    weight: correctionWeight(correction.confidence),
+  };
+}
+
 export function buildCalibrationProfile(
   ledger: FeedbackLedgerDraft,
 ): CalibrationProfile {
-  const signals = ledger.feedback.map(signalFromFeedback);
+  const signals = ledger.feedback.flatMap(signalsFromFeedback);
   const sourceReliability = { ...defaultSourceReliability };
   const strategyPreference: StrategyPreferenceProfile = {};
   let edgeUncertaintyAdjustment = 0;
+  let agentCorrectionAdjustment = 0;
 
   signals.forEach((signal) => {
     if (
@@ -181,12 +248,25 @@ export function buildCalibrationProfile(
 
     if (
       signal.effect === "increase_uncertainty" ||
-      signal.effect === "hold_for_observation"
+      signal.effect === "hold_for_observation" ||
+      signal.effect === "relation_field_correction"
     ) {
       edgeUncertaintyAdjustment += signal.weight;
     }
+
+    if (signal.effect === "agent_field_correction") {
+      agentCorrectionAdjustment += signal.weight;
+    }
   });
 
+  const agentCorrections = ledger.feedback.flatMap((feedback) => {
+    const summary = correctionSummaryFromFeedback(feedback, "agent");
+    return summary ? [summary] : [];
+  });
+  const relationCorrections = ledger.feedback.flatMap((feedback) => {
+    const summary = correctionSummaryFromFeedback(feedback, "relation");
+    return summary ? [summary] : [];
+  });
   const offCount = ledger.feedback.filter((item) => item.rating === "off").length;
   const usefulCount = ledger.feedback.filter(
     (item) => item.rating === "useful",
@@ -201,18 +281,25 @@ export function buildCalibrationProfile(
     simulationRunId: ledger.simulationRunId,
     version: "local-calibration-profile-v1",
     sourceReliability,
-    agentConfidenceAdjustment: Math.max(-18, Math.round(-offCount * 3 + usefulCount)),
+    agentConfidenceAdjustment: Math.max(
+      -18,
+      Math.round(-offCount * 3 + usefulCount + agentCorrectionAdjustment * 10),
+    ),
     edgeUncertaintyAdjustment: Math.min(
       24,
       Math.round(edgeUncertaintyAdjustment * 100 + offCount * 2),
     ),
     strategyPreference,
     signals,
+    agentCorrections,
+    relationCorrections,
     calibrationSnapshot: {
       feedbackCount: ledger.feedback.length,
       offCount,
       usefulCount,
       notHappenedYetCount,
+      agentCorrectionCount: agentCorrections.length,
+      relationCorrectionCount: relationCorrections.length,
     },
     historyInvariant: {
       doesNotModifyEventLogs: true,

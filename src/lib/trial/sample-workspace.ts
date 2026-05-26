@@ -151,9 +151,32 @@ export function createTrialWorkspace() {
     timeWindow: "90_days",
     situationSummary:
       "The new company offers more responsibility and better pay, but the market risk is higher. The current manager verbally supports a promotion but has not given a clear date. One trusted colleague has useful internal context.",
+    recentEvents:
+      "The recruiter asked for a decision next week. The current manager expressed support but did not give written timing. A trusted colleague hinted that budget approval may be slower than expected.",
+    recentEventsText:
+      "The recruiter asked for a decision next week. The current manager expressed support but did not give written timing. A trusted colleague hinted that budget approval may be slower than expected.",
     keyPeopleText:
       "Current manager, recruiter, trusted colleague, cautious self, decisive self",
+    decisionOptions:
+      "Accept the new role. Stay and negotiate a written promotion timeline. Ask both sides for one more week before deciding.",
+    decisionOptionsText:
+      "Accept the new role. Stay and negotiate a written promotion timeline. Ask both sides for one more week before deciding.",
+    worries:
+      "The promotion may remain vague, the new role may carry hidden risk, and a rushed decision could damage trust with either side.",
+    forbiddenActions:
+      "Do not burn bridges, disclose confidential team information, or treat a vague promotion promise as confirmed evidence.",
+    forbiddenActionsText:
+      "Do not burn bridges, disclose confidential team information, or treat a vague promotion promise as confirmed evidence.",
+    safetyBoundaries:
+      "Keep communication low-pressure and professional. Do not infer private motives as fact.",
+    desiredOutput:
+      "Compare relationship pressure points, evidence to watch, and low-risk communication options over the next 90 days.",
+    desiredOutputText:
+      "Compare relationship pressure points, evidence to watch, and low-risk communication options over the next 90 days.",
+    contextQualityScore: 100,
+    missingContextHints: [],
     privacyAck: true,
+    privacySafetyAck: true,
     locale: "en",
     status: "submitted",
     createdAt: now,

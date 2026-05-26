@@ -72,6 +72,13 @@ export const llmAgentProfileSchema = z.object({
 export const llmAgentProfilesSchema = z.object({
   agents: z.array(llmAgentProfileSchema).min(1).max(16),
   uncertainty_flags: z.array(z.string().trim().min(1).max(160)).max(12),
+  generation_notes: z
+    .object({
+      fields_with_default_source: z.number().int().min(0).optional(),
+      fields_with_inferred_source: z.number().int().min(0).optional(),
+      safety_notes: z.array(z.string().trim().min(1).max(220)).max(8).optional(),
+    })
+    .optional(),
 });
 
 export const agentProfileDraftSchema = z.object({

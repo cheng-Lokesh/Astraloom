@@ -6,59 +6,67 @@ type RoleRule = {
   label: string;
   role: string;
   relationshipToUser: string;
+  roleType: string;
   pattern: RegExp;
   missingFields: string[];
 };
 
 const roleRules: RoleRule[] = [
   {
-    label: "当前上级",
-    role: "资源和承诺节点",
+    label: "Current manager",
+    role: "Promotion and resource owner",
     relationshipToUser: "boss",
-    pattern: /上级|老板|领导|经理|主管|晋升|汇报|manager|boss|lead/i,
-    missingFields: ["最近一次承诺", "可验证时间", "资源控制范围"],
+    roleType: "authority",
+    pattern: /上级|老板|领导|经理|主管|晋升|汇报|current manager|my manager|manager|boss|lead/i,
+    missingFields: ["Recent commitment", "Verifiable timing", "Resource control scope"],
   },
   {
-    label: "机会提供方",
-    role: "外部机会节点",
+    label: "Recruiter",
+    role: "Opportunity source",
     relationshipToUser: "opportunity_source",
-    pattern: /招聘|猎头|HR|offer|新公司|面试|hiring|recruiter/i,
-    missingFields: ["承诺条件", "截止时间", "不确定因素"],
+    roleType: "opportunity",
+    pattern: /招聘|猎头|HR|offer|新公司|面试|hiring|recruiter|new role|new company/i,
+    missingFields: ["Offer conditions", "Decision deadline", "Uncertain factors"],
   },
   {
-    label: "核心同事",
-    role: "团队信号节点",
+    label: "Trusted colleague",
+    role: "Team signal source",
     relationshipToUser: "colleague",
-    pattern: /同事|团队|协作|搭档|teammate|colleague|team/i,
-    missingFields: ["立场", "信息差", "影响范围"],
+    roleType: "support",
+    pattern: /同事|团队|协作|搭档|teammate|colleague|trusted colleague|team/i,
+    missingFields: ["Stance", "Information gap", "Influence scope"],
   },
   {
-    label: "伴侣/家人",
-    role: "生活边界节点",
+    label: "Partner or family",
+    role: "Life boundary stakeholder",
     relationshipToUser: "family_or_partner",
+    roleType: "emotional",
     pattern: /伴侣|家人|妻子|丈夫|对象|父母|spouse|partner|family/i,
-    missingFields: ["可接受边界", "现实压力", "支持条件"],
+    missingFields: ["Acceptable boundary", "Practical pressure", "Support condition"],
   },
   {
-    label: "合伙人/合作方",
-    role: "利益绑定节点",
+    label: "Collaborator",
+    role: "Shared-interest stakeholder",
     relationshipToUser: "partner",
-    pattern: /合伙|合作|创业|客户|投资人|cofounder|client|investor/i,
-    missingFields: ["利益边界", "资源投入", "退出条件"],
+    roleType: "resource",
+    pattern: /合伙|合作|创业|客户|投资人|cofounder|collaborator|client|investor/i,
+    missingFields: ["Benefit boundary", "Resource input", "Exit condition"],
   },
   {
-    label: "竞争方",
-    role: "资源竞争节点",
+    label: "Competitor",
+    role: "Resource competition stakeholder",
     relationshipToUser: "competitor",
-    pattern: /竞争|竞品|竞争者|对手|competitor/i,
-    missingFields: ["竞争资源", "最近动作", "信息来源"],
+    roleType: "conflict",
+    pattern: /竞争|竞品|竞争者|对手|competitor|rival/i,
+    missingFields: ["Competing resource", "Recent action", "Information source"],
   },
   {
-    label: "导师/顾问",
-    role: "外部校准节点",
+    label: "Advisor",
+    role: "External calibration source",
     relationshipToUser: "advisor",
     pattern: /导师|贵人|前辈|顾问|mentor|advisor/i,
-    missingFields: ["建议立场", "可信依据", "可调用资源"],
+    roleType: "support",
+    missingFields: ["Advice stance", "Trustworthy basis", "Available resource"],
   },
 ];
 
@@ -71,9 +79,30 @@ const weakFragments = new Set([
   "somebody",
   "person",
   "people",
+  "person",
   "i",
   "me",
   "myself",
+  "the",
+  "a",
+  "an",
+]);
+
+const contextStopWords = new Set([
+  "I",
+  "My",
+  "The",
+  "A",
+  "An",
+  "This",
+  "That",
+  "Should",
+  "Accept",
+  "Stay",
+  "Ask",
+  "Do",
+  "Keep",
+  "Show",
 ]);
 
 function hashText(value: string) {
@@ -95,15 +124,58 @@ function cleanCandidate(value: string) {
   return value
     .replace(/^[\s"'<{[(]+/, "")
     .replace(/[\s"'>}\]),.。！!？?；;:：]+$/, "")
+    .replace(/^(my|the|a|an)\s+/i, "")
     .trim();
+}
+
+function titleCase(value: string) {
+  return value
+    .split(/\s+/)
+    .map((word) =>
+      word.length ? `${word[0].toUpperCase()}${word.slice(1).toLowerCase()}` : word,
+    )
+    .join(" ");
+}
+
+function firstText(...values: Array<string | undefined>) {
+  return values.find((value) => value?.trim()) ?? "";
+}
+
+function evidenceSnippet(text: string, label: string) {
+  const trimmed = text.trim();
+  if (trimmed.length <= 320) return trimmed;
+
+  const index = trimmed.toLowerCase().indexOf(label.toLowerCase());
+  if (index === -1) return `${trimmed.slice(0, 280).trim()}...`;
+
+  const start = Math.max(0, index - 120);
+  const end = Math.min(trimmed.length, index + label.length + 180);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < trimmed.length ? "..." : "";
+
+  return `${prefix}${trimmed.slice(start, end).trim()}${suffix}`;
+}
+
+function seedFieldText(seedContext: SeedContextDraft) {
+  return {
+    situationSummary: seedContext.situationSummary,
+    keyPeopleText: seedContext.keyPeopleText,
+    recentEvents: firstText(seedContext.recentEvents, seedContext.recentEventsText),
+    decisionOptions: firstText(
+      seedContext.decisionOptions,
+      seedContext.decisionOptionsText,
+    ),
+    worries: seedContext.worries ?? "",
+  };
 }
 
 function evidenceRef(
   seedContextId: string,
   source: KeyPersonDraft["source"],
   label: string,
+  evidenceText = "",
 ) {
-  return `seed:${seedContextId}:${source}:${hashText(label)}`;
+  return `seed:${seedContextId}:${source}:${hashText(`${label}:${evidenceText}`)}`;
 }
 
 function confidenceForSource(
@@ -112,9 +184,16 @@ function confidenceForSource(
   evidenceText: string,
 ) {
   if (source === "manual") return 95;
-  if (source === "key_people_text") return 84;
-  const exactMentionBonus = evidenceText.includes(label) ? 8 : 0;
-  return Math.min(78, 58 + exactMentionBonus + Math.min(label.length * 2, 12));
+  const exactMentionBonus = evidenceText.toLowerCase().includes(label.toLowerCase())
+    ? 8
+    : 0;
+  const detailBonus = Math.min(10, Math.floor(evidenceText.length / 80));
+  const sourceBase = source === "key_people_text" ? 78 : 58;
+
+  return Math.min(
+    source === "key_people_text" ? 92 : 82,
+    sourceBase + exactMentionBonus + detailBonus + Math.min(label.length, 10),
+  );
 }
 
 function roleRuleForRole(role: string) {
@@ -137,6 +216,18 @@ function relationshipForRole(role: string) {
   return roleRuleForRole(role)?.relationshipToUser ?? "unknown";
 }
 
+function roleTypeForRole(role: string) {
+  return roleRuleForRole(role)?.roleType ?? "unknown";
+}
+
+function relationshipForLabel(label: string, role: string) {
+  return inferRule(label)?.relationshipToUser ?? relationshipForRole(role);
+}
+
+function roleTypeForLabel(label: string, role: string) {
+  return inferRule(label)?.roleType ?? roleTypeForRole(role);
+}
+
 function createPerson(
   seedContextId: string,
   label: string,
@@ -147,25 +238,30 @@ function createPerson(
 ): KeyPersonDraft {
   const cleanedLabel = cleanCandidate(label);
   const normalized = normalizeLabel(cleanedLabel);
-  const confidence = confidenceForSource(source, cleanedLabel, evidenceText);
+  const snippet = evidenceSnippet(evidenceText, cleanedLabel);
+  const confidence = confidenceForSource(source, cleanedLabel, snippet);
   const status = confidence < 70 ? "needs_confirmation" : "candidate";
+  const resolvedRole = role || inferRule(cleanedLabel)?.role || "Unconfirmed stakeholder";
+  const relationshipToUser = relationshipForLabel(cleanedLabel, resolvedRole);
+  const roleType = roleTypeForLabel(cleanedLabel, resolvedRole);
 
   return {
     id: `kp_${hashText(`${seedContextId}:${normalized}`)}`,
     seedContextId,
     label: cleanedLabel,
-    role: role || "待确认角色",
-    relationshipToUser: relationshipForRole(role),
-    roleType: role || "待确认角色",
+    displayName: cleanedLabel,
+    role: resolvedRole,
+    relationshipToUser,
+    roleType,
     confidence,
-    knownEvidence: evidenceText,
-    missingFields: missingFieldsForRole(role),
-    evidenceRefs: [evidenceRef(seedContextId, source, cleanedLabel)],
+    knownEvidence: snippet,
+    missingFields: missingFieldsForRole(resolvedRole),
+    evidenceRefs: [evidenceRef(seedContextId, source, cleanedLabel, snippet)],
     userNote: "",
     confirmed: false,
     status,
     source,
-    evidenceText,
+    evidenceText: snippet,
     createdAt: now,
     updatedAt: now,
   };
@@ -182,35 +278,134 @@ function addUnique(
   candidates.set(key, person);
 }
 
-function splitKeyPeopleText(value: string) {
+function explicitPeopleEntries(value: string) {
   return value
     .split(/[\n,，;；、/]+/)
-    .map(cleanCandidate)
-    .filter((item) => item.length >= 2 && item.length <= 40);
+    .map((item) => {
+      const trimmed = item.trim();
+      const [rawLabel] = trimmed.split(/[:：-]/);
+
+      return {
+        label: cleanCandidate(rawLabel),
+        evidence: trimmed,
+      };
+    })
+    .filter((item) => item.label.length >= 2 && item.label.length <= 48);
+}
+
+function contextRoleCandidates(fields: ReturnType<typeof seedFieldText>) {
+  const candidates: Array<{ label: string; evidence: string; rule: RoleRule }> = [];
+  const contextFields = [
+    fields.situationSummary,
+    fields.recentEvents,
+    fields.decisionOptions,
+    fields.worries,
+  ];
+
+  contextFields.forEach((field) => {
+    if (!field.trim()) return;
+
+    roleRules.forEach((rule) => {
+      const match = field.match(rule.pattern);
+      if (!match) return;
+      const matchedLabel = cleanCandidate(match[0]);
+      const label =
+        matchedLabel.length >= 3 && matchedLabel.length <= 40
+          ? titleCase(matchedLabel)
+          : rule.label;
+
+      candidates.push({
+        label,
+        evidence: evidenceSnippet(field, matchedLabel || rule.label),
+        rule,
+      });
+    });
+  });
+
+  return candidates;
+}
+
+function capitalizedCandidates(fields: ReturnType<typeof seedFieldText>) {
+  const text = [
+    fields.situationSummary,
+    fields.recentEvents,
+    fields.decisionOptions,
+    fields.worries,
+  ].join("\n");
+  const matches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b/g) ?? [];
+
+  return matches
+    .filter((match) => {
+      const cleaned = cleanCandidate(match);
+      return (
+        cleaned.length >= 3 &&
+        cleaned.length <= 36 &&
+        !contextStopWords.has(cleaned.split(/\s+/)[0]) &&
+        !weakFragments.has(normalizeLabel(cleaned))
+      );
+    })
+    .slice(0, 6)
+    .map((label) => ({
+      label: cleanCandidate(label),
+      evidence: evidenceSnippet(text, label),
+    }));
 }
 
 export function extractPeopleCandidates(seedContext: SeedContextDraft) {
   const now = new Date().toISOString();
   const candidates = new Map<string, KeyPersonDraft>();
   const combinedContext = getSeedContextNarrative(seedContext);
+  const fields = seedFieldText(seedContext);
 
-  splitKeyPeopleText(seedContext.keyPeopleText).forEach((label) => {
-    const rule = inferRule(label);
+  explicitPeopleEntries(fields.keyPeopleText).forEach(({ label, evidence }) => {
+    const rule = inferRule(`${label} ${evidence}`);
     addUnique(
       candidates,
       createPerson(
         seedContext.id,
         label,
-        rule?.role ?? "用户明确提及的人物",
-        seedContext.keyPeopleText,
+        rule?.role ?? "User-named stakeholder",
+        [evidence, fields.situationSummary, fields.recentEvents]
+          .filter(Boolean)
+          .join("\n"),
         "key_people_text",
         now,
       ),
     );
   });
 
+  contextRoleCandidates(fields).forEach(({ label, evidence, rule }) => {
+    addUnique(
+      candidates,
+      createPerson(
+        seedContext.id,
+        label,
+        rule.role,
+        evidence,
+        "seed_context_text",
+        now,
+      ),
+    );
+  });
+
+  capitalizedCandidates(fields).forEach(({ label, evidence }) => {
+    const rule = inferRule(`${label}\n${evidence}`);
+
+    addUnique(
+      candidates,
+      createPerson(
+        seedContext.id,
+        label,
+        rule?.role ?? "Context-mentioned stakeholder",
+        evidence,
+        "seed_context_text",
+        now,
+      ),
+    );
+  });
+
   roleRules.forEach((rule) => {
-    if (rule.pattern.test(combinedContext)) {
+    if (rule.pattern.test(combinedContext) && candidates.size < 6) {
       addUnique(
         candidates,
         createPerson(
@@ -226,13 +421,13 @@ export function extractPeopleCandidates(seedContext: SeedContextDraft) {
   });
 
   if (candidates.size === 0) {
-    ["当前的我", "未来的我"].forEach((label) => {
+    ["Current self", "Future self"].forEach((label) => {
       addUnique(
         candidates,
         createPerson(
           seedContext.id,
           label,
-          "自我分身",
+          "Self perspective",
           combinedContext,
           "seed_context_text",
           now,
@@ -245,23 +440,34 @@ export function extractPeopleCandidates(seedContext: SeedContextDraft) {
 }
 
 export function normalizePersonDraft(person: KeyPersonDraft): KeyPersonDraft {
-  const role = person.role || person.roleType || "待确认角色";
+  const label = person.label || person.displayName || "Unnamed stakeholder";
+  const role = person.role || person.roleType || inferRule(label)?.role || "Unconfirmed stakeholder";
   const evidenceText = person.evidenceText || person.knownEvidence || "";
+  const source = person.source ?? "seed_context_text";
+  const relationshipToUser =
+    person.relationshipToUser || relationshipForLabel(label, role);
+  const roleType = person.roleType || roleTypeForLabel(label, role);
 
   return {
     ...person,
+    label,
+    displayName: person.displayName ?? label,
     role,
-    relationshipToUser: person.relationshipToUser ?? relationshipForRole(role),
-    roleType: person.roleType ?? role,
+    relationshipToUser,
+    roleType,
     confidence:
-      person.confidence ?? confidenceForSource(person.source, person.label, evidenceText),
+      person.confidence ?? confidenceForSource(source, label, evidenceText),
     knownEvidence: person.knownEvidence ?? evidenceText,
     missingFields: person.missingFields ?? missingFieldsForRole(role),
     evidenceRefs:
       person.evidenceRefs ?? [
-        evidenceRef(person.seedContextId, person.source, person.label),
+        evidenceRef(person.seedContextId, source, label, evidenceText),
       ],
     userNote: person.userNote ?? "",
+    source,
+    evidenceText,
+    status: person.status ?? "candidate",
+    confirmed: person.confirmed ?? false,
   };
 }
 
@@ -289,12 +495,12 @@ export function createManualPerson(
   role: string,
 ) {
   const now = new Date().toISOString();
-  const cleanRole = cleanCandidate(role) || "用户补充节点";
+  const cleanRole = cleanCandidate(role) || "User-supplied stakeholder";
   const person = createPerson(
     seedContextId,
     label,
     cleanRole,
-    "用户手动补充",
+    "User manually added this person or role.",
     "manual",
     now,
   );
@@ -303,8 +509,11 @@ export function createManualPerson(
     ...person,
     confirmed: true,
     status: "confirmed" as const,
-    relationshipToUser: relationshipForRole(person.role),
-    roleType: person.role,
+    relationshipToUser:
+      relationshipForRole(person.role) === "unknown"
+        ? "manual"
+        : relationshipForRole(person.role),
+    roleType: roleTypeForRole(person.role) === "unknown" ? "manual" : roleTypeForRole(person.role),
     confidence: 95,
     missingFields: [],
     userNote: "",

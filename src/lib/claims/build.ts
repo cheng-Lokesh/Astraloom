@@ -32,53 +32,96 @@ function averageConfidence(events: SimulationEventDraft[]) {
   );
 }
 
-function riskLevelForEvents(events: SimulationEventDraft[]): ClaimRiskLevel {
-  const pressure = events.reduce((sum, event) => {
+function pressureScore(event: SimulationEventDraft) {
+  return Object.values(event.edgeWeightDeltas).reduce((sum, delta) => {
     return (
       sum +
-      Object.values(event.edgeWeightDeltas).reduce((innerSum, delta) => {
-        return (
-          innerSum +
-          Math.max(0, delta.hostility ?? 0) +
-          Math.max(0, delta.competition ?? 0) +
-          Math.max(0, delta.informationGap ?? 0)
-        );
-      }, 0)
+      Math.max(0, delta.hostility ?? 0) +
+      Math.max(0, delta.competition ?? 0) +
+      Math.max(0, delta.informationGap ?? 0) +
+      Math.max(0, delta.emotionalDebt ?? 0)
     );
   }, 0);
+}
 
-  if (pressure >= 8) return "high";
-  if (pressure >= 4) return "medium";
+function riskLevelForEvents(events: SimulationEventDraft[]): ClaimRiskLevel {
+  if (events.length === 0) return "low";
+  const pressure =
+    events.reduce((sum, event) => sum + pressureScore(event), 0) / events.length;
+
+  if (pressure >= 6) return "high";
+  if (pressure >= 3) return "medium";
   return "low";
 }
 
-function claimTypeForEvents(events: SimulationEventDraft[]): ClaimType {
-  const riskLevel = riskLevelForEvents(events);
-  const hasTrustGain = events.some((event) =>
-    Object.values(event.edgeWeightDeltas).some((delta) => (delta.trust ?? 0) > 0),
-  );
+function eventMode(events: SimulationEventDraft[]) {
+  const counts = {
+    risk: 0,
+    coordination: 0,
+    opportunity: 0,
+    friction: 0,
+  };
 
-  if (riskLevel === "high") return "risk_window";
-  if (hasTrustGain) return "coordination_signal";
-  if (events.some((event) => event.eventType === "graph_freeze")) {
+  events.forEach((event) => {
+    if (
+      [
+        "avoidance",
+        "direct_conflict",
+        "resource_competition",
+        "information_gap_widening",
+        "relation_pressure",
+      ].includes(event.eventType)
+    ) {
+      counts.risk += 1;
+      return;
+    }
+    if (["support", "cooperation", "disclosure"].includes(event.eventType)) {
+      counts.coordination += 1;
+      return;
+    }
+    if (["opportunity_signal", "graph_freeze"].includes(event.eventType)) {
+      counts.opportunity += 1;
+      return;
+    }
+    counts.friction += 1;
+  });
+
+  return Object.entries(counts).sort((left, right) => right[1] - left[1])[0]?.[0];
+}
+
+function claimTypeForEvents(events: SimulationEventDraft[]): ClaimType {
+  const mode = eventMode(events);
+  if (mode === "coordination") return "coordination_signal";
+  if (mode === "opportunity") {
     return "opportunity_window";
   }
+  if (mode === "risk") return "risk_window";
   return "friction_signal";
 }
 
 function claimSummary(type: ClaimType, events: SimulationEventDraft[]) {
   const edgeCount = unique(events.flatMap((event) => event.relationEdgeIds)).length;
-  const timeLabels = unique(events.map((event) => event.timeLabel)).join(", ");
+  const timeLabels = unique(events.map((event) => event.timeLabel)).slice(0, 3);
+  const branchLabels = unique(
+    events.map((event) => event.branchId ?? "baseline"),
+  ).join(", ");
+  const participantCount = unique(events.flatMap((event) => event.agentIds)).length;
+  const windowLabel = timeLabels.length > 1 ? timeLabels.join(" to ") : timeLabels[0];
+  const evidenceLabel = `${events.length} Event Log item${
+    events.length === 1 ? "" : "s"
+  }, ${edgeCount} relation edge${edgeCount === 1 ? "" : "s"}, ${participantCount} agent${
+    participantCount === 1 ? "" : "s"
+  }`;
 
   switch (type) {
     case "risk_window":
-      return `${timeLabels} shows a relationship pressure signal across ${edgeCount} edge(s). Treat this as a review window, not a fixed outcome.`;
+      return `${windowLabel} shows elevated pressure in ${branchLabels}, backed by ${evidenceLabel}. Use this as a review window for friction, information gaps, or resource pressure; it is not a fixed outcome.`;
     case "opportunity_window":
-      return `${timeLabels} freezes the first usable evidence chain for ${edgeCount} edge(s). This can support later scenario comparison.`;
+      return `${windowLabel} shows an opportunity signal in ${branchLabels}, backed by ${evidenceLabel}. The useful move is to inspect which evidence repeated across ticks before treating it as directionally useful.`;
     case "coordination_signal":
-      return `${timeLabels} shows a local coordination signal on ${edgeCount} edge(s), backed by Event Log evidence.`;
+      return `${windowLabel} shows a coordination signal in ${branchLabels}, backed by ${evidenceLabel}. This points to where low-pressure communication or support may be available in the sandbox.`;
     case "friction_signal":
-      return `${timeLabels} shows a weak friction signal on ${edgeCount} edge(s). More events are needed before stronger wording is allowed.`;
+      return `${windowLabel} shows a limited friction signal in ${branchLabels}, backed by ${evidenceLabel}. More repeated events are needed before stronger wording is allowed.`;
   }
 }
 
@@ -125,7 +168,7 @@ export function buildClaimLedgerDraft(
       isPaidLocked: false,
       safetyNotes: [
         "This claim is a local draft and must stay tied to evidence_event_ids.",
-        "Do not treat this as a certain prediction or professional advice.",
+        "Do not treat this as a certain result or professional advice.",
       ],
       traceId,
       createdAt: now,

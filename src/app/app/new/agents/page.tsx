@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusPill } from "@/components/status-pill";
+import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { buildAgentProfiles } from "@/lib/agents/build";
 import { getRepositories } from "@/lib/repositories/repository-provider";
 import type {
@@ -31,6 +31,26 @@ function agentTypeLabel(agent: AgentProfileDraft) {
 
 function stanceLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function confidenceTone(value: number) {
+  if (value >= 80) return "ready";
+  if (value >= 55) return "planned";
+  return "caution";
+}
+
+function sourceFor(agent: AgentProfileDraft, field: string) {
+  return agent.profileJson.fieldSources[field] ?? agent.profileJson.source.sourceType;
+}
+
+function fieldLabel(value: string) {
+  return value
+    .replace("motivation.fear", "motivation.concern")
+    .replace("state.currentIntention", "state.current model aim")
+    .replaceAll(".", " / ")
+    .replace(/([A-Z])/g, " $1")
+    .replaceAll("_", " ")
+    .toLowerCase();
 }
 
 function sourceLabel(value: AgentFieldSourceType) {
@@ -124,7 +144,7 @@ export default function AgentsPage() {
   if (!seedContext) {
     return (
       <AppShell>
-        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Needs scenario</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold text-[#11150f]">
             Add a situation before generating agents.
@@ -132,13 +152,10 @@ export default function AgentsPage() {
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
             Agent Profiles are local simulation models built from intake context and confirmed people.
           </p>
-          <Link
-            href="/app/new/intake"
-            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
-          >
+          <ButtonLink href="/app/new/intake" className="mt-6 px-5 py-3">
             Go to intake
-          </Link>
-        </section>
+          </ButtonLink>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -146,7 +163,7 @@ export default function AgentsPage() {
   if (!confirmedPeople.length) {
     return (
       <AppShell>
-        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Needs confirmed people</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold text-[#11150f]">
             Confirm the cast before creating NPC agents.
@@ -154,13 +171,10 @@ export default function AgentsPage() {
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
             Every confirmed Key Person maps to one NPC agent. Deleted and merged people stay out of generation.
           </p>
-          <Link
-            href="/app/new/people"
-            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
-          >
+          <ButtonLink href="/app/new/people" className="mt-6 px-5 py-3">
             Return to people
-          </Link>
-        </section>
+          </ButtonLink>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -169,23 +183,23 @@ export default function AgentsPage() {
     <AppShell>
       <div className="space-y-6">
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <main className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+          <SurfaceCard emphasis="strong">
             <StatusPill tone="ready">Agent Profile confirmation</StatusPill>
             <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight text-[#11150f]">
               Review the simulation models before the graph is built.
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
-              Agents are bounded simulation models, not truth claims about real people. Inspect
-              their sources, confidence, missing fields, and behavior policy before freezing them
-              into the relationship graph.
+              Agents are bounded simulation models, not statements of fact about real people. Inspect
+              their sources, confidence, missing fields, and behavior policy before using them
+              for relationship graph preparation.
             </p>
             <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-7 text-[#3f483d]">
               <span className="font-semibold text-[#11150f]">Scenario: </span>
               {seedContext.questionText}
             </div>
-          </main>
+          </SurfaceCard>
 
-          <aside className="rounded-lg bg-[#11150f] p-6 text-white">
+          <aside className="mf-panel-dark p-6">
             <div className="text-xs font-semibold uppercase text-[#b7e6c6]">
               Simulation readiness
             </div>
@@ -218,55 +232,54 @@ export default function AgentsPage() {
             </label>
 
             <div className="mt-5 grid gap-3">
-              <button
+              <Button
                 type="button"
+                variant="ghostOnDark"
                 onClick={regenerate}
-                className="inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+                className="w-full px-4 py-3"
               >
-                Regenerate from current context
-              </button>
-              <button
+                Regenerate from updated people/context
+              </Button>
+              <Button
                 type="button"
+                variant="onDark"
                 onClick={saveDraft}
-                className="inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]"
+                className="w-full px-4 py-3"
               >
                 Save local agent draft
-              </button>
+              </Button>
             </div>
             {savedAt ? (
               <p className="mt-3 text-xs leading-5 text-white/50">
                 Saved {new Date(savedAt).toLocaleString()}
               </p>
             ) : null}
-            <Link
+            <ButtonLink
               href="/app/new/graph"
-              className="mt-3 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+              variant="ghostOnDark"
+              className="mt-3 w-full px-4 py-3"
             >
               Continue to graph
-            </Link>
+            </ButtonLink>
           </aside>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(340px,0.5fr)]">
           <main className="space-y-5">
-            <AgentGroup
-              title="User core agent"
-              description="The baseline model for the user in this sandbox."
+            <UserCoreSection
               agents={userCore}
               selectedId={selectedAgent?.id ?? ""}
               onSelect={setSelectedId}
             />
-            <AgentGroup
-              title="Parallel self variants"
-              description="Comparison branches for cautious and decisive versions of the user's strategy."
+            <ParallelSelfSection
               agents={parallelSelves}
               selectedId={selectedAgent?.id ?? ""}
               onSelect={setSelectedId}
+              enabled={includeParallelSelves}
             />
-            <AgentGroup
-              title="NPC agents"
-              description="One NPC agent is generated for every confirmed Key Person."
+            <NpcAgentSection
               agents={npcAgents}
+              expectedCount={confirmedPeople.length}
               selectedId={selectedAgent?.id ?? ""}
               onSelect={setSelectedId}
             />
@@ -279,33 +292,120 @@ export default function AgentsPage() {
   );
 }
 
-function AgentGroup({
-  title,
-  description,
+function UserCoreSection({
   agents,
   selectedId,
   onSelect,
 }: {
-  title: string;
-  description: string;
   agents: AgentProfileDraft[];
   selectedId: string;
   onSelect: (id: string) => void;
+}) {
+  const agent = agents[0] ?? null;
+
+  return (
+    <section>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[#11150f]">User core card</h2>
+          <p className="mt-1 text-sm leading-6 text-[#62695d]">
+            The baseline user model used to anchor the local simulation.
+          </p>
+        </div>
+        <StatusPill tone={agent ? "ready" : "blocked"}>
+          {agent ? "Core exists" : "Missing core"}
+        </StatusPill>
+      </div>
+      {agent ? (
+        <UserCoreCard
+          agent={agent}
+          selected={selectedId === agent.id}
+          onSelect={() => onSelect(agent.id)}
+        />
+      ) : (
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-900">
+          User core should always be generated before graph preparation.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ParallelSelfSection({
+  agents,
+  selectedId,
+  onSelect,
+  enabled,
+}: {
+  agents: AgentProfileDraft[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  enabled: boolean;
 }) {
   return (
     <section>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[#11150f]">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-[#62695d]">{description}</p>
+          <h2 className="text-lg font-semibold text-[#11150f]">
+            Parallel self comparison cards
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-[#62695d]">
+            Cautious and decisive branches expose different simulation policies for the same user context.
+          </p>
         </div>
-        <span className="text-xs font-semibold uppercase text-[#7d8578]">
-          {agents.length} shown
-        </span>
+        <StatusPill tone={enabled ? "active" : "locked"}>
+          {enabled ? `${agents.length} variants` : "Disabled"}
+        </StatusPill>
+      </div>
+      {enabled ? (
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          {agents.map((agent) => (
+            <ParallelSelfCard
+              key={agent.id}
+              agent={agent}
+              selected={selectedId === agent.id}
+              onSelect={() => onSelect(agent.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg border border-black/8 bg-white p-5 text-sm leading-6 text-[#62695d]">
+          Parallel self variants are turned off for this draft.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function NpcAgentSection({
+  agents,
+  expectedCount,
+  selectedId,
+  onSelect,
+}: {
+  agents: AgentProfileDraft[];
+  expectedCount: number;
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  const complete = agents.length === expectedCount;
+
+  return (
+    <section>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[#11150f]">NPC agent cards</h2>
+          <p className="mt-1 text-sm leading-6 text-[#62695d]">
+            Each confirmed Key Person becomes one NPC model with source and evidence details.
+          </p>
+        </div>
+        <StatusPill tone={complete ? "ready" : "caution"}>
+          {agents.length}/{expectedCount} mapped
+        </StatusPill>
       </div>
       <div className="mt-3 grid gap-4 md:grid-cols-2">
         {agents.map((agent) => (
-          <AgentCard
+          <NpcAgentCard
             key={agent.id}
             agent={agent}
             selected={selectedId === agent.id}
@@ -317,14 +417,14 @@ function AgentGroup({
   );
 }
 
-function AgentCard({
-  agent,
+function SelectableCard({
   selected,
   onSelect,
+  children,
 }: {
-  agent: AgentProfileDraft;
   selected: boolean;
   onSelect: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <button
@@ -336,6 +436,22 @@ function AgentCard({
           : "border-black/8 bg-white hover:border-[#568262]/30"
       }`}
     >
+      {children}
+    </button>
+  );
+}
+
+function UserCoreCard({
+  agent,
+  selected,
+  onSelect,
+}: {
+  agent: AgentProfileDraft;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <SelectableCard selected={selected} onSelect={onSelect}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-xs font-semibold uppercase text-[#7d8578]">
@@ -345,25 +461,197 @@ function AgentCard({
             {agent.label}
           </h3>
         </div>
-        <StatusPill tone={agentTone(agent)}>{agent.confidence}%</StatusPill>
+        <ConfidenceDisplay value={agent.confidence} compact />
       </div>
 
       <p className="mt-3 text-sm leading-6 text-[#62695d]">
         {agent.role} / {agent.relationshipToUser}
       </p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <SourceBadge value={agent.profileJson.source.sourceType} />
-        <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
-          stance: {stanceLabel(agent.profileJson.stance)}
-        </span>
-        <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
-          evidence refs: {agent.evidenceRefs.length}
-        </span>
+      <FieldLine
+        label="Recognizable core"
+        value={agent.profileJson.motivation.primaryGoal}
+        source={sourceFor(agent, "motivation.primaryGoal")}
+      />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <MiniField
+          label="Resources"
+          value={`authority ${agent.profileJson.resources.authority}, information ${agent.profileJson.resources.information}`}
+          source={sourceFor(agent, "resources")}
+        />
+        <MiniField
+          label="Behavior"
+          value={`${agent.profileJson.behaviorPolicy.communicationStyle}, initiative ${agent.profileJson.behaviorPolicy.initiative}`}
+          source={sourceFor(agent, "behaviorPolicy")}
+        />
       </div>
-      <p className="mt-4 line-clamp-3 text-xs leading-5 text-[#7d8578]">
-        {agent.profileJson.motivation.primaryGoal}
+      <CardFooter agent={agent} />
+    </SelectableCard>
+  );
+}
+
+function ParallelSelfCard({
+  agent,
+  selected,
+  onSelect,
+}: {
+  agent: AgentProfileDraft;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <SelectableCard selected={selected} onSelect={onSelect}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase text-[#7d8578]">
+            {stanceLabel(agent.profileJson.stance)}
+          </div>
+          <h3 className="mt-2 text-xl font-semibold text-[#11150f]">
+            {agent.label}
+          </h3>
+        </div>
+        <ConfidenceDisplay value={agent.confidence} compact />
+      </div>
+      <div className="mt-4 grid gap-3">
+        <MiniField
+          label="Action speed"
+          value={String(agent.profileJson.behaviorPolicy.actionSpeed)}
+          source={sourceFor(agent, "behaviorPolicy.actionSpeed")}
+        />
+        <MiniField
+          label="Initiative"
+          value={String(agent.profileJson.behaviorPolicy.initiative)}
+          source={sourceFor(agent, "behaviorPolicy.initiative")}
+        />
+        <MiniField
+          label="Avoidance"
+          value={agent.profileJson.motivation.avoidancePattern}
+          source={sourceFor(agent, "motivation.avoidancePattern")}
+        />
+      </div>
+      <CardFooter agent={agent} />
+    </SelectableCard>
+  );
+}
+
+function NpcAgentCard({
+  agent,
+  selected,
+  onSelect,
+}: {
+  agent: AgentProfileDraft;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <SelectableCard selected={selected} onSelect={onSelect}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase text-[#7d8578]">
+            NPC from confirmed Key Person
+          </div>
+          <h3 className="mt-2 text-xl font-semibold text-[#11150f]">
+            {agent.label}
+          </h3>
+        </div>
+        <ConfidenceDisplay value={agent.confidence} compact />
+      </div>
+      <p className="mt-3 text-sm leading-6 text-[#62695d]">
+        {agent.role} / {agent.relationshipToUser}
       </p>
-    </button>
+      <div className="mt-4 grid gap-3">
+        <FieldLine
+          label="Why this NPC exists"
+          value={agent.profileJson.origin}
+          source={agent.profileJson.source.sourceType}
+        />
+        <MiniField
+          label="Current model state"
+          value={agent.profileJson.state.currentIntention}
+          source={sourceFor(agent, "state.currentIntention")}
+        />
+      </div>
+      <CardFooter agent={agent} />
+    </SelectableCard>
+  );
+}
+
+function CardFooter({ agent }: { agent: AgentProfileDraft }) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/8 pt-4">
+      <SourceBadge value={agent.profileJson.source.sourceType} />
+      <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
+        evidence refs: {agent.evidenceRefs.length}
+      </span>
+      <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
+        missing: {agent.profileJson.missingFields.length}
+      </span>
+    </div>
+  );
+}
+
+function FieldLine({
+  label,
+  value,
+  source,
+}: {
+  label: string;
+  value: string;
+  source: AgentFieldSourceType;
+}) {
+  return (
+    <div className="mt-4 rounded-md border border-black/8 bg-[#fbfcf8] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-semibold uppercase text-[#7d8578]">
+          {label}
+        </div>
+        <SourceBadge value={source} />
+      </div>
+      <p className="mt-2 text-sm leading-6 text-[#3f483d]">{value}</p>
+    </div>
+  );
+}
+
+function MiniField({
+  label,
+  value,
+  source,
+}: {
+  label: string;
+  value: string;
+  source: AgentFieldSourceType;
+}) {
+  return (
+    <div className="rounded-md border border-black/8 bg-[#f7f8f4] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-semibold uppercase text-[#7d8578]">
+          {label}
+        </div>
+        <SourceBadge value={source} />
+      </div>
+      <p className="mt-2 text-sm leading-6 text-[#3f483d]">{value}</p>
+    </div>
+  );
+}
+
+function ConfidenceDisplay({
+  value,
+  compact = false,
+}: {
+  value: number;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? "min-w-[76px]" : ""}>
+      <StatusPill tone={confidenceTone(value)}>{value}% confidence</StatusPill>
+      {!compact ? (
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/8">
+          <div
+            className="h-full rounded-full bg-[#568262]"
+            style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -384,7 +672,7 @@ function AgentInspector({ agent }: { agent: AgentProfileDraft | null }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase text-[#7d8578]">
-            {agent.profileJson.origin}
+            {agentTypeLabel(agent)}
           </div>
           <h2 className="mt-2 text-2xl font-semibold text-[#11150f]">
             {agent.label}
@@ -393,24 +681,55 @@ function AgentInspector({ agent }: { agent: AgentProfileDraft | null }) {
         <StatusPill tone={agentTone(agent)}>{agentTypeLabel(agent)}</StatusPill>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <SourceBadge value={agent.profileJson.source.sourceType} />
-        <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#52594d]">
-          confidence {agent.confidence}%
-        </span>
-        <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#52594d]">
-          {agent.version}
-        </span>
+      <div className="mt-4 rounded-md border border-[#568262]/20 bg-[#eef5ee] p-4 text-sm leading-6 text-[#2f5d3d]">
+        This profile prepares simulation behavior. It is a bounded local model, not a statement of fact about a person.
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <ConfidenceDisplay value={agent.confidence} />
+        <div className="flex flex-wrap gap-2">
+          <SourceBadge value={agent.profileJson.source.sourceType} />
+          <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#52594d]">
+            {agent.version}
+          </span>
+          {agent.sourceKeyPersonId ? (
+            <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#52594d]">
+              key person: {agent.sourceKeyPersonId}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-5 space-y-5">
-        <Detail label="Role" value={agent.role} />
-        <Detail label="Stance" value={stanceLabel(agent.profileJson.stance)} />
-        <Detail label="Motivation" value={agent.profileJson.motivation.primaryGoal} />
-        <Detail label="Fear" value={agent.profileJson.motivation.fear} />
-        <Detail
+        <FieldLine
+          label="Why this agent exists"
+          value={agent.profileJson.origin}
+          source={agent.profileJson.source.sourceType}
+        />
+        <FieldLine
+          label="Role"
+          value={agent.role}
+          source={sourceFor(agent, "role")}
+        />
+        <FieldLine
+          label="Stance"
+          value={stanceLabel(agent.profileJson.stance)}
+          source={sourceFor(agent, "stance")}
+        />
+        <FieldLine
+          label="Motivation"
+          value={agent.profileJson.motivation.primaryGoal}
+          source={sourceFor(agent, "motivation.primaryGoal")}
+        />
+        <FieldLine
+          label="Concern"
+          value={agent.profileJson.motivation.fear}
+          source={sourceFor(agent, "motivation.fear")}
+        />
+        <FieldLine
           label="Avoidance pattern"
           value={agent.profileJson.motivation.avoidancePattern}
+          source={sourceFor(agent, "motivation.avoidancePattern")}
         />
 
         <ScoreGrid
@@ -442,24 +761,23 @@ function AgentInspector({ agent }: { agent: AgentProfileDraft | null }) {
         />
 
         <FieldSources sources={agent.profileJson.fieldSources} />
-        <TextList title="Missing fields" items={agent.profileJson.missingFields} empty="No missing fields marked." />
-        <TextList title="Model boundaries" items={agent.profileJson.constraints} empty="No boundaries listed." />
+        <TextList
+          title="Traits"
+          items={agent.profileJson.traits}
+          empty="No traits marked."
+        />
+        <TextList
+          title="Missing fields"
+          items={agent.profileJson.missingFields}
+          empty="No missing fields marked."
+        />
+        <TextList
+          title="Model boundaries"
+          items={agent.profileJson.constraints}
+          empty="No boundaries listed."
+        />
 
-        <div className="rounded-md bg-[#f7f8f4] p-4">
-          <div className="text-xs font-semibold uppercase text-[#7d8578]">
-            Evidence refs
-          </div>
-          <div className="mt-2 space-y-1">
-            {agent.evidenceRefs.map((ref) => (
-              <code
-                key={ref}
-                className="block break-all text-xs text-[#3f483d]"
-              >
-                {ref}
-              </code>
-            ))}
-          </div>
-        </div>
+        <EvidenceDisclosure refs={agent.evidenceRefs} />
       </div>
     </aside>
   );
@@ -489,11 +807,34 @@ function FieldSources({
             key={field}
             className={`rounded border px-2 py-1 text-xs ${sourceClasses(source)}`}
           >
-            {field}: {sourceLabel(source)}
+            {fieldLabel(field)}: {sourceLabel(source)}
           </span>
         ))}
       </div>
     </div>
+  );
+}
+
+function EvidenceDisclosure({ refs }: { refs: string[] }) {
+  return (
+    <details className="rounded-md bg-[#f7f8f4] p-4">
+      <summary className="cursor-pointer text-xs font-semibold uppercase text-[#7d8578]">
+        Evidence refs ({refs.length})
+      </summary>
+      {refs.length ? (
+        <div className="mt-3 space-y-1">
+          {refs.map((ref) => (
+            <code key={ref} className="block break-all text-xs text-[#3f483d]">
+              {ref}
+            </code>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-xs leading-5 text-[#62695d]">
+          No evidence refs are attached to this local model.
+        </p>
+      )}
+    </details>
   );
 }
 
@@ -560,17 +901,6 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
       <div className="text-xs text-white/48">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
-    </div>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase text-[#7d8578]">
-        {label}
-      </div>
-      <p className="mt-1 text-sm leading-6 text-[#62695d]">{value}</p>
     </div>
   );
 }

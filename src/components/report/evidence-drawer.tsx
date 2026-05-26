@@ -1,3 +1,4 @@
+import { EvidenceTag } from "@/components/ui-foundation";
 import type { ClaimDraft } from "@/types/claim";
 import type { ReportEvidenceEvent } from "@/types/report";
 
@@ -10,12 +11,12 @@ export function EvidenceDrawer({
 }) {
   if (!claim) {
     return (
-      <section className="rounded-lg border border-black/8 bg-white p-5">
+      <section className="mf-card p-5">
         <h2 className="text-sm font-semibold text-[#11150f]">
           Evidence drawer
         </h2>
         <p className="mt-3 text-sm leading-6 text-[#62695d]">
-          Select a Claim to inspect EventLog evidence.
+          Select a Claim to inspect Event Log evidence.
         </p>
       </section>
     );
@@ -24,8 +25,8 @@ export function EvidenceDrawer({
   const claimEvents = events.filter((event) => event.claimIds.includes(claim.id));
 
   return (
-    <section className="rounded-lg border border-black/8 bg-white p-5">
-      <div className="flex items-start justify-between gap-4">
+    <section className="mf-card p-5">
+      <div className="mf-section-header">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
             Evidence drawer
@@ -34,13 +35,12 @@ export function EvidenceDrawer({
             {claim.claimType}
           </h2>
         </div>
-        <span className="rounded border border-[#568262]/20 bg-[#eef5ee] px-2 py-1 text-xs font-semibold text-[#2f5d3d]">
-          {claimEvents.length} events
-        </span>
+        <EvidenceTag>{claimEvents.length} events</EvidenceTag>
       </div>
 
       <p className="mt-3 text-sm leading-6 text-[#62695d]">
-        这条结论来自以下事件证据，不来自独立报告生成。
+        This claim is shown only because the Event Log contains matching
+        evidence. Report copy does not create independent conclusions.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -59,6 +59,7 @@ export function EvidenceDrawer({
               <Meta label="participants" value={event.participants.join(", ")} />
               <Meta label="relation edges" value={event.relationEdgeIds.join(", ")} />
               <Meta label="causes" value={event.causes.join(", ")} />
+              <Meta label="evidence refs" value={event.evidenceRefs.join(", ")} />
               <pre className="max-h-48 overflow-auto rounded bg-white p-3 text-xs">
                 {JSON.stringify(event.edgeWeightDeltas, null, 2)}
               </pre>

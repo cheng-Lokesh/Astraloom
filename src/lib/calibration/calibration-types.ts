@@ -1,5 +1,9 @@
 import type { AgentFieldSourceType } from "@/types/agent-profile";
-import type { FeedbackRating, FeedbackTargetType } from "@/types/feedback";
+import type {
+  FeedbackCorrectionConfidence,
+  FeedbackRating,
+  FeedbackTargetType,
+} from "@/types/feedback";
 import type { StrategyType } from "@/types/report";
 
 export type SourceReliabilityProfile = Record<AgentFieldSourceType, number>;
@@ -18,9 +22,20 @@ export type CalibrationSignal = {
     | "raise_strategy_preference"
     | "lower_strategy_preference"
     | "increase_uncertainty"
-    | "hold_for_observation";
+    | "hold_for_observation"
+    | "agent_field_correction"
+    | "relation_field_correction";
   weight: number;
   note: string;
+};
+
+export type CalibrationCorrectionSummary = {
+  feedbackId: string;
+  targetId: string;
+  field: string;
+  suggestedValue: string;
+  confidence: FeedbackCorrectionConfidence;
+  weight: number;
 };
 
 export type CalibrationProfile = {
@@ -33,11 +48,15 @@ export type CalibrationProfile = {
   edgeUncertaintyAdjustment: number;
   strategyPreference: StrategyPreferenceProfile;
   signals: CalibrationSignal[];
+  agentCorrections: CalibrationCorrectionSummary[];
+  relationCorrections: CalibrationCorrectionSummary[];
   calibrationSnapshot: {
     feedbackCount: number;
     offCount: number;
     usefulCount: number;
     notHappenedYetCount: number;
+    agentCorrectionCount: number;
+    relationCorrectionCount: number;
   };
   historyInvariant: {
     doesNotModifyEventLogs: true;

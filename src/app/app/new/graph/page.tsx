@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
@@ -8,6 +7,7 @@ import { GraphSummaryCards } from "@/components/graph/graph-summary-cards";
 import { RelationEdgeDrawer } from "@/components/graph/relation-edge-drawer";
 import { RelationGraph } from "@/components/graph/relation-graph";
 import { StatusPill } from "@/components/status-pill";
+import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { getRepositories } from "@/lib/repositories/repository-provider";
 import { buildRelationEdges } from "@/lib/relations/build";
 import type { AgentProfileDraft } from "@/types/agent-profile";
@@ -33,6 +33,7 @@ export default function GraphPage() {
   });
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
   const [message, setMessage] = useState("");
+  const [showLockModal, setShowLockModal] = useState(false);
 
   const agents = agentEcology?.agents ?? emptyAgents;
   const generatedEdges = useMemo(
@@ -75,6 +76,10 @@ export default function GraphPage() {
 
   function regenerateFromUpstream() {
     if (!seedContext) return;
+    if (graphLocked) {
+      setMessage("This graph is locked. Update upstream facts first, then create a new draft graph from the flow.");
+      return;
+    }
     const updatedAt = new Date().toISOString();
     const nextGraph: RelationGraphDraft = {
       seedContextId: seedContext.id,
@@ -98,7 +103,7 @@ export default function GraphPage() {
   if (!seedContext || !agentEcology?.agents.length) {
     return (
       <AppShell>
-        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Agents required</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
             Build Agent Profiles before opening the relationship ledger.
@@ -108,13 +113,10 @@ export default function GraphPage() {
             Edges. It does not create editable customer records or direct edge
             controls.
           </p>
-          <Link
-            href="/app/new/agents"
-            className="mt-6 inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
-          >
+          <ButtonLink href="/app/new/agents" className="mt-6 px-5 py-3">
             Review Agent Profiles
-          </Link>
-        </section>
+          </ButtonLink>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -136,19 +138,17 @@ export default function GraphPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button
+          <Button
             type="button"
+            variant="accent"
             onClick={regenerateFromUpstream}
-            className="rounded-md border border-[#568262]/30 bg-[#eef5ee] px-4 py-2 text-sm font-semibold text-[#2f5d3d]"
+            disabled={graphLocked}
           >
             Regenerate from upstream facts
-          </button>
-          <Link
-            href="/app/new/people"
-            className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
-          >
+          </Button>
+          <ButtonLink href="/app/new/people" variant="secondary">
             Supplement facts
-          </Link>
+          </ButtonLink>
         </div>
       </div>
 
@@ -159,7 +159,11 @@ export default function GraphPage() {
       ) : null}
 
       <div className="mb-5">
-        <GraphSummaryCards edges={edges} onSelectEdge={setSelectedEdgeId} />
+        <GraphSummaryCards
+          edges={edges}
+          agents={graphAgents}
+          onSelectEdge={setSelectedEdgeId}
+        />
       </div>
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_390px]">
@@ -174,7 +178,7 @@ export default function GraphPage() {
         </main>
 
         <aside className="h-fit space-y-5">
-          <section className="rounded-lg border border-black/8 bg-[#11150f] p-6 text-white">
+          <section className="mf-panel-dark p-6">
             <h2 className="text-sm font-semibold text-[#b7e6c6]">
               Graph lock state
             </h2>
@@ -225,6 +229,8 @@ export default function GraphPage() {
               />
             </div>
 
+            <EvidenceCoverage edges={edges} />
+
             {savedGraph?.updatedAt ? (
               <p className="mt-4 text-xs leading-5 text-white/50">
                 Saved: {new Date(savedGraph.updatedAt).toLocaleString()}
@@ -237,58 +243,134 @@ export default function GraphPage() {
                   This graph is locked for the current run. To change people or
                   relationship facts, update upstream facts and regenerate a new draft graph.
                 </p>
-                <Link
+                <ButtonLink
                   href="/app/new/people"
-                  className="mt-4 inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]"
+                  variant="onDark"
+                  className="mt-4 w-full px-4 py-3"
                 >
                   Update facts on People page
-                </Link>
-                <button
-                  type="button"
-                  onClick={regenerateFromUpstream}
-                  className="mt-3 inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+                </ButtonLink>
+                <ButtonLink
+                  href="/app/new/agents"
+                  variant="ghostOnDark"
+                  className="mt-3 w-full px-4 py-3"
                 >
-                  Regenerate draft from upstream
-                </button>
+                  Review Agent Profiles
+                </ButtonLink>
               </div>
             ) : (
               <div className="mt-5 grid gap-3">
-                <button
+                <Button
                   type="button"
+                  variant="ghostOnDark"
                   onClick={() => saveGraph(false)}
-                  className="inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
+                  className="w-full px-4 py-3"
                 >
                   Save draft
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  onClick={() => saveGraph(true)}
-                  className="inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]"
+                  variant="onDark"
+                  onClick={() => setShowLockModal(true)}
+                  className="w-full px-4 py-3"
                 >
                   Lock relationship ledger
-                </button>
+                </Button>
               </div>
             )}
 
-            <Link
+            <ButtonLink
               href="/app/simulation/running"
-              className={`mt-3 inline-flex w-full justify-center rounded-md px-4 py-3 text-sm font-semibold ${
+              variant="ghostOnDark"
+              className={`mt-3 w-full px-4 py-3 ${
                 graphLocked
-                  ? "border border-white/10 text-white"
-                  : "cursor-not-allowed border border-white/10 text-white/42"
+                  ? ""
+                  : "cursor-not-allowed text-white/42"
               }`}
               onClick={(event) => {
                 if (!graphLocked) event.preventDefault();
               }}
             >
-              Continue to simulation
-            </Link>
+              {graphLocked ? "Continue to simulation" : "Lock graph to start simulation"}
+            </ButtonLink>
           </section>
 
-          <RelationEdgeDrawer edge={selectedEdge} locked={graphLocked} />
+          <RelationEdgeDrawer
+            edge={selectedEdge}
+            agents={graphAgents}
+            locked={graphLocked}
+          />
         </aside>
       </section>
+
+      {showLockModal ? (
+        <GraphLockModal
+          edgeCount={edges.length}
+          agentCount={graphAgents.length}
+          onCancel={() => setShowLockModal(false)}
+          onConfirm={() => {
+            setShowLockModal(false);
+            saveGraph(true);
+          }}
+        />
+      ) : null}
     </AppShell>
+  );
+}
+
+function EvidenceCoverage({ edges }: { edges: RelationGraphDraft["edges"] }) {
+  const withEvidence = edges.filter((edge) => edge.evidenceRefs.length > 0).length;
+  const inferred = edges.length - withEvidence;
+
+  return (
+    <details className="mt-4 rounded-md border border-white/10 bg-white/[0.06] p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-white">
+        Evidence coverage
+      </summary>
+      <p className="mt-3 text-sm leading-6 text-white/66">
+        {withEvidence} of {edges.length} edges include evidence refs. {inferred} edge
+        {inferred === 1 ? " uses" : "s use"} deterministic inference from Agent Profiles.
+      </p>
+    </details>
+  );
+}
+
+function GraphLockModal({
+  agentCount,
+  edgeCount,
+  onCancel,
+  onConfirm,
+}: {
+  agentCount: number;
+  edgeCount: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[#11150f]/45 px-4">
+      <section className="w-full max-w-lg rounded-lg border border-black/8 bg-white p-6 shadow-[0_32px_120px_rgba(17,21,15,0.22)]">
+        <StatusPill tone="planned">Graph Lock</StatusPill>
+        <h2 className="mt-4 text-2xl font-semibold text-[#11150f]">
+          Lock this graph snapshot?
+        </h2>
+        <p className="mt-3 text-sm leading-7 text-[#62695d]">
+          Locking freezes {agentCount} agents and {edgeCount} relation edges as
+          the local simulation input. The graph remains inspectable, but edge
+          weights stay read-only.
+        </p>
+        <div className="mt-5 rounded-md border border-[#d49b4a]/30 bg-[#fff8ed] p-4 text-sm leading-6 text-[#7c5524]">
+          To change the structure after locking, return to upstream facts and create a new draft graph.
+        </div>
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Keep reviewing
+          </Button>
+          <Button type="button" variant="primary" onClick={onConfirm}>
+            Lock graph snapshot
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }
 

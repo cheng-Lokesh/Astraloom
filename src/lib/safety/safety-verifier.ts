@@ -61,15 +61,15 @@ function buildSearchText(input: SafetyVerifierInput) {
 
 function messageFor(level: SafetyLevel) {
   if (level === "blocked") {
-    return "This situation includes safety-critical content, so MiroFish stops simulation and report generation here. The sandbox can only show a safety notice and support paths.";
+    return "This scenario is paused for safety. MiroFish can keep the setup available, but it will not run simulation ticks, build claims, or expand report depth from this input.";
   }
 
   if (level === "downgraded") {
-    return "This situation touches a sensitive area. MiroFish will stay in a downgraded mode: relationship structure and low-risk communication options only, without strong claims or unlock expansion.";
+    return "This scenario touches a sensitive area, so MiroFish is using adjusted mode: relationship structure and low-risk communication options only, without strong claims or depth expansion.";
   }
 
   if (level === "caution") {
-    return "This situation can continue, but MiroFish will keep non-deterministic wording and avoid certainty about outcomes or another person's private thoughts.";
+    return "This scenario can continue with careful wording. MiroFish will avoid certainty about outcomes or another person's private thoughts.";
   }
 
   return "Safety check passed for the local sandbox flow.";
@@ -78,27 +78,27 @@ function messageFor(level: SafetyLevel) {
 function restrictionsFor(level: SafetyLevel, flags: SafetyFlag[]) {
   if (level === "blocked") {
     return [
-      "Do not run simulation ticks.",
-      "Do not render report claims.",
-      "Do not start paid unlock.",
-      "Show SafetyDowngradeNotice instead.",
+      "Simulation ticks stay unavailable.",
+      "Report claims stay unavailable.",
+      "Full-depth and paid-depth access stay unavailable.",
+      "Only setup revision and support paths remain available.",
     ];
   }
 
   if (level === "downgraded") {
     return [
-      "Hide high-risk strong claims.",
-      "Show only relationship structure and low-risk communication options.",
-      "Do not provide monitoring, revenge, coercion, medical, legal, investment, or therapy steps.",
-      "Do not expand restricted content through paid unlock.",
+      "High-risk strong claims are hidden.",
+      "Only relationship structure and low-risk communication options are shown.",
+      "Monitoring, revenge, coercion, medical, legal, investment, and therapy steps are not shown.",
+      "Full-depth and paid-depth views cannot expand restricted content.",
     ];
   }
 
   if (flags.length) {
     return [
-      "Avoid deterministic fate language.",
-      "Do not guarantee reconciliation or final outcomes.",
-      "Keep claims evidence-linked and probabilistic.",
+      "Deterministic wording is avoided.",
+      "Reconciliation or final outcomes are not guaranteed.",
+      "Claims remain evidence-linked and confidence-scored.",
     ];
   }
 

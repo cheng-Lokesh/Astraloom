@@ -12,7 +12,7 @@ type TrialSampleButtonProps = {
 
 export function TrialSampleButton({
   className,
-  children = "载入试用沙盘",
+  children = "Open sample sandbox",
   target = "/app/simulation/result",
 }: TrialSampleButtonProps) {
   const router = useRouter();

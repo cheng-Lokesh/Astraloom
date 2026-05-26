@@ -15,9 +15,9 @@ function highestRisk(claims: ClaimDraft[]): ClaimRiskLevel {
 }
 
 function riskLabel(risk: ClaimRiskLevel) {
-  if (risk === "high") return "当前沙盘显示：可能进入风险窗口";
-  if (risk === "medium") return "当前沙盘显示：需要继续观察";
-  return "当前沙盘显示：暂未出现强风险信号";
+  if (risk === "high") return "Sandbox signal: pressure needs review";
+  if (risk === "medium") return "Sandbox signal: keep observing";
+  return "Sandbox signal: no strong pressure pattern";
 }
 
 function timelineHint(eventCount: number, claimCount: number) {
@@ -33,6 +33,10 @@ export function buildFreePreviewReport(
   const claimIds = claims.map((claim) => claim.id);
   const summaryClaims = claims
     .filter((claim) => claim.evidenceEventIds.length > 0)
+    .sort((left, right) => {
+      const riskDiff = riskRank(right.riskLevel) - riskRank(left.riskLevel);
+      return riskDiff || right.confidence - left.confidence;
+    })
     .slice(0, 2);
   const eventIds = new Set(summaryClaims.flatMap((claim) => claim.evidenceEventIds));
   const visibleEvents = events.filter((event) => eventIds.has(event.id));
@@ -67,6 +71,6 @@ export function buildFreePreviewReport(
     })),
     limitedEvidenceCount: visibleEvents.length,
     unlockCta:
-      "Unlock full evidence depth, branch comparison, and strategy options without changing the claims.",
+      "Open full depth for the complete Event Log chain, branch comparison, relation deltas, and strategy options. Full depth uses the same claim_id set and does not make the claims more certain.",
   };
 }

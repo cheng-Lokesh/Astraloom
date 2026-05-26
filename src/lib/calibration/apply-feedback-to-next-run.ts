@@ -1,4 +1,8 @@
-import type { AgentEcologyDraft, AgentProfileDraft } from "@/types/agent-profile";
+import type {
+  AgentEcologyDraft,
+  AgentFieldSourceType,
+  AgentProfileDraft,
+} from "@/types/agent-profile";
 import type { RelationEdgeDraft } from "@/types/relation-edge";
 
 import type { CalibrationProfile } from "./calibration-types";
@@ -13,6 +17,15 @@ function calibrateAgent(
 ): AgentProfileDraft {
   const sourceType = agent.profileJson.source.sourceType;
   const reliability = profile.sourceReliability[sourceType] ?? 1;
+  const agentCorrections = profile.agentCorrections.filter(
+    (correction) => correction.targetId === agent.id,
+  );
+  const correctedFields = agentCorrections.reduce<
+    Record<string, AgentFieldSourceType>
+  >((fields, correction) => {
+    fields[correction.field] = "user_confirmed";
+    return fields;
+  }, {});
 
   return {
     ...agent,
@@ -28,6 +41,10 @@ function calibrateAgent(
             profile.agentConfidenceAdjustment,
         ),
       },
+      fieldSources: {
+        ...agent.profileJson.fieldSources,
+        ...correctedFields,
+      },
     },
   };
 }
@@ -36,7 +53,12 @@ function calibrateEdgeUncertainty(
   edge: RelationEdgeDraft,
   profile: CalibrationProfile,
 ): RelationEdgeDraft {
-  const uncertainty = profile.edgeUncertaintyAdjustment;
+  const relationCorrectionUncertainty = profile.relationCorrections
+    .filter((correction) => correction.targetId === edge.id)
+    .reduce((total, correction) => total + correction.weight, 0);
+  const uncertainty =
+    profile.edgeUncertaintyAdjustment +
+    Math.round(relationCorrectionUncertainty * 100);
 
   return {
     ...edge,

@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { PageContainer } from "@/components/ui-foundation";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -25,8 +26,8 @@ const navItems = [
 
 export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-[#f7f8f4] text-[#11150f]">
-      <header className="sticky top-0 z-30 border-b border-black/8 bg-[#f7f8f4]/88 backdrop-blur-xl">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--mf-ink)]">
+      <header className="sticky top-0 z-30 border-b border-black/8 bg-[var(--background)]/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4">
           <Link href="/app/dashboard" className="flex min-w-0 items-center gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#11150f] text-sm font-semibold tracking-tight text-white">
@@ -42,7 +43,7 @@ export function AppShell({ children }: AppShellProps) {
             </span>
           </Link>
 
-          <nav className="flex max-w-[74vw] shrink-0 items-center gap-1 overflow-x-auto rounded-md border border-black/8 bg-white/80 p-1 shadow-[0_12px_40px_rgba(17,21,15,0.05)]">
+          <nav className="flex max-w-[74vw] shrink-0 items-center gap-1 overflow-x-auto rounded-md border border-black/8 bg-white/84 p-1 shadow-[0_12px_40px_rgba(17,21,15,0.05)]">
             {navItems.map((item) => (
               <Link
                 key={item.href}
@@ -59,7 +60,9 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-5 py-7">{children}</main>
+      <main>
+        <PageContainer>{children}</PageContainer>
+      </main>
     </div>
   );
 }

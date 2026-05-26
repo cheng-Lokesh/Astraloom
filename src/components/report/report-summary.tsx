@@ -14,17 +14,19 @@ export function ReportSummary({
   paidMode: boolean;
 }) {
   return (
-    <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <section className="mf-card-strong p-6">
+      <div className="mf-section-header">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
             Report Engine v1
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-[#11150f]">
-            当前沙盘显示
+            Evidence-backed result sandbox
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-[#62695d]">
-            Report 只读取 Claim；Claim 只来自 EventLog。付费层只展开证据和策略深度，不改变结论方向、confidence 或 riskLevel。
+            Report Engine v1 reads Claims only, and Claims come from Event Logs.
+            Full report depth can expand evidence and strategy detail, but it
+            does not change claim direction, confidence, or risk level.
           </p>
         </div>
         <span
@@ -50,6 +52,25 @@ export function ReportSummary({
           label={paidMode ? "full events" : "locked depth"}
           value={report.paidReport.fullEventChain.length}
         />
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        {report.freePreview.vagueTimeline.slice(0, 3).map((item) => (
+          <div
+            key={item.label}
+            className="rounded-md border border-black/8 bg-[#fbfcf8] p-3"
+          >
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+              {item.label}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-[#11150f]">
+              {item.eventCount} event{item.eventCount === 1 ? "" : "s"}
+            </div>
+            <p className="mt-1 text-xs leading-5 text-[#62695d]">
+              {item.riskHint} preview signal
+            </p>
+          </div>
+        ))}
       </div>
 
       {!paidMode ? (

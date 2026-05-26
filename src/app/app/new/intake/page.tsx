@@ -1,15 +1,25 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { StatusPill } from "@/components/status-pill";
 import { TrialSampleButton } from "@/components/trial-sample-button";
+import {
+  Button,
+  ButtonLink,
+  ConfidenceTag,
+  EvidenceTag,
+  SurfaceCard,
+} from "@/components/ui-foundation";
 import { getRepositories } from "@/lib/repositories/repository-provider";
 import type { SafetyDecision } from "@/lib/safety/safety-types";
 import { verifySafety } from "@/lib/safety/safety-verifier";
+import {
+  buildMissingContextHints,
+  calculateContextQualityScore,
+} from "@/lib/seed-context/storage";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
 
 const sample = {
@@ -23,8 +33,12 @@ const sample = {
     "Current manager: controls promotion timing. Recruiter: controls offer deadline. Trusted colleague: has internal budget context. Partner: affected by schedule and income changes.",
   decisionOptions:
     "Accept the new role. Stay and negotiate a written promotion timeline. Ask both sides for one more week before deciding.",
+  worries:
+    "The promotion promise may stay vague. The new role may be less stable than it sounds. Pushing too hard could weaken trust with the current manager.",
   forbiddenActions:
     "Do not burn bridges with the current team. Do not accept vague promises as confirmed evidence. Do not disclose confidential team information.",
+  safetyBoundaries:
+    "Keep communication low-pressure and professional. Do not frame private motives as facts. Avoid legal, financial, or medical advice.",
   desiredOutput:
     "Show the main relationship pressure points, event evidence to watch, and low-risk communication options for the next 90 days.",
 };
@@ -37,6 +51,21 @@ const timeWindows: Array<[TimeWindow, string, string]> = [
   ["5_years", "5 years", "Track B"],
 ];
 
+const sectionLabels = [
+  "Situation",
+  "Question",
+  "Events",
+  "People",
+  "Options",
+  "Risks",
+  "Boundaries",
+  "Output",
+];
+
+function hasUsefulText(value: string, minimum = 1) {
+  return value.trim().length >= minimum;
+}
+
 export default function IntakePage() {
   const [repos] = useState(() => getRepositories());
   const [initialDraft] = useState(() => {
@@ -48,17 +77,24 @@ export default function IntakePage() {
   );
   const [question, setQuestion] = useState(initialDraft?.questionText ?? "");
   const [recentEvents, setRecentEvents] = useState(
-    initialDraft?.recentEventsText ?? "",
+    initialDraft?.recentEvents ?? initialDraft?.recentEventsText ?? "",
   );
   const [people, setPeople] = useState(initialDraft?.keyPeopleText ?? "");
   const [decisionOptions, setDecisionOptions] = useState(
-    initialDraft?.decisionOptionsText ?? "",
+    initialDraft?.decisionOptions ?? initialDraft?.decisionOptionsText ?? "",
   );
+  const [worries, setWorries] = useState(initialDraft?.worries ?? "");
   const [forbiddenActions, setForbiddenActions] = useState(
-    initialDraft?.forbiddenActionsText ?? "",
+    initialDraft?.forbiddenActions ?? initialDraft?.forbiddenActionsText ?? "",
+  );
+  const [safetyBoundaries, setSafetyBoundaries] = useState(
+    initialDraft?.safetyBoundaries ??
+      initialDraft?.forbiddenActions ??
+      initialDraft?.forbiddenActionsText ??
+      "",
   );
   const [desiredOutput, setDesiredOutput] = useState(
-    initialDraft?.desiredOutputText ?? "",
+    initialDraft?.desiredOutput ?? initialDraft?.desiredOutputText ?? "",
   );
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(
     initialDraft?.timeWindow ?? "90_days",
@@ -70,6 +106,47 @@ export default function IntakePage() {
   const [safetyDecision, setSafetyDecision] = useState<SafetyDecision | null>(
     null,
   );
+
+  const previewDraft: SeedContextDraft = {
+    id: initialDraft?.id ?? "preview_seed",
+    questionText: question.trim(),
+    trackType:
+      timeWindow === "30_days" || timeWindow === "90_days"
+        ? "crossroad"
+        : "life_climate",
+    timeWindow,
+    situationSummary: situationSummary.trim(),
+    recentEvents: recentEvents.trim(),
+    recentEventsText: recentEvents.trim(),
+    keyPeopleText: people.trim(),
+    decisionOptions: decisionOptions.trim(),
+    decisionOptionsText: decisionOptions.trim(),
+    worries: worries.trim(),
+    forbiddenActions: forbiddenActions.trim(),
+    forbiddenActionsText: forbiddenActions.trim(),
+    safetyBoundaries: safetyBoundaries.trim(),
+    desiredOutput: desiredOutput.trim(),
+    desiredOutputText: desiredOutput.trim(),
+    privacyAck: privacySafetyAck,
+    privacySafetyAck,
+    locale: "en",
+    status: "draft",
+    createdAt: initialDraft?.createdAt ?? new Date(0).toISOString(),
+    updatedAt: initialDraft?.updatedAt ?? new Date(0).toISOString(),
+  };
+  const contextQualityScore = calculateContextQualityScore(previewDraft);
+  const missingContextHints = buildMissingContextHints(previewDraft);
+  const sectionCompletion = [
+    hasUsefulText(situationSummary, 80),
+    hasUsefulText(question, 12),
+    hasUsefulText(recentEvents),
+    hasUsefulText(people),
+    hasUsefulText(decisionOptions),
+    hasUsefulText(worries),
+    hasUsefulText(forbiddenActions) || hasUsefulText(safetyBoundaries),
+    hasUsefulText(desiredOutput),
+  ];
+  const completedSectionCount = sectionCompletion.filter(Boolean).length;
 
   function save(status: SeedContextDraft["status"] = "submitted") {
     if (situationSummary.trim().length < 20) {
@@ -88,8 +165,16 @@ export default function IntakePage() {
     }
 
     const now = new Date().toISOString();
+    const draftId = initialDraft?.id ?? repos.seedContexts.createId();
+    const draftForScore = {
+      ...previewDraft,
+      id: draftId,
+      status,
+      createdAt: initialDraft?.createdAt ?? now,
+      updatedAt: now,
+    } satisfies SeedContextDraft;
     const draft = {
-      id: initialDraft?.id ?? repos.seedContexts.createId(),
+      id: draftId,
       questionText: question.trim(),
       trackType:
         timeWindow === "30_days" || timeWindow === "90_days"
@@ -97,11 +182,19 @@ export default function IntakePage() {
           : "life_climate",
       timeWindow,
       situationSummary: situationSummary.trim(),
+      recentEvents: recentEvents.trim(),
       recentEventsText: recentEvents.trim(),
       keyPeopleText: people.trim(),
+      decisionOptions: decisionOptions.trim(),
       decisionOptionsText: decisionOptions.trim(),
+      worries: worries.trim(),
+      forbiddenActions: forbiddenActions.trim(),
       forbiddenActionsText: forbiddenActions.trim(),
+      safetyBoundaries: safetyBoundaries.trim(),
+      desiredOutput: desiredOutput.trim(),
       desiredOutputText: desiredOutput.trim(),
+      contextQualityScore: calculateContextQualityScore(draftForScore),
+      missingContextHints: buildMissingContextHints(draftForScore),
       privacyAck: privacySafetyAck,
       privacySafetyAck,
       locale: "en",
@@ -140,7 +233,9 @@ export default function IntakePage() {
     setRecentEvents(sample.recentEvents);
     setPeople(sample.people);
     setDecisionOptions(sample.decisionOptions);
+    setWorries(sample.worries);
     setForbiddenActions(sample.forbiddenActions);
+    setSafetyBoundaries(sample.safetyBoundaries);
     setDesiredOutput(sample.desiredOutput);
     setTimeWindow("90_days");
     setPrivacySafetyAck(true);
@@ -150,91 +245,162 @@ export default function IntakePage() {
   return (
     <AppShell>
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <main className="rounded-lg border border-black/8 bg-white p-7 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-          <StatusPill tone="planned">Structured situation intake</StatusPill>
-          <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight text-[#11150f]">
-            Give the sandbox enough real-world evidence to build useful agents.
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Tell the case in natural language, then add the signals that matter: recent events,
-            people, options, boundaries, and what you want the simulation to compare.
-          </p>
+        <SurfaceCard emphasis="strong" className="p-7">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <StatusPill tone="planned">Seed context</StatusPill>
+              <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight text-[#11150f]">
+                Give the sandbox enough real-world evidence to build useful agents.
+              </h1>
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
+                Tell the case in natural language, then add the signals that matter:
+                events, people, options, boundaries, and the comparison you want.
+              </p>
+            </div>
+            <ConfidenceTag value={contextQualityScore} label="context" />
+          </div>
 
-          <div className="mt-7 space-y-5">
-            <TextAreaField
-              label="Situation summary"
-              value={situationSummary}
-              onChange={setSituationSummary}
-              rows={4}
-              placeholder="In a few sentences, describe the scene, why it matters, and what relationship dynamics are involved."
-            />
-            <TextAreaField
-              label="Main question"
-              value={question}
-              onChange={setQuestion}
-              rows={3}
-              placeholder="Example: Should I accept the new role now, or stay and ask for a clearer promotion timeline?"
-            />
-            <TextAreaField
-              label="Recent key events"
-              value={recentEvents}
-              onChange={setRecentEvents}
-              rows={4}
-              placeholder="List observed events, promises, conflicts, deadlines, changed behavior, missing information, or new opportunities."
-            />
-            <TextAreaField
-              label="Key people hints"
-              value={people}
-              onChange={setPeople}
-              rows={3}
-              placeholder="Name people or roles, plus why each person matters in the scenario."
-            />
-            <div className="grid gap-5 md:grid-cols-2">
+          <div className="mt-7 space-y-8">
+            <SectionGroup
+              eyebrow="The situation"
+              title="Name the scene and the question."
+              description="This gives the sandbox a focused starting point instead of a loose pile of notes."
+            >
+              <TextAreaField
+                label="Situation summary"
+                description="Set the scene in your own words: what is happening, why it matters, and which relationship dynamics are involved."
+                complete={sectionCompletion[0]}
+                value={situationSummary}
+                onChange={setSituationSummary}
+                rows={4}
+                placeholder="In a few sentences, describe the scene, why it matters, and what relationship dynamics are involved."
+              />
+              <TextAreaField
+                label="Main question"
+                description="Give the run one concrete question so Track A or Track B knows what to compare."
+                complete={sectionCompletion[1]}
+                value={question}
+                onChange={setQuestion}
+                rows={3}
+                placeholder="Example: Should I accept the new role now, or stay and ask for a clearer promotion timeline?"
+              />
+            </SectionGroup>
+
+            <SectionGroup
+              eyebrow="Evidence"
+              title="Anchor the case in recent signals and people."
+              description="Events and people hints become the raw material for Key People extraction and agent drafts."
+            >
+              <TextAreaField
+                label="Recent key events"
+                description="Use observed signals: dates, deadlines, promises, conflicts, changed behavior, missing information, or new openings."
+                complete={sectionCompletion[2]}
+                value={recentEvents}
+                onChange={setRecentEvents}
+                rows={4}
+                placeholder="List observed events, promises, conflicts, deadlines, changed behavior, missing information, or new opportunities."
+              />
+              <TextAreaField
+                label="Key people hints"
+                description="Name people, roles, or groups that may become agents on the next page."
+                complete={sectionCompletion[3]}
+                value={people}
+                onChange={setPeople}
+                rows={3}
+                placeholder="Name people or roles, plus why each person matters in the scenario."
+              />
+            </SectionGroup>
+
+            <SectionGroup
+              eyebrow="Decision space"
+              title="Define branches, risks, and limits."
+              description="Options say what can happen; boundaries say what should stay out of the sandbox."
+            >
+              <div className="grid gap-5 md:grid-cols-2">
               <TextAreaField
                 label="Decision options"
+                description="List realistic branches the simulation should compare."
+                complete={sectionCompletion[4]}
                 value={decisionOptions}
                 onChange={setDecisionOptions}
                 rows={4}
                 placeholder="List the realistic options the simulation should compare."
               />
               <TextAreaField
+                label="Risks and concerns"
+                description="Separate concerns from confirmed evidence so the simulation can flag risk windows carefully."
+                complete={sectionCompletion[5]}
+                value={worries}
+                onChange={setWorries}
+                rows={4}
+                placeholder="List assumptions, unknowns, risks, or concerns that should stay uncertain unless backed by evidence."
+              />
+              </div>
+              <div className="grid gap-5 md:grid-cols-2">
+              <TextAreaField
                 label="Forbidden actions"
+                description="Behavior-level limits: actions you will not take or options that should not be simulated."
+                complete={hasUsefulText(forbiddenActions)}
                 value={forbiddenActions}
                 onChange={setForbiddenActions}
                 rows={4}
                 placeholder="List actions that should stay out of scope, such as bridges you will not burn or boundaries you will keep."
               />
-            </div>
-            <TextAreaField
-              label="Desired output"
-              value={desiredOutput}
-              onChange={setDesiredOutput}
-              rows={3}
-              placeholder="Example: Show pressure points, evidence to watch, and communication options for the next 90 days."
-            />
+              <TextAreaField
+                label="Sandbox safety limits"
+                description="Product-level limits: what the sandbox should not suggest or assume."
+                complete={hasUsefulText(safetyBoundaries)}
+                value={safetyBoundaries}
+                onChange={setSafetyBoundaries}
+                rows={4}
+                placeholder="Example: Do not suggest legal or financial actions. Do not assume others' private motives. Keep communication suggestions low-pressure."
+              />
+              </div>
+            </SectionGroup>
 
-            <div>
-              <div className="text-sm font-semibold text-[#11150f]">
-                Time horizon
+            <SectionGroup
+              eyebrow="Output"
+              title="Tell the result page what to emphasize."
+              description="This helps the later report focus on useful evidence, graph pressure points, and branch comparison."
+            >
+              <TextAreaField
+                label="Desired output"
+                description="Tell the result page what kind of evidence and comparison would be useful."
+                complete={sectionCompletion[7]}
+                value={desiredOutput}
+                onChange={setDesiredOutput}
+                rows={3}
+                placeholder="Example: Show pressure points, evidence to watch, and communication options for the next 90 days."
+              />
+            </SectionGroup>
+
+            <SectionGroup
+              eyebrow="Run contract"
+              title="Choose the horizon and confirm the local safety boundary."
+              description="The run stays local-first and evidence-linked. Safety downgrade still applies before simulation."
+            >
+              <div>
+                <div className="text-sm font-semibold text-[#11150f]">
+                  Time horizon
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {timeWindows.map(([value, label, trackLabel]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTimeWindow(value)}
+                      className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                        timeWindow === value
+                          ? "border-[#11150f] bg-[#11150f] text-white"
+                          : "border-black/10 bg-white text-[#52594d] hover:border-[#11150f]"
+                      }`}
+                    >
+                      {label}
+                      <span className="ml-2 text-xs opacity-70">{trackLabel}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {timeWindows.map(([value, label, trackLabel]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setTimeWindow(value)}
-                    className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
-                      timeWindow === value
-                        ? "border-[#11150f] bg-[#11150f] text-white"
-                        : "border-black/10 bg-white text-[#52594d] hover:border-[#11150f]"
-                    }`}
-                  >
-                    {label}
-                    <span className="ml-2 text-xs opacity-70">{trackLabel}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <label className="flex gap-3 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
               <input
@@ -250,32 +416,35 @@ export default function IntakePage() {
                 advice or a way to bypass safety boundaries.
               </span>
             </label>
+            </SectionGroup>
           </div>
 
           <div className="mt-7 flex flex-wrap gap-3">
-            <button
+            <Button
               type="button"
               onClick={() => save()}
-              className="rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a3026]"
+              className="px-5 py-3"
             >
               Save scenario
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
               onClick={useSample}
-              className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f] transition hover:border-[#11150f]"
+              className="px-5 py-3"
             >
               Use sample text
-            </button>
-            <Link
+            </Button>
+            <ButtonLink
               href="/app/new/people"
+              variant="accent"
               onClick={(event) => {
                 if (!save()) event.preventDefault();
               }}
-              className="rounded-md border border-[#568262]/30 bg-[#eef5ee] px-5 py-3 text-sm font-semibold text-[#2f5d3d] transition hover:border-[#568262]"
+              className="px-5 py-3"
             >
               Confirm people
-            </Link>
+            </ButtonLink>
           </div>
 
           {message ? (
@@ -289,19 +458,84 @@ export default function IntakePage() {
               />
             </div>
           ) : null}
-        </main>
+        </SurfaceCard>
 
-        <aside className="h-fit rounded-lg border border-black/8 bg-[#11150f] p-6 text-white">
-          <h2 className="text-sm font-semibold text-[#b7e6c6]">
-            Why these fields matter
-          </h2>
-          <div className="mt-5 space-y-4 text-sm leading-6 text-white/66">
-            <p>Events give the simulation evidence anchors instead of unsupported claims.</p>
-            <p>People hints improve agent candidates and reduce missing relationship roles.</p>
-            <p>Options and forbidden actions keep the sandbox focused on realistic branches.</p>
-            <p>Desired output tells the result page what evidence and strategy depth to emphasize.</p>
+        <aside className="mf-panel-dark h-fit p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[#b7e6c6]">
+                Context completeness
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-white/60">
+                Enough structure helps the next page extract people and preserve the evidence chain.
+              </p>
+            </div>
+            <span className="rounded border border-white/12 bg-white/8 px-2 py-1 text-xs font-semibold text-white/72">
+              {completedSectionCount}/{sectionLabels.length}
+            </span>
           </div>
-          <TrialSampleButton className="mt-5 inline-flex w-full justify-center rounded-md bg-[#b7e6c6] px-4 py-3 text-sm font-semibold text-[#11150f]">
+
+          <div className="mt-5">
+            <div className="h-2 rounded-full bg-white/10">
+              <div
+                className="h-2 rounded-full bg-[#b7e6c6]"
+                style={{ width: `${contextQualityScore}%` }}
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/54">
+                Context quality
+              </span>
+              <span className="text-sm font-semibold text-white">
+                {contextQualityScore}%
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            {sectionLabels.map((label, index) => (
+              <div
+                key={label}
+                className={`rounded border px-3 py-2 text-xs font-semibold ${
+                  sectionCompletion[index]
+                    ? "border-[#b7e6c6]/30 bg-[#b7e6c6]/12 text-[#d9f4df]"
+                    : "border-white/10 bg-white/[0.04] text-white/48"
+                }`}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-md border border-white/12 bg-white/8 p-4">
+            <div className="flex items-center gap-2">
+              <EvidenceTag className="border-white/10 bg-white/10 text-white/76">
+                Next useful details
+              </EvidenceTag>
+            </div>
+            {missingContextHints.length > 0 ? (
+              <ul className="mt-3 space-y-2 text-xs leading-5 text-white/62">
+                {missingContextHints.slice(0, 3).map((hint) => (
+                  <li key={hint}>{hint}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-xs leading-5 text-white/62">
+                This draft has enough structure for the next local step.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-5 space-y-3 rounded-md border border-white/12 bg-white/[0.04] p-4 text-xs leading-5 text-white/62">
+            <p>
+              Recent events anchor evidence. Key people hints become candidates.
+              Options, risks, and boundaries keep the sandbox focused.
+            </p>
+            <p>
+              The next page can extract people from this richer context after you save.
+            </p>
+          </div>
+          <TrialSampleButton className="mf-button mf-button-on-dark mt-5 w-full px-4 py-3">
             Open sample sandbox
           </TrialSampleButton>
         </aside>
@@ -310,28 +544,77 @@ export default function IntakePage() {
   );
 }
 
+function SectionGroup({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="border-b border-black/8 pb-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+          {eyebrow}
+        </div>
+        <h2 className="mt-1 text-base font-semibold text-[#11150f]">{title}</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+          {description}
+        </p>
+      </div>
+      <div className="space-y-5">{children}</div>
+    </section>
+  );
+}
+
 function TextAreaField({
   label,
+  description,
+  complete,
   value,
   onChange,
   rows,
   placeholder,
 }: {
   label: string;
+  description: string;
+  complete: boolean;
   value: string;
   onChange: (value: string) => void;
   rows: number;
   placeholder: string;
 }) {
   return (
-    <label className="block">
-      <span className="text-sm font-semibold text-[#11150f]">{label}</span>
+    <label className="block rounded-md border border-black/8 bg-white p-4">
+      <span className="flex flex-wrap items-start justify-between gap-3">
+        <span>
+          <span className="block text-sm font-semibold text-[#11150f]">
+            {label}
+          </span>
+          <span className="mt-2 block text-xs leading-5 text-[#62695d]">
+            {description}
+          </span>
+        </span>
+        <span
+          className={`mt-0.5 rounded px-2 py-1 text-xs font-semibold ${
+            complete
+              ? "bg-[#eef5ee] text-[#2f5d3d]"
+              : "bg-[#f7f8f4] text-[#7d8578]"
+          }`}
+        >
+          {complete ? "Ready" : "Add detail"}
+        </span>
+      </span>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-4 py-3 text-sm leading-7 text-[#11150f] outline-none focus:border-[#568262]"
+        className="mf-input mt-3 w-full resize-none px-4 py-3 leading-7"
       />
     </label>
   );

@@ -5,23 +5,28 @@ import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { GraphSummaryCards } from "@/components/graph/graph-summary-cards";
+import { RelationGraph } from "@/components/graph/relation-graph";
 import { ClaimCard } from "@/components/report/claim-card";
 import { EvidenceDrawer } from "@/components/report/evidence-drawer";
-import { PaidUnlockBoundary } from "@/components/report/paid-unlock-boundary";
 import { ReportSummary } from "@/components/report/report-summary";
 import { StrategyOptions } from "@/components/report/strategy-options";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
+import {
+  AgentRefsView,
+  ConfidenceExplanation,
+  EdgeDeltaView,
+  EvidenceRefsView,
+  RelationEdgeRefsView,
+  TimelineFeed,
+} from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
 import { TrialSampleButton } from "@/components/trial-sample-button";
+import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import {
   buildCalibrationProfile,
   saveCalibrationProfile,
 } from "@/lib/calibration/calibration-engine";
-import {
-  evaluateReportEntitlement,
-  loadEntitlementLedger,
-} from "@/lib/entitlements/entitlement-engine";
 import {
   buildEmptyFeedbackLedgerDraft,
   buildFeedbackDraft,
@@ -33,14 +38,17 @@ import {
   verifySafety,
 } from "@/lib/safety/safety-verifier";
 import type { AgentProfileDraft } from "@/types/agent-profile";
+import type { CalibrationProfile } from "@/lib/calibration/calibration-types";
 import type { ClaimDraft, ClaimLedgerDraft } from "@/types/claim";
 import type {
+  FeedbackCorrectionConfidence,
+  FeedbackFieldCorrection,
   FeedbackLedgerDraft,
   FeedbackRating,
   FeedbackTargetType,
 } from "@/types/feedback";
 import type { RelationEdgeDraft } from "@/types/relation-edge";
-import type { SimulationEventDraft } from "@/types/simulation-run";
+import type { ReportBranchComparison } from "@/types/report";
 
 const emptyClaims: ClaimDraft[] = [];
 
@@ -62,47 +70,106 @@ const feedbackRatings: { value: FeedbackRating; label: string }[] = [
   { value: "not_happened_yet", label: "Not happened yet" },
 ];
 
-function riskTone(riskLevel: string) {
-  if (riskLevel === "high") return "blocked";
-  if (riskLevel === "medium") return "planned";
-  return "ready";
+const agentCorrectionFields = [
+  "role",
+  "relationshipToUser",
+  "motivation.primaryGoal",
+  "motivation.fear",
+  "motivation.avoidancePattern",
+  "resources.authority",
+  "resources.information",
+  "resources.socialCapital",
+  "resources.emotionalLeverage",
+  "behaviorPolicy.actionSpeed",
+  "behaviorPolicy.initiative",
+  "behaviorPolicy.cooperationBias",
+  "behaviorPolicy.communicationStyle",
+  "state.stress",
+  "state.trustInUser",
+  "state.hostilityToUser",
+  "state.currentIntention",
+  "traits",
+  "constraints",
+  "missingFields",
+];
+
+const relationCorrectionFields = [
+  "relationshipType",
+  "weights.trust",
+  "weights.hostility",
+  "weights.dependency",
+  "weights.attraction",
+  "weights.competition",
+  "weights.informationGap",
+  "weights.resourceControl",
+  "weights.emotionalDebt",
+  "trend.volatility",
+  "trend.trustDelta3Ticks",
+  "trend.hostilityDelta3Ticks",
+];
+
+const correctionFieldLabels: Record<string, string> = {
+  role: "Role / 角色",
+  relationshipToUser: "Relationship to user / 与用户关系",
+  "motivation.primaryGoal": "Primary goal / 主要目标",
+  "motivation.fear": "Concern or fear / 主要顾虑",
+  "motivation.avoidancePattern": "Avoidance pattern / 回避模式",
+  "resources.authority": "Authority resource / 权限资源",
+  "resources.information": "Information resource / 信息资源",
+  "resources.socialCapital": "Social capital / 社交资源",
+  "resources.emotionalLeverage": "Emotional leverage / 情绪影响力",
+  "behaviorPolicy.actionSpeed": "Action speed / 行动速度",
+  "behaviorPolicy.initiative": "Initiative / 主动性",
+  "behaviorPolicy.cooperationBias": "Cooperation bias / 合作倾向",
+  "behaviorPolicy.communicationStyle": "Communication style / 沟通风格",
+  "state.stress": "Stress state / 压力状态",
+  "state.trustInUser": "Trust in user / 对用户信任",
+  "state.hostilityToUser": "Hostility to user / 对用户冲突压力",
+  "state.currentIntention": "Current intention label / 当前意图标签",
+  traits: "Traits / 特征",
+  constraints: "Constraints / 约束",
+  missingFields: "Missing fields / 缺失信息",
+  relationshipType: "Relationship type / 关系类型",
+  "weights.trust": "Trust weight / 信任权重",
+  "weights.hostility": "Hostility weight / 冲突压力权重",
+  "weights.dependency": "Dependency weight / 依赖权重",
+  "weights.attraction": "Attraction weight / 吸引权重",
+  "weights.competition": "Competition weight / 竞争权重",
+  "weights.informationGap": "Information gap weight / 信息差权重",
+  "weights.resourceControl": "Resource control weight / 资源控制权重",
+  "weights.emotionalDebt": "Emotional debt weight / 情绪债务权重",
+  "trend.volatility": "Volatility trend / 波动性趋势",
+  "trend.trustDelta3Ticks": "Trust trend / 信任趋势",
+  "trend.hostilityDelta3Ticks": "Hostility trend / 冲突压力趋势",
+};
+
+function correctionFieldLabel(field: string) {
+  return correctionFieldLabels[field] ?? field.replaceAll(".", " -> ");
 }
 
-function claimTitle(type: ClaimDraft["claimType"]) {
-  const titles: Record<ClaimDraft["claimType"], string> = {
-    risk_window: "Risk window",
-    opportunity_window: "Opportunity window",
-    friction_signal: "Friction signal",
-    coordination_signal: "Coordination signal",
-  };
-  return titles[type];
+const correctionConfidenceOptions: {
+  value: FeedbackCorrectionConfidence;
+  label: string;
+}[] = [
+  { value: "low", label: "Low certainty" },
+  { value: "medium", label: "Medium certainty" },
+  { value: "high", label: "High certainty" },
+];
+
+type FeedbackTargetOption = {
+  value: string;
+  label: string;
+  detail: string;
+};
+
+function truncateLabel(value: string, max = 82) {
+  return value.length > max ? `${value.slice(0, max - 1)}...` : value;
 }
 
-function eventLabel(event: SimulationEventDraft) {
-  if (event.eventType === "graph_freeze") return "Graph freeze";
-  if (event.eventType === "avoidance") return "Avoidance";
-  if (event.eventType === "cooperation") return "Cooperation";
-  if (event.eventType === "direct_conflict") return "Direct conflict";
-  if (event.eventType === "disclosure") return "Disclosure";
-  if (event.eventType === "resource_competition") return "Resource competition";
-  if (event.eventType === "support") return "Support";
-  if (event.eventType === "opportunity_signal") return "Opportunity signal";
-  if (event.eventType === "information_gap_widening") {
-    return "Information gap widening";
-  }
-  if (event.eventType === "relation_pressure") return "Relation pressure";
-  if (event.eventType === "agent_signal") return "Agent signal";
-  return "Empty event";
-}
-
-function formatDelta(event: SimulationEventDraft) {
-  const entries = Object.entries(event.edgeWeightDeltas).flatMap(([edgeId, delta]) =>
-    Object.entries(delta).map(
-      ([key, value]) =>
-        `${edgeId} / ${key} ${value && value > 0 ? "+" : ""}${value}`,
-    ),
-  );
-  return entries.length ? entries : ["No edge weight delta recorded."];
+function edgeLabel(edge: RelationEdgeDraft, agents: AgentProfileDraft[]) {
+  const from = agents.find((agent) => agent.id === edge.fromAgentId)?.label;
+  const to = agents.find((agent) => agent.id === edge.toAgentId)?.label;
+  return `${from ?? edge.fromAgentId} -> ${to ?? edge.toAgentId}`;
 }
 
 export default function ReportsPage() {
@@ -158,12 +225,24 @@ export default function ReportsPage() {
   const [selectedEventId, setSelectedEventId] = useState("");
   const [feedbackTarget, setFeedbackTarget] =
     useState<FeedbackTargetType>("claim");
+  const [feedbackTargetId, setFeedbackTargetId] = useState("");
   const [feedbackRating, setFeedbackRating] =
     useState<FeedbackRating>("partly_right");
   const [feedbackNote, setFeedbackNote] = useState("");
+  const [agentCorrectionField, setAgentCorrectionField] = useState(
+    agentCorrectionFields[0],
+  );
+  const [agentCorrectionValue, setAgentCorrectionValue] = useState("");
+  const [agentCorrectionConfidence, setAgentCorrectionConfidence] =
+    useState<FeedbackCorrectionConfidence>("medium");
+  const [relationCorrectionField, setRelationCorrectionField] = useState(
+    relationCorrectionFields[0],
+  );
+  const [relationCorrectionValue, setRelationCorrectionValue] = useState("");
+  const [relationCorrectionConfidence, setRelationCorrectionConfidence] =
+    useState<FeedbackCorrectionConfidence>("medium");
   const [message, setMessage] = useState("");
   const [paidMode, setPaidMode] = useState(false);
-  const [entitlementLedger] = useState(() => loadEntitlementLedger());
 
   const rawClaims = ledger?.claims ?? emptyClaims;
   const safetyDecision = useMemo(
@@ -179,11 +258,14 @@ export default function ReportsPage() {
         : null,
     [agentEcology, rawClaims, relationGraph, seedContext, simulationRun],
   );
-  const claims = safetyDecision
-    ? filterClaimsBySafety(rawClaims, safetyDecision)
-    : rawClaims;
+  const claims = (
+    safetyDecision ? filterClaimsBySafety(rawClaims, safetyDecision) : rawClaims
+  ).filter((claim) => claim.evidenceEventIds.length > 0);
   const selectedClaim = useMemo(
-    () => claims.find((claim) => claim.id === selectedClaimId) ?? claims[0] ?? null,
+    () =>
+      selectedClaimId
+        ? claims.find((claim) => claim.id === selectedClaimId) ?? null
+        : null,
     [claims, selectedClaimId],
   );
   const selectedEvent = useMemo(() => {
@@ -191,7 +273,6 @@ export default function ReportsPage() {
     return (
       simulationRun?.events.find((event) => event.id === selectedEventId) ??
       simulationRun?.events.find((event) => evidenceIds.includes(event.id)) ??
-      simulationRun?.events[0] ??
       null
     );
   }, [selectedClaim, selectedEventId, simulationRun]);
@@ -205,15 +286,10 @@ export default function ReportsPage() {
       relationEdges: relationGraph?.edges ?? [],
     });
   }, [agentEcology, claims, relationGraph, seedContext, simulationRun]);
-  const entitlementDecision = useMemo(() => {
-    if (!report) return null;
-    return evaluateReportEntitlement({
-      ledger: entitlementLedger,
-      report,
-      safetyLevel: safetyDecision?.safetyLevel ?? "unchecked",
-    });
-  }, [entitlementLedger, report, safetyDecision]);
-  const paidReportVisible = paidMode && Boolean(entitlementDecision?.canViewPaidReport);
+  const fullDepthAllowed =
+    safetyDecision?.safetyLevel !== "blocked" &&
+    safetyDecision?.safetyLevel !== "downgraded";
+  const paidReportVisible = paidMode && fullDepthAllowed;
   const reportClaims = report
     ? paidReportVisible
       ? report.paidReport.fullClaims
@@ -241,20 +317,68 @@ export default function ReportsPage() {
     () => selectedClaim?.evidenceEventIds ?? [],
     [selectedClaim],
   );
-  const feedbackTargetId = useMemo(() => {
-    if (feedbackTarget === "claim") return selectedClaim?.id ?? "";
-    if (feedbackTarget === "agent") return highlightedAgentIds[0] ?? "";
-    if (feedbackTarget === "relation_edge") return highlightedEdgeIds[0] ?? "";
-    if (feedbackTarget === "strategy") return simulationRun?.id ?? "";
-    return seedContext?.id ?? "";
+  const feedbackTargetOptions = useMemo<FeedbackTargetOption[]>(() => {
+    if (feedbackTarget === "claim") {
+      return claims.map((claim) => ({
+        value: claim.id,
+        label: truncateLabel(claim.summary),
+        detail: `${claim.riskLevel} risk / ${claim.evidenceEventIds.length} evidence events`,
+      }));
+    }
+
+    if (feedbackTarget === "agent") {
+      return (agentEcology?.agents ?? []).map((agent) => ({
+        value: agent.id,
+        label: agent.label,
+        detail: `${agent.agentType} / confidence ${agent.confidence}%`,
+      }));
+    }
+
+    if (feedbackTarget === "relation_edge") {
+      const agents = agentEcology?.agents ?? [];
+      return (relationGraph?.edges ?? []).map((edge) => ({
+        value: edge.id,
+        label: edgeLabel(edge, agents),
+        detail: `${edge.relationshipType} / confidence ${edge.confidence}%`,
+      }));
+    }
+
+    if (feedbackTarget === "strategy") {
+      const options = paidReportVisible
+        ? report?.paidReport.strategyOptions ?? []
+        : [];
+      return options.map((option) => ({
+        value: option.id,
+        label: option.title,
+        detail: `${option.strategyType} / claim ${option.claimId}`,
+      }));
+    }
+
+    return seedContext
+      ? [
+          {
+            value: seedContext.id,
+            label: "Overall run",
+            detail: `${simulationRun?.events.length ?? 0} events / ${claims.length} evidence-backed claims`,
+          },
+        ]
+      : [];
   }, [
+    agentEcology,
+    claims,
     feedbackTarget,
-    highlightedAgentIds,
-    highlightedEdgeIds,
-    selectedClaim,
+    paidReportVisible,
+    relationGraph,
+    report,
     seedContext,
     simulationRun,
   ]);
+  const resolvedFeedbackTargetId =
+    feedbackTargetId || feedbackTargetOptions[0]?.value || "";
+  const calibrationProfile = useMemo(
+    () => (feedbackLedger ? buildCalibrationProfile(feedbackLedger) : null),
+    [feedbackLedger],
+  );
 
   function saveLedger() {
     if (!ledger) return;
@@ -281,18 +405,41 @@ export default function ReportsPage() {
   }
 
   function saveFeedback() {
-    if (!seedContext || !simulationRun || !feedbackLedger || !feedbackTargetId) {
+    if (
+      !seedContext ||
+      !simulationRun ||
+      !feedbackLedger ||
+      !resolvedFeedbackTargetId
+    ) {
       setMessage("Select a claim, agent, edge, or run target before saving feedback.");
       return;
     }
+    const agentCorrection: FeedbackFieldCorrection | undefined =
+      feedbackTarget === "agent" && agentCorrectionValue.trim()
+        ? {
+            field: agentCorrectionField,
+            suggestedValue: agentCorrectionValue.trim(),
+            confidence: agentCorrectionConfidence,
+          }
+        : undefined;
+    const relationCorrection: FeedbackFieldCorrection | undefined =
+      feedbackTarget === "relation_edge" && relationCorrectionValue.trim()
+        ? {
+            field: relationCorrectionField,
+            suggestedValue: relationCorrectionValue.trim(),
+            confidence: relationCorrectionConfidence,
+          }
+        : undefined;
 
     const entry = buildFeedbackDraft({
       seedContextId: seedContext.id,
       simulationRunId: simulationRun.id,
       targetType: feedbackTarget,
-      targetId: feedbackTargetId,
+      targetId: resolvedFeedbackTargetId,
       rating: feedbackRating,
       note: feedbackNote,
+      agentCorrection,
+      relationCorrection,
     });
     const nextLedger = {
       ...feedbackLedger,
@@ -307,15 +454,49 @@ export default function ReportsPage() {
     setFeedbackLedger(nextLedger);
     saveCalibrationProfile(buildCalibrationProfile(nextLedger));
     setFeedbackNote("");
+    setAgentCorrectionValue("");
+    setRelationCorrectionValue("");
     setMessage(
-      "Feedback calibration saved locally. It generated a CalibrationProfile for the next run and did not rewrite claims or events.",
+      "Feedback calibration saved locally for future runs only. Historical Event Logs, Claims, and Reports were not rewritten.",
     );
+  }
+
+  function changeFeedbackTarget(nextTarget: FeedbackTargetType) {
+    setFeedbackTarget(nextTarget);
+    setFeedbackTargetId("");
+  }
+
+  function selectClaim(claimId: string) {
+    const nextClaim = claims.find((item) => item.id === claimId);
+    setSelectedClaimId(claimId);
+    setSelectedEventId(nextClaim?.evidenceEventIds[0] ?? "");
+  }
+
+  function selectEvent(eventId: string) {
+    setSelectedEventId(eventId);
+    if (
+      selectedClaim &&
+      !selectedClaim.evidenceEventIds.includes(eventId)
+    ) {
+      setSelectedClaimId("");
+    }
+  }
+
+  function selectEdge(edgeId: string) {
+    const event = simulationRun?.events.find((item) =>
+      item.relationEdgeIds.includes(edgeId),
+    );
+    setSelectedEventId(event?.id ?? "");
+    if (event && selectedClaim?.evidenceEventIds.includes(event.id)) {
+      return;
+    }
+    setSelectedClaimId("");
   }
 
   if (!seedContext || !simulationRun || !ledger) {
     return (
       <AppShell>
-        <section className="mx-auto max-w-3xl rounded-lg border border-black/8 bg-white p-8 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Sandbox data required</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
             Generate a local run with Event Log first.
@@ -326,17 +507,14 @@ export default function ReportsPage() {
             shown.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <TrialSampleButton className="rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white">
+            <TrialSampleButton className="mf-button mf-button-primary px-5 py-3">
               Load trial sample
             </TrialSampleButton>
-            <Link
-              href="/app/simulation/running"
-              className="rounded-md border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-[#11150f]"
-            >
+            <ButtonLink href="/app/simulation/running" variant="secondary" className="px-5 py-3">
               Open Event Log
-            </Link>
+            </ButtonLink>
           </div>
-        </section>
+        </SurfaceCard>
       </AppShell>
     );
   }
@@ -347,14 +525,14 @@ export default function ReportsPage() {
         <section className="mx-auto max-w-3xl space-y-5">
           <SafetyDowngradeNotice
             decision={safetyDecision}
-            title="Report rendering stopped by SafetyVerifier"
+            title="Result Sandbox is paused for safety"
           />
-          <Link
+          <ButtonLink
             href="/app/simulation/running"
-            className="inline-flex rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white"
+            className="px-5 py-3"
           >
             Back to Event Log
-          </Link>
+          </ButtonLink>
         </section>
       </AppShell>
     );
@@ -375,20 +553,19 @@ export default function ReportsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button
             type="button"
             onClick={saveLedger}
-            className="rounded-md bg-[#11150f] px-4 py-2 text-sm font-semibold text-white"
           >
             Save result
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="secondary"
             onClick={rebuildLedger}
-            className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
           >
             Rebuild from events
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -424,19 +601,24 @@ export default function ReportsPage() {
             <button
               type="button"
               onClick={() => {
-                if (entitlementDecision?.canViewPaidReport) {
+                if (fullDepthAllowed) {
                   setPaidMode(true);
                 }
               }}
+              disabled={!fullDepthAllowed}
               className={`rounded-md px-4 py-2 text-sm font-semibold ${
                 paidReportVisible
                   ? "bg-[#11150f] text-white"
-                  : "border border-black/10 bg-white text-[#11150f]"
+                  : "border border-black/10 bg-white text-[#11150f] disabled:cursor-not-allowed disabled:opacity-55"
               }`}
             >
-              Full report depth
+              Local full depth
             </button>
           </div>
+          <p className="mt-2 text-xs text-[#7d8578]">
+            Local full depth shows more evidence and strategy detail - same
+            claims, same confidence, same risk level.
+          </p>
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
             <main className="space-y-4">
               {reportClaims.length ? (
@@ -445,11 +627,7 @@ export default function ReportsPage() {
                     key={claim.id}
                     claim={claim}
                     selected={selectedClaim?.id === claim.id}
-                    onSelect={(claimId) => {
-                      setSelectedClaimId(claimId);
-                      const nextClaim = claims.find((item) => item.id === claimId);
-                      setSelectedEventId(nextClaim?.evidenceEventIds[0] ?? "");
-                    }}
+                    onSelect={selectClaim}
                   />
                 ))
               ) : (
@@ -469,9 +647,12 @@ export default function ReportsPage() {
                   options={report.paidReport.strategyOptions}
                   selectedClaimId={selectedClaim?.id ?? ""}
                 />
-              ) : entitlementDecision ? (
-                <PaidUnlockBoundary decision={entitlementDecision} />
-              ) : null}
+              ) : (
+                <LocalFullDepthBoundary
+                  allowed={fullDepthAllowed}
+                  onOpen={() => setPaidMode(true)}
+                />
+              )}
             </aside>
           </section>
         </section>
@@ -483,81 +664,29 @@ export default function ReportsPage() {
             <Metric label="Agents" value={agentEcology?.agents.length ?? simulationRun.agentIds.length} />
             <Metric label="Edges" value={relationGraph?.edges.length ?? simulationRun.relationEdgeIds.length} />
             <Metric label="Events" value={simulationRun.events.length} />
-            <Metric label="Claims" value={claims.length} />
+            <Metric label="Claims" value={report?.invariant.claimIds.length ?? claims.length} />
             <Metric label="Feedback" value={feedbackLedger?.feedback.length ?? 0} />
           </section>
 
           {relationGraph?.edges.length ? (
-            <GraphSummaryCards edges={relationGraph.edges} />
+            <GraphSummaryCards
+              edges={relationGraph.edges}
+              agents={agentEcology?.agents ?? []}
+              onSelectEdge={selectEdge}
+            />
           ) : null}
 
-          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-            <div className="flex items-start justify-between gap-5">
-              <div>
-                <h2 className="text-base font-semibold text-[#11150f]">
-                  Result cards
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                  Select a card to highlight its Agents, Relation Edges, and
-                  evidence events.
-                </p>
-              </div>
-              <StatusPill tone={claims.length ? "ready" : "blocked"}>
-                evidence linked
-              </StatusPill>
-            </div>
-
-            {claims.length === 0 ? (
-              <p className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                No claim card is available yet. Run Simulation Tick first so the
-                Event Log contains relation evidence.
-              </p>
-            ) : (
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                {claims.map((claim) => (
-                  <button
-                    key={claim.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedClaimId(claim.id);
-                      setSelectedEventId(claim.evidenceEventIds[0] ?? "");
-                    }}
-                    className={`rounded-lg border p-5 text-left transition ${
-                      selectedClaim?.id === claim.id
-                        ? "border-[#568262]/50 bg-[#eef5ee]"
-                        : "border-black/8 bg-[#f7f8f4] hover:border-[#568262]/30"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                          {claimTitle(claim.claimType)}
-                        </p>
-                        <h3 className="mt-2 text-base font-semibold leading-7 text-[#11150f]">
-                          {claim.summary}
-                        </h3>
-                      </div>
-                      <StatusPill tone={riskTone(claim.riskLevel)}>
-                        {claim.riskLevel}
-                      </StatusPill>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <MiniTag>confidence {claim.confidence}%</MiniTag>
-                      <MiniTag>events {claim.evidenceEventIds.length}</MiniTag>
-                      <MiniTag>edges {claim.relatedRelationEdgeIds.length}</MiniTag>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
           <section className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(300px,0.55fr)]">
-            <Timeline
+            <TimelineFeed
+              ticks={simulationRun.ticks}
               events={simulationRun.events}
+              agents={agentEcology?.agents ?? []}
+              edges={relationGraph?.edges ?? []}
               highlightedEventIds={highlightedEventIds}
               selectedEventId={selectedEvent?.id ?? ""}
-              onSelect={(eventId) => setSelectedEventId(eventId)}
+              onSelectEvent={selectEvent}
+              title="Timeline Feed"
+              description="Click an Event Log entry to inspect its agents, relation edges, confidence, evidence refs, and edge deltas."
             />
             <AgentGraphSummary
               agents={agentEcology?.agents ?? []}
@@ -566,6 +695,30 @@ export default function ReportsPage() {
               highlightedEdgeIds={highlightedEdgeIds}
             />
           </section>
+
+          {report?.paidReport.branchComparison.length ? (
+            <BranchComparison
+              items={report.paidReport.branchComparison}
+              selectedClaimId={selectedClaim?.id ?? ""}
+            />
+          ) : null}
+
+          {relationGraph?.edges.length ? (
+            <details className="mt-6 rounded-lg border border-black/8 bg-white">
+              <summary className="cursor-pointer p-5 text-sm font-semibold text-[#11150f]">
+                Relation Graph snapshot ({relationGraph.edges.length} edges)
+              </summary>
+              <div className="border-t border-black/8 p-4">
+                <RelationGraph
+                  agents={agentEcology?.agents ?? []}
+                  edges={relationGraph.edges}
+                  selectedEdgeId={highlightedEdgeIds[0] ?? ""}
+                  locked={relationGraph.graphLocked}
+                  onSelectEdge={selectEdge}
+                />
+              </div>
+            </details>
+          ) : null}
         </main>
 
         <aside className="h-fit space-y-5">
@@ -604,7 +757,7 @@ export default function ReportsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                      {eventLabel(selectedEvent)} / {selectedEvent.timeLabel}
+                      {selectedEvent.eventType.replaceAll("_", " ")} / {selectedEvent.timeLabel}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-[#62695d]">
                       {selectedEvent.summary}
@@ -612,18 +765,18 @@ export default function ReportsPage() {
                   </div>
                   <StatusPill tone="planned">{selectedEvent.confidence}%</StatusPill>
                 </div>
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                    edge deltas
-                  </div>
-                  <div className="mt-2 space-y-1">
-                    {formatDelta(selectedEvent).map((line) => (
-                      <code key={line} className="block break-all text-xs text-[#62695d]">
-                        {line}
-                      </code>
-                    ))}
-                  </div>
-                </div>
+                <ConfidenceExplanation value={selectedEvent.confidence} />
+                <AgentRefsView
+                  agentIds={selectedEvent.involvedAgentIds}
+                  agents={agentEcology?.agents ?? []}
+                />
+                <RelationEdgeRefsView
+                  edgeIds={selectedEvent.relationEdgeIds}
+                  edges={relationGraph?.edges ?? []}
+                  agents={agentEcology?.agents ?? []}
+                />
+                <EdgeDeltaView event={selectedEvent} />
+                <EvidenceRefsView refs={selectedEvent.evidence?.evidenceRefs ?? []} />
                 <Snapshot title="before" value={selectedEvent.beforeState.weights} />
                 <Snapshot title="after" value={selectedEvent.afterState.weights} />
               </div>
@@ -636,29 +789,134 @@ export default function ReportsPage() {
 
           <FeedbackPanel
             target={feedbackTarget}
-            targetId={feedbackTargetId}
+            targetId={resolvedFeedbackTargetId}
+            targetOptions={feedbackTargetOptions}
             rating={feedbackRating}
             note={feedbackNote}
             ledger={feedbackLedger}
-            onTargetChange={setFeedbackTarget}
+            agentCorrectionField={agentCorrectionField}
+            agentCorrectionValue={agentCorrectionValue}
+            agentCorrectionConfidence={agentCorrectionConfidence}
+            relationCorrectionField={relationCorrectionField}
+            relationCorrectionValue={relationCorrectionValue}
+            relationCorrectionConfidence={relationCorrectionConfidence}
+            onTargetChange={changeFeedbackTarget}
+            onTargetIdChange={setFeedbackTargetId}
             onRatingChange={setFeedbackRating}
             onNoteChange={setFeedbackNote}
+            onAgentCorrectionFieldChange={setAgentCorrectionField}
+            onAgentCorrectionValueChange={setAgentCorrectionValue}
+            onAgentCorrectionConfidenceChange={setAgentCorrectionConfidence}
+            onRelationCorrectionFieldChange={setRelationCorrectionField}
+            onRelationCorrectionValueChange={setRelationCorrectionValue}
+            onRelationCorrectionConfidenceChange={setRelationCorrectionConfidence}
             onSave={saveFeedback}
           />
 
-          <section className="rounded-lg border border-black/8 bg-[#dfe9dc] p-5">
-            <h2 className="text-sm font-semibold text-[#11150f]">
-              Paid unlock boundary
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-[#3f483d]">
-              A paid layer may reveal deeper evidence, complete event chains,
-              NPC paths, and strategy depth. It cannot change claim direction or
-              make unsupported claims stronger.
-            </p>
-          </section>
+          <CalibrationSummary profile={calibrationProfile} />
         </aside>
       </section>
     </AppShell>
+  );
+}
+
+function LocalFullDepthBoundary({
+  allowed,
+  onOpen,
+}: {
+  allowed: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-[#f7f8f4] p-5">
+      <h2 className="text-sm font-semibold text-[#11150f]">
+        Local full-depth boundary
+      </h2>
+      <p className="mt-3 text-sm leading-7 text-[#62695d]">
+        Full depth reveals the complete Event Log chain, branch comparison,
+        relation deltas, and strategy options. It uses the same claim_id set and
+        does not change confidence or risk level.
+      </p>
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={onOpen}
+        disabled={!allowed}
+        className="mt-4 w-full px-4 py-3"
+      >
+        Open local full depth
+      </Button>
+      {!allowed ? (
+        <p className="mt-3 text-xs leading-5 text-[#7c5524]">
+          Safety restrictions keep this report in preview depth.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function BranchComparison({
+  items,
+  selectedClaimId,
+}: {
+  items: ReportBranchComparison[];
+  selectedClaimId: string;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold text-[#11150f]">
+            Branch comparison
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            Branches start from the same locked graph and differ by self-policy
+            strategy. Counts are evidence summaries, not stronger claims.
+          </p>
+        </div>
+        <StatusPill tone="planned">{items.length} branches</StatusPill>
+      </div>
+      <div className="mt-4 space-y-3">
+        {items.map((item) => {
+          const selected = selectedClaimId
+            ? item.claimIds.includes(selectedClaimId)
+            : false;
+          return (
+            <article
+              key={item.branchId}
+              className={`rounded-md border p-4 ${
+                selected
+                  ? "border-[#568262]/45 bg-[#eef5ee]"
+                  : "border-black/8 bg-[#f7f8f4]"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-[#11150f]">
+                  {item.label}
+                </h3>
+                <span className="text-xs font-semibold text-[#568262]">
+                  {item.eventCount} events
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                <BranchMetric label="claims" value={item.claimIds.length} />
+                <BranchMetric label="risk" value={item.riskSignalCount} />
+                <BranchMetric label="support" value={item.supportSignalCount} />
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function BranchMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-black/8 bg-white p-2">
+      <div className="text-[11px] uppercase text-[#7d8578]">{label}</div>
+      <div className="mt-1 text-base font-semibold text-[#11150f]">{value}</div>
+    </div>
   );
 }
 
@@ -676,24 +934,67 @@ function Metric({ label, value }: { label: string; value: number }) {
 function FeedbackPanel({
   target,
   targetId,
+  targetOptions,
   rating,
   note,
   ledger,
+  agentCorrectionField,
+  agentCorrectionValue,
+  agentCorrectionConfidence,
+  relationCorrectionField,
+  relationCorrectionValue,
+  relationCorrectionConfidence,
   onTargetChange,
+  onTargetIdChange,
   onRatingChange,
   onNoteChange,
+  onAgentCorrectionFieldChange,
+  onAgentCorrectionValueChange,
+  onAgentCorrectionConfidenceChange,
+  onRelationCorrectionFieldChange,
+  onRelationCorrectionValueChange,
+  onRelationCorrectionConfidenceChange,
   onSave,
 }: {
   target: FeedbackTargetType;
   targetId: string;
+  targetOptions: FeedbackTargetOption[];
   rating: FeedbackRating;
   note: string;
   ledger: FeedbackLedgerDraft | null;
+  agentCorrectionField: string;
+  agentCorrectionValue: string;
+  agentCorrectionConfidence: FeedbackCorrectionConfidence;
+  relationCorrectionField: string;
+  relationCorrectionValue: string;
+  relationCorrectionConfidence: FeedbackCorrectionConfidence;
   onTargetChange: (target: FeedbackTargetType) => void;
+  onTargetIdChange: (targetId: string) => void;
   onRatingChange: (rating: FeedbackRating) => void;
   onNoteChange: (note: string) => void;
+  onAgentCorrectionFieldChange: (field: string) => void;
+  onAgentCorrectionValueChange: (value: string) => void;
+  onAgentCorrectionConfidenceChange: (
+    confidence: FeedbackCorrectionConfidence,
+  ) => void;
+  onRelationCorrectionFieldChange: (field: string) => void;
+  onRelationCorrectionValueChange: (value: string) => void;
+  onRelationCorrectionConfidenceChange: (
+    confidence: FeedbackCorrectionConfidence,
+  ) => void;
   onSave: () => void;
 }) {
+  const targetHelp =
+    target === "agent"
+      ? "Use this when an Agent feels mismatched. Corrections become future-run calibration signals, not edits to the stored Agent."
+      : target === "relation_edge"
+        ? "Use this when the relation reading feels off. Corrections never edit historical edge weights."
+        : target === "strategy"
+          ? "Use this to mark whether a strategy option was useful for thinking or planning."
+          : target === "overall"
+            ? "Use this for the run as a whole."
+            : "Use this to rate whether an evidence-backed claim felt aligned with the situation.";
+
   return (
     <section className="rounded-lg border border-black/8 bg-white p-5">
       <div className="flex items-start justify-between gap-4">
@@ -702,8 +1003,8 @@ function FeedbackPanel({
             Feedback calibration
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            Mark what felt right or wrong. Feedback is stored as a calibration
-            ledger and never changes evidence-backed claims directly.
+            Mark what felt right or wrong. Feedback affects future runs only and
+            never rewrites Event Logs, Claims, Reports, or edge weights.
           </p>
         </div>
         <StatusPill tone={ledger?.feedback.length ? "ready" : "planned"}>
@@ -729,9 +1030,41 @@ function FeedbackPanel({
               </option>
             ))}
           </select>
-          <code className="mt-2 block break-all rounded bg-[#f7f8f4] px-3 py-2 text-xs text-[#7d8578]">
-            {targetId || "Select evidence-linked content first."}
-          </code>
+          <p className="mt-2 text-xs leading-5 text-[#7d8578]">{targetHelp}</p>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+            evidence-linked item
+          </label>
+          {targetOptions.length ? (
+            <select
+              value={targetId}
+              onChange={(event) => onTargetIdChange(event.target.value)}
+              className="mt-2 w-full rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-sm text-[#11150f]"
+            >
+              {targetOptions.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+              No item is available for this target yet. Open local full depth to
+              give strategy feedback.
+            </p>
+          )}
+          {targetId ? (
+            <div className="mt-2 rounded bg-[#f7f8f4] px-3 py-2">
+              <code className="block break-all text-xs text-[#7d8578]">
+                {targetId}
+              </code>
+              <p className="mt-1 text-xs leading-5 text-[#62695d]">
+                {targetOptions.find((item) => item.value === targetId)?.detail}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div>
@@ -770,6 +1103,34 @@ function FeedbackPanel({
           />
         </div>
 
+        {target === "agent" ? (
+          <CorrectionEditor
+            title="Agent correction note"
+            field={agentCorrectionField}
+            fields={agentCorrectionFields}
+            value={agentCorrectionValue}
+            confidence={agentCorrectionConfidence}
+            placeholder="Example: communication style should be more formal."
+            onFieldChange={onAgentCorrectionFieldChange}
+            onValueChange={onAgentCorrectionValueChange}
+            onConfidenceChange={onAgentCorrectionConfidenceChange}
+          />
+        ) : null}
+
+        {target === "relation_edge" ? (
+          <CorrectionEditor
+            title="Relation edge correction note"
+            field={relationCorrectionField}
+            fields={relationCorrectionFields}
+            value={relationCorrectionValue}
+            confidence={relationCorrectionConfidence}
+            placeholder="Example: dependency felt too high; resource control mattered more."
+            onFieldChange={onRelationCorrectionFieldChange}
+            onValueChange={onRelationCorrectionValueChange}
+            onConfidenceChange={onRelationCorrectionConfidenceChange}
+          />
+        ) : null}
+
         <button
           type="button"
           onClick={onSave}
@@ -802,6 +1163,18 @@ function FeedbackPanel({
                     {entry.note}
                   </p>
                 ) : null}
+                {entry.agentCorrection ? (
+                  <CorrectionSummaryLine
+                    label="agent correction"
+                    correction={entry.agentCorrection}
+                  />
+                ) : null}
+                {entry.relationCorrection ? (
+                  <CorrectionSummaryLine
+                    label="relation correction"
+                    correction={entry.relationCorrection}
+                  />
+                ) : null}
               </div>
             ))}
           </div>
@@ -811,60 +1184,229 @@ function FeedbackPanel({
   );
 }
 
-function MiniTag({ children }: { children: React.ReactNode }) {
+function CorrectionEditor({
+  title,
+  field,
+  fields,
+  value,
+  confidence,
+  placeholder,
+  onFieldChange,
+  onValueChange,
+  onConfidenceChange,
+}: {
+  title: string;
+  field: string;
+  fields: string[];
+  value: string;
+  confidence: FeedbackCorrectionConfidence;
+  placeholder: string;
+  onFieldChange: (field: string) => void;
+  onValueChange: (value: string) => void;
+  onConfidenceChange: (confidence: FeedbackCorrectionConfidence) => void;
+}) {
   return (
-    <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs text-[#3f483d]">
-      {children}
-    </span>
+    <div className="rounded-md border border-[#568262]/16 bg-[#eef5ee] p-3">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#2f5d3d]">
+        {title}
+      </h3>
+      <div className="mt-3 grid gap-3">
+        <select
+          value={field}
+          onChange={(event) => onFieldChange(event.target.value)}
+          className="w-full rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-[#11150f]"
+        >
+          {fields.map((item) => (
+            <option key={item} value={item}>
+              {correctionFieldLabel(item)}
+            </option>
+          ))}
+        </select>
+        <textarea
+          value={value}
+          onChange={(event) => onValueChange(event.target.value)}
+          maxLength={240}
+          rows={3}
+          placeholder={placeholder}
+          className="w-full resize-none rounded-md border border-black/10 bg-white px-3 py-2 text-sm leading-6 text-[#11150f] outline-none focus:border-[#568262]"
+        />
+        <div className="grid grid-cols-3 gap-2">
+          {correctionConfidenceOptions.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => onConfidenceChange(item.value)}
+              className={`rounded-md border px-2 py-2 text-xs font-semibold transition ${
+                confidence === item.value
+                  ? "border-[#568262]/50 bg-white text-[#2f5d3d]"
+                  : "border-black/10 bg-[#f7f8f4] text-[#62695d]"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-[#62695d]">
+        This note becomes a calibration signal for the next run. It does not
+        overwrite stored profile fields or relation weights.
+      </p>
+    </div>
   );
 }
 
-function Timeline({
-  events,
-  highlightedEventIds,
-  selectedEventId,
-  onSelect,
+function CorrectionSummaryLine({
+  label,
+  correction,
 }: {
-  events: SimulationEventDraft[];
-  highlightedEventIds: string[];
-  selectedEventId: string;
-  onSelect: (eventId: string) => void;
+  label: string;
+  correction: FeedbackFieldCorrection;
 }) {
   return (
-    <section className="rounded-lg border border-black/8 bg-white p-5">
-      <h2 className="text-sm font-semibold text-[#11150f]">Timeline</h2>
+    <p className="mt-2 rounded border border-black/8 bg-white px-2 py-1 text-xs leading-5 text-[#62695d]">
+      {label}: {correction.field} {"->"} {correction.suggestedValue} (
+      {correction.confidence})
+    </p>
+  );
+}
+
+function CalibrationSummary({ profile }: { profile: CalibrationProfile | null }) {
+  if (!profile) {
+    return (
+      <section className="rounded-lg border border-black/8 bg-[#f7f8f4] p-5">
+        <h2 className="text-sm font-semibold text-[#11150f]">
+          Calibration summary
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[#62695d]">
+          Save feedback to build a local CalibrationProfile for future runs.
+          Historical evidence remains unchanged.
+        </p>
+      </section>
+    );
+  }
+
+  const sourceEntries = Object.entries(profile.sourceReliability);
+  const strategyEntries = Object.entries(profile.strategyPreference);
+
+  return (
+    <section className="rounded-lg border border-black/8 bg-[#f7f8f4] p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold text-[#11150f]">
+            Calibration summary
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            This profile is applied only when preparing future runs. It does not
+            mutate past Event Logs, Claims, Reports, or edge weights.
+          </p>
+        </div>
+        <StatusPill tone={profile.signals.length ? "ready" : "planned"}>
+          {profile.signals.length} signals
+        </StatusPill>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <CalibrationMetric
+          label="feedback"
+          value={profile.calibrationSnapshot.feedbackCount}
+        />
+        <CalibrationMetric
+          label="off marks"
+          value={profile.calibrationSnapshot.offCount}
+        />
+        <CalibrationMetric
+          label="agent notes"
+          value={profile.calibrationSnapshot.agentCorrectionCount}
+        />
+        <CalibrationMetric
+          label="edge notes"
+          value={profile.calibrationSnapshot.relationCorrectionCount}
+        />
+      </div>
+
       <div className="mt-4 space-y-3">
-        {events.map((event) => {
-          const highlighted = highlightedEventIds.includes(event.id);
-          return (
-            <button
-              key={event.id}
-              type="button"
-              onClick={() => onSelect(event.id)}
-              className={`w-full rounded-md border p-4 text-left transition ${
-                selectedEventId === event.id
-                  ? "border-[#568262]/50 bg-[#eef5ee]"
-                  : highlighted
-                    ? "border-[#d49b4a]/40 bg-[#fff8ed]"
-                    : "border-black/8 bg-[#f7f8f4] hover:border-[#568262]/30"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-semibold text-[#11150f]">
-                  Tick {event.tickIndex} / {eventLabel(event)}
-                </span>
-                <span className="text-xs font-semibold text-[#568262]">
-                  {event.timeLabel}
-                </span>
-              </div>
-              <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#62695d]">
-                {event.summary}
-              </p>
-            </button>
-          );
-        })}
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+            source reliability
+          </h3>
+          <div className="mt-2 space-y-2">
+            {sourceEntries.map(([source, value]) => (
+              <CalibrationBar
+                key={source}
+                label={source.replaceAll("_", " ")}
+                value={value}
+                max={1.15}
+              />
+            ))}
+          </div>
+        </div>
+
+        {strategyEntries.length ? (
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+              strategy preference
+            </h3>
+            <div className="mt-2 space-y-2">
+              {strategyEntries.map(([strategy, value]) => (
+                <CalibrationBar
+                  key={strategy}
+                  label={strategy.replaceAll("_", " ")}
+                  value={value ?? 1}
+                  max={1.4}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <details className="rounded-md border border-black/8 bg-white p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-[#11150f]">
+            Historical evidence invariant
+          </summary>
+          <ul className="mt-3 space-y-1 text-xs leading-5 text-[#62695d]">
+            <li>Event Logs unchanged: {String(profile.historyInvariant.doesNotModifyEventLogs)}</li>
+            <li>Claims unchanged: {String(profile.historyInvariant.doesNotModifyClaims)}</li>
+            <li>Edge weights unchanged: {String(profile.historyInvariant.doesNotModifyEdgeWeights)}</li>
+            <li>Feedback is not absolute fact: {String(profile.historyInvariant.feedbackIsNotAbsoluteFact)}</li>
+          </ul>
+        </details>
       </div>
     </section>
+  );
+}
+
+function CalibrationMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-black/8 bg-white p-3">
+      <div className="text-[11px] uppercase text-[#7d8578]">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-[#11150f]">{value}</div>
+    </div>
+  );
+}
+
+function CalibrationBar({
+  label,
+  value,
+  max,
+}: {
+  label: string;
+  value: number;
+  max: number;
+}) {
+  const width = Math.max(8, Math.min(100, Math.round((value / max) * 100)));
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="font-semibold text-[#62695d]">{label}</span>
+        <span className="text-[#7d8578]">{value.toFixed(2)}</span>
+      </div>
+      <div className="mt-1 h-2 rounded-full bg-black/8">
+        <div
+          className="h-full rounded-full bg-[#568262]"
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
   );
 }
 

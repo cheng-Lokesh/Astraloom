@@ -102,14 +102,14 @@ export default function SafetyPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <StatusPill tone={review.reportReady ? "ready" : "blocked"}>
-            Safety downgrade
+            Safety gate
           </StatusPill>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Safety gate controls report and unlock behavior.
+            Safety gate keeps the sandbox inside usable boundaries.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            High-risk scenarios downgrade output before report generation or
-            unlock. Payment cannot remove this gate or make claims stronger.
+            Safety review can pass, add caution, adjust output, or pause a run.
+            Full-depth access cannot remove this gate or make claims stronger.
           </p>
         </div>
         <StatusPill tone={review.reportReady ? "ready" : "blocked"}>
@@ -140,7 +140,7 @@ export default function SafetyPage() {
                 onClick={block}
                 className="rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-[#11150f]"
               >
-                Manual block
+                Place review hold
               </button>
               <button
                 type="button"
@@ -153,6 +153,38 @@ export default function SafetyPage() {
             {message ? (
               <p className="mt-4 text-sm leading-6 text-[#62695d]">{message}</p>
             ) : null}
+          </section>
+
+          <section className="rounded-lg border border-black/8 bg-white p-6">
+            <h2 className="text-base font-semibold text-[#11150f]">
+              Safety states
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#62695d]">
+              These states change what the product can show. They do not create
+              professional advice, and they do not change historical evidence.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <SafetyStateCard
+                label="Safe"
+                tone="border-[#568262]/25 bg-[#eef5ee] text-[#2f5d3d]"
+                body="The scenario can continue through agents, graph, simulation, event logs, and evidence-backed claims."
+              />
+              <SafetyStateCard
+                label="Caution"
+                tone="border-[#6f8faa]/35 bg-[#eef4f8] text-[#2f5064]"
+                body="The flow continues with careful wording, confidence language, and no certainty about outcomes or private thoughts."
+              />
+              <SafetyStateCard
+                label="Downgraded"
+                tone="border-[#c4824a]/35 bg-[#fdf5ed] text-[#7c5524]"
+                body="The sandbox keeps structure and low-risk communication options, while strong claims and depth expansion stay unavailable."
+              />
+              <SafetyStateCard
+                label="Blocked"
+                tone="border-[#8c6bb1]/35 bg-[#f4effa] text-[#4b3568]"
+                body="The run is paused for this input. The user can revise setup or request a safety review through support."
+              />
+            </div>
           </section>
 
           <section className="rounded-lg border border-black/8 bg-white p-6">
@@ -218,6 +250,10 @@ export default function SafetyPage() {
           <p className="mt-4 rounded-md border border-white/10 bg-white/[0.06] p-4 text-sm leading-7 text-white/70">
             {review.reportBlockedReason}
           </p>
+          <div className="mt-4 rounded-md border border-white/10 bg-white/[0.06] p-4 text-xs leading-5 text-white/62">
+            If this review feels too restrictive, request a safety review. This
+            does not bypass the gate; it only records context for support.
+          </div>
           <div className="mt-5 space-y-3">
             <Link
               href="/app/simulation/result"
@@ -226,14 +262,31 @@ export default function SafetyPage() {
               Open Result Sandbox
             </Link>
             <Link
-              href="/app/billing"
+              href="/app/support"
               className="inline-flex w-full justify-center rounded-md border border-white/10 px-4 py-3 text-sm font-semibold text-white"
             >
-              Open unlock boundary
+              Request safety review
             </Link>
           </div>
         </aside>
       </section>
     </AppShell>
+  );
+}
+
+function SafetyStateCard({
+  label,
+  tone,
+  body,
+}: {
+  label: string;
+  tone: string;
+  body: string;
+}) {
+  return (
+    <article className={`rounded-md border p-4 ${tone}`}>
+      <h3 className="text-sm font-semibold">{label}</h3>
+      <p className="mt-2 text-sm leading-6 opacity-80">{body}</p>
+    </article>
   );
 }

@@ -1,4 +1,5 @@
 import type {
+  FeedbackFieldCorrection,
   FeedbackDraft,
   FeedbackLedgerDraft,
   FeedbackRating,
@@ -33,6 +34,8 @@ export function buildFeedbackDraft(input: {
   targetId: string;
   rating: FeedbackRating;
   note: string;
+  agentCorrection?: FeedbackFieldCorrection;
+  relationCorrection?: FeedbackFieldCorrection;
 }): FeedbackDraft {
   const now = new Date().toISOString();
   const id = [
@@ -50,6 +53,10 @@ export function buildFeedbackDraft(input: {
     targetId: input.targetId,
     rating: input.rating,
     note: input.note.trim(),
+    ...(input.agentCorrection ? { agentCorrection: input.agentCorrection } : {}),
+    ...(input.relationCorrection
+      ? { relationCorrection: input.relationCorrection }
+      : {}),
     createdAt: now,
     updatedAt: now,
   };

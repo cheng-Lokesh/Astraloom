@@ -30,11 +30,19 @@ const seedContextPayloadSchema = z.object({
     .enum(["30_days", "90_days", "1_year", "3_years", "5_years"])
     .default("90_days"),
   situationSummary: z.string().default(""),
+  recentEvents: z.string().default(""),
   recentEventsText: z.string().default(""),
   keyPeopleText: z.string().default(""),
+  decisionOptions: z.string().default(""),
   decisionOptionsText: z.string().default(""),
+  worries: z.string().default(""),
+  forbiddenActions: z.string().default(""),
   forbiddenActionsText: z.string().default(""),
+  safetyBoundaries: z.string().default(""),
+  desiredOutput: z.string().default(""),
   desiredOutputText: z.string().default(""),
+  contextQualityScore: z.number().min(0).max(100).optional(),
+  missingContextHints: z.array(z.string()).default([]),
   privacyAck: z.boolean().default(true),
   privacySafetyAck: z.boolean().default(false),
   locale: z.enum(["en", "zh"]).default("zh"),
@@ -380,6 +388,7 @@ function apiPersonToCandidate(
     id: `kp_llm_${hashText(`${seedContextId}:${normalizedName}`)}`,
     seedContextId,
     label: normalizedName,
+    displayName: normalizedName,
     role: person.role_type,
     relationshipToUser: person.relationship_to_user,
     roleType: person.role_type,
@@ -409,6 +418,8 @@ function candidateToApiPerson(candidate: KeyPersonDraft) {
       Boolean,
     ),
     missing_fields: candidate.missingFields,
+    uncertainty_flags:
+      candidate.confidence < 50 ? (["evidence_sparse"] as const) : [],
     source_refs: candidate.evidenceRefs,
   };
 }
@@ -452,6 +463,10 @@ function normalizeRoleType(value: string) {
     return "opportunity";
   }
 
+  if (matchesAny(lowered, ["information", "opaque", "committee", "missing"])) {
+    return "information";
+  }
+
   if (matchesAny(lowered, ["emotion", "emotional", "情感", "伴侣", "家人"])) {
     return "emotional";
   }
@@ -464,10 +479,31 @@ function containsForbiddenMindReading(output: KeyPeopleExtractionOutput) {
 
   return matchesAny(text, [
     "loves you",
+    "does not love you",
+    "will leave you",
+    "will come back",
     "betray",
     "deceiv",
+    "secretly dislikes",
     "secretly wants",
+    "hidden agenda",
+    "hidden motive",
+    "real motive",
+    "real feelings",
     "true intention",
+    "definitely",
+    "guarantee",
+    "destined",
+    "soulmate",
+    "track their location",
+    "check their phone",
+    "monitor their messages",
+    "surveil",
+    "revenge",
+    "make them suffer",
+    "diagnose",
+    "medication",
+    "lawsuit",
     "真实想法",
     "背叛",
     "欺骗",

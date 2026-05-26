@@ -1,10 +1,32 @@
 import Link from "next/link";
+import type { ComponentProps } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusPill } from "@/components/status-pill";
 import { runGoldenCaseAcceptance } from "@/lib/golden-cases/full-product-cases";
 
 export const dynamic = "force-dynamic";
+
+type StatusPillTone = NonNullable<ComponentProps<typeof StatusPill>["tone"]>;
+
+const safetyTone = {
+  safe: "ready",
+  caution: "caution",
+  downgraded: "downgraded",
+  blocked: "blocked",
+} as const satisfies Record<string, StatusPillTone>;
+
+const safetyLabel = {
+  safe: "Safe",
+  caution: "Caution",
+  downgraded: "Downgraded",
+  blocked: "Blocked",
+} as const;
+
+const trackLabel = {
+  crossroad: "Track A / Crossroad",
+  life_climate: "Track B / Climate",
+} as const;
 
 export default function AcceptancePage() {
   const result = runGoldenCaseAcceptance();
@@ -35,6 +57,47 @@ export default function AcceptancePage() {
           </p>
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-black/8 bg-white p-5 shadow-[0_16px_48px_rgba(17,21,15,0.05)]">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#62695d]">
+              Safety coverage
+            </h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {Object.entries(result.safetySummary).map(([level, count]) => (
+                <StatusPill
+                  key={level}
+                  tone={safetyTone[level as keyof typeof safetyTone]}
+                >
+                  {safetyLabel[level as keyof typeof safetyLabel]}: {count}
+                </StatusPill>
+              ))}
+            </div>
+            <p className="mt-3 text-xs leading-5 text-[#62695d]">
+              Blocked cases stop before people, agents, graph, simulation,
+              claims, and report generation. Downgraded cases keep the evidence
+              chain but cannot open full depth.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-black/8 bg-white p-5 shadow-[0_16px_48px_rgba(17,21,15,0.05)]">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#62695d]">
+              Track coverage
+            </h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {Object.entries(result.trackSummary).map(([track, count]) => (
+                <StatusPill key={track} tone="neutral">
+                  {trackLabel[track as keyof typeof trackLabel]}: {count}
+                </StatusPill>
+              ))}
+            </div>
+            <p className="mt-3 text-xs leading-5 text-[#62695d]">
+              Golden Cases cover short-horizon crossroad runs and longer-horizon
+              climate runs through the same local deterministic acceptance
+              chain.
+            </p>
+          </div>
+        </div>
+
         <div className="grid gap-4 xl:grid-cols-3">
           {result.cases.map((item) => (
             <article
@@ -48,6 +111,20 @@ export default function AcceptancePage() {
                 <StatusPill tone={item.passed ? "ready" : "blocked"}>
                   {item.passed ? "Pass" : "Fail"}
                 </StatusPill>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <StatusPill tone={safetyTone[item.summary.safetyLevel]}>
+                  {safetyLabel[item.summary.safetyLevel]}
+                </StatusPill>
+                <StatusPill tone="neutral">
+                  {trackLabel[item.summary.trackType]}
+                </StatusPill>
+                {item.summary.safetyFlags.length > 0 ? (
+                  <StatusPill tone="planned">
+                    {item.summary.safetyFlags.length} safety flag
+                    {item.summary.safetyFlags.length === 1 ? "" : "s"}
+                  </StatusPill>
+                ) : null}
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-xs text-[#62695d]">
                 <div>
@@ -72,6 +149,18 @@ export default function AcceptancePage() {
                   <dt>Events</dt>
                   <dd className="text-base font-semibold text-[#11150f]">
                     {item.summary.eventLogCount}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Claims</dt>
+                  <dd className="text-base font-semibold text-[#11150f]">
+                    {item.summary.claimCount}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Ticks</dt>
+                  <dd className="text-base font-semibold text-[#11150f]">
+                    {item.summary.tickCount}
                   </dd>
                 </div>
               </dl>

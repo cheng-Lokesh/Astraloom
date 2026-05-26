@@ -12,6 +12,7 @@ export type KeyPersonDraft = {
   id: string;
   seedContextId: string;
   label: string;
+  displayName?: string;
   role: string;
   relationshipToUser: string;
   roleType: string;
