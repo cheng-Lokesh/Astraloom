@@ -4,6 +4,7 @@ import {
   createDestinyClimateRepository,
   createDestinyProfileRepository,
 } from "./destiny-repository";
+import { createDestinyFusionRepository } from "./destiny-fusion-repository";
 import { createFeedbackRepository } from "./feedback-repository";
 import { createKeyPeopleRepository } from "./key-people-repository";
 import { createRelationGraphRepository } from "./relation-graph-repository";
@@ -23,6 +24,7 @@ export function createRepositories(
     seedContexts: createSeedContextRepository(adapter),
     destinyProfiles: createDestinyProfileRepository(adapter),
     destinyClimates: createDestinyClimateRepository(adapter),
+    destinyFusions: createDestinyFusionRepository(adapter),
     keyPeople: createKeyPeopleRepository(adapter),
     agentProfiles: createAgentProfileRepository(adapter),
     relationGraphs: createRelationGraphRepository(adapter),

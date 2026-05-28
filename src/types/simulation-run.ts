@@ -1,5 +1,6 @@
 import type { RelationWeights } from "@/types/relation-edge";
 import type { TimeWindow, TrackType } from "@/types/seed-context";
+import type { DestinySituationFusionSourceTag } from "./destiny-fusion";
 
 export type SimulationRunStatus = "not_ready" | "queued" | "blocked";
 
@@ -86,6 +87,16 @@ export type SimulationEventDraft = {
   participants?: string[];
   causes?: string[];
   action?: string;
+  userFacingEventTitle?: string;
+  pathLabel?: string;
+  destinyInfluenceSummary?: string;
+  fusionThemeIds?: string[];
+  interactionSummary?: string;
+  pressureDeltaSummary?: string;
+  informationGapDeltaSummary?: string;
+  resourcePressureDeltaSummary?: string;
+  generatedClues?: string[];
+  sourceTags?: DestinySituationFusionSourceTag[];
   agentIds: string[];
   involvedAgentIds: string[];
   relationEdgeIds: string[];

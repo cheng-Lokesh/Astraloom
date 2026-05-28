@@ -5,7 +5,7 @@ import type { BranchPolicy } from "./simulation-types";
 export const branchPolicies: BranchPolicy[] = [
   {
     id: "baseline",
-    label: "Baseline path",
+    label: "Current inertia path",
     selfBias: "baseline",
     edgePressureBias: 0,
     disclosureBias: 0,
@@ -13,7 +13,7 @@ export const branchPolicies: BranchPolicy[] = [
   },
   {
     id: "cautious_self",
-    label: "Cautious self path",
+    label: "Cautious observation path",
     selfBias: "cautious",
     edgePressureBias: 1,
     disclosureBias: -1,
@@ -21,7 +21,7 @@ export const branchPolicies: BranchPolicy[] = [
   },
   {
     id: "decisive_self",
-    label: "Decisive self path",
+    label: "Active push path",
     selfBias: "decisive",
     edgePressureBias: 1,
     disclosureBias: 1,

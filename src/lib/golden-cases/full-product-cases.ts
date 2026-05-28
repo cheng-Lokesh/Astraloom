@@ -3,11 +3,7 @@ import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import { evaluateSandboxReadiness } from "@/lib/clarification/evaluate-sandbox-readiness";
 import { buildDestinyClimateDraft } from "@/lib/destiny/build-destiny-climate";
 import { buildDestinyProfileDraft } from "@/lib/destiny/build-destiny-profile";
-import {
-  buildDestinySituationFusionDraft,
-  type DestinySituationFusionDraft,
-  type DestinySituationFusionSourceTag,
-} from "@/lib/destiny-fusion/build-destiny-situation-fusion";
+import { buildDestinySituationFusionDraft } from "@/lib/destiny-fusion/build-destiny-situation-fusion";
 import {
   buildEmptyFeedbackLedgerDraft,
   buildFeedbackDraft,
@@ -18,6 +14,10 @@ import { buildReportEngineV1 } from "@/lib/reports/report-engine";
 import { buildSimulationEngineV1Run } from "@/lib/simulation/simulation-engine";
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { BirthInfo, DestinyMode } from "@/types/destiny";
+import type {
+  DestinySituationFusionDraft,
+  DestinySituationFusionSourceTag,
+} from "@/types/destiny-fusion";
 import type { ClaimDraft } from "@/types/claim";
 import type { KeyPersonDraft } from "@/types/key-person";
 import type { RelationGraphDraft } from "@/types/relation-edge";
@@ -652,6 +652,7 @@ function runOneGoldenCase(definition: GoldenCaseDefinition): GoldenCaseResult {
     seedContext,
     agentEcology,
     relationEdges,
+    destinyFusion: fusion,
     safetySnapshot: {
       safetyLevel: safety.safetyLevel,
       flags: safety.flags,

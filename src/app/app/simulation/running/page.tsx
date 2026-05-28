@@ -22,53 +22,52 @@ import type { SafetyDecision } from "@/lib/safety/safety-types";
 import { verifySafety } from "@/lib/safety/safety-verifier";
 import type { SafetySnapshot } from "@/lib/simulation/simulation-types";
 import { isCompleteDestinySampleSeed } from "@/lib/trial/sample-workspace";
+import type { AgentEcologyDraft } from "@/types/agent-profile";
+import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
+import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
+import type { SeedContextDraft } from "@/types/seed-context";
 import type {
   SimulationBranchId,
+  SimulationEventDraft,
   SimulationRunDraft,
 } from "@/types/simulation-run";
 
 const simulationStages = [
   {
-    id: "freeze_graph",
-    label: "Freeze graph",
+    id: "reading_destiny_climate",
+    label: "Reading destiny climate",
     detail:
-      "Lock the current Agent Profiles and read-only Relation Edges as the run snapshot.",
+      "Bring the Destiny Profile and Current Destiny Climate into the sandbox as symbolic context, not fate.",
   },
   {
-    id: "build_tick_queue",
-    label: "Build tick queue",
+    id: "structuring_real_situation",
+    label: "Structuring the real situation",
     detail:
-      "Create deterministic tick slots for baseline, cautious_self, and decisive_self.",
+      "Read the current question, key people, constraints, and observable pressure from the saved local setup.",
   },
   {
-    id: "run_agent_interactions",
-    label: "Run agent interactions",
+    id: "mapping_destiny_themes",
+    label: "Mapping destiny themes to key people",
     detail:
-      "Apply branch policies to bounded Agent models. No user choices are requested mid-run.",
+      "Connect climate themes to real people and pressure roles while keeping symbolic context separate from evidence.",
   },
   {
-    id: "update_relation_edges",
-    label: "Update relation edges",
+    id: "simulating_key_interactions",
+    label: "Simulating key interactions",
     detail:
-      "Apply rule-owned before/after deltas to graph snapshots without exposing edge controls.",
+      "Run local branch interactions and save Event Logs before any findings are prepared.",
   },
   {
-    id: "write_event_log",
-    label: "Write Event Log",
+    id: "comparing_path_divergence",
+    label: "Comparing path divergence",
     detail:
-      "Persist local Event Logs with agents, edges, causes, deltas, and evidence refs.",
+      "Compare the current inertia, cautious observation, and active push paths for pressure shifts.",
   },
   {
-    id: "build_claims",
-    label: "Build Claims",
+    id: "preparing_integrated_findings",
+    label: "Preparing integrated findings",
     detail:
-      "Build deterministic Claims only from saved Event Logs and evidence_event_ids.",
-  },
-  {
-    id: "prepare_report",
-    label: "Prepare report",
-    detail:
-      "Prepare the Result Sandbox shell. Report depth stays downstream of the same Claims.",
+      "Prepare findings only from saved Event Logs and evidence_event_ids for the Result Sandbox.",
   },
 ] as const;
 
@@ -83,18 +82,18 @@ const branchMeta: Record<
   { title: string; detail: string; classes: string }
 > = {
   baseline: {
-    title: "baseline",
-    detail: "Uses the locked graph and current Agent Profile policies without a self-variant tilt.",
+    title: "Current inertia path",
+    detail: "Shows how pressure may move if the current pattern continues without a strong self-variant tilt.",
     classes: "border-black/8 bg-[#f7f8f4]",
   },
   cautious_self: {
-    title: "cautious_self",
-    detail: "Uses the cautious parallel self policy to model higher risk-aversion from the same graph.",
+    title: "Cautious observation path",
+    detail: "Models slower movement, more observation, and extra sensitivity to missing information.",
     classes: "border-[#5b7f9b]/30 bg-[#eef3f7]",
   },
   decisive_self: {
-    title: "decisive_self",
-    detail: "Uses the decisive parallel self policy to model higher risk-tolerance from the same graph.",
+    title: "Active push path",
+    detail: "Models more direct movement and tests whether information gaps or resource pressure ease or rise.",
     classes: "border-[#c4824a]/30 bg-[#fdf5ed]",
   },
 };
@@ -118,6 +117,46 @@ function countByEventType(events: SimulationRunDraft["events"]) {
   }, {});
 }
 
+function branchDisplayLabel(branchId: SimulationBranchId | undefined) {
+  if (branchId === "cautious_self") return "Cautious observation path";
+  if (branchId === "decisive_self") return "Active push path";
+  return "Current inertia path";
+}
+
+function agentName(
+  agents: AgentEcologyDraft["agents"],
+  id: string,
+) {
+  return agents.find((agent) => agent.id === id)?.label ?? id;
+}
+
+function eventParticipantText(
+  event: SimulationEventDraft,
+  agents: AgentEcologyDraft["agents"],
+) {
+  return event.involvedAgentIds.map((id) => agentName(agents, id)).join(" and ");
+}
+
+function firstClue(event: SimulationEventDraft) {
+  return event.generatedClues?.[0] ?? event.action ?? event.summary;
+}
+
+function eventDisplayTitle(event: SimulationEventDraft) {
+  return (event.userFacingEventTitle ?? eventTypeLabel(event.eventType))
+    .replace("Baseline path:", "Current inertia path:")
+    .replace("Cautious self path:", "Cautious observation path:")
+    .replace("Decisive self path:", "Active push path:");
+}
+
+function realSituationSummary(seedContext: SeedContextDraft) {
+  return (
+    seedContext.currentQuestionDescription ||
+    seedContext.situationSummary ||
+    seedContext.questionText
+  );
+}
+
+
 function claimCountForRun(run: SimulationRunDraft | null) {
   if (!run || run.events.length === 0) return 0;
   return buildClaimLedgerDraft(run.seedContextId, run).claims.length;
@@ -134,6 +173,8 @@ function buildDraftFromLocalState(repos: ReturnType<typeof getRepositories>) {
   const graph = graphResult.ok ? graphResult.data : null;
   if (!ecology || !graph) return null;
   if (!graph.graphLocked) return null;
+  const fusionResult = repos.destinyFusions.load(seed.id);
+  const destinyFusion = fusionResult.ok ? fusionResult.data : null;
 
   const calibrated = applyFeedbackToNextRun({
     agentEcology: ecology,
@@ -145,6 +186,9 @@ function buildDraftFromLocalState(repos: ReturnType<typeof getRepositories>) {
     seed,
     calibrated.agentEcology,
     calibrated.relationEdges,
+    undefined,
+    undefined,
+    destinyFusion,
   );
 }
 
@@ -165,6 +209,20 @@ export default function RunsPage() {
     const result = repos.seedContexts.load();
     return result.ok ? result.data : null;
   });
+  const [destinyProfile] = useState<DestinyProfileDraft | null>(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.destinyProfiles.load(seed.id);
+    return result.ok ? result.data : null;
+  });
+  const [destinyClimate] = useState<DestinyClimateDraft | null>(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.destinyClimates.load(seed.id);
+    return result.ok ? result.data : null;
+  });
   const [agentEcology] = useState(() => {
     const seedResult = repos.seedContexts.load();
     const seed = seedResult.ok ? seedResult.data : null;
@@ -177,6 +235,13 @@ export default function RunsPage() {
     const seed = seedResult.ok ? seedResult.data : null;
     if (!seed) return null;
     const result = repos.relationGraphs.load(seed.id);
+    return result.ok ? result.data : null;
+  });
+  const [destinyFusion] = useState(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.destinyFusions.load(seed.id);
     return result.ok ? result.data : null;
   });
   const [run, setRun] = useState<SimulationRunDraft | null>(() => {
@@ -292,7 +357,7 @@ export default function RunsPage() {
     const timer = window.setTimeout(() => {
       const stage = simulationStages[activeStageIndex];
 
-      if (stage.id === "write_event_log") {
+      if (stage.id === "simulating_key_interactions") {
         const result = repos.simulations.save(processRun);
         if (!result.ok) {
           setProcessState("failed");
@@ -302,7 +367,7 @@ export default function RunsPage() {
         }
       }
 
-      if (stage.id === "build_claims") {
+      if (stage.id === "preparing_integrated_findings") {
         const eventLogSaved = repos.simulations.load(seedContext.id);
         const savedRun = eventLogSaved.ok ? eventLogSaved.data : null;
         if (!savedRun || savedRun.events.length === 0) {
@@ -544,6 +609,7 @@ export default function RunsPage() {
       calibrated.relationEdges,
       run.status,
       snapshotFromDecision(decision),
+      destinyFusion,
     );
     const queuedRun = queueSimulationRunDraft(nextRun);
     if (queuedRun.events.length === 0) {
@@ -558,7 +624,7 @@ export default function RunsPage() {
     setActiveStageIndex(0);
     setProcessState("running");
     setMessage(
-      "Simulation Engine v1 is running deterministic stages. Event Logs are saved before Claims are built.",
+      "The destiny-situation sandbox is running. Event Logs are saved before findings are prepared.",
     );
   }
 
@@ -578,6 +644,9 @@ export default function RunsPage() {
       seedContext,
       calibrated.agentEcology,
       calibrated.relationEdges,
+      undefined,
+      undefined,
+      destinyFusion,
     );
     const decision = runSafetyGate(nextRun);
     if (!decision) return;
@@ -587,6 +656,7 @@ export default function RunsPage() {
       calibrated.relationEdges,
       nextRun.status,
       snapshotFromDecision(decision),
+      destinyFusion,
     );
     const queuedRun = queueSimulationRunDraft(safeRun);
     if (queuedRun.events.length === 0) {
@@ -603,7 +673,7 @@ export default function RunsPage() {
     setActiveStageIndex(0);
     setProcessState("running");
     setMessage(
-      "Rebuilding from the latest frozen Agents and Relation Edges, then writing Event Logs before Claims.",
+      "Rebuilding from the latest destiny fusion, Agents, and Relation Edges before writing Event Logs.",
     );
   }
 
@@ -620,6 +690,9 @@ export default function RunsPage() {
         seedContext,
         calibrated.agentEcology,
         calibrated.relationEdges,
+        undefined,
+        undefined,
+        destinyFusion,
       ),
     );
     setProcessRun(null);
@@ -636,15 +709,14 @@ export default function RunsPage() {
       ) : null}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <StatusPill tone="ready">Simulation run</StatusPill>
+          <StatusPill tone="ready">Dynamic sandbox</StatusPill>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Watch the scenario sandbox run.
+            Watch destiny climate enter the real situation.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Astraloom freezes the locked graph, runs deterministic branch ticks,
-            writes Event Logs, then builds Claims from those events. No LLM
-            directly decides final claims, and there are no mid-run story
-            choices.
+            Astraloom reads the current climate, maps it to real people and
+            pressures, runs local interaction events, compares path divergence,
+            and prepares findings only after Event Logs are saved.
           </p>
         </div>
         <StatusPill tone={statusTone(processState === "failed" ? "failed" : run.status)}>
@@ -709,15 +781,26 @@ export default function RunsPage() {
             ) : null}
           </section>
 
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(280px,0.55fr)]">
+            <DestinyClimatePanel
+              profile={destinyProfile}
+              climate={destinyClimate}
+            />
+            <RealSituationPanel seedContext={seedContext} />
+          </section>
+
+          <FusionMappingPanel fusion={destinyFusion} />
+
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-[#11150f]">
-                  Simulation process
+                  Destiny-situation process
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                  Claims stay downstream of Event Logs. The stage list shows
-                  exactly where the local run is in the sandbox pipeline.
+                  The visible process starts with climate and situation
+                  structure, then moves through fusion, interactions, path
+                  divergence, and evidence-backed findings.
                 </p>
               </div>
               <StatusPill tone={processState === "failed" ? "blocked" : "planned"}>
@@ -805,13 +888,13 @@ export default function RunsPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-            <h2 className="text-base font-semibold text-[#11150f]">
-              Tick previews
-            </h2>
+          <details className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <summary className="cursor-pointer text-base font-semibold text-[#11150f]">
+              Technical tick queue
+            </summary>
             <p className="mt-2 text-sm leading-6 text-[#62695d]">
-              These previews show the deterministic tick queue before the
-              Result Sandbox opens.
+              Internal deterministic ticks remain available for audit, but the
+              primary sandbox view is the destiny-situation process above.
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {visibleRun?.ticks.map((tick) => (
@@ -834,12 +917,17 @@ export default function RunsPage() {
                 </article>
               ))}
             </div>
-          </section>
+          </details>
 
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <h2 className="text-base font-semibold text-[#11150f]">
-              Branch previews
+              Path divergence
             </h2>
+            <p className="mt-2 text-sm leading-6 text-[#62695d]">
+              The same Situation Map is compared across three internal branch
+              IDs. Labels are user-facing; the saved branch IDs remain stable
+              for evidence and reports.
+            </p>
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               {branchNames.map((branchId) => {
                 const branchEvents =
@@ -889,10 +977,14 @@ export default function RunsPage() {
                           className="rounded border border-black/8 bg-white p-3"
                         >
                           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                            Tick {event.tickIndex} / {eventTypeLabel(event.eventType)}
+                            Tick {event.tickIndex} / {event.timeLabel}
                           </div>
                           <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#62695d]">
-                            {event.summary}
+                            {event.interactionSummary ?? event.summary}
+                          </p>
+                          <p className="mt-2 text-xs leading-5 text-[#7d8578]">
+                            {event.informationGapDeltaSummary ??
+                              "Information gap change is available in Event Log details."}
                           </p>
                         </div>
                       ))}
@@ -903,13 +995,18 @@ export default function RunsPage() {
             </div>
           </section>
 
+          <InteractionPreviewPanel
+            events={visibleRun?.events ?? []}
+            agents={agentEcology.agents}
+          />
+
           <TimelineFeed
             ticks={visibleRun?.ticks ?? []}
             events={visibleRun?.events ?? []}
             agents={agentEcology.agents}
             edges={relationGraph.edges}
-            title="Evidence timeline"
-            description="Event Logs are grouped by tick and show agent refs, edge refs, confidence, evidence refs, and weight deltas."
+            title="Event Log evidence"
+            description="Saved Event Logs stay available for audit. Findings are prepared only after these events exist and preserve evidence_event_ids."
           />
         </main>
 
@@ -1009,6 +1106,265 @@ export default function RunsPage() {
         </aside>
       </div>
     </AppShell>
+  );
+}
+
+function DestinyClimatePanel({
+  profile,
+  climate,
+}: {
+  profile: DestinyProfileDraft | null;
+  climate: DestinyClimateDraft | null;
+}) {
+  return (
+    <section className="rounded-lg border border-[#568262]/20 bg-[#eef5ee] p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">
+            Current Destiny Climate
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            {climate?.userFacingOverview ??
+              profile?.userFacingSummary ??
+              "No saved Destiny Climate was found. The sandbox can still run from real situation evidence, with lower destiny-layer confidence."}
+          </p>
+        </div>
+        <StatusPill tone={climate ? "ready" : "planned"}>
+          {climate ? `${climate.confidence.score}%` : "not loaded"}
+        </StatusPill>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {(climate?.panels ?? []).slice(0, 4).map((panel) => (
+          <article
+            key={panel.id}
+            className="rounded-md border border-[#568262]/15 bg-white p-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-[#11150f]">
+                {panel.label}
+              </h3>
+              <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
+                {panel.intensity} / {panel.direction}
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[#62695d]">
+              {panel.userFacingSummary}
+            </p>
+          </article>
+        ))}
+      </div>
+      {climate?.decisionRhythm.phases.length ? (
+        <div className="mt-4 rounded-md border border-[#568262]/15 bg-white p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+            decision rhythm: {climate.decisionRhythm.overall}
+          </div>
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            {climate.decisionRhythm.phases.map((phase) => (
+              <p key={phase.label} className="text-xs leading-5 text-[#62695d]">
+                <span className="font-semibold text-[#11150f]">
+                  {phase.label}:
+                </span>{" "}
+                {phase.userFacingSummary}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function RealSituationPanel({ seedContext }: { seedContext: SeedContextDraft }) {
+  const missingContextHint = seedContext.missingContextHints?.[0];
+
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <h2 className="text-base font-semibold text-[#11150f]">
+        Real Situation Structure
+      </h2>
+      <p className="mt-2 line-clamp-6 text-sm leading-6 text-[#62695d]">
+        {realSituationSummary(seedContext)}
+      </p>
+      <div className="mt-4 grid gap-2">
+        <SituationRow label="time window" value={seedContext.timeWindow} />
+        <SituationRow label="track" value={seedContext.trackType} />
+        <SituationRow
+          label="quality"
+          value={`${seedContext.contextQualityScore ?? 0}% context score`}
+        />
+      </div>
+      {missingContextHint ? (
+        <p className="mt-3 text-xs leading-5 text-[#7d8578]">
+          {missingContextHint}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function SituationRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded border border-black/8 bg-[#f7f8f4] px-3 py-2">
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+        {label}
+      </span>
+      <span className="text-xs font-semibold text-[#3f483d]">{value}</span>
+    </div>
+  );
+}
+
+function FusionMappingPanel({
+  fusion,
+}: {
+  fusion: DestinySituationFusionDraft | null;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">
+            Destiny themes mapped to people and pressures
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            These mappings are symbolic-to-situation context. They do not claim
+            certainty about people or outcomes.
+          </p>
+        </div>
+        <StatusPill tone={fusion?.mappings.length ? "ready" : "planned"}>
+          {fusion?.mappings.length ?? 0} mappings
+        </StatusPill>
+      </div>
+      {fusion?.localWarnings?.length ? (
+        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+          {fusion.localWarnings[0]}
+        </p>
+      ) : null}
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {(fusion?.mappings ?? []).slice(0, 6).map((mapping) => (
+          <article
+            key={mapping.id}
+            className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
+          >
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+              {mapping.themeLabel}
+            </div>
+            <h3 className="mt-2 text-sm font-semibold text-[#11150f]">
+              {mapping.personLabel}
+            </h3>
+            <p className="mt-1 text-xs font-semibold text-[#3f483d]">
+              {mapping.pressureRole}
+            </p>
+            <p className="mt-3 text-xs leading-5 text-[#62695d]">
+              {mapping.userFacingSummary}
+            </p>
+          </article>
+        ))}
+        {!fusion?.mappings.length ? (
+          <p className="rounded-md border border-dashed border-black/12 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#7d8578]">
+            No saved fusion mappings are available yet. Run preparation can
+            continue from the Situation Map and Event Logs.
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function InteractionPreviewPanel({
+  events,
+  agents,
+}: {
+  events: SimulationEventDraft[];
+  agents: AgentEcologyDraft["agents"];
+}) {
+  const previewEvents = events.slice(0, 6);
+
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">
+            Dynamic interaction cards
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            Each card shows what happened, who is involved, the destiny
+            influence, pressure changes, and one generated clue for inspection.
+          </p>
+        </div>
+        <StatusPill tone={previewEvents.length ? "ready" : "planned"}>
+          {previewEvents.length} shown
+        </StatusPill>
+      </div>
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        {previewEvents.map((event) => (
+          <article
+            key={event.id}
+            className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                  {branchDisplayLabel(event.branchId)} / Tick {event.tickIndex}
+                </div>
+                <h3 className="mt-2 text-sm font-semibold text-[#11150f]">
+                  {eventDisplayTitle(event)}
+                </h3>
+              </div>
+              <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
+                {event.confidence}%
+              </span>
+            </div>
+            <PreviewField label="what happened" value={event.summary} />
+            <PreviewField
+              label="who is involved"
+              value={eventParticipantText(event, agents)}
+            />
+            <PreviewField
+              label="destiny influence"
+              value={event.destinyInfluenceSummary}
+            />
+            <PreviewField
+              label="real-world pressure"
+              value={event.pressureDeltaSummary}
+            />
+            <PreviewField
+              label="information/resource change"
+              value={[
+                event.informationGapDeltaSummary,
+                event.resourcePressureDeltaSummary,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            />
+            <PreviewField label="generated clue" value={firstClue(event)} />
+          </article>
+        ))}
+        {!previewEvents.length ? (
+          <p className="rounded-md border border-dashed border-black/12 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#7d8578]">
+            Run the visible simulation to generate interaction cards.
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function PreviewField({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string;
+}) {
+  if (!value) return null;
+
+  return (
+    <div className="mt-3 rounded border border-black/8 bg-white p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+        {label}
+      </div>
+      <p className="mt-1 text-xs leading-5 text-[#62695d]">{value}</p>
+    </div>
   );
 }
 

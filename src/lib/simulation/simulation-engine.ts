@@ -1,4 +1,9 @@
 import type { AgentEcologyDraft, AgentProfileDraft } from "@/types/agent-profile";
+import type {
+  DestinySituationFusionDraft,
+  DestinySituationFusionMapping,
+  DestinySituationFusionSourceTag,
+} from "@/types/destiny-fusion";
 import type { RelationEdgeDraft, RelationWeights } from "@/types/relation-edge";
 import type {
   SimulationBranchId,
@@ -151,6 +156,167 @@ function edgeForTick(
   return pool[(tickIndex - 1) % Math.max(pool.length, 1)] ?? null;
 }
 
+const fusionSourceTags: DestinySituationFusionSourceTag[] = [
+  "destiny climate",
+  "real situation",
+  "integrated simulation",
+];
+
+const branchLabels: Record<SimulationBranchId, string> = {
+  baseline: "Current inertia path",
+  cautious_self: "Cautious observation path",
+  decisive_self: "Active push path",
+};
+
+function relationWeightLabel(key: keyof RelationWeights) {
+  return key.replace(/([A-Z])/g, " $1").toLowerCase();
+}
+
+function signedDelta(value: number) {
+  return value > 0 ? `+${value}` : `${value}`;
+}
+
+function summarizeDeltas(delta: Partial<RelationWeights>) {
+  const entries = Object.entries(delta) as Array<
+    [keyof RelationWeights, number | undefined]
+  >;
+  const changed = entries.filter(([, value]) => Boolean(value));
+
+  if (!changed.length) {
+    return "Pressure stayed mostly steady in this interaction.";
+  }
+
+  return changed
+    .map(([key, value]) => `${relationWeightLabel(key)} ${signedDelta(value ?? 0)}`)
+    .join("; ");
+}
+
+function axisDeltaSummary(
+  key: keyof RelationWeights,
+  delta: Partial<RelationWeights>,
+  label: string,
+) {
+  const value = delta[key] ?? 0;
+  if (value === 0) return `${label} stayed steady in this event.`;
+  return `${label} ${value > 0 ? "increased" : "eased"} by ${Math.abs(value)} in this branch event.`;
+}
+
+function agentDisplayName(agents: AgentProfileDraft[], id: string) {
+  return agents.find((agent) => agent.id === id)?.label ?? id;
+}
+
+function mappingForEvent({
+  destinyFusion,
+  agents,
+  participants,
+  tickIndex,
+}: {
+  destinyFusion?: DestinySituationFusionDraft | null;
+  agents: AgentProfileDraft[];
+  participants: string[];
+  tickIndex: number;
+}) {
+  const mappings = destinyFusion?.mappings ?? [];
+  if (!mappings.length) return null;
+
+  const sourceKeyPersonIds = participants
+    .map((agentId) => agents.find((agent) => agent.id === agentId)?.sourceKeyPersonId)
+    .filter((id): id is string => Boolean(id));
+  const directMapping = mappings.find((mapping) =>
+    sourceKeyPersonIds.includes(mapping.personId),
+  );
+
+  return directMapping ?? mappings[(tickIndex - 1) % mappings.length] ?? null;
+}
+
+function buildEventDisplayFields({
+  eventType,
+  eventSummary,
+  action,
+  agents,
+  participants,
+  branch,
+  tickIndex,
+  delta,
+  destinyFusion,
+}: {
+  eventType: SimulationEventDraft["eventType"];
+  eventSummary: string;
+  action: string;
+  agents: AgentProfileDraft[];
+  participants: string[];
+  branch: BranchPolicy;
+  tickIndex: number;
+  delta: Partial<RelationWeights>;
+  destinyFusion?: DestinySituationFusionDraft | null;
+}) {
+  const mapping = mappingForEvent({
+    destinyFusion,
+    agents,
+    participants,
+    tickIndex,
+  });
+  const participantNames = participants.map((id) => agentDisplayName(agents, id));
+  const themeLabel = mapping?.themeLabel ?? "situation pressure";
+  const pathLabel = branchLabels[branch.id] ?? branch.label;
+  const destinyInfluenceSummary = mapping
+    ? `${mapping.themeLabel} is used as symbolic context for this event through ${mapping.personLabel}. This does not make the path certain.`
+    : "No saved Destiny-Situation Fusion theme is attached, so this event is shown from real situation and interaction evidence only.";
+
+  return {
+    userFacingEventTitle: `${pathLabel}: ${eventType.replaceAll("_", " ")}`,
+    pathLabel,
+    destinyInfluenceSummary,
+    fusionThemeIds: mapping ? [mapping.themeId] : [],
+    interactionSummary: `${participantNames.join(" and ")} interact around ${themeLabel}. ${eventSummary}`,
+    pressureDeltaSummary: summarizeDeltas(delta),
+    informationGapDeltaSummary: axisDeltaSummary(
+      "informationGap",
+      delta,
+      "Information gap pressure",
+    ),
+    resourcePressureDeltaSummary: axisDeltaSummary(
+      "resourceControl",
+      delta,
+      "Resource pressure",
+    ),
+    generatedClues: buildGeneratedClues(mapping, action, delta),
+    sourceTags: fusionSourceTags,
+  } satisfies Pick<
+    SimulationEventDraft,
+    | "userFacingEventTitle"
+    | "pathLabel"
+    | "destinyInfluenceSummary"
+    | "fusionThemeIds"
+    | "interactionSummary"
+    | "pressureDeltaSummary"
+    | "informationGapDeltaSummary"
+    | "resourcePressureDeltaSummary"
+    | "generatedClues"
+    | "sourceTags"
+  >;
+}
+
+function buildGeneratedClues(
+  mapping: DestinySituationFusionMapping | null,
+  action: string,
+  delta: Partial<RelationWeights>,
+) {
+  const clues = [
+    action,
+    axisDeltaSummary("informationGap", delta, "Information gap pressure"),
+    axisDeltaSummary("resourceControl", delta, "Resource pressure"),
+  ];
+
+  if (mapping) {
+    clues.unshift(
+      `${mapping.themeLabel} maps to ${mapping.personLabel} as ${mapping.pressureRole}.`,
+    );
+  }
+
+  return Array.from(new Set(clues.filter(Boolean))).slice(0, 4);
+}
+
 function buildBranchTicksAndEvents(
   runId: string,
   input: SimulationEngineInput,
@@ -252,6 +418,17 @@ function buildBranchTicksAndEvents(
       participants,
       causes: eventPolicy.causes,
       action: eventPolicy.action,
+      ...buildEventDisplayFields({
+        eventType: eventPolicy.eventType,
+        eventSummary: eventPolicy.summary,
+        action: eventPolicy.action,
+        agents: input.agentEcology.agents,
+        participants,
+        branch,
+        tickIndex,
+        delta: update.delta,
+        destinyFusion: input.destinyFusion,
+      }),
       agentIds: participants,
       involvedAgentIds: participants,
       relationEdgeIds: [edge.id],

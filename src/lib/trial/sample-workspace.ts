@@ -7,6 +7,8 @@ import {
   saveDestinyClimateDraft,
   saveDestinyProfileDraft,
 } from "@/lib/destiny/storage";
+import { buildDestinySituationFusionDraft } from "@/lib/destiny-fusion/build-destiny-situation-fusion";
+import { saveDestinySituationFusionDraft } from "@/lib/destiny-fusion/storage";
 import { saveKeyPeopleDraft } from "@/lib/people/storage";
 import { buildRelationEdges } from "@/lib/relations/build";
 import { saveRelationGraphDraft } from "@/lib/relations/storage";
@@ -498,6 +500,12 @@ export function createTrialWorkspace() {
     timeWindow: seedContext.timeWindow,
     topic: currentQuestionDescription,
   });
+  const destinyFusion = buildDestinySituationFusionDraft({
+    seedContext,
+    destinyClimate,
+    keyPeople: people,
+    now,
+  });
   const relationEdges = tuneCareerSampleEdges(
     buildRelationEdges(seedContext.id, agents),
   );
@@ -511,13 +519,21 @@ export function createTrialWorkspace() {
     updatedAt: now,
   };
   const simulationRun = queueSimulationRunDraft(
-    buildSimulationRunDraft(seedContext, { seedContextId, includeParallelSelves: true, agents, updatedAt: now }, relationEdges),
+    buildSimulationRunDraft(
+      seedContext,
+      { seedContextId, includeParallelSelves: true, agents, updatedAt: now },
+      relationEdges,
+      undefined,
+      undefined,
+      destinyFusion,
+    ),
   );
   const claimLedger = buildClaimLedgerDraft(seedContext.id, simulationRun);
 
   saveSeedContextDraft(seedContext);
   saveDestinyProfileDraft(destinyProfile);
   saveDestinyClimateDraft(destinyClimate);
+  saveDestinySituationFusionDraft(destinyFusion);
   saveKeyPeopleDraft({ seedContextId: seedContext.id, people, updatedAt: now });
   saveAgentEcologyDraft({
     seedContextId: seedContext.id,
@@ -535,6 +551,7 @@ export function createTrialWorkspace() {
     agents,
     destinyProfile,
     destinyClimate,
+    destinyFusion,
     relationEdges,
     simulationRun,
     claimLedger,

@@ -1,6 +1,7 @@
 import type { AgentEcologyDraft, AgentProfileDraft } from "@/types/agent-profile";
 import type { RelationEdgeDraft, RelationWeights } from "@/types/relation-edge";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
+import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
 import type {
   SimulationBranchId,
   SimulationEventDraft,
@@ -59,6 +60,7 @@ export type SimulationEngineInput = {
   seedContext: SeedContextDraft;
   agentEcology: AgentEcologyDraft;
   relationEdges: RelationEdgeDraft[];
+  destinyFusion?: DestinySituationFusionDraft | null;
   safetySnapshot?: SafetySnapshot;
   status?: SimulationRunDraft["status"];
 };

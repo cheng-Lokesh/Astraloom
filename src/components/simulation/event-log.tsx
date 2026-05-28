@@ -30,11 +30,26 @@ const weightLabels: Record<WeightKey, string> = {
 };
 
 function eventLabel(event: SimulationEventDraft) {
-  return event.eventType.replaceAll("_", " ");
+  const title = event.userFacingEventTitle ?? event.eventType.replaceAll("_", " ");
+  return title
+    .replace("Baseline path:", "Current inertia path:")
+    .replace("Cautious self path:", "Cautious observation path:")
+    .replace("Decisive self path:", "Active push path:");
 }
 
 function branchLabel(branchId: SimulationBranchId | undefined) {
   return branchId ?? "baseline";
+}
+
+function displayPathLabel(event: SimulationEventDraft) {
+  if (event.pathLabel === "Baseline path") return "Current inertia path";
+  if (event.pathLabel === "Cautious self path") return "Cautious observation path";
+  if (event.pathLabel === "Decisive self path") return "Active push path";
+  if (event.pathLabel) return event.pathLabel;
+  if (event.branchId === "baseline") return "Current inertia path";
+  if (event.branchId === "cautious_self") return "Cautious observation path";
+  if (event.branchId === "decisive_self") return "Active push path";
+  return branchLabel(event.branchId);
 }
 
 function agentLabel(agents: AgentProfileDraft[], id: string) {
@@ -76,6 +91,59 @@ function eventCardClasses(tone: EventTone, lowConfidence: boolean) {
     return `${base} border-y-black/8 border-r-black/8 bg-[#f7f8f4] opacity-45`;
   }
   return `${base} ${lowConfidence ? "border-y-black/8 border-r-black/8 bg-white" : "border-y-black/8 border-r-black/8 bg-[#f7f8f4]"}`;
+}
+
+function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
+  const sourceTags = event.sourceTags ?? [];
+  const summaryItems = [
+    ["Destiny influence", event.destinyInfluenceSummary],
+    ["Interaction", event.interactionSummary],
+    ["Pressure delta", event.pressureDeltaSummary],
+    ["Information gap", event.informationGapDeltaSummary],
+    ["Resource pressure", event.resourcePressureDeltaSummary],
+  ].filter(([, value]) => Boolean(value));
+
+  if (!summaryItems.length && !event.generatedClues?.length && !sourceTags.length) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 space-y-3 rounded-md border border-black/8 bg-white p-3">
+      {sourceTags.length ? (
+        <div className="flex flex-wrap gap-2">
+          {sourceTags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded border border-[#568262]/20 bg-[#eef5ee] px-2 py-1 text-xs font-semibold text-[#2f5d3d]"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {summaryItems.length ? (
+        <div className="grid gap-2 lg:grid-cols-2">
+          {summaryItems.map(([label, value]) => (
+            <div key={label} className="rounded border border-black/8 bg-[#f7f8f4] p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                {label}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[#62695d]">{value}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {event.generatedClues?.length ? (
+        <RefList
+          title="Generated clues"
+          values={event.generatedClues}
+          empty="No generated clues."
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export function ConfidenceExplanation({ value }: { value: number }) {
@@ -287,7 +355,7 @@ export function EventCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-            {branchLabel(event.branchId)} / Tick {event.tickIndex} / {event.timeLabel}
+            {displayPathLabel(event)} / Tick {event.tickIndex} / {event.timeLabel}
           </div>
           <h3 className="mt-2 text-sm font-semibold text-[#11150f]">
             {eventLabel(event)}
@@ -298,6 +366,7 @@ export function EventCard({
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-[#62695d]">{event.summary}</p>
+      <EventDisplaySummary event={event} />
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
         <ConfidenceExplanation value={event.confidence} />
