@@ -5,13 +5,31 @@ import {
   safeAllowedActions,
   safetyRules,
 } from "./safety-rules";
-import { getSeedContextNarrative } from "@/lib/seed-context/context-text";
 import type {
   SafetyDecision,
   SafetyFlag,
   SafetyLevel,
   SafetyVerifierInput,
 } from "./safety-types";
+
+function seedSafetyText(input: SafetyVerifierInput) {
+  const seed = input.seedContext;
+
+  return [
+    seed.questionText,
+    seed.destinyBirthInfo,
+    seed.currentQuestionDescription,
+    seed.situationSummary,
+    seed.recentEvents,
+    seed.recentEventsText,
+    seed.keyPeopleText,
+    seed.decisionOptions,
+    seed.decisionOptionsText,
+    seed.worries,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 function unique<T>(values: T[]) {
   return Array.from(new Set(values));
@@ -25,9 +43,8 @@ function maxLevel(levels: SafetyLevel[]) {
 }
 
 function buildSearchText(input: SafetyVerifierInput) {
-  const seed = input.seedContext;
   const claimText = input.claims
-    ?.map((claim) => `${claim.summary} ${claim.safetyNotes.join(" ")}`)
+    ?.map((claim) => claim.summary)
     .join("\n");
   const agentText = input.agents
     ?.map((agent) => {
@@ -36,8 +53,6 @@ function buildSearchText(input: SafetyVerifierInput) {
         agent.role,
         agent.relationshipToUser,
         agent.profileJson.motivation.primaryGoal,
-        agent.profileJson.motivation.fear,
-        agent.profileJson.state.currentIntention,
       ].join(" ");
     })
     .join("\n");
@@ -49,7 +64,7 @@ function buildSearchText(input: SafetyVerifierInput) {
     .join("\n");
 
   return [
-    getSeedContextNarrative(seed),
+    seedSafetyText(input),
     claimText,
     agentText,
     relationText,
@@ -61,15 +76,15 @@ function buildSearchText(input: SafetyVerifierInput) {
 
 function messageFor(level: SafetyLevel) {
   if (level === "blocked") {
-    return "This scenario is paused for safety. MiroFish can keep the setup available, but it will not run simulation ticks, build claims, or expand report depth from this input.";
+    return "This scenario is paused for safety. Astraloom can keep the setup available, but it will not run simulation ticks, build claims, or expand report depth from this input.";
   }
 
   if (level === "downgraded") {
-    return "This scenario touches a sensitive area, so MiroFish is using adjusted mode: relationship structure and low-risk communication options only, without strong claims or depth expansion.";
+    return "This scenario touches a sensitive area, so Astraloom is using adjusted mode: relationship structure and low-risk communication options only, without strong claims or depth expansion.";
   }
 
   if (level === "caution") {
-    return "This scenario can continue with careful wording. MiroFish will avoid certainty about outcomes or another person's private thoughts.";
+    return "This scenario can continue with careful wording. Astraloom will avoid certainty about outcomes or another person's private thoughts.";
   }
 
   return "Safety check passed for the local sandbox flow.";

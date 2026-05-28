@@ -209,7 +209,7 @@ export function buildProductPreview(input: PreviewInput): ProductPreview {
   if (safetyLevel === "blocked") {
     return {
       previewSummary:
-        "当前问题需要先降级处理。MiroFish 会保留处境结构，但不会给出可能造成现实伤害、违法、医疗、法律或金融风险的行动建议。",
+        "当前问题需要先降级处理。Astraloom 会保留处境结构，但不会给出可能造成现实伤害、违法、医疗、法律或金融风险的行动建议。",
       agentEcology: agents,
       scenarioPaths: [],
       timelineEvents: [],

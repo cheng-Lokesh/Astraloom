@@ -107,6 +107,8 @@ export function normalizeSeedContextDraft(
     questionText: textOrDefault(draft.questionText),
     trackType: draft.trackType === "life_climate" ? "life_climate" : "crossroad",
     timeWindow: draft.timeWindow ?? defaultTimeWindow,
+    destinyBirthInfo: textOrDefault(draft.destinyBirthInfo),
+    currentQuestionDescription: textOrDefault(draft.currentQuestionDescription),
     situationSummary: textOrDefault(draft.situationSummary),
     recentEvents,
     recentEventsText: textOrDefault(draft.recentEventsText, recentEvents),

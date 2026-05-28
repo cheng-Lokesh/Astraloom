@@ -25,7 +25,7 @@ const copy = {
   en: {
     title: "See the shape of a decision before you move.",
     subtitle:
-      "MiroFish turns a real career crossroad into a local agent map, scenario paths, risk windows, and a paid-report preview.",
+      "Astraloom turns a real career crossroad into a local agent map, scenario paths, risk windows, and a paid-report preview.",
     question: "Decision question",
     situation: "Current context",
     people: "Key people",
@@ -54,7 +54,7 @@ const copy = {
   zh: {
     title: "先看见一次决定的可能走向",
     subtitle:
-      "输入真实的跳槽、晋升、创业或合作问题，MiroFish 会把它整理成 Agent 关系、三条情景路径、风险窗口和报告预览。",
+      "输入真实的跳槽、晋升、创业或合作问题，Astraloom 会把它整理成 Agent 关系、三条情景路径、风险窗口和报告预览。",
     question: "决策问题",
     situation: "当前处境",
     people: "关键人物",

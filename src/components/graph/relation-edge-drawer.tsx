@@ -31,17 +31,6 @@ const weightExplanations: Record<keyof RelationEdgeDraft["weights"], string> = {
   emotionalDebt: "情绪债务: unresolved obligation, guilt, or accumulated emotional cost.",
 };
 
-const barClasses: Record<keyof RelationEdgeDraft["weights"], string> = {
-  trust: "bg-[#568262]",
-  hostility: "bg-[#b95b4d]",
-  dependency: "bg-[#4f6f9f]",
-  attraction: "bg-[#8b6f9b]",
-  competition: "bg-[#9a4f20]",
-  informationGap: "bg-[#d49b4a]",
-  resourceControl: "bg-[#7f5f2b]",
-  emotionalDebt: "bg-[#7c5524]",
-};
-
 function explainWeight(key: keyof RelationEdgeDraft["weights"], value: number) {
   if (value >= 70) {
     return `${weightExplanations[key]} This signal is high, so later simulation should treat it carefully.`;
@@ -50,6 +39,24 @@ function explainWeight(key: keyof RelationEdgeDraft["weights"], value: number) {
     return `${weightExplanations[key]} This signal is moderate and useful for event observation.`;
   }
   return `${weightExplanations[key]} This signal is low and stays as background context.`;
+}
+
+function strengthLabel(value: number) {
+  if (value >= 70) return "Strong";
+  if (value >= 40) return "Moderate";
+  return "Weak";
+}
+
+function strengthClasses(value: number) {
+  if (value >= 70) return "border-[#b95b4d]/25 bg-[#fff1ed] text-[#7f1d1d]";
+  if (value >= 40) return "border-[#d49b4a]/30 bg-[#fff8ed] text-[#7c5524]";
+  return "border-[#568262]/20 bg-[#eef5ee] text-[#2f5d3d]";
+}
+
+function trendDirection(value: number) {
+  if (value > 0) return "rising";
+  if (value < 0) return "easing";
+  return "steady";
 }
 
 function agentLabel(agents: AgentProfileDraft[], id: string) {
@@ -115,9 +122,10 @@ export function RelationEdgeDrawer({
           Trend
         </div>
         <p className="mt-2 text-sm leading-6 text-[#62695d]">
-          Volatility {edge.trend.volatility}; trust delta{" "}
-          {edge.trend.trustDelta3Ticks}; hostility delta{" "}
-          {edge.trend.hostilityDelta3Ticks}.
+          This edge is {strengthLabel(edge.trend.volatility).toLowerCase()} in
+          volatility. Trust is {trendDirection(edge.trend.trustDelta3Ticks)} and
+          conflict pressure is {trendDirection(edge.trend.hostilityDelta3Ticks)}
+          across the recent simulation window.
         </p>
       </div>
 
@@ -138,20 +146,63 @@ export function RelationEdgeDrawer({
                     {explainWeight(typedKey, value)}
                   </p>
                 </div>
-                <span className="text-lg font-semibold text-[#11150f]">
-                  {value}
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${strengthClasses(value)}`}
+                >
+                  {strengthLabel(value)}
                 </span>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/8">
-                <div
-                  className={`h-full rounded-full ${barClasses[typedKey]}`}
-                  style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
-                />
               </div>
             </div>
           );
         })}
       </div>
+
+      <details className="mt-5 rounded-md border border-black/8 bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
+          Technical details
+        </summary>
+        <div className="mt-3 space-y-3">
+          <div>
+            <div className="text-xs font-semibold uppercase text-[#7d8578]">
+              Exact relation weights
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {Object.entries(edge.weights).map(([key, value]) => {
+                const typedKey = key as keyof RelationEdgeDraft["weights"];
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-3 rounded border border-black/8 bg-[#f7f8f4] px-3 py-2"
+                  >
+                    <span className="text-xs text-[#62695d]">
+                      {weightLabels[typedKey]}
+                    </span>
+                    <code className="text-xs font-semibold text-[#11150f]">
+                      {value}
+                    </code>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase text-[#7d8578]">
+              Exact trend values
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <TechnicalValue label="Volatility" value={edge.trend.volatility} />
+              <TechnicalValue
+                label="Trust delta"
+                value={edge.trend.trustDelta3Ticks}
+              />
+              <TechnicalValue
+                label="Hostility delta"
+                value={edge.trend.hostilityDelta3Ticks}
+              />
+            </div>
+          </div>
+        </div>
+      </details>
 
       <details className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-3">
         <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
@@ -182,5 +233,16 @@ export function RelationEdgeDrawer({
         </div>
       </details>
     </section>
+  );
+}
+
+function TechnicalValue({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-black/8 bg-[#f7f8f4] px-3 py-2">
+      <div className="text-xs text-[#62695d]">{label}</div>
+      <code className="mt-1 block text-xs font-semibold text-[#11150f]">
+        {value}
+      </code>
+    </div>
   );
 }

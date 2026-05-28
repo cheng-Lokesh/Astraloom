@@ -7,6 +7,8 @@ function firstText(...values: Array<string | undefined>) {
 export function getSeedContextSections(seedContext: SeedContextDraft) {
   return [
     ["Main question", seedContext.questionText],
+    ["Basic destiny and birth info", seedContext.destinyBirthInfo],
+    ["Current question description", seedContext.currentQuestionDescription],
     ["Situation summary", seedContext.situationSummary],
     [
       "Recent key events",

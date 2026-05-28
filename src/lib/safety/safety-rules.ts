@@ -14,7 +14,7 @@ export const safetyRules = [
     level: "blocked",
     patterns: [
       /kill|assault|attack|beat up|weapon|threaten/i,
-      /杀了|打死|袭击|殴打|武器|威胁|暴力/,
+      /杀人|打死|袭击|殴打|武器|威胁|暴力/,
     ],
   },
   {
@@ -69,7 +69,7 @@ export const safetyRules = [
     flag: "investment",
     level: "downgraded",
     patterns: [
-      /invest|stock|crypto|loan|debt|buy.*shares|sell.*shares/i,
+      /\b(invest|investing|investment|stock|stocks|crypto|loan|debt)\b|buy.*shares|sell.*shares/i,
       /投资|股票|基金|币圈|加密货币|贷款|债务|买入|卖出/,
     ],
   },

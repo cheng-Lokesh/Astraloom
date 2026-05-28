@@ -24,9 +24,9 @@ export function ReportSummary({
             Evidence-backed result sandbox
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-[#62695d]">
-            Report Engine v1 reads Claims only, and Claims come from Event Logs.
+            Report Engine v1 reads stored Findings only, and Findings come from Event Logs.
             Full report depth can expand evidence and strategy detail, but it
-            does not change claim direction, confidence, or risk level.
+            does not change finding direction, confidence, or risk level.
           </p>
         </div>
         <span
@@ -39,9 +39,9 @@ export function ReportSummary({
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-4">
-        <Metric label="claim_id" value={report.invariant.claimIds.length} />
+        <Metric label="finding ids" value={report.invariant.claimIds.length} />
         <Metric
-          label="preview claims"
+          label="preview findings"
           value={report.freePreview.summaryClaimIds.length}
         />
         <Metric

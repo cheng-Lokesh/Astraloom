@@ -11,13 +11,13 @@ const loginCopy = {
   en: {
     authReady: "Auth ready",
     setupRequired: "Setup required",
-    title: "Sign in to the MiroFish workspace",
+    title: "Sign in to the Astraloom workspace",
     body: "This shell uses Supabase magic-link auth. Until `.env.local` is configured, the page stays in setup mode and will not send email.",
   },
   zh: {
     authReady: "登录已就绪",
     setupRequired: "需要先配置",
-    title: "登录 MiroFish 工作区",
+    title: "登录 Astraloom 工作区",
     body: "当前登录页使用 Supabase magic-link auth。配置 `.env.local` 前，页面会保持 setup 模式，不会发送邮件。",
   },
 };

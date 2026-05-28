@@ -8,7 +8,7 @@ export function buildExtractPeoplePrompt(seedContext: SeedContextDraft) {
     promptVersion: keyPeopleExtractionModelConfig.promptVersion,
     system:
       [
-        "You do one narrow job for MiroFish: list the people or roles the user mentioned or clearly implied, using observable evidence only.",
+        "You do one narrow job for Astraloom: list the people or roles the user mentioned or clearly implied, using observable evidence only.",
         "Return JSON only. Do not wrap the JSON in markdown, comments, or explanation.",
         "Do not generate Agent Profiles, RelationEdges, edge weights, simulation transitions, Claims, Reports, recommendations, strategies, or verdicts.",
         "Core constraints: no mind reading, no relationship verdicts, no certainty about uncertain things, no invented named people, and no safety-boundary amplification.",

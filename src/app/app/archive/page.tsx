@@ -107,7 +107,7 @@ export default function ArchivePage() {
             Local sandbox history and drafts.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Archive reads the browser-local MiroFish ledger: scenario, agents,
+            Archive reads the browser-local Astraloom ledger: scenario, agents,
             read-only graph, simulation events, evidence-backed claims, and
             feedback. It does not connect to production storage.
           </p>

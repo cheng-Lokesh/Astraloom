@@ -1,4 +1,4 @@
-# Project MiroFish MVP QA and Environment Setup
+# Project Astraloom MVP QA and Environment Setup
 
 This guide is written for Codex/VibeCoding execution. Follow it before enabling real AI generation, Stripe collection, or service-role system writers.
 

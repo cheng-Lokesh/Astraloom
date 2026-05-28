@@ -58,22 +58,22 @@ function buildSnapshot(): SnapshotData | null {
   const graphLocked = graphResult.ok ? graphResult.data?.graphLocked ?? false : false;
 
   let nextHref = "/app/new/people";
-  let nextLabel = "Continue setup";
+  let nextLabel = "Continue last sandbox";
   if (!peopleCount) {
     nextHref = "/app/new/people";
-    nextLabel = "Confirm people";
+    nextLabel = "Continue last sandbox";
   } else if (!agentCount) {
     nextHref = "/app/new/agents";
-    nextLabel = "Review agents";
+    nextLabel = "Continue last sandbox";
   } else if (!graphLocked) {
     nextHref = "/app/new/graph";
-    nextLabel = "Lock graph";
+    nextLabel = "Continue last sandbox";
   } else if (!eventCount) {
     nextHref = "/app/simulation/running";
-    nextLabel = "Run simulation";
+    nextLabel = "Continue last sandbox";
   } else {
     nextHref = "/app/simulation/result";
-    nextLabel = "Open result";
+    nextLabel = "Continue last sandbox";
   }
 
   return {

@@ -1,6 +1,6 @@
 # Supabase Staging Setup
 
-This guide validates whether Supabase staging can support the current MiroFish product. It must not connect real payment, enable real LLM generation, or change product behavior.
+This guide validates whether Supabase staging can support the current Astraloom product. It must not connect real payment, enable real LLM generation, or change product behavior.
 
 ## Safety Gates
 

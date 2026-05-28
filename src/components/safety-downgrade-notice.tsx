@@ -51,7 +51,7 @@ const levelConfig = {
     className: "border-[#c4824a]/35 bg-[#fdf5ed] text-[#7c5524]",
     badgeClassName: "border-[#c4824a]/25 bg-white/70 text-[#7c5524]",
     summary:
-      "MiroFish can still show structure, evidence, and low-risk communication options, but it keeps stronger output unavailable.",
+      "Astraloom can still show structure, evidence, and low-risk communication options, but it keeps stronger output unavailable.",
     impact: [
       "High-risk strong claims are hidden.",
       "Full-depth or paid-depth expansion cannot bypass this state.",
@@ -69,7 +69,7 @@ const levelConfig = {
     className: "border-[#8c6bb1]/35 bg-[#f4effa] text-[#4b3568]",
     badgeClassName: "border-[#8c6bb1]/25 bg-white/75 text-[#4b3568]",
     summary:
-      "This scenario includes content that MiroFish should not simulate into actions, claims, or report depth.",
+      "This scenario includes content that Astraloom should not simulate into actions, claims, or report depth.",
     impact: [
       "Simulation ticks, strong claims, and report rendering stay unavailable.",
       "Full-depth or paid-depth access remains unavailable for this run.",

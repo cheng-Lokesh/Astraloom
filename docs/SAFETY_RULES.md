@@ -1,10 +1,10 @@
-# Project MiroFish Safety Rules
+# Project Astraloom Safety Rules
 
 Safety downgrade overrides product flow, paid unlock, and report generation.
 
 ## Product Safety Position
 
-MiroFish provides scenario simulation and relationship dynamics review. It does not provide medical, legal, financial, psychological, emergency, or personal-safety professional advice.
+Astraloom provides scenario simulation and relationship dynamics review. It does not provide medical, legal, financial, psychological, emergency, or personal-safety professional advice.
 
 ## High-Risk Categories
 

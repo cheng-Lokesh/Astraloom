@@ -48,7 +48,7 @@ export default function AcceptancePage() {
             End-to-End Golden Case Acceptance
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[#62695d]">
-            Local deterministic validation for the MiroFish evidence chain. This
+            Local deterministic validation for the Astraloom evidence chain. This
             page does not call LLM providers, payment providers, or privileged
             backend writers.
           </p>

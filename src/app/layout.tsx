@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { LanguageProvider } from "@/components/language-provider";
+import { BRAND_NAME, PRODUCT_DESCRIPTOR, TAGLINE } from "@/lib/brand";
 import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MiroFish 职场决策推演器",
-  description: "把职场十字路口转成 Agent 生态、情景路径和报告预览。",
+  title: `${BRAND_NAME} | Destiny-situation sandbox`,
+  description: `${TAGLINE} ${BRAND_NAME} is ${PRODUCT_DESCRIPTOR}.`,
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
-# Project MiroFish Data Contracts
+# Project Astraloom Data Contracts
 
-This file defines the minimum data ledger for the MiroFish MVP. Any schema change must update this file.
+This file defines the minimum data ledger for the Astraloom MVP. Any schema change must update this file.
 
 ## Core Evidence Chain
 
@@ -277,14 +277,18 @@ flow and must include:
 Local `SeedContextDraft` may carry additional structured intake fields before
 the production seed-context repository is enabled:
 
+- `destinyBirthInfo`
+- `currentQuestionDescription`
 - `recentEventsText`
 - `decisionOptionsText`
 - `forbiddenActionsText`
 - `desiredOutputText`
 - `privacySafetyAck`
 
-These local fields are folded into extraction, safety scanning, and local
-builder context. They do not add production backend writes.
+`destinyBirthInfo` and `currentQuestionDescription` support Simple Mode's
+minimal entry point. They are folded into extraction, safety scanning, and local
+builder context. They do not add production backend writes, deterministic fate
+claims, or paid accuracy differences.
 
 When `graph_locked` is true, the UI must treat the graph as frozen for the
 current run. Users can only supplement facts upstream and regenerate a new graph;

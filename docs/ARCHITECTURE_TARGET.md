@@ -1,4 +1,4 @@
-# Project MiroFish Target Architecture
+# Project Astraloom Target Architecture
 
 Status: Target architecture lock.
 

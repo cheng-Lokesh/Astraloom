@@ -184,14 +184,14 @@ export default function AgentsPage() {
       <div className="space-y-6">
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <SurfaceCard emphasis="strong">
-            <StatusPill tone="ready">Agent Profile confirmation</StatusPill>
+            <StatusPill tone="ready">Situation model details</StatusPill>
             <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight text-[#11150f]">
-              Review the simulation models before the graph is built.
+              Inspect bounded agent models behind the sandbox.
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
-              Agents are bounded simulation models, not statements of fact about real people. Inspect
-              their sources, confidence, missing fields, and behavior policy before using them
-              for relationship graph preparation.
+              This optional detail page shows the situation models used for
+              dynamic path simulation. They are bounded models, not statements
+              of fact about real people.
             </p>
             <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-7 text-[#3f483d]">
               <span className="font-semibold text-[#11150f]">Scenario: </span>

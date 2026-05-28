@@ -1,4 +1,4 @@
-# MiroFish E2E Golden Case Acceptance
+# Astraloom E2E Golden Case Acceptance
 
 This acceptance pack verifies the current product loop without adding product
 features or opening external providers.

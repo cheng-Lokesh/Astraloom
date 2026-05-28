@@ -1,14 +1,14 @@
-# Project MiroFish Product Constitution
+# Project Astraloom Product Constitution
 
-This document is the product constitution for all Project MiroFish implementation work. If any task, code change, UI copy, data model, or architecture choice conflicts with this document or the whitepaper, the whitepaper and this constitution win.
+This document is the product constitution for all Project Astraloom implementation work. If any task, code change, UI copy, data model, or architecture choice conflicts with this document or the whitepaper, the whitepaper and this constitution win.
 
 ## Product Identity
 
-MiroFish is an AI Life Simulator and relationship/decision sandbox.
+Astraloom is an AI Life Simulator and relationship/decision sandbox.
 
 It helps users load a real-life situation into a small agent ecology, observe relationship dynamics over time, and review evidence-backed scenario outcomes.
 
-MiroFish is not:
+Astraloom is not:
 
 - An astrology app.
 - A fortune-telling app.

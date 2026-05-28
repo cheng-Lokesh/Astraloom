@@ -36,7 +36,7 @@ export function buildReportDraft(
     simulationRunId: simulationRun.id,
     status: locked ? "locked" : "ready_placeholder",
     reportJson: {
-      title: "MiroFish 职场决策预览报告",
+      title: "Astraloom 职场决策预览报告",
       executiveSummary: locked
         ? preview.safetyMessage
         : preview.previewSummary,

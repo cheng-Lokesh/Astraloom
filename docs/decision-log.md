@@ -1,4 +1,4 @@
-# Project MiroFish Decision Log
+# Project Astraloom Decision Log
 
 This file records decisions that should survive context resets.
 
@@ -14,7 +14,7 @@ Decision: The app supports English and Chinese from the early MVP.
 
 Consequence: The founder can work in Chinese while the primary target users can use English. New user-facing pages should keep bilingual copy aligned with the existing language provider.
 
-## DEC-003: MiroFish-Like Agent Ecology Is The Product Core
+## DEC-003: Astraloom-Like Agent Ecology Is The Product Core
 
 Decision: The product should feel like a living micro-agent ecology, not a generic fortune report.
 

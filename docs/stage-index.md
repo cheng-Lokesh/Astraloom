@@ -1,4 +1,4 @@
-# Project MiroFish Stage Index
+# Project Astraloom Stage Index
 
 This is a compact map for resuming implementation without loading long chat history.
 

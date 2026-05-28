@@ -1,4 +1,4 @@
-# Project MiroFish API Contracts
+# Project Astraloom API Contracts
 
 This file defines API boundaries for the MVP. Any route added or changed must update this file.
 

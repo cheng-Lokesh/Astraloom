@@ -1,4 +1,4 @@
-# Project MiroFish Full Product Roadmap
+# Project Astraloom Full Product Roadmap
 
 Status: Product direction lock.
 
@@ -6,20 +6,20 @@ Current state: Local MVP.
 
 Target state: Full Product.
 
-This document upgrades Project MiroFish from a local-first MVP into a complete
+This document upgrades Project Astraloom from a local-first MVP into a complete
 product roadmap. It does not authorize code changes, database connection, LLM
 calls, payment writes, entitlement grants, or deletion of the existing local
 flow.
 
 ## Product Lock
 
-MiroFish is an AI Life Simulator and relationship/decision sandbox.
+Astraloom is an AI Life Simulator and relationship/decision sandbox.
 
 The full product must preserve this core loop:
 
 `Seed Context -> Key People Extraction -> Agent Profiles -> Relation Graph -> Simulation Engine -> Event Log -> Claims -> Reports -> Feedback Calibration`
 
-MiroFish must not become:
+Astraloom must not become:
 
 - A generic chatbot.
 - A fortune-telling or astrology product.

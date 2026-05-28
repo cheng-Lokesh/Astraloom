@@ -6,48 +6,51 @@ import { StatusPill } from "@/components/status-pill";
 import { TrialSampleButton } from "@/components/trial-sample-button";
 import { ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 
-const loop = [
+const mainFlow = [
   {
-    title: "Seed Context",
-    body: "Name one scenario, time window, recent events, options, and boundaries.",
-    href: "/app/new/scene",
-    label: "Create sandbox",
+    title: "Start",
+    body: "Enter birth context and one current question.",
+    href: "/app/start",
+    label: "Start my destiny sandbox",
   },
   {
-    title: "Key People",
-    body: "Confirm, rename, merge, delete, or supplement the important people.",
-    href: "/app/new/people",
-    label: "Confirm people",
+    title: "Clarify",
+    body: "Answer up to three short questions only when the sandbox needs essential context.",
+    href: "/app/start/clarify",
+    label: "Open clarification",
   },
   {
-    title: "Agent Profiles",
-    body: "Review the user core, parallel selves, and NPC agents with confidence.",
-    href: "/app/new/agents",
-    label: "Review agents",
-  },
-  {
-    title: "Relation Graph",
-    body: "Inspect read-only relation edges, evidence refs, and graph lock state.",
-    href: "/app/new/graph",
-    label: "Review graph",
-  },
-  {
-    title: "Simulation Ticks",
-    body: "Freeze the graph and run baseline, cautious_self, and decisive_self.",
+    title: "Run",
+    body: "Watch the destiny climate, real situation, and path simulation become events.",
     href: "/app/simulation/running",
-    label: "Run simulation",
+    label: "Run sandbox",
   },
   {
-    title: "Event Logs",
-    body: "Check what changed on agents and relation edges before claims appear.",
-    href: "/app/simulation/running",
-    label: "Inspect events",
-  },
-  {
-    title: "Claims + Feedback",
-    body: "Review evidence-backed claims, paid-depth boundaries, and calibration.",
+    title: "Result",
+    body: "Review integrated findings, evidence replay, and calibration prompts.",
     href: "/app/simulation/result",
     label: "Open result",
+  },
+];
+
+const advancedPages = [
+  {
+    title: "Advanced structure review",
+    body: "Inspect extracted people and roles when you want to audit the situation model.",
+    href: "/app/new/people",
+    label: "People details",
+  },
+  {
+    title: "Situation model details",
+    body: "Review user core, parallel selves, and NPC agent drafts with source confidence.",
+    href: "/app/new/agents",
+    label: "Agent details",
+  },
+  {
+    title: "Situation map details",
+    body: "Inspect the read-only relation map and evidence refs behind the sandbox.",
+    href: "/app/new/graph",
+    label: "Map details",
   },
 ];
 
@@ -69,22 +72,24 @@ export default function DashboardPage() {
     <AppShell>
       <section className="mf-page-grid">
         <SurfaceCard emphasis="strong" className="p-7">
-          <StatusPill tone="ready">Personal scenario sandbox</StatusPill>
+          <StatusPill tone="ready">Destiny-situation sandbox</StatusPill>
           <h1 className="mt-5 max-w-4xl text-5xl font-semibold leading-tight text-[#11150f]">
-            Start one sandbox, then follow the evidence all the way to claims.
+            Astraloom combines destiny climate, real-world situation, and dynamic path simulation.
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-[#62695d]">
-            MiroFish is for one relationship or decision scenario at a time.
-            You define the situation, confirm the people, review agents and a
-            read-only graph, run deterministic ticks, and inspect only the
-            claims that have Event Log evidence.
+            Start with basic birth context and one current question. The main
+            path stays simple: start, clarify only if needed, watch the sandbox
+            run, then inspect findings and evidence replay.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <ButtonLink href="/app/new/scene" className="px-5 py-3">
-              Create sandbox
+            <ButtonLink href="/app/start" className="px-5 py-3">
+              Start my destiny sandbox
             </ButtonLink>
-            <TrialSampleButton className="mf-button mf-button-secondary px-5 py-3">
-              Open sample sandbox
+            <TrialSampleButton
+              target="/app/simulation/result"
+              className="mf-button mf-button-secondary px-5 py-3"
+            >
+              Try complete sample
             </TrialSampleButton>
           </div>
         </SurfaceCard>
@@ -93,11 +98,14 @@ export default function DashboardPage() {
           <LocalSandboxSnapshot
             emptyAction={
               <div className="flex flex-wrap gap-2">
-                <ButtonLink href="/app/new/scene" className="px-4 py-2">
-                  Create sandbox
+                <ButtonLink href="/app/start" className="px-4 py-2">
+                  Start my destiny sandbox
                 </ButtonLink>
-                <TrialSampleButton className="mf-button mf-button-secondary px-4 py-2">
-                  Open sample
+                <TrialSampleButton
+                  target="/app/simulation/result"
+                  className="mf-button mf-button-secondary px-4 py-2"
+                >
+                  Try complete sample
                 </TrialSampleButton>
               </div>
             }
@@ -108,7 +116,7 @@ export default function DashboardPage() {
             </h2>
             <div className="mt-5 space-y-4 text-sm leading-6 text-white/66">
               <p>No production backend writes are needed for this first-run loop.</p>
-              <p>The sample flow demonstrates agents, graph, events, claims, and feedback.</p>
+              <p>Advanced pages remain available for structure review, situation models, map details, events, findings, and feedback.</p>
               <p>Safety checks can stop blocked scenarios before runnable data is saved.</p>
             </div>
           </section>
@@ -118,16 +126,16 @@ export default function DashboardPage() {
       <section className="mt-6">
         <div className="mf-section-header">
           <div>
-            <h2 className="mf-section-title">Full-loop navigation</h2>
+            <h2 className="mf-section-title">Simple main flow</h2>
             <p className="mf-section-copy">
-              Use these steps as route cognition: every surface should make the
-              next artifact in the sandbox visible.
+              This is the user-facing path. People, agent, and graph pages are
+              available for inspection, but they are not required dashboard steps.
             </p>
           </div>
-          <StatusPill tone="planned">Local MVP loop</StatusPill>
+          <StatusPill tone="planned">Main path</StatusPill>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {loop.map((step, index) => (
+          {mainFlow.map((step, index) => (
             <article key={`${step.title}-${index}`} className="mf-card p-5">
               <span className="text-xs font-semibold uppercase text-[#568262]">
                 Step {index + 1}
@@ -140,6 +148,37 @@ export default function DashboardPage() {
               </p>
               <ButtonLink href={step.href} className="mt-4 px-4 py-2">
                 {step.label}
+              </ButtonLink>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <div className="mf-section-header">
+          <div>
+            <h2 className="mf-section-title">Advanced detail pages</h2>
+            <p className="mf-section-copy">
+              Use these only when you want to inspect or audit the structure
+              behind a run.
+            </p>
+          </div>
+          <StatusPill tone="planned">Optional</StatusPill>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          {advancedPages.map((page) => (
+            <article key={page.href} className="mf-card p-5">
+              <span className="text-xs font-semibold uppercase text-[#568262]">
+                Advanced
+              </span>
+              <h2 className="mt-3 text-base font-semibold text-[#11150f]">
+                {page.title}
+              </h2>
+              <p className="mt-2 min-h-[72px] text-sm leading-6 text-[#62695d]">
+                {page.body}
+              </p>
+              <ButtonLink href={page.href} variant="secondary" className="mt-4 px-4 py-2">
+                {page.label}
               </ButtonLink>
             </article>
           ))}

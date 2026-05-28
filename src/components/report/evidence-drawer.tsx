@@ -16,7 +16,7 @@ export function EvidenceDrawer({
           Evidence drawer
         </h2>
         <p className="mt-3 text-sm leading-6 text-[#62695d]">
-          Select a Claim to inspect Event Log evidence.
+          Select a Finding to inspect Event Log evidence.
         </p>
       </section>
     );
@@ -39,7 +39,7 @@ export function EvidenceDrawer({
       </div>
 
       <p className="mt-3 text-sm leading-6 text-[#62695d]">
-        This claim is shown only because the Event Log contains matching
+        This finding is shown only because the Event Log contains matching
         evidence. Report copy does not create independent conclusions.
       </p>
 

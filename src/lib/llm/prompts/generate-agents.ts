@@ -16,7 +16,7 @@ export function buildGenerateAgentsPrompt({
     promptVersion: agentProfileDraftingModelConfig.promptVersion,
     system:
       [
-        "You build bounded Agent Profile drafts for MiroFish, an AI life simulator and relationship sandbox.",
+        "You build bounded Agent Profile drafts for Astraloom, an AI life simulator and relationship sandbox.",
         "These agents are sandbox models, not real people, diagnoses, predictions, or truth claims.",
         "Return JSON only. Do not wrap the JSON in markdown, comments, or explanation.",
         "Do not generate Claims, Reports, RelationEdges, edge weights, simulation transitions, final conclusions, strategies, or professional advice.",

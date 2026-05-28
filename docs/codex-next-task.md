@@ -1,4 +1,4 @@
-﻿# Project MiroFish Codex Build Notes
+﻿# Project Astraloom Codex Build Notes
 
 Current stage: `74 Persistence adapter implementation authorization reconsideration external final decision archive remediation review no-go reconciliation remediation review no-go reconciliation no-go remediation review no-go remediation review no-go packet`.
 
@@ -11,7 +11,7 @@ Context recovery:
 Implemented:
 
 - Next.js App Router project with TypeScript and Tailwind.
-- Base app shell for Project MiroFish.
+- Base app shell for Project Astraloom.
 - Home/workspace/login/intake/people/agents/runs/safety/reports/billing/sync/server-writers/qa/setup/setup-migration routes.
 - Global `EN / 中文` language switcher with local browser persistence.
 - Supabase browser client wrapper.

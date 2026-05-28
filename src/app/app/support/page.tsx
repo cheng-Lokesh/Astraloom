@@ -57,7 +57,7 @@ const ticketTypes: Array<{
 
 function trackingCode(ticket: SupportTicketDraft) {
   const compact = ticket.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
-  return `MF-${compact || "LOCAL1"}`;
+  return `AL-${compact || "LOCAL1"}`;
 }
 
 export default function SupportPage() {

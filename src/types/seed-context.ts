@@ -7,6 +7,8 @@ export type SeedContextDraft = {
   questionText: string;
   trackType: TrackType;
   timeWindow: TimeWindow;
+  destinyBirthInfo?: string;
+  currentQuestionDescription?: string;
   situationSummary: string;
   recentEvents?: string;
   recentEventsText?: string;

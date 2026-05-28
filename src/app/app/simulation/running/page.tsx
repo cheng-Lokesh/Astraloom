@@ -4,6 +4,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
+import { SampleSandboxBanner } from "@/components/sample-sandbox-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { TimelineFeed } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
@@ -20,6 +21,7 @@ import {
 import type { SafetyDecision } from "@/lib/safety/safety-types";
 import { verifySafety } from "@/lib/safety/safety-verifier";
 import type { SafetySnapshot } from "@/lib/simulation/simulation-types";
+import { isCompleteDestinySampleSeed } from "@/lib/trial/sample-workspace";
 import type {
   SimulationBranchId,
   SimulationRunDraft,
@@ -629,6 +631,9 @@ export default function RunsPage() {
 
   return (
     <AppShell>
+      {isCompleteDestinySampleSeed(seedContext.id) ? (
+        <SampleSandboxBanner />
+      ) : null}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <StatusPill tone="ready">Simulation run</StatusPill>
@@ -636,7 +641,7 @@ export default function RunsPage() {
             Watch the scenario sandbox run.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            MiroFish freezes the locked graph, runs deterministic branch ticks,
+            Astraloom freezes the locked graph, runs deterministic branch ticks,
             writes Event Logs, then builds Claims from those events. No LLM
             directly decides final claims, and there are no mid-run story
             choices.

@@ -79,7 +79,6 @@ const weakFragments = new Set([
   "somebody",
   "person",
   "people",
-  "person",
   "i",
   "me",
   "myself",
@@ -123,7 +122,7 @@ function normalizeLabel(value: string) {
 function cleanCandidate(value: string) {
   return value
     .replace(/^[\s"'<{[(]+/, "")
-    .replace(/[\s"'>}\]),.。！!？?；;:：]+$/, "")
+    .replace(/[\s"'>}\]),.。！!；;:：]+$/, "")
     .replace(/^(my|the|a|an)\s+/i, "")
     .trim();
 }
@@ -206,9 +205,9 @@ function inferRule(value: string) {
 
 function missingFieldsForRole(role: string) {
   return roleRuleForRole(role)?.missingFields ?? [
-    "关系类型",
-    "最近互动",
-    "可验证证据",
+    "Relationship type",
+    "Recent interaction",
+    "Verifiable evidence",
   ];
 }
 
@@ -272,18 +271,16 @@ function addUnique(
   person: KeyPersonDraft,
 ) {
   const key = normalizeLabel(person.label);
-  if (!key || key.length < 2 || weakFragments.has(key) || candidates.has(key)) {
-    return;
-  }
+  if (!key || key.length < 2 || weakFragments.has(key) || candidates.has(key)) return;
   candidates.set(key, person);
 }
 
 function explicitPeopleEntries(value: string) {
   return value
-    .split(/[\n,，;；、/]+/)
+    .split(/[\n,，;；、]+/)
     .map((item) => {
       const trimmed = item.trim();
-      const [rawLabel] = trimmed.split(/[:：-]/);
+      const [rawLabel] = trimmed.split(/[:：]/);
 
       return {
         label: cleanCandidate(rawLabel),

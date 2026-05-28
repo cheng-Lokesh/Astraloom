@@ -1,4 +1,4 @@
-# Project MiroFish Product Quality Plan
+# Project Astraloom Product Quality Plan
 
 Status: Local product-quality focus.
 
@@ -452,7 +452,7 @@ and Golden Case acceptance remain the active product-quality surface.
 
 ## Non-Goals
 
-Product-quality work must not turn MiroFish into:
+Product-quality work must not turn Astraloom into:
 
 - A chatbot.
 - A fortune-telling app.

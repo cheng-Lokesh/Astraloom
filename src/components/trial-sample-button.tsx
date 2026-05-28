@@ -12,7 +12,7 @@ type TrialSampleButtonProps = {
 
 export function TrialSampleButton({
   className,
-  children = "Open sample sandbox",
+  children = "Try a complete destiny sandbox sample",
   target = "/app/simulation/result",
 }: TrialSampleButtonProps) {
   const router = useRouter();

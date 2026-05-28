@@ -1,4 +1,4 @@
-# Project MiroFish Development Log
+# Project Astraloom Development Log
 
 ## 2026-05-24 - Full Product Roadmap Lock
 
@@ -6,14 +6,14 @@ Stage type: documentation-only product direction lock.
 
 Current state recorded:
 
-- Project MiroFish is currently a Local MVP.
+- Project Astraloom is currently a Local MVP.
 - Existing local-first flows must remain available.
 - Supabase, LLM, payment, entitlement, and system-writer capabilities are not
   newly enabled by this stage.
 
 Target state recorded:
 
-- Project MiroFish is now explicitly aimed at a Full Product roadmap.
+- Project Astraloom is now explicitly aimed at a Full Product roadmap.
 - Future development is locked to the product loop:
   `Seed Context -> Key People Extraction -> Agent Profiles -> Relation Graph -> Simulation Engine -> Event Log -> Claims -> Reports -> Feedback Calibration`.
 - The target architecture is Next.js App Router, Supabase Auth/Postgres/RLS,
@@ -29,7 +29,7 @@ Documents created:
 
 Product boundaries reaffirmed:
 
-- Do not build MiroFish into a generic chatbot.
+- Do not build Astraloom into a generic chatbot.
 - Do not build a fortune-telling or astrology product.
 - Do not build a therapy product.
 - Do not build mind-reading claims.
@@ -57,7 +57,7 @@ Stage type: route and UX consolidation.
 
 Current state recorded:
 
-- Project MiroFish keeps the Local MVP logic and local draft flows.
+- Project Astraloom keeps the Local MVP logic and local draft flows.
 - Short product routes existed for dashboard, intake, people, agents, runs,
   reports, and billing.
 
@@ -93,7 +93,7 @@ Stage type: localStorage to Repository migration.
 
 Current state recorded:
 
-- Project MiroFish remains a Local MVP.
+- Project Astraloom remains a Local MVP.
 - The existing localStorage draft files are still the active persistence
   adapter.
 - Supabase schema and auth helpers exist, but this stage does not replace local
@@ -129,7 +129,7 @@ Stage type: Safety hard gate.
 
 Current state recorded:
 
-- Project MiroFish remains a Local MVP with local deterministic generation.
+- Project Astraloom remains a Local MVP with local deterministic generation.
 - No LLM, payment unlock, Supabase persistence replacement, or new professional
   advice flow is enabled by this stage.
 
@@ -241,7 +241,7 @@ Stage type: entitlement and mock paid unlock.
 
 Current state recorded:
 
-- Project MiroFish remains a Local MVP.
+- Project Astraloom remains a Local MVP.
 - No Stripe checkout, real collection, webhook, production payment write, or
   service-role entitlement grant is enabled by this stage.
 - Report Engine v1 remains downstream of evidence-backed Claims.

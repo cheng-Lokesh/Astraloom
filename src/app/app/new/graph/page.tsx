@@ -126,15 +126,16 @@ export default function GraphPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <StatusPill tone={graphLocked ? "ready" : "planned"}>
-            {graphLocked ? "Graph locked" : "Draft graph"}
+            {graphLocked ? "Situation map details" : "Draft situation map"}
           </StatusPill>
           <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Review the read-only scenario graph.
+            Inspect the read-only situation map.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Nodes come from Agent Profiles. Edges come from deterministic relation rules,
-            confidence scores, and evidence refs. This is not a CRM: there are no edge
-            sliders, relation controls, or direct weight edits.
+            This optional detail page shows the map behind the destiny
+            sandbox. Nodes come from situation models; edges come from
+            deterministic relation rules, confidence scores, and evidence refs.
+            This is not a CRM.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">

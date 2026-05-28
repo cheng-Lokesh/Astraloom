@@ -1,4 +1,4 @@
-# Project MiroFish Stability Roadmap
+# Project Astraloom Stability Roadmap
 
 This document sets the default operating rhythm for slow, stable product progress.
 It is intentionally stricter than a launch checklist: the goal is a complete,
@@ -6,7 +6,7 @@ trustworthy, cost-controlled product before public release pressure.
 
 ## Product Standard
 
-Project MiroFish should earn payment intent by making users feel three things:
+Project Astraloom should earn payment intent by making users feel three things:
 
 - The product understands their concrete situation and important people.
 - The product turns that situation into a visible agent ecology instead of a

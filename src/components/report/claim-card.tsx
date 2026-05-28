@@ -56,13 +56,13 @@ export function ClaimCard({
         </div>
       </div>
       <p className="mt-4 text-sm leading-6 text-[#62695d]">
-        This claim comes from Event Log evidence. It is a reviewable sandbox
+        This finding comes from Event Log evidence. It is a reviewable sandbox
         signal, not a certain result.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="mf-tag">agents {claim.relatedAgentIds.length}</span>
         <span className="mf-tag">edges {claim.relatedRelationEdgeIds.length}</span>
-        <span className="mf-tag">claim_id {claim.id}</span>
+        <span className="mf-tag">stored id {claim.id}</span>
       </div>
     </button>
   );

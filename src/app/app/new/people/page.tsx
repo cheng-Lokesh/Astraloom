@@ -288,14 +288,14 @@ export default function PeoplePage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <main className="space-y-5">
           <SurfaceCard emphasis="strong">
-            <StatusPill tone="planned">Key People confirmation</StatusPill>
+            <StatusPill tone="planned">Advanced structure review</StatusPill>
             <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight text-[#11150f]">
-              Confirm the cast before MiroFish builds agents.
+              Situation model details: people and roles.
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-              These are people or roles detected from your intake. They are not agents yet.
-              Confirm, rename, merge, delete, or supplement the cast before the next step creates
-              agent profiles and a read-only relationship graph.
+              This optional detail page lets you inspect people or roles
+              detected from the situation. The main destiny sandbox remains
+              start, clarification if needed, running, and result.
             </p>
             <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-7 text-[#3f483d]">
               <span className="font-semibold text-[#11150f]">Scenario: </span>

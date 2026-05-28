@@ -1,4 +1,4 @@
-# Project MiroFish Implementation State
+# Project Astraloom Implementation State
 
 Snapshot date: 2026-05-23
 
@@ -8,7 +8,7 @@ This file is the compact recovery point for future Codex sessions. Read this bef
 
 Build the product implementation. Do not expand the whitepaper unless the user explicitly asks to return to product writing.
 
-The product direction is a MiroFish-like micro-agent simulation: generate individual digital agents, place them in a relationship ecology, run future scenario inference, and present results as readable, safe, paid reports. The current engineering track is still building the protected MVP foundation.
+The product direction is a Astraloom-like micro-agent simulation: generate individual digital agents, place them in a relationship ecology, run future scenario inference, and present results as readable, safe, paid reports. The current engineering track is still building the protected MVP foundation.
 
 ## Current Stage
 

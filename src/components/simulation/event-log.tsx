@@ -125,9 +125,13 @@ export function ConfidenceExplanation({ value }: { value: number }) {
 
 export function EdgeDeltaView({
   event,
+  edges = [],
+  agents = [],
   compact = false,
 }: {
   event: SimulationEventDraft;
+  edges?: RelationEdgeDraft[];
+  agents?: AgentProfileDraft[];
   compact?: boolean;
 }) {
   const rows = Object.entries(event.edgeWeightDeltas).flatMap(([edgeId, delta]) =>
@@ -138,6 +142,7 @@ export function EdgeDeltaView({
       return {
         id: `${edgeId}:${key}`,
         edgeId,
+        edgeLabel: edgeLabel(edges, agents, edgeId),
         key: typedKey,
         value: value ?? 0,
         before,
@@ -163,18 +168,18 @@ export function EdgeDeltaView({
         >
           <div>
             <div className="font-semibold text-[#11150f]">
+              {row.edgeLabel}
+            </div>
+            <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
               {weightLabels[row.key]}
             </div>
-            <code className="mt-1 block break-all text-[11px] text-[#7d8578]">
-              {row.edgeId}
-            </code>
           </div>
           <div className="text-right">
             <div className="font-semibold text-[#11150f]">
               {row.before ?? "-"}{" -> "}{row.after ?? "-"}
             </div>
             <div className={`mt-1 font-semibold ${deltaTone(row.key, row.value)}`}>
-              {row.value > 0 ? "\u25B2" : row.value < 0 ? "\u25BC" : "-"}{" "}
+              {row.value > 0 ? "Increased" : row.value < 0 ? "Decreased" : "Unchanged"}{" "}
               {row.value > 0 ? `+${row.value}` : row.value}
             </div>
           </div>

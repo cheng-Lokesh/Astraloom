@@ -5,7 +5,7 @@ The Supabase migrations live at:
 - `supabase/migrations/0001_mvp_core_schema.sql`
 - `supabase/migrations/0002_mvp_evidence_chain_contracts.sql`
 
-This schema is intentionally minimal but must preserve the MiroFish evidence chain:
+This schema is intentionally minimal but must preserve the Astraloom evidence chain:
 
 - `seed_contexts` is the first user-generated product object.
 - `key_people` comes next for structured person confirmation.

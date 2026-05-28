@@ -4,7 +4,7 @@ Use this template for every implementation task. Do not ask Codex to freely impl
 
 ## 1. Product Background
 
-This feature is part of the MiroFish MVP loop:
+This feature is part of the Astraloom MVP loop:
 
 `Seed Context -> Key People -> Agent Profiles -> Relation Graph -> Simulation Ticks -> Event Logs -> Report Claims -> Feedback Calibration`
 

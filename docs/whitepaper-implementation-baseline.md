@@ -1,4 +1,4 @@
-# Project MiroFish 白皮书实现基准
+# Project Astraloom 白皮书实现基准
 
 来源：`白皮书_补齐版_v35_VibeCoding实施协作手册版.docx`
 
@@ -6,7 +6,7 @@
 
 ## 1. 产品定义
 
-Project MiroFish 不是传统算命、心理咨询、CRM、聊天机器人或普通报告工具，而是 AI Life Simulator / 个人数字生命沙盘模拟器。
+Project Astraloom 不是传统算命、心理咨询、CRM、聊天机器人或普通报告工具，而是 AI Life Simulator / 个人数字生命沙盘模拟器。
 
 核心体验不是“回答用户一个结论”，而是：
 

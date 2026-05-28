@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { PageContainer } from "@/components/ui-foundation";
+import { BRAND_NAME } from "@/lib/brand";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -31,11 +32,11 @@ export function AppShell({ children }: AppShellProps) {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4">
           <Link href="/app/dashboard" className="flex min-w-0 items-center gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#11150f] text-sm font-semibold tracking-tight text-white">
-              MF
+              AL
             </span>
             <span className="min-w-0">
               <span className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-[#6f766b]">
-                MiroFish
+                {BRAND_NAME}
               </span>
               <span className="block truncate text-[15px] font-semibold text-[#11150f]">
                 AI Life Simulator

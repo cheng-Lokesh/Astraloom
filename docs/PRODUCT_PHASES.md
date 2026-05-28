@@ -1,4 +1,4 @@
-# Project MiroFish Product Phases
+# Project Astraloom Product Phases
 
 Status: Ordered development lock.
 
@@ -13,7 +13,7 @@ separate scoped implementation task.
 
 ## Global Phase Rules
 
-- Do not turn MiroFish into a chatbot, fortune-telling app, therapy product,
+- Do not turn Astraloom into a chatbot, fortune-telling app, therapy product,
   mind-reading product, CRM, or RPG.
 - Do not delete existing local flows during migration.
 - Do not enable database writes, LLM calls, payment writes, entitlement grants,

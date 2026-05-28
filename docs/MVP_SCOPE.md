@@ -1,4 +1,4 @@
-# Project MiroFish MVP Scope
+# Project Astraloom MVP Scope
 
 This file defines what belongs in the MVP and what must wait.
 
@@ -6,7 +6,7 @@ This file defines what belongs in the MVP and what must wait.
 
 The MVP validates one core belief:
 
-Users will trust and pay for MiroFish if their real situation is transformed into recognizable digital agents, a readable relationship graph, event-backed scenario evolution, and evidence-linked claims.
+Users will trust and pay for Astraloom if their real situation is transformed into recognizable digital agents, a readable relationship graph, event-backed scenario evolution, and evidence-linked claims.
 
 ## Required MVP Loop
 

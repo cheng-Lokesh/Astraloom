@@ -83,7 +83,7 @@ export default function SettingsPage() {
     setShowClearModal(false);
     setStorageSize(storageEstimate());
     setMessage(
-      "Browser-local MiroFish drafts were cleared. No production deletion was executed.",
+      "Browser-local Astraloom drafts were cleared. No production deletion was executed.",
     );
   }
 
@@ -96,7 +96,7 @@ export default function SettingsPage() {
             Local preferences, privacy, and product boundaries.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Settings explains what MiroFish stores locally and what the product
+            Settings explains what Astraloom stores locally and what the product
             will not do. Clearing data here only affects this browser.
           </p>
         </div>
@@ -144,7 +144,7 @@ export default function SettingsPage() {
               Current local data
             </h2>
             <p className="mt-2 text-sm leading-6 text-[#62695d]">
-              MiroFish Local MVP stores drafts in this browser. Production
+              Astraloom Local MVP stores drafts in this browser. Production
               database sync is not started from Settings.
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -179,7 +179,7 @@ export default function SettingsPage() {
               Product boundaries
             </h2>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <BoundaryCard title="Not professional advice" body="MiroFish does not provide medical, legal, investment, or psychotherapy advice." />
+              <BoundaryCard title="Not professional advice" body="Astraloom does not provide medical, legal, investment, or psychotherapy advice." />
               <BoundaryCard title="Not a prediction engine" body="The sandbox uses evidence-linked scenario dynamics, not certain future claims." />
               <BoundaryCard title="Read-only graph" body="Users can inspect relation edges but cannot edit trust, hostility, dependency, or other weights." />
               <BoundaryCard title="Safety gate first" body="Safety downgraded or paused states cannot be bypassed by full-depth views." />
@@ -220,7 +220,7 @@ export default function SettingsPage() {
           <section className="w-full max-w-lg rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.22)]">
             <StatusPill tone="caution">Browser-local only</StatusPill>
             <h2 className="mt-4 text-xl font-semibold text-[#11150f]">
-              Clear local MiroFish drafts?
+              Clear local Astraloom drafts?
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#62695d]">
               This clears local scenario, people, agents, graph, simulation,

@@ -121,7 +121,7 @@ export default function ScenePage() {
                   Choose one scenario domain
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-[#62695d]">
-                  Keep the run focused. MiroFish works best when one sandbox has
+                  Keep the run focused. Astraloom works best when one sandbox has
                   one core relationship or decision question.
                 </p>
               </div>

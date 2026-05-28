@@ -1,6 +1,6 @@
-﻿# Project MiroFish UI Acceptance
+﻿# Project Astraloom UI Acceptance
 
-This file defines product and UX acceptance rules for MiroFish screens.
+This file defines product and UX acceptance rules for Astraloom screens.
 
 ## Global UI Rule
 
@@ -35,6 +35,16 @@ primary navigation:
 - `/agents`
 - `/runs`
 - `/reports`
+
+Simple Mode may be used as a primary low-friction entry route while the advanced
+route family remains available:
+
+- `/app/simple`
+
+Simple Mode must ask only for basic destiny/birth context, one free-form current
+question description, a time window, and consent/safety acknowledgement. It must
+derive people, situation structure, agent profiles, graph, events, claims, and
+evidence from that input instead of reintroducing a long questionnaire.
 
 The accepted main-flow path is:
 

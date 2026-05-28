@@ -10,6 +10,7 @@ import { ClaimCard } from "@/components/report/claim-card";
 import { EvidenceDrawer } from "@/components/report/evidence-drawer";
 import { ReportSummary } from "@/components/report/report-summary";
 import { StrategyOptions } from "@/components/report/strategy-options";
+import { SampleSandboxBanner } from "@/components/sample-sandbox-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import {
   AgentRefsView,
@@ -37,9 +38,11 @@ import {
   filterClaimsBySafety,
   verifySafety,
 } from "@/lib/safety/safety-verifier";
+import { isCompleteDestinySampleSeed } from "@/lib/trial/sample-workspace";
 import type { AgentProfileDraft } from "@/types/agent-profile";
 import type { CalibrationProfile } from "@/lib/calibration/calibration-types";
 import type { ClaimDraft, ClaimLedgerDraft } from "@/types/claim";
+import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
 import type {
   FeedbackCorrectionConfidence,
   FeedbackFieldCorrection,
@@ -48,12 +51,17 @@ import type {
   FeedbackTargetType,
 } from "@/types/feedback";
 import type { RelationEdgeDraft } from "@/types/relation-edge";
-import type { ReportBranchComparison } from "@/types/report";
+import type {
+  ReportBranchComparison,
+  ReportEvidenceEvent,
+} from "@/types/report";
+import type { SeedContextDraft } from "@/types/seed-context";
+import type { SimulationEventDraft } from "@/types/simulation-run";
 
 const emptyClaims: ClaimDraft[] = [];
 
 const feedbackTargets: { value: FeedbackTargetType; label: string }[] = [
-  { value: "claim", label: "Selected claim" },
+  { value: "claim", label: "Selected finding" },
   { value: "agent", label: "Highlighted agent" },
   { value: "relation_edge", label: "Highlighted edge" },
   { value: "strategy", label: "Strategy usefulness" },
@@ -172,6 +180,82 @@ function edgeLabel(edge: RelationEdgeDraft, agents: AgentProfileDraft[]) {
   return `${from ?? edge.fromAgentId} -> ${to ?? edge.toAgentId}`;
 }
 
+function agentName(agents: AgentProfileDraft[], id: string) {
+  return agents.find((agent) => agent.id === id)?.label ?? id;
+}
+
+function relationName(
+  edges: RelationEdgeDraft[],
+  agents: AgentProfileDraft[],
+  id: string,
+) {
+  const edge = edges.find((item) => item.id === id);
+  if (!edge) return id;
+
+  return `${agentName(agents, edge.fromAgentId)} -> ${agentName(
+    agents,
+    edge.toAgentId,
+  )} / ${edge.relationshipType}`;
+}
+
+function riskLanguage(riskLevel: ClaimDraft["riskLevel"]) {
+  if (riskLevel === "high") {
+    return "Pressure is elevated in this run; treat the window as sensitive and review the evidence before acting.";
+  }
+
+  if (riskLevel === "medium") {
+    return "Pressure is noticeable but mixed; the useful move is to watch which signals repeat.";
+  }
+
+  return "Pressure is relatively light in this run; evidence still matters before drawing a strong conclusion.";
+}
+
+function confidenceLanguage(confidence: number) {
+  if (confidence >= 80) {
+    return "Strong sandbox signal, still not a certain outcome.";
+  }
+
+  if (confidence >= 55) {
+    return "Moderate signal with enough evidence to inspect.";
+  }
+
+  if (confidence >= 25) {
+    return "Low-confidence signal; useful mainly as a question to test.";
+  }
+
+  return "Weak signal; keep this finding provisional.";
+}
+
+function whyFindingMatters(claim: ClaimDraft, eventCount: number) {
+  const evidenceLabel = `${eventCount} sandbox event${
+    eventCount === 1 ? "" : "s"
+  }`;
+
+  if (claim.claimType === "risk_window") {
+    return `This matters because the same pressure pattern appears across ${evidenceLabel}. It marks a window where information gaps, resource pressure, or relation friction may shape the path.`;
+  }
+
+  if (claim.claimType === "opportunity_window") {
+    return `This matters because ${evidenceLabel} point toward a usable opening. The finding is not a promise; it shows where timing and evidence may support a cleaner next move.`;
+  }
+
+  if (claim.claimType === "coordination_signal") {
+    return `This matters because ${evidenceLabel} show where coordination or support may be available. It helps separate workable contact from noisier pressure.`;
+  }
+
+  return `This matters because ${evidenceLabel} show friction that is visible but not yet strong enough for heavier wording. The useful part is knowing what to inspect next.`;
+}
+
+function topRealWorldClues(seedContext: SeedContextDraft) {
+  return [
+    seedContext.currentQuestionDescription,
+    seedContext.situationSummary,
+    seedContext.recentEventsText ?? seedContext.recentEvents,
+    seedContext.decisionOptionsText ?? seedContext.decisionOptions,
+    seedContext.keyPeopleText,
+  ].filter((value): value is string => Boolean(value?.trim())).slice(0, 4);
+}
+
 export default function ReportsPage() {
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
@@ -197,6 +281,20 @@ export default function ReportsPage() {
     const seed = seedResult.ok ? seedResult.data : null;
     if (!seed) return null;
     const result = repos.relationGraphs.load(seed.id);
+    return result.ok ? result.data : null;
+  });
+  const [destinyProfile] = useState<DestinyProfileDraft | null>(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.destinyProfiles.load(seed.id);
+    return result.ok ? result.data : null;
+  });
+  const [destinyClimate] = useState<DestinyClimateDraft | null>(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.destinyClimates.load(seed.id);
     return result.ok ? result.data : null;
   });
   const [ledger, setLedger] = useState<ClaimLedgerDraft | null>(() => {
@@ -304,18 +402,23 @@ export default function ReportsPage() {
           ),
         )
     : [];
+  const topFindings = report
+    ? report.paidReport.fullClaims.slice(0, 3)
+    : claims.slice(0, 3);
+  const activeFinding = selectedClaim ?? topFindings[0] ?? null;
+  const activeFindingEvidenceEvents = report?.paidReport.fullEventChain ?? [];
 
   const highlightedAgentIds = useMemo(
-    () => selectedClaim?.relatedAgentIds ?? [],
-    [selectedClaim],
+    () => activeFinding?.relatedAgentIds ?? [],
+    [activeFinding],
   );
   const highlightedEdgeIds = useMemo(
-    () => selectedClaim?.relatedRelationEdgeIds ?? [],
-    [selectedClaim],
+    () => activeFinding?.relatedRelationEdgeIds ?? [],
+    [activeFinding],
   );
   const highlightedEventIds = useMemo(
-    () => selectedClaim?.evidenceEventIds ?? [],
-    [selectedClaim],
+    () => activeFinding?.evidenceEventIds ?? [],
+    [activeFinding],
   );
   const feedbackTargetOptions = useMemo<FeedbackTargetOption[]>(() => {
     if (feedbackTarget === "claim") {
@@ -350,7 +453,7 @@ export default function ReportsPage() {
       return options.map((option) => ({
         value: option.id,
         label: option.title,
-        detail: `${option.strategyType} / claim ${option.claimId}`,
+        detail: `${option.strategyType} / finding ${option.claimId}`,
       }));
     }
 
@@ -359,7 +462,7 @@ export default function ReportsPage() {
           {
             value: seedContext.id,
             label: "Overall run",
-            detail: `${simulationRun?.events.length ?? 0} events / ${claims.length} evidence-backed claims`,
+            detail: `${simulationRun?.events.length ?? 0} events / ${claims.length} evidence-backed findings`,
           },
         ]
       : [];
@@ -373,8 +476,10 @@ export default function ReportsPage() {
     seedContext,
     simulationRun,
   ]);
-  const resolvedFeedbackTargetId =
-    feedbackTargetId || feedbackTargetOptions[0]?.value || "";
+  const resolvedFeedbackTarget =
+    feedbackTargetOptions.find((option) => option.value === feedbackTargetId) ??
+    feedbackTargetOptions[0];
+  const resolvedFeedbackTargetId = resolvedFeedbackTarget?.value ?? "";
   const calibrationProfile = useMemo(
     () => (feedbackLedger ? buildCalibrationProfile(feedbackLedger) : null),
     [feedbackLedger],
@@ -387,7 +492,7 @@ export default function ReportsPage() {
       setMessage(`Save failed: ${result.errorCode}`);
       return;
     }
-    setMessage("Result Sandbox saved. Claims remain tied to evidence_event_ids.");
+    setMessage("Result Sandbox saved. Findings remain tied to evidence_event_ids.");
   }
 
   function rebuildLedger() {
@@ -401,7 +506,7 @@ export default function ReportsPage() {
     setLedger(nextLedger);
     setSelectedClaimId("");
     setSelectedEventId("");
-    setMessage("Rebuilt claims from the current Event Log.");
+    setMessage("Rebuilt findings from the current Event Log.");
   }
 
   function saveFeedback() {
@@ -411,7 +516,7 @@ export default function ReportsPage() {
       !feedbackLedger ||
       !resolvedFeedbackTargetId
     ) {
-      setMessage("Select a claim, agent, edge, or run target before saving feedback.");
+      setMessage("Select a finding, agent, edge, or run target before saving feedback.");
       return;
     }
     const agentCorrection: FeedbackFieldCorrection | undefined =
@@ -457,7 +562,7 @@ export default function ReportsPage() {
     setAgentCorrectionValue("");
     setRelationCorrectionValue("");
     setMessage(
-      "Feedback calibration saved locally for future runs only. Historical Event Logs, Claims, and Reports were not rewritten.",
+      "Feedback calibration saved locally for future runs only. Historical Event Logs, Findings, and Reports were not rewritten.",
     );
   }
 
@@ -503,12 +608,12 @@ export default function ReportsPage() {
           </h1>
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
             Result Sandbox only reads frozen Agents, Relation Edges, Simulation
-            Ticks, Event Logs, and Claims. Without event evidence, no claim is
+            Ticks, Event Logs, and Findings. Without event evidence, no finding is
             shown.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <TrialSampleButton className="mf-button mf-button-primary px-5 py-3">
-              Load trial sample
+              Try a complete destiny sandbox sample
             </TrialSampleButton>
             <ButtonLink href="/app/simulation/running" variant="secondary" className="px-5 py-3">
               Open Event Log
@@ -540,16 +645,19 @@ export default function ReportsPage() {
 
   return (
     <AppShell>
+      {isCompleteDestinySampleSeed(seedContext.id) ? (
+        <SampleSandboxBanner showReplay />
+      ) : null}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <StatusPill tone="ready">Result sandbox</StatusPill>
           <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Your situation is now an evidence-linked relationship sandbox.
+            Your destiny-situation sandbox is ready.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Each claim card traces back to Event Logs, related Agents, and
-            Relation Edges. This is a scenario simulation surface, not a final
-            certainty statement.
+            Findings connect destiny climate, real-world clues, people,
+            relation changes, and sandbox events. They are inspectable signals,
+            not certainty statements.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -581,6 +689,30 @@ export default function ReportsPage() {
             title="Report safety restrictions"
           />
         </div>
+      ) : null}
+
+      <TopFindingsSection
+        findings={topFindings}
+        selectedFindingId={activeFinding?.id ?? ""}
+        destinyClimate={destinyClimate}
+        destinyProfile={destinyProfile}
+        seedContext={seedContext}
+        agents={agentEcology?.agents ?? []}
+        relationEdges={relationGraph?.edges ?? []}
+        evidenceEvents={activeFindingEvidenceEvents}
+        branchComparison={report?.paidReport.branchComparison ?? []}
+        onSelectFinding={selectClaim}
+      />
+
+      {destinyClimate ? (
+        <DestinySituationSummarySection
+          destinyClimate={destinyClimate}
+          destinyProfile={destinyProfile}
+          seedContext={seedContext}
+          agents={agentEcology?.agents ?? []}
+          relationEdges={relationGraph?.edges ?? []}
+          events={simulationRun.events}
+        />
       ) : null}
 
       {report ? (
@@ -617,7 +749,7 @@ export default function ReportsPage() {
           </div>
           <p className="mt-2 text-xs text-[#7d8578]">
             Local full depth shows more evidence and strategy detail - same
-            claims, same confidence, same risk level.
+            findings, same confidence, same risk level.
           </p>
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
             <main className="space-y-4">
@@ -632,7 +764,7 @@ export default function ReportsPage() {
                 ))
               ) : (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
-                  No evidence-backed Claim is available. Claims without
+                  No evidence-backed Finding is available. Items without
                   evidence_event_ids are hidden by Report Engine v1.
                 </p>
               )}
@@ -664,7 +796,7 @@ export default function ReportsPage() {
             <Metric label="Agents" value={agentEcology?.agents.length ?? simulationRun.agentIds.length} />
             <Metric label="Edges" value={relationGraph?.edges.length ?? simulationRun.relationEdgeIds.length} />
             <Metric label="Events" value={simulationRun.events.length} />
-            <Metric label="Claims" value={report?.invariant.claimIds.length ?? claims.length} />
+            <Metric label="Findings" value={report?.invariant.claimIds.length ?? claims.length} />
             <Metric label="Feedback" value={feedbackLedger?.feedback.length ?? 0} />
           </section>
 
@@ -730,7 +862,7 @@ export default function ReportsPage() {
               <div className="mt-5 space-y-4">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
-                    selected claim
+                    selected finding
                   </div>
                   <p className="mt-2 text-sm leading-6 text-white/72">
                     {selectedClaim.summary}
@@ -743,7 +875,7 @@ export default function ReportsPage() {
               </div>
             ) : (
               <p className="mt-4 text-sm leading-6 text-white/62">
-                Select a claim card to inspect evidence.
+                Select a finding card to inspect evidence.
               </p>
             )}
           </section>
@@ -775,10 +907,13 @@ export default function ReportsPage() {
                   edges={relationGraph?.edges ?? []}
                   agents={agentEcology?.agents ?? []}
                 />
-                <EdgeDeltaView event={selectedEvent} />
+                <EdgeDeltaView
+                  event={selectedEvent}
+                  edges={relationGraph?.edges ?? []}
+                  agents={agentEcology?.agents ?? []}
+                />
                 <EvidenceRefsView refs={selectedEvent.evidence?.evidenceRefs ?? []} />
-                <Snapshot title="before" value={selectedEvent.beforeState.weights} />
-                <Snapshot title="after" value={selectedEvent.afterState.weights} />
+                <EventDebugStateDisclosure event={selectedEvent} />
               </div>
             ) : (
               <p className="mt-4 text-sm leading-6 text-[#62695d]">
@@ -820,6 +955,526 @@ export default function ReportsPage() {
   );
 }
 
+function TopFindingsSection({
+  findings,
+  selectedFindingId,
+  destinyClimate,
+  destinyProfile,
+  seedContext,
+  agents,
+  relationEdges,
+  evidenceEvents,
+  branchComparison,
+  onSelectFinding,
+}: {
+  findings: ClaimDraft[];
+  selectedFindingId: string;
+  destinyClimate: DestinyClimateDraft | null;
+  destinyProfile: DestinyProfileDraft | null;
+  seedContext: SeedContextDraft;
+  agents: AgentProfileDraft[];
+  relationEdges: RelationEdgeDraft[];
+  evidenceEvents: ReportEvidenceEvent[];
+  branchComparison: ReportBranchComparison[];
+  onSelectFinding: (findingId: string) => void;
+}) {
+  const selectedFinding =
+    findings.find((finding) => finding.id === selectedFindingId) ??
+    findings[0] ??
+    null;
+
+  return (
+    <section className="mb-6 rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+            integrated result
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-[#11150f]">
+            Top findings from this destiny sandbox
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-7 text-[#62695d]">
+            These are the first three evidence-backed findings from the existing
+            stored finding ledger. Source tags show which layers contributed to
+            the replayable basis.
+          </p>
+        </div>
+        <StatusPill tone={findings.length ? "ready" : "planned"}>
+          {findings.length} findings
+        </StatusPill>
+      </div>
+
+      {findings.length ? (
+        <div className="mt-5 grid gap-4 xl:grid-cols-3">
+          {findings.map((finding, index) => (
+            <FindingCard
+              key={finding.id}
+              finding={finding}
+              index={index}
+              selected={selectedFinding?.id === finding.id}
+              destinyClimate={destinyClimate}
+              eventCount={
+                evidenceEvents.filter((event) =>
+                  event.claimIds.includes(finding.id),
+                ).length || finding.evidenceEventIds.length
+              }
+              onSelect={onSelectFinding}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
+          No evidence-backed Finding is available. Items without
+          evidence_event_ids stay hidden.
+        </p>
+      )}
+
+      <EvidenceReplayPanel
+        finding={selectedFinding}
+        destinyClimate={destinyClimate}
+        destinyProfile={destinyProfile}
+        seedContext={seedContext}
+        agents={agents}
+        relationEdges={relationEdges}
+        evidenceEvents={evidenceEvents}
+        branchComparison={branchComparison}
+      />
+    </section>
+  );
+}
+
+function FindingCard({
+  finding,
+  index,
+  selected,
+  destinyClimate,
+  eventCount,
+  onSelect,
+}: {
+  finding: ClaimDraft;
+  index: number;
+  selected: boolean;
+  destinyClimate: DestinyClimateDraft | null;
+  eventCount: number;
+  onSelect: (findingId: string) => void;
+}) {
+  return (
+    <article
+      className={`rounded-lg border p-5 transition ${
+        selected
+          ? "border-[#568262]/50 bg-[#eef5ee]"
+          : "border-black/8 bg-[#f7f8f4]"
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="rounded border border-black/10 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
+          Finding {index + 1}
+        </span>
+        <span className="text-xs font-semibold text-[#7d8578]">
+          stored id {finding.id}
+        </span>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <SourceTag label="Destiny climate" active={Boolean(destinyClimate)} />
+        <SourceTag label="Real situation" active />
+        <SourceTag label="Integrated simulation" active />
+      </div>
+
+      <h3 className="mt-4 text-base font-semibold leading-7 text-[#11150f]">
+        {finding.summary}
+      </h3>
+
+      <div className="mt-4 space-y-3">
+        <FindingMeta
+          label="why it matters"
+          value={whyFindingMatters(finding, eventCount)}
+        />
+        <FindingMeta
+          label="pressure / risk"
+          value={`${finding.riskLevel} pressure. ${riskLanguage(
+            finding.riskLevel,
+          )}`}
+        />
+        <FindingMeta
+          label="confidence"
+          value={`${finding.confidence}% confidence. ${confidenceLanguage(
+            finding.confidence,
+          )}`}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onSelect(finding.id)}
+        className="mt-5 w-full rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f] hover:border-[#568262]/30"
+      >
+        View basis / evidence
+      </button>
+    </article>
+  );
+}
+
+function SourceTag({ label, active }: { label: string; active: boolean }) {
+  return (
+    <span
+      className={`rounded-md border px-2 py-1 text-xs font-semibold ${
+        active
+          ? "border-[#568262]/25 bg-white text-[#2f5d3d]"
+          : "border-dashed border-black/15 bg-white/60 text-[#7d8578]"
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function FindingMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+        {label}
+      </div>
+      <p className="mt-1 text-sm leading-6 text-[#62695d]">{value}</p>
+    </div>
+  );
+}
+
+function EvidenceReplayPanel({
+  finding,
+  destinyClimate,
+  destinyProfile,
+  seedContext,
+  agents,
+  relationEdges,
+  evidenceEvents,
+  branchComparison,
+}: {
+  finding: ClaimDraft | null;
+  destinyClimate: DestinyClimateDraft | null;
+  destinyProfile: DestinyProfileDraft | null;
+  seedContext: SeedContextDraft;
+  agents: AgentProfileDraft[];
+  relationEdges: RelationEdgeDraft[];
+  evidenceEvents: ReportEvidenceEvent[];
+  branchComparison: ReportBranchComparison[];
+}) {
+  if (!finding) {
+    return (
+      <div className="mt-5 rounded-md border border-dashed border-black/16 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
+        Evidence Replay appears after the sandbox has at least one
+        evidence-backed Finding.
+      </div>
+    );
+  }
+
+  const findingEvents = evidenceEvents.filter((event) =>
+    event.claimIds.includes(finding.id),
+  );
+  const fallbackEvents = finding.evidenceEventIds.map((eventId) => ({
+    id: eventId,
+    label: eventId,
+  }));
+  const people = finding.relatedAgentIds.map((id) => agentName(agents, id));
+  const relations = finding.relatedRelationEdgeIds.map((id) =>
+    relationName(relationEdges, agents, id),
+  );
+  const branchItems = branchComparison.filter((branch) =>
+    branch.claimIds.includes(finding.id),
+  );
+
+  return (
+    <details
+      className="mt-5 rounded-lg border border-black/8 bg-[#fbfcf8] p-5"
+      open
+    >
+      <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
+        Evidence Replay for selected Finding
+      </summary>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <ReplayBlock title="Destiny basis">
+          {destinyClimate || destinyProfile ? (
+            <div className="space-y-3">
+              {destinyClimate ? (
+                <p>
+                  {destinyClimate.userFacingOverview} Active themes:{" "}
+                  {destinyClimate.activeThemes
+                    .slice(0, 3)
+                    .map((theme) => theme.label)
+                    .join(", ")}
+                  .
+                </p>
+              ) : null}
+              {destinyProfile ? (
+                <p>
+                  {destinyProfile.userFacingSummary} Confidence stays{" "}
+                  {destinyProfile.confidence.score}% in{" "}
+                  {destinyProfile.mode} mode.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p>
+              Destiny basis is not available for this run, so the replay relies
+              on real-situation clues and sandbox events.
+            </p>
+          )}
+        </ReplayBlock>
+
+        <ReplayBlock title="Real-world clues">
+          <ReplayList values={topRealWorldClues(seedContext)} />
+        </ReplayBlock>
+
+        <ReplayBlock title="Involved people">
+          <ReplayList values={people} empty="No involved people were attached." />
+        </ReplayBlock>
+
+        <ReplayBlock title="Relation changes">
+          <ReplayList
+            values={relations}
+            empty="No relation changes were attached."
+          />
+          {findingEvents.length ? (
+            <div className="mt-3 space-y-2">
+              {findingEvents.slice(0, 3).map((event) => (
+                <pre
+                  key={event.id}
+                  className="max-h-36 overflow-auto rounded bg-white p-3 text-xs leading-5 text-[#62695d]"
+                >
+                  {JSON.stringify(event.edgeWeightDeltas, null, 2)}
+                </pre>
+              ))}
+            </div>
+          ) : null}
+        </ReplayBlock>
+
+        <ReplayBlock title="Sandbox events">
+          {findingEvents.length ? (
+            <div className="space-y-3">
+              {findingEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-md border border-black/8 bg-white p-3"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                    {event.branchId} / Tick {event.tickIndex} /{" "}
+                    {event.timeLabel}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                    {event.action || event.eventType}
+                  </p>
+                  <code className="mt-2 block break-all text-xs text-[#7d8578]">
+                    {event.id}
+                  </code>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ReplayList values={fallbackEvents.map((event) => event.label)} />
+          )}
+        </ReplayBlock>
+
+        <ReplayBlock title="Path divergence">
+          {branchItems.length ? (
+            <div className="space-y-2">
+              {branchItems.map((branch) => (
+                <div
+                  key={branch.branchId}
+                  className="rounded-md border border-black/8 bg-white p-3"
+                >
+                  <div className="text-sm font-semibold text-[#11150f]">
+                    {branch.label}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[#62695d]">
+                    {branch.eventCount} events, {branch.riskSignalCount} risk
+                    signals, {branch.supportSignalCount} support signals.
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>
+              No branch-specific divergence is attached to this Finding yet.
+            </p>
+          )}
+        </ReplayBlock>
+      </div>
+    </details>
+  );
+}
+
+function ReplayBlock({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+        {title}
+      </h3>
+      <div className="mt-2">{children}</div>
+    </section>
+  );
+}
+
+function ReplayList({
+  values,
+  empty = "No replay item is available.",
+}: {
+  values: string[];
+  empty?: string;
+}) {
+  if (!values.length) {
+    return <p>{empty}</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {values.map((value) => (
+        <li
+          key={value}
+          className="rounded border border-black/8 bg-white px-3 py-2"
+        >
+          {value}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DestinySituationSummarySection({
+  destinyClimate,
+  destinyProfile,
+  seedContext,
+  agents,
+  relationEdges,
+  events,
+}: {
+  destinyClimate: DestinyClimateDraft;
+  destinyProfile: DestinyProfileDraft | null;
+  seedContext: SeedContextDraft;
+  agents: AgentProfileDraft[];
+  relationEdges: RelationEdgeDraft[];
+  events: SimulationEventDraft[];
+}) {
+  const strongestPanels = destinyClimate.panels.slice(0, 3);
+  const topAgents = agents
+    .filter((agent) =>
+      events.some((event) => event.involvedAgentIds.includes(agent.id)),
+    )
+    .slice(0, 4);
+  const topEdges = relationEdges
+    .filter((edge) =>
+      events.some((event) => event.relationEdgeIds.includes(edge.id)),
+    )
+    .slice(0, 4);
+
+  return (
+    <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.65fr)]">
+      <section className="rounded-lg border border-black/8 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+              destiny climate
+            </p>
+            <h2 className="mt-2 text-base font-semibold text-[#11150f]">
+              Current climate summary
+            </h2>
+            <p className="mt-2 text-sm leading-7 text-[#62695d]">
+              {destinyClimate.userFacingOverview}
+            </p>
+          </div>
+          <StatusPill tone="planned">{destinyClimate.mode}</StatusPill>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {strongestPanels.map((panel) => (
+            <div
+              key={panel.id}
+              className="rounded-md border border-black/8 bg-[#f7f8f4] p-3"
+            >
+              <div className="text-sm font-semibold text-[#11150f]">
+                {panel.label}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[#62695d]">
+                {panel.intensity} / {panel.direction}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-[#62695d]">
+                {panel.userFacingSummary}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {destinyProfile ? (
+          <p className="mt-4 rounded-md border border-black/8 bg-[#fbfcf8] p-3 text-xs leading-5 text-[#62695d]">
+            Profile basis: {destinyProfile.userFacingSummary} This remains
+            symbolic context and does not override real-world evidence.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="rounded-lg border border-black/8 bg-[#f7f8f4] p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+          fusion summary
+        </p>
+        <h2 className="mt-2 text-base font-semibold text-[#11150f]">
+          How climate meets the real situation
+        </h2>
+        <p className="mt-2 text-sm leading-7 text-[#62695d]">
+          The sandbox maps climate themes onto the current question, involved
+          people, relation edges, and Event Logs. This is a basis summary, not a
+          new Finding.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <FusionRow
+            label="current question"
+            value={
+              seedContext.currentQuestionDescription ||
+              seedContext.questionText ||
+              seedContext.situationSummary
+            }
+          />
+          <FusionRow
+            label="people in pressure map"
+            value={
+              topAgents.map((agent) => agent.label).join(", ") ||
+              "No people attached yet."
+            }
+          />
+          <FusionRow
+            label="relations in motion"
+            value={
+              topEdges.map((edge) => relationName(relationEdges, agents, edge.id)).join("; ") ||
+              "No relation edge movement attached yet."
+            }
+          />
+          <FusionRow
+            label="events read"
+            value={`${events.length} sandbox events inspected across the current run.`}
+          />
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function FusionRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-black/8 bg-white p-3">
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+        {label}
+      </div>
+      <p className="mt-1 text-sm leading-6 text-[#62695d]">{value}</p>
+    </div>
+  );
+}
+
 function LocalFullDepthBoundary({
   allowed,
   onOpen,
@@ -834,7 +1489,7 @@ function LocalFullDepthBoundary({
       </h2>
       <p className="mt-3 text-sm leading-7 text-[#62695d]">
         Full depth reveals the complete Event Log chain, branch comparison,
-        relation deltas, and strategy options. It uses the same claim_id set and
+        relation deltas, and strategy options. It uses the same stored finding id set and
         does not change confidence or risk level.
       </p>
       <Button
@@ -871,7 +1526,7 @@ function BranchComparison({
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
             Branches start from the same locked graph and differ by self-policy
-            strategy. Counts are evidence summaries, not stronger claims.
+            strategy. Counts are evidence summaries, not stronger findings.
           </p>
         </div>
         <StatusPill tone="planned">{items.length} branches</StatusPill>
@@ -899,7 +1554,7 @@ function BranchComparison({
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <BranchMetric label="claims" value={item.claimIds.length} />
+                <BranchMetric label="findings" value={item.claimIds.length} />
                 <BranchMetric label="risk" value={item.riskSignalCount} />
                 <BranchMetric label="support" value={item.supportSignalCount} />
               </div>
@@ -984,6 +1639,9 @@ function FeedbackPanel({
   ) => void;
   onSave: () => void;
 }) {
+  const selectedTarget =
+    targetOptions.find((item) => item.value === targetId) ?? targetOptions[0];
+  const resolvedTargetId = selectedTarget?.value ?? "";
   const targetHelp =
     target === "agent"
       ? "Use this when an Agent feels mismatched. Corrections become future-run calibration signals, not edits to the stored Agent."
@@ -993,7 +1651,7 @@ function FeedbackPanel({
           ? "Use this to mark whether a strategy option was useful for thinking or planning."
           : target === "overall"
             ? "Use this for the run as a whole."
-            : "Use this to rate whether an evidence-backed claim felt aligned with the situation.";
+            : "Use this to rate whether an evidence-backed finding felt aligned with the situation.";
 
   return (
     <section className="rounded-lg border border-black/8 bg-white p-5">
@@ -1004,7 +1662,7 @@ function FeedbackPanel({
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
             Mark what felt right or wrong. Feedback affects future runs only and
-            never rewrites Event Logs, Claims, Reports, or edge weights.
+            never rewrites Event Logs, Findings, Reports, or edge weights.
           </p>
         </div>
         <StatusPill tone={ledger?.feedback.length ? "ready" : "planned"}>
@@ -1039,7 +1697,7 @@ function FeedbackPanel({
           </label>
           {targetOptions.length ? (
             <select
-              value={targetId}
+              value={resolvedTargetId}
               onChange={(event) => onTargetIdChange(event.target.value)}
               className="mt-2 w-full rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-sm text-[#11150f]"
             >
@@ -1055,13 +1713,13 @@ function FeedbackPanel({
               give strategy feedback.
             </p>
           )}
-          {targetId ? (
+          {resolvedTargetId ? (
             <div className="mt-2 rounded bg-[#f7f8f4] px-3 py-2">
               <code className="block break-all text-xs text-[#7d8578]">
-                {targetId}
+                {resolvedTargetId}
               </code>
               <p className="mt-1 text-xs leading-5 text-[#62695d]">
-                {targetOptions.find((item) => item.value === targetId)?.detail}
+                {selectedTarget?.detail}
               </p>
             </div>
           ) : null}
@@ -1134,7 +1792,7 @@ function FeedbackPanel({
         <button
           type="button"
           onClick={onSave}
-          disabled={!targetId}
+          disabled={!resolvedTargetId}
           className="w-full rounded-md bg-[#11150f] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9aa096]"
         >
           Save calibration feedback
@@ -1297,7 +1955,7 @@ function CalibrationSummary({ profile }: { profile: CalibrationProfile | null })
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
             This profile is applied only when preparing future runs. It does not
-            mutate past Event Logs, Claims, Reports, or edge weights.
+            mutate past Event Logs, Findings, Reports, or edge weights.
           </p>
         </div>
         <StatusPill tone={profile.signals.length ? "ready" : "planned"}>
@@ -1365,7 +2023,7 @@ function CalibrationSummary({ profile }: { profile: CalibrationProfile | null })
           </summary>
           <ul className="mt-3 space-y-1 text-xs leading-5 text-[#62695d]">
             <li>Event Logs unchanged: {String(profile.historyInvariant.doesNotModifyEventLogs)}</li>
-            <li>Claims unchanged: {String(profile.historyInvariant.doesNotModifyClaims)}</li>
+            <li>Findings unchanged: {String(profile.historyInvariant.doesNotModifyClaims)}</li>
             <li>Edge weights unchanged: {String(profile.historyInvariant.doesNotModifyEdgeWeights)}</li>
             <li>Feedback is not absolute fact: {String(profile.historyInvariant.feedbackIsNotAbsoluteFact)}</li>
           </ul>
@@ -1430,7 +2088,7 @@ function AgentGraphSummary({
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
             Graph data remains read-only. Highlighting comes from the selected
-            claim evidence chain.
+            finding evidence chain.
           </p>
         </div>
         <StatusPill tone="planned">{edges.length} edges</StatusPill>
@@ -1525,6 +2183,29 @@ function EvidenceCount({ count }: { count: number }) {
       </div>
       <div className="mt-2 text-2xl font-semibold text-white">{count}</div>
     </div>
+  );
+}
+
+function EventDebugStateDisclosure({
+  event,
+}: {
+  event: {
+    beforeState: unknown;
+    afterState: unknown;
+    edgeWeightDeltas: unknown;
+  };
+}) {
+  return (
+    <details className="rounded-md border border-dashed border-black/12 bg-[#f7f8f4] p-3">
+      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+        Debug state data
+      </summary>
+      <div className="mt-3 space-y-3">
+        <Snapshot title="before state" value={event.beforeState} />
+        <Snapshot title="after state" value={event.afterState} />
+        <Snapshot title="edge weight deltas" value={event.edgeWeightDeltas} />
+      </div>
+    </details>
   );
 }
 

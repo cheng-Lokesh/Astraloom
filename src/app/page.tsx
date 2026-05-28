@@ -64,7 +64,7 @@ export default function Home() {
             evidence-backed options.
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-[#62695d]">
-            MiroFish helps you load a relationship or decision scenario into a
+            Astraloom helps you load a relationship or decision scenario into a
             small simulation sandbox. You confirm the cast, review the
             read-only relationship graph, run local ticks, and inspect claims
             only when they trace back to Event Logs.

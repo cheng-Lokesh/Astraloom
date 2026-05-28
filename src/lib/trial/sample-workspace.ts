@@ -1,6 +1,12 @@
 import { saveAgentEcologyDraft } from "@/lib/agents/storage";
 import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import { saveClaimLedgerDraft } from "@/lib/claims/storage";
+import { buildDestinyClimateDraft } from "@/lib/destiny/build-destiny-climate";
+import { buildDestinyProfileDraft } from "@/lib/destiny/build-destiny-profile";
+import {
+  saveDestinyClimateDraft,
+  saveDestinyProfileDraft,
+} from "@/lib/destiny/storage";
 import { saveKeyPeopleDraft } from "@/lib/people/storage";
 import { buildRelationEdges } from "@/lib/relations/build";
 import { saveRelationGraphDraft } from "@/lib/relations/storage";
@@ -14,9 +20,109 @@ import type {
   AgentType,
 } from "@/types/agent-profile";
 import type { KeyPersonDraft } from "@/types/key-person";
+import type { RelationEdgeDraft } from "@/types/relation-edge";
 import type { SeedContextDraft } from "@/types/seed-context";
 
-const seedContextId = "trial_seed_career_crossroad";
+export const completeDestinySampleSeedContextId =
+  "trial_seed_complete_destiny_career";
+
+const seedContextId = completeDestinySampleSeedContextId;
+
+export function isCompleteDestinySampleSeed(seedContextId?: string | null) {
+  return seedContextId === completeDestinySampleSeedContextId;
+}
+
+function tuneCareerSampleEdges(edges: RelationEdgeDraft[]) {
+  return edges.map((edge) => {
+    if (edge.toAgentId === "agent_trial_manager") {
+      return {
+        ...edge,
+        weights: {
+          ...edge.weights,
+          trust: 48,
+          hostility: 24,
+          dependency: 68,
+          competition: 42,
+          informationGap: 76,
+          resourceControl: 86,
+          emotionalDebt: 44,
+        },
+        trend: {
+          trustDelta3Ticks: -4,
+          hostilityDelta3Ticks: 7,
+          volatility: 58,
+        },
+        confidence: 86,
+        evidenceRefs: [
+          ...edge.evidenceRefs,
+          "sample:fusion:boss_resource_control",
+          "sample:situation_model:promotion_timing_gap",
+        ],
+        lastInteraction: {
+          ...edge.lastInteraction,
+          summary:
+            "Sample fusion marks the boss edge as resource control plus information gap pressure.",
+        },
+      } satisfies RelationEdgeDraft;
+    }
+
+    if (edge.toAgentId === "agent_trial_recruiter") {
+      return {
+        ...edge,
+        weights: {
+          ...edge.weights,
+          trust: 54,
+          hostility: 8,
+          dependency: 32,
+          attraction: 46,
+          competition: 28,
+          informationGap: 42,
+          resourceControl: 52,
+          emotionalDebt: 20,
+        },
+        trend: {
+          trustDelta3Ticks: 5,
+          hostilityDelta3Ticks: 1,
+          volatility: 46,
+        },
+        confidence: 82,
+        evidenceRefs: [
+          ...edge.evidenceRefs,
+          "sample:fusion:recruiter_opportunity_shift",
+          "sample:situation_model:external_offer_window",
+        ],
+        lastInteraction: {
+          ...edge.lastInteraction,
+          summary:
+            "Sample fusion marks the recruiter edge as an opportunity shift with a short answer window.",
+        },
+      } satisfies RelationEdgeDraft;
+    }
+
+    if (edge.toAgentId === "agent_trial_colleague") {
+      return {
+        ...edge,
+        weights: {
+          ...edge.weights,
+          trust: 72,
+          hostility: 4,
+          dependency: 38,
+          competition: 16,
+          informationGap: 36,
+          resourceControl: 24,
+          emotionalDebt: 18,
+        },
+        confidence: 80,
+        evidenceRefs: [
+          ...edge.evidenceRefs,
+          "sample:fusion:colleague_information_clue",
+        ],
+      } satisfies RelationEdgeDraft;
+    }
+
+    return edge;
+  });
+}
 
 function profileJson(
   stance: AgentStance,
@@ -143,14 +249,26 @@ function person(
 
 export function createTrialWorkspace() {
   const now = new Date().toISOString();
+  const birthInfo = {
+    birthDate: "1992-08-16",
+    birthTime: "07:40",
+    birthPlace: "Shanghai",
+    gender: "not_specified",
+    timezone: "Asia/Shanghai",
+  };
+  const currentQuestionDescription =
+    "Sample: I am deciding whether to accept a recruiter-led role with better pay or stay for a promised promotion. My boss controls promotion budget and timing, the recruiter needs an answer next week, and a trusted colleague hinted budget approval may be slower than expected. I want the sandbox to map career resource pressure, boss resource control, the information gap, and the recruiter opportunity without treating anyone's private motives as certain.";
   const seedContext: SeedContextDraft = {
     id: seedContextId,
     questionText:
       "Should I accept a higher-paying but uncertain new role, or stay with my current team while waiting for a promised promotion?",
     trackType: "crossroad",
     timeWindow: "90_days",
+    destinyBirthInfo:
+      "Birth date: 1992-08-16; Birth time: 07:40; Birth place: Shanghai; Gender: not_specified; Timezone: Asia/Shanghai",
+    currentQuestionDescription,
     situationSummary:
-      "The new company offers more responsibility and better pay, but the market risk is higher. The current manager verbally supports a promotion but has not given a clear date. One trusted colleague has useful internal context.",
+      "Sample destiny-situation model: career resource pressure is centered on promotion timing, boss resource control, a recruiter opportunity window, and an information gap around budget approval.",
     recentEvents:
       "The recruiter asked for a decision next week. The current manager expressed support but did not give written timing. A trusted colleague hinted that budget approval may be slower than expected.",
     recentEventsText:
@@ -170,9 +288,9 @@ export function createTrialWorkspace() {
     safetyBoundaries:
       "Keep communication low-pressure and professional. Do not infer private motives as fact.",
     desiredOutput:
-      "Compare relationship pressure points, evidence to watch, and low-risk communication options over the next 90 days.",
+      "Compare destiny climate, situation models, relationship pressure points, evidence to watch, and low-risk communication options over the next 90 days.",
     desiredOutputText:
-      "Compare relationship pressure points, evidence to watch, and low-risk communication options over the next 90 days.",
+      "Compare destiny climate, situation models, relationship pressure points, evidence to watch, and low-risk communication options over the next 90 days.",
     contextQualityScore: 100,
     missingContextHints: [],
     privacyAck: true,
@@ -309,7 +427,8 @@ export function createTrialWorkspace() {
           stress: 55,
           trustInUser: 52,
           hostilityToUser: 18,
-          currentIntention: "Keep the user engaged while promotion timing stays uncertain.",
+          currentIntention:
+            "Resource-control pressure remains unresolved while promotion timing stays uncertain.",
         },
       ),
       now,
@@ -334,7 +453,8 @@ export function createTrialWorkspace() {
           stress: 42,
           trustInUser: 48,
           hostilityToUser: 8,
-          currentIntention: "Move the hiring process forward before the window cools.",
+          currentIntention:
+            "The external opportunity window needs a response before the hiring process cools.",
         },
       ),
       now,
@@ -359,14 +479,28 @@ export function createTrialWorkspace() {
           stress: 38,
           trustInUser: 66,
           hostilityToUser: 5,
-          currentIntention: "Share useful context if the conversation stays low-risk.",
+          currentIntention:
+            "The trusted colleague can act as an information clue if the conversation stays low-risk.",
         },
       ),
       now,
     ),
   ];
 
-  const relationEdges = buildRelationEdges(seedContext.id, agents);
+  const destinyProfile = buildDestinyProfileDraft({
+    birthInfo,
+    seedContextId: seedContext.id,
+    now,
+  });
+  const destinyClimate = buildDestinyClimateDraft({
+    profile: destinyProfile,
+    referenceDate: now,
+    timeWindow: seedContext.timeWindow,
+    topic: currentQuestionDescription,
+  });
+  const relationEdges = tuneCareerSampleEdges(
+    buildRelationEdges(seedContext.id, agents),
+  );
   const graph = {
     seedContextId: seedContext.id,
     version: "local-deterministic-v0" as const,
@@ -382,6 +516,8 @@ export function createTrialWorkspace() {
   const claimLedger = buildClaimLedgerDraft(seedContext.id, simulationRun);
 
   saveSeedContextDraft(seedContext);
+  saveDestinyProfileDraft(destinyProfile);
+  saveDestinyClimateDraft(destinyClimate);
   saveKeyPeopleDraft({ seedContextId: seedContext.id, people, updatedAt: now });
   saveAgentEcologyDraft({
     seedContextId: seedContext.id,
@@ -397,6 +533,8 @@ export function createTrialWorkspace() {
     seedContext,
     people,
     agents,
+    destinyProfile,
+    destinyClimate,
     relationEdges,
     simulationRun,
     claimLedger,
