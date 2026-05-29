@@ -16,10 +16,10 @@ export function StrategyOptions({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[#11150f]">
-            Strategy options
+            Strategy variables
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            Each option is tied to a claim_id and evidence chain.
+            Each option is tied to a stored finding id and evidence chain.
           </p>
         </div>
         <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs font-semibold text-[#62695d]">

@@ -65,6 +65,20 @@ export function buildEdgeUpdate(
     ruleIds.push("edge_update:resource_competition");
   }
 
+  if (branch.id === "boundary_adjustment") {
+    const stabilization = branch.boundaryStabilizationBias ?? 1;
+    delta.trust = Math.max(0, delta.trust ?? 0);
+    delta.hostility = Math.min(0, delta.hostility ?? 0);
+    delta.dependency = -stabilization;
+    delta.informationGap = Math.min(delta.informationGap ?? 0, -1);
+    delta.resourceControl = Math.min(delta.resourceControl ?? 0, -stabilization);
+    delta.emotionalDebt = Math.min(delta.emotionalDebt ?? 0, -1);
+    if (edge.relationshipType === "rivalry") {
+      delta.competition = Math.max(0, (delta.competition ?? 0) - stabilization);
+    }
+    ruleIds.push("branch:boundary_adjustment:stabilize_resources");
+  }
+
   return {
     delta,
     afterWeights: applyDelta(beforeWeights, delta),

@@ -52,6 +52,22 @@ export function buildEventPolicy(
     };
   }
 
+  if (branch.id === "boundary_adjustment") {
+    return {
+      eventType: "relation_pressure",
+      causes: ["boundary_adjustment_path", `branch:${branch.id}`],
+      action:
+        "Model a clearer time box, boundary, or alternative option without turning it into a user choice.",
+      summary: `${branch.label} tests whether a clearer boundary or controlled alternative can stabilize a ${edge.relationshipType} edge.`,
+      ruleSource: {
+        ruleId: "event:boundary_adjustment",
+        agentIds: [edge.fromAgentId, edge.toAgentId],
+        relationEdgeIds: [edge.id],
+        evidenceRefs: evidenceRefsForEvent(agents, edge),
+      },
+    };
+  }
+
   if ((delta.competition ?? 0) > 0 || edge.relationshipType === "rivalry") {
     return {
       eventType: "resource_competition",

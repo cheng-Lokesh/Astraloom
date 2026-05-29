@@ -18,14 +18,14 @@ export function ReportSummary({
       <div className="mf-section-header">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-            Report Engine v1
+            Evidence replay summary
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-[#11150f]">
             Evidence-backed result sandbox
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-[#62695d]">
-            Report Engine v1 reads stored Findings only, and Findings come from Event Logs.
-            Full report depth can expand evidence and strategy detail, but it
+            This result reads stored Findings only, and Findings come from sandbox events.
+            Full depth can expand evidence and strategy detail, but it
             does not change finding direction, confidence, or risk level.
           </p>
         </div>
@@ -49,7 +49,7 @@ export function ReportSummary({
           value={report.freePreview.limitedEvidenceCount}
         />
         <Metric
-          label={paidMode ? "full events" : "locked depth"}
+          label={paidMode ? "sandbox events" : "locked depth"}
           value={report.paidReport.fullEventChain.length}
         />
       </div>

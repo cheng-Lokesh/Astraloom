@@ -10,6 +10,109 @@ export type BirthInfo = {
 
 export type DestinyMode = "full" | "rough" | "skipped";
 
+export type HeavenlyStem =
+  | "jia"
+  | "yi"
+  | "bing"
+  | "ding"
+  | "wu"
+  | "ji"
+  | "geng"
+  | "xin"
+  | "ren"
+  | "gui";
+
+export type EarthlyBranch =
+  | "zi"
+  | "chou"
+  | "yin"
+  | "mao"
+  | "chen"
+  | "si"
+  | "wu"
+  | "wei"
+  | "shen"
+  | "you"
+  | "xu"
+  | "hai";
+
+export type FiveElement = "wood" | "fire" | "earth" | "metal" | "water";
+
+export type YinYang = "yang" | "yin";
+
+export type Pillar = {
+  stem: HeavenlyStem;
+  branch: EarthlyBranch;
+  stemElement: FiveElement;
+  branchElement: FiveElement;
+  stemYinYang: YinYang;
+  branchYinYang: YinYang;
+  hiddenStems: HeavenlyStem[];
+  label: string;
+};
+
+export type FourPillarsDraft = {
+  year: Pillar;
+  month: Pillar;
+  day: Pillar;
+  hour: Pillar | null;
+  dayMaster: HeavenlyStem;
+  pillarsAvailable: 3 | 4;
+  calculationMethod: "local-deterministic-v1";
+  localWarnings: string[];
+};
+
+export type TenGodName =
+  | "friend"
+  | "rob_wealth"
+  | "eating_god"
+  | "hurting_officer"
+  | "indirect_wealth"
+  | "direct_wealth"
+  | "seven_killings"
+  | "direct_officer"
+  | "indirect_resource"
+  | "direct_resource";
+
+export type TenGodSignal = {
+  god: TenGodName;
+  stem: HeavenlyStem;
+  source:
+    | "year_stem"
+    | "month_stem"
+    | "day_stem"
+    | "hour_stem"
+    | "year_hidden"
+    | "month_hidden"
+    | "day_hidden"
+    | "hour_hidden";
+  countWeight: number;
+  userFacingSummary: string;
+};
+
+export type ElementBalanceDraft = {
+  counts: Record<FiveElement, number>;
+  percentages: Record<FiveElement, number>;
+  strongestElement: FiveElement;
+  weakestElement: FiveElement;
+  dayMasterElement: FiveElement;
+  dayMasterStrength: "strong" | "balanced" | "weak";
+  dayMasterStrengthScore: number;
+  userFacingSummary: string;
+};
+
+export type DestinyCalculationConfidence = {
+  score: number;
+  calculationVersion: "destiny-core-local-v1";
+  precisionLevel: "skipped" | "date-only" | "date-time-local";
+  hasBirthDate: boolean;
+  hasBirthTime: boolean;
+  hasBirthPlace: boolean;
+  usesSolarTermApproximation: true;
+  usesTrueSolarTime: false;
+  localWarnings: string[];
+};
+
 export type DestinyThemeLabel =
   | "resource pressure"
   | "boundary pressure"
@@ -29,6 +132,22 @@ export type DestinyThemeSignal = {
   evidenceRefs: string[];
 };
 
+export type DestinyInterpretationItem = {
+  id: string;
+  label: string;
+  intensity?: "mild" | "moderate" | "strong";
+  userFacingSummary: string;
+  evidenceRefs: string[];
+};
+
+export type DestinyTechnicalDetail = {
+  id: string;
+  label: string;
+  value: string;
+  plainLanguage: string;
+  evidenceRefs: string[];
+};
+
 export type DestinyConfidenceDraft = {
   score: number;
   mode: DestinyMode;
@@ -44,6 +163,18 @@ export type DestinyProfileDraft = {
   mode: DestinyMode;
   birthInfo: BirthInfo;
   confidence: DestinyConfidenceDraft;
+  fourPillars?: FourPillarsDraft | null;
+  elementBalance?: ElementBalanceDraft | null;
+  tenGodsSummary?: TenGodSignal[];
+  destinyCalculationConfidence?: DestinyCalculationConfidence;
+  localWarnings?: string[];
+  coreTendencies?: DestinyInterpretationItem[];
+  pressureThemes?: DestinyInterpretationItem[];
+  opportunityThemes?: DestinyInterpretationItem[];
+  relationshipThemes?: DestinyInterpretationItem[];
+  cautionNotes?: DestinyInterpretationItem[];
+  observationSignals?: DestinyInterpretationItem[];
+  technicalDetails?: DestinyTechnicalDetail[];
   baseThemes: DestinyThemeSignal[];
   userFacingSummary: string;
   technicalSummary: {
@@ -52,6 +183,7 @@ export type DestinyProfileDraft = {
     dayBucket: number | null;
     hasProfessionalChart: false;
     calculationNote: string;
+    destinyCoreVersion?: "destiny-core-local-v1";
   };
   evidenceRefs: string[];
   createdAt: string;
@@ -78,6 +210,13 @@ export type DestinyClimateDraft = {
   topic: string;
   activeThemes: DestinyThemeSignal[];
   panels: DestinyClimatePanel[];
+  coreTendencies?: DestinyInterpretationItem[];
+  pressureThemes?: DestinyInterpretationItem[];
+  opportunityThemes?: DestinyInterpretationItem[];
+  relationshipThemes?: DestinyInterpretationItem[];
+  cautionNotes?: DestinyInterpretationItem[];
+  observationSignals?: DestinyInterpretationItem[];
+  technicalDetails?: DestinyTechnicalDetail[];
   decisionRhythm: {
     overall: "prepare" | "observe" | "act" | "mixed";
     phases: Array<{

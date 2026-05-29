@@ -27,6 +27,15 @@ export const branchPolicies: BranchPolicy[] = [
     disclosureBias: 1,
     cooperationBias: 1,
   },
+  {
+    id: "boundary_adjustment",
+    label: "Boundary adjustment path",
+    selfBias: "boundary",
+    edgePressureBias: 0,
+    disclosureBias: 1,
+    cooperationBias: 0,
+    boundaryStabilizationBias: 2,
+  },
 ];
 
 export function agentForBranch(
@@ -38,7 +47,11 @@ export function agentForBranch(
   }
 
   const stance =
-    branch.id === "cautious_self" ? "cautious_parallel" : "decisive_parallel";
+    branch.id === "cautious_self"
+      ? "cautious_parallel"
+      : branch.id === "decisive_self"
+        ? "decisive_parallel"
+        : "baseline_self";
 
   return (
     agents.find((agent) => agent.profileJson.stance === stance) ??

@@ -62,16 +62,22 @@ function branchComparison(
   events: SimulationEventDraft[],
 ): ReportBranchComparison[] {
   const branches = simulationRun.branches ?? [
-    { id: "baseline" as const, label: "Baseline path", tickIds: [], eventIds: [] },
+    { id: "baseline" as const, label: "Current inertia path", tickIds: [], eventIds: [] },
     {
       id: "cautious_self" as const,
-      label: "Cautious self path",
+      label: "Cautious observation path",
       tickIds: [],
       eventIds: [],
     },
     {
       id: "decisive_self" as const,
-      label: "Decisive self path",
+      label: "Active push path",
+      tickIds: [],
+      eventIds: [],
+    },
+    {
+      id: "boundary_adjustment" as const,
+      label: "Boundary adjustment path",
       tickIds: [],
       eventIds: [],
     },

@@ -100,7 +100,7 @@ function claimTypeForEvents(events: SimulationEventDraft[]): ClaimType {
 }
 
 function claimSummary(type: ClaimType, events: SimulationEventDraft[]) {
-  const edgeCount = unique(events.flatMap((event) => event.relationEdgeIds)).length;
+  const edgeCount = unique(events.flatMap(eventRelationEdgeIds)).length;
   const timeLabels = unique(events.map((event) => event.timeLabel)).slice(0, 3);
   const branchLabels = unique(
     events.map((event) => event.branchId ?? "baseline"),
@@ -127,16 +127,20 @@ function claimSummary(type: ClaimType, events: SimulationEventDraft[]) {
 
 function groupEvents(events: SimulationEventDraft[]) {
   const usableEvents = events.filter(
-    (event) => event.status === "preview" && event.relationEdgeIds.length > 0,
+    (event) => event.status === "preview" && eventRelationEdgeIds(event).length > 0,
   );
   const groups = new Map<string, SimulationEventDraft[]>();
 
   usableEvents.forEach((event) => {
-    const key = event.relationEdgeIds[0] ?? "ungrouped";
+    const key = eventRelationEdgeIds(event)[0] ?? "ungrouped";
     groups.set(key, [...(groups.get(key) ?? []), event]);
   });
 
   return Array.from(groups.values()).slice(0, 4);
+}
+
+function eventRelationEdgeIds(event: SimulationEventDraft) {
+  return Array.isArray(event.relationEdgeIds) ? event.relationEdgeIds : [];
 }
 
 export function buildClaimLedgerDraft(
@@ -163,7 +167,7 @@ export function buildClaimLedgerDraft(
       evidenceEventIds,
       relatedAgentIds: unique(events.flatMap((event) => event.agentIds)),
       relatedRelationEdgeIds: unique(
-        events.flatMap((event) => event.relationEdgeIds),
+        events.flatMap(eventRelationEdgeIds),
       ),
       isPaidLocked: false,
       safetyNotes: [

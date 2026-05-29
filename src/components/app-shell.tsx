@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { useLanguage } from "@/components/language-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { PageContainer } from "@/components/ui-foundation";
 import { BRAND_NAME } from "@/lib/brand";
@@ -11,21 +12,23 @@ type AppShellProps = {
 };
 
 const navItems = [
-  { href: "/app/dashboard", label: "Dashboard" },
-  { href: "/app/new/scene", label: "New run" },
-  { href: "/app/new/people", label: "People" },
-  { href: "/app/new/agents", label: "Agents" },
-  { href: "/app/new/graph", label: "Graph" },
-  { href: "/app/simulation/running", label: "Simulation" },
-  { href: "/app/simulation/result", label: "Result" },
-  { href: "/app/archive", label: "Archive" },
-  { href: "/app/billing", label: "Billing" },
-  { href: "/app/settings", label: "Settings" },
-  { href: "/app/support", label: "Support" },
-  { href: "/app/admin", label: "Admin" },
+  { href: "/app/dashboard", en: "Dashboard", zh: "仪表盘" },
+  { href: "/app/new/scene", en: "New run", zh: "新沙盘" },
+  { href: "/app/new/people", en: "People", zh: "人物" },
+  { href: "/app/new/agents", en: "Agents", zh: "Agent" },
+  { href: "/app/new/graph", en: "Graph", zh: "关系图" },
+  { href: "/app/simulation/running", en: "Simulation", zh: "推演" },
+  { href: "/app/simulation/result", en: "Result", zh: "结果" },
+  { href: "/app/archive", en: "Archive", zh: "归档" },
+  { href: "/app/billing", en: "Billing", zh: "解锁" },
+  { href: "/app/settings", en: "Settings", zh: "设置" },
+  { href: "/app/support", en: "Support", zh: "支持" },
+  { href: "/app/admin", en: "Admin", zh: "管理" },
 ];
 
 export function AppShell({ children }: AppShellProps) {
+  const { locale } = useLanguage();
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--mf-ink)]">
       <header className="sticky top-0 z-30 border-b border-black/8 bg-[var(--background)]/90 backdrop-blur-xl">
@@ -39,7 +42,7 @@ export function AppShell({ children }: AppShellProps) {
                 {BRAND_NAME}
               </span>
               <span className="block truncate text-[15px] font-semibold text-[#11150f]">
-                AI Life Simulator
+                {locale === "zh" ? "动态沙盘推演器" : "AI Life Simulator"}
               </span>
             </span>
           </Link>
@@ -51,7 +54,7 @@ export function AppShell({ children }: AppShellProps) {
                 href={item.href}
                 className="whitespace-nowrap rounded px-3 py-2 text-sm font-medium text-[#52594d] transition hover:bg-[#11150f] hover:text-white"
               >
-                {item.label}
+                {item[locale]}
               </Link>
             ))}
             <div className="ml-1 border-l border-black/8 pl-1">

@@ -10,11 +10,11 @@ export function PaidUnlockBoundary({
     return (
       <section className="rounded-lg border border-[#568262]/20 bg-[#eef5ee] p-5">
         <h2 className="text-sm font-semibold text-[#11150f]">
-          Paid report depth active
+          Full evidence depth active
         </h2>
         <p className="mt-3 text-sm leading-7 text-[#3f483d]">
-          Full evidence chain and strategy depth are available for this report.
-          claim_id, confidence, and riskLevel remain unchanged.
+          Full evidence chain and strategy depth are available for this result.
+          finding id, confidence, and risk level remain unchanged.
         </p>
       </section>
     );
@@ -27,7 +27,7 @@ export function PaidUnlockBoundary({
       </h2>
       <p className="mt-3 text-sm leading-7 text-[#62695d]">
         {decision.blockedReason} Paid depth unlocks complete EventLog evidence
-        and strategy options only. It does not create Claims, raise confidence,
+        and strategy options only. It does not create Findings, raise confidence,
         change riskLevel, or bypass safety restrictions.
       </p>
       <ButtonLink href="/app/billing" className="mt-4 w-full px-4 py-3">

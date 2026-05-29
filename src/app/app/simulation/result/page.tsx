@@ -43,6 +43,7 @@ import type { AgentProfileDraft } from "@/types/agent-profile";
 import type { CalibrationProfile } from "@/lib/calibration/calibration-types";
 import type { ClaimDraft, ClaimLedgerDraft } from "@/types/claim";
 import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
+import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
 import type {
   FeedbackCorrectionConfidence,
   FeedbackFieldCorrection,
@@ -198,6 +199,19 @@ function relationName(
   )} / ${edge.relationshipType}`;
 }
 
+function pathLabel(value: string | undefined) {
+  if (value === "cautious_self" || value === "Cautious self path") {
+    return "Cautious observation path";
+  }
+  if (value === "decisive_self" || value === "Decisive self path") {
+    return "Active push path";
+  }
+  if (value === "boundary_adjustment" || value === "Boundary adjustment path") {
+    return "Boundary adjustment path";
+  }
+  return "Current inertia path";
+}
+
 function riskLanguage(riskLevel: ClaimDraft["riskLevel"]) {
   if (riskLevel === "high") {
     return "Pressure is elevated in this run; treat the window as sensitive and review the evidence before acting.";
@@ -256,6 +270,97 @@ function topRealWorldClues(seedContext: SeedContextDraft) {
   ].filter((value): value is string => Boolean(value?.trim())).slice(0, 4);
 }
 
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
+}
+
+function findingClimateThemes(
+  destinyClimate: DestinyClimateDraft | null,
+  rawFindingEvents: SimulationEventDraft[],
+) {
+  const eventThemeIds = new Set(
+    rawFindingEvents.flatMap((event) => event.fusionThemeIds ?? []),
+  );
+  const activeThemes = destinyClimate?.activeThemes ?? [];
+  const matchedThemes = activeThemes.filter(
+    (theme) => eventThemeIds.has(theme.id) || eventThemeIds.has(theme.label),
+  );
+  const themes = matchedThemes.length ? matchedThemes : activeThemes.slice(0, 3);
+
+  return themes.slice(0, 4).map((theme) => {
+    const score = typeof theme.score === "number" ? ` / score ${theme.score}` : "";
+    return `${theme.label} (${theme.polarity}${score}): ${theme.userFacingSummary}`;
+  });
+}
+
+function relevantInterpretationNotes(
+  destinyClimate: DestinyClimateDraft | null,
+  destinyProfile: DestinyProfileDraft | null,
+) {
+  return uniqueStrings([
+    ...(destinyClimate?.observationSignals ?? []).map(
+      (item) => `${item.label}: ${item.userFacingSummary}`,
+    ),
+    ...(destinyClimate?.pressureThemes ?? []).map(
+      (item) => `${item.label}: ${item.userFacingSummary}`,
+    ),
+    ...(destinyProfile?.coreTendencies ?? []).map(
+      (item) => `${item.label}: ${item.userFacingSummary}`,
+    ),
+    ...(destinyProfile?.cautionNotes ?? []).map(
+      (item) => `${item.label}: ${item.userFacingSummary}`,
+    ),
+  ]).slice(0, 5);
+}
+
+function destinyConfidenceNotes(destinyProfile: DestinyProfileDraft | null) {
+  if (!destinyProfile) return [];
+
+  const missingFields = destinyProfile.confidence.missingFields.map((field) =>
+    field.replaceAll(/([A-Z])/g, " $1").toLowerCase(),
+  );
+  return uniqueStrings([
+    `Destiny mode: ${destinyProfile.mode}. Confidence remains ${destinyProfile.confidence.score}%; this replay does not raise it.`,
+    missingFields.length
+      ? `Missing birth info: ${missingFields.join(", ")}.`
+      : "Birth info fields required by the current local mode were available.",
+    ...(destinyProfile.localWarnings ?? []),
+    destinyProfile.destinyCalculationConfidence?.precisionLevel
+      ? `Calculation precision: ${destinyProfile.destinyCalculationConfidence.precisionLevel}.`
+      : "",
+  ]);
+}
+
+function decisionTopic(seedContext: SeedContextDraft) {
+  return (
+    seedContext.currentQuestionDescription?.trim() ||
+    seedContext.questionText.trim() ||
+    seedContext.situationSummary.trim()
+  );
+}
+
+function sandboxPathLabel(event: SimulationEventDraft) {
+  return pathLabel(event.pathLabel ?? event.branchId);
+}
+
+function sourceTagsForFinding(
+  finding: ClaimDraft,
+  events: SimulationEventDraft[],
+  hasDestinyClimate: boolean,
+) {
+  const tags = new Set<string>();
+  events
+    .filter((event) => finding.evidenceEventIds.includes(event.id))
+    .flatMap((event) => event.sourceTags ?? [])
+    .forEach((tag) => tags.add(tag));
+
+  if (hasDestinyClimate) tags.add("destiny climate");
+  tags.add("real situation");
+  tags.add("integrated simulation");
+
+  return Array.from(tags);
+}
+
 export default function ReportsPage() {
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
@@ -295,6 +400,13 @@ export default function ReportsPage() {
     const seed = seedResult.ok ? seedResult.data : null;
     if (!seed) return null;
     const result = repos.destinyClimates.load(seed.id);
+    return result.ok ? result.data : null;
+  });
+  const [destinyFusion] = useState<DestinySituationFusionDraft | null>(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.destinyFusions.load(seed.id);
     return result.ok ? result.data : null;
   });
   const [ledger, setLedger] = useState<ClaimLedgerDraft | null>(() => {
@@ -506,7 +618,7 @@ export default function ReportsPage() {
     setLedger(nextLedger);
     setSelectedClaimId("");
     setSelectedEventId("");
-    setMessage("Rebuilt findings from the current Event Log.");
+    setMessage("Rebuilt findings from the current sandbox events.");
   }
 
   function saveFeedback() {
@@ -562,7 +674,7 @@ export default function ReportsPage() {
     setAgentCorrectionValue("");
     setRelationCorrectionValue("");
     setMessage(
-      "Feedback calibration saved locally for future runs only. Historical Event Logs, Findings, and Reports were not rewritten.",
+      "Improve-next-run feedback saved locally for future runs only. Historical sandbox events, Findings, and results were not rewritten.",
     );
   }
 
@@ -604,11 +716,11 @@ export default function ReportsPage() {
         <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
           <StatusPill tone="blocked">Sandbox data required</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            Generate a local run with Event Log first.
+            Generate a local run with sandbox events first.
           </h1>
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
             Result Sandbox only reads frozen Agents, Relation Edges, Simulation
-            Ticks, Event Logs, and Findings. Without event evidence, no finding is
+            ticks, sandbox events, and Findings. Without event evidence, no finding is
             shown.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -616,7 +728,7 @@ export default function ReportsPage() {
               Try a complete destiny sandbox sample
             </TrialSampleButton>
             <ButtonLink href="/app/simulation/running" variant="secondary" className="px-5 py-3">
-              Open Event Log
+              Open sandbox events
             </ButtonLink>
           </div>
         </SurfaceCard>
@@ -636,7 +748,7 @@ export default function ReportsPage() {
             href="/app/simulation/running"
             className="px-5 py-3"
           >
-            Back to Event Log
+            Back to sandbox events
           </ButtonLink>
         </section>
       </AppShell>
@@ -686,7 +798,7 @@ export default function ReportsPage() {
         <div className="mb-5">
           <SafetyDowngradeNotice
             decision={safetyDecision}
-            title="Report safety restrictions"
+            title="Result safety restrictions"
           />
         </div>
       ) : null}
@@ -696,24 +808,25 @@ export default function ReportsPage() {
         selectedFindingId={activeFinding?.id ?? ""}
         destinyClimate={destinyClimate}
         destinyProfile={destinyProfile}
+        destinyFusion={destinyFusion}
         seedContext={seedContext}
         agents={agentEcology?.agents ?? []}
         relationEdges={relationGraph?.edges ?? []}
         evidenceEvents={activeFindingEvidenceEvents}
+        simulationEvents={simulationRun.events}
         branchComparison={report?.paidReport.branchComparison ?? []}
         onSelectFinding={selectClaim}
       />
 
-      {destinyClimate ? (
-        <DestinySituationSummarySection
-          destinyClimate={destinyClimate}
-          destinyProfile={destinyProfile}
-          seedContext={seedContext}
-          agents={agentEcology?.agents ?? []}
-          relationEdges={relationGraph?.edges ?? []}
-          events={simulationRun.events}
-        />
-      ) : null}
+      <DestinySituationSummarySection
+        destinyClimate={destinyClimate}
+        destinyProfile={destinyProfile}
+        destinyFusion={destinyFusion}
+        seedContext={seedContext}
+        agents={agentEcology?.agents ?? []}
+        relationEdges={relationGraph?.edges ?? []}
+        events={simulationRun.events}
+      />
 
       {report ? (
         <section className="mb-6 space-y-5">
@@ -765,7 +878,7 @@ export default function ReportsPage() {
               ) : (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
                   No evidence-backed Finding is available. Items without
-                  evidence_event_ids are hidden by Report Engine v1.
+                  evidence_event_ids are hidden by the result engine.
                 </p>
               )}
             </main>
@@ -817,8 +930,8 @@ export default function ReportsPage() {
               highlightedEventIds={highlightedEventIds}
               selectedEventId={selectedEvent?.id ?? ""}
               onSelectEvent={selectEvent}
-              title="Timeline Feed"
-              description="Click an Event Log entry to inspect its agents, relation edges, confidence, evidence refs, and edge deltas."
+              title="Sandbox event replay"
+              description="Click a sandbox event to inspect involved people, situation map edges, confidence, evidence basis, and pressure changes."
             />
             <AgentGraphSummary
               agents={agentEcology?.agents ?? []}
@@ -838,7 +951,7 @@ export default function ReportsPage() {
           {relationGraph?.edges.length ? (
             <details className="mt-6 rounded-lg border border-black/8 bg-white">
               <summary className="cursor-pointer p-5 text-sm font-semibold text-[#11150f]">
-                Relation Graph snapshot ({relationGraph.edges.length} edges)
+                Situation map snapshot ({relationGraph.edges.length} edges)
               </summary>
               <div className="border-t border-black/8 p-4">
                 <RelationGraph
@@ -855,8 +968,8 @@ export default function ReportsPage() {
 
         <aside className="h-fit space-y-5">
           <section className="rounded-lg border border-black/8 bg-[#11150f] p-6 text-white shadow-[0_24px_80px_rgba(17,21,15,0.14)]">
-            <h2 className="text-sm font-semibold text-[#b7e6c6]">
-              Evidence chain
+              <h2 className="text-sm font-semibold text-[#b7e6c6]">
+              Evidence replay
             </h2>
             {selectedClaim ? (
               <div className="mt-5 space-y-4">
@@ -882,7 +995,7 @@ export default function ReportsPage() {
 
           <section className="rounded-lg border border-black/8 bg-white p-5">
             <h2 className="text-sm font-semibold text-[#11150f]">
-              Event detail
+              Sandbox event detail
             </h2>
             {selectedEvent ? (
               <div className="mt-4 space-y-4">
@@ -960,10 +1073,12 @@ function TopFindingsSection({
   selectedFindingId,
   destinyClimate,
   destinyProfile,
+  destinyFusion,
   seedContext,
   agents,
   relationEdges,
   evidenceEvents,
+  simulationEvents,
   branchComparison,
   onSelectFinding,
 }: {
@@ -971,10 +1086,12 @@ function TopFindingsSection({
   selectedFindingId: string;
   destinyClimate: DestinyClimateDraft | null;
   destinyProfile: DestinyProfileDraft | null;
+  destinyFusion: DestinySituationFusionDraft | null;
   seedContext: SeedContextDraft;
   agents: AgentProfileDraft[];
   relationEdges: RelationEdgeDraft[];
   evidenceEvents: ReportEvidenceEvent[];
+  simulationEvents: SimulationEventDraft[];
   branchComparison: ReportBranchComparison[];
   onSelectFinding: (findingId: string) => void;
 }) {
@@ -1004,6 +1121,13 @@ function TopFindingsSection({
         </StatusPill>
       </div>
 
+      {!destinyClimate || !destinyFusion ? (
+        <p className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+          This run used mostly real-situation evidence because destiny context
+          was incomplete.
+        </p>
+      ) : null}
+
       {findings.length ? (
         <div className="mt-5 grid gap-4 xl:grid-cols-3">
           {findings.map((finding, index) => (
@@ -1013,6 +1137,11 @@ function TopFindingsSection({
               index={index}
               selected={selectedFinding?.id === finding.id}
               destinyClimate={destinyClimate}
+              sourceTags={sourceTagsForFinding(
+                finding,
+                simulationEvents,
+                Boolean(destinyClimate),
+              )}
               eventCount={
                 evidenceEvents.filter((event) =>
                   event.claimIds.includes(finding.id),
@@ -1033,10 +1162,12 @@ function TopFindingsSection({
         finding={selectedFinding}
         destinyClimate={destinyClimate}
         destinyProfile={destinyProfile}
+        destinyFusion={destinyFusion}
         seedContext={seedContext}
         agents={agents}
         relationEdges={relationEdges}
         evidenceEvents={evidenceEvents}
+        simulationEvents={simulationEvents}
         branchComparison={branchComparison}
       />
     </section>
@@ -1048,6 +1179,7 @@ function FindingCard({
   index,
   selected,
   destinyClimate,
+  sourceTags,
   eventCount,
   onSelect,
 }: {
@@ -1055,6 +1187,7 @@ function FindingCard({
   index: number;
   selected: boolean;
   destinyClimate: DestinyClimateDraft | null;
+  sourceTags: string[];
   eventCount: number;
   onSelect: (findingId: string) => void;
 }) {
@@ -1076,9 +1209,18 @@ function FindingCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <SourceTag label="Destiny climate" active={Boolean(destinyClimate)} />
-        <SourceTag label="Real situation" active />
-        <SourceTag label="Integrated simulation" active />
+        <SourceTag
+          label="Destiny climate"
+          active={sourceTags.includes("destiny climate") && Boolean(destinyClimate)}
+        />
+        <SourceTag
+          label="Real situation"
+          active={sourceTags.includes("real situation")}
+        />
+        <SourceTag
+          label="Integrated simulation"
+          active={sourceTags.includes("integrated simulation")}
+        />
       </div>
 
       <h3 className="mt-4 text-base font-semibold leading-7 text-[#11150f]">
@@ -1109,7 +1251,7 @@ function FindingCard({
         onClick={() => onSelect(finding.id)}
         className="mt-5 w-full rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f] hover:border-[#568262]/30"
       >
-        View basis / evidence
+        View basis
       </button>
     </article>
   );
@@ -1144,19 +1286,23 @@ function EvidenceReplayPanel({
   finding,
   destinyClimate,
   destinyProfile,
+  destinyFusion,
   seedContext,
   agents,
   relationEdges,
   evidenceEvents,
+  simulationEvents,
   branchComparison,
 }: {
   finding: ClaimDraft | null;
   destinyClimate: DestinyClimateDraft | null;
   destinyProfile: DestinyProfileDraft | null;
+  destinyFusion: DestinySituationFusionDraft | null;
   seedContext: SeedContextDraft;
   agents: AgentProfileDraft[];
   relationEdges: RelationEdgeDraft[];
   evidenceEvents: ReportEvidenceEvent[];
+  simulationEvents: SimulationEventDraft[];
   branchComparison: ReportBranchComparison[];
 }) {
   if (!finding) {
@@ -1171,6 +1317,9 @@ function EvidenceReplayPanel({
   const findingEvents = evidenceEvents.filter((event) =>
     event.claimIds.includes(finding.id),
   );
+  const rawFindingEvents = simulationEvents.filter((event) =>
+    finding.evidenceEventIds.includes(event.id),
+  );
   const fallbackEvents = finding.evidenceEventIds.map((eventId) => ({
     id: eventId,
     label: eventId,
@@ -1179,6 +1328,30 @@ function EvidenceReplayPanel({
   const relations = finding.relatedRelationEdgeIds.map((id) =>
     relationName(relationEdges, agents, id),
   );
+  const destinySkipped =
+    destinyProfile?.mode === "skipped" || destinyClimate?.mode === "skipped";
+  const climateThemes = findingClimateThemes(destinyClimate, rawFindingEvents);
+  const interpretationNotes = relevantInterpretationNotes(
+    destinyClimate,
+    destinyProfile,
+  );
+  const confidenceNotes = destinyConfidenceNotes(destinyProfile);
+  const generatedClues = uniqueStrings(
+    rawFindingEvents.flatMap((event) => event.generatedClues ?? []),
+  );
+  const relatedFusionMappings =
+    destinyFusion?.mappings
+      .filter((mapping) =>
+        rawFindingEvents.some((event) =>
+          event.fusionThemeIds?.includes(mapping.themeId),
+        ),
+      )
+      .concat(
+        rawFindingEvents.some((event) => event.fusionThemeIds?.length)
+          ? []
+          : destinyFusion.mappings.slice(0, 2),
+      )
+      .slice(0, 4) ?? [];
   const branchItems = branchComparison.filter((branch) =>
     branch.claimIds.includes(finding.id),
   );
@@ -1194,25 +1367,31 @@ function EvidenceReplayPanel({
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <ReplayBlock title="Destiny basis">
-          {destinyClimate || destinyProfile ? (
+          {destinySkipped ? (
+            <p>
+              This finding used real-situation and sandbox evidence; destiny
+              basis was skipped.
+            </p>
+          ) : destinyClimate || destinyProfile ? (
             <div className="space-y-3">
-              {destinyClimate ? (
-                <p>
-                  {destinyClimate.userFacingOverview} Active themes:{" "}
-                  {destinyClimate.activeThemes
-                    .slice(0, 3)
-                    .map((theme) => theme.label)
-                    .join(", ")}
-                  .
-                </p>
+              <ReplaySubhead>Mode and confidence</ReplaySubhead>
+              <ReplayList
+                values={confidenceNotes}
+                empty="No destiny confidence note is available."
+              />
+              {destinyClimate?.userFacingOverview ? (
+                <p>{destinyClimate.userFacingOverview}</p>
               ) : null}
-              {destinyProfile ? (
-                <p>
-                  {destinyProfile.userFacingSummary} Confidence stays{" "}
-                  {destinyProfile.confidence.score}% in{" "}
-                  {destinyProfile.mode} mode.
-                </p>
-              ) : null}
+              <ReplaySubhead>Key climate themes</ReplaySubhead>
+              <ReplayList
+                values={climateThemes}
+                empty="No key climate themes were attached to this Finding."
+              />
+              <ReplaySubhead>Relevant interpretation notes</ReplaySubhead>
+              <ReplayList
+                values={interpretationNotes}
+                empty="No interpretation notes were attached to this Finding."
+              />
             </div>
           ) : (
             <p>
@@ -1222,12 +1401,73 @@ function EvidenceReplayPanel({
           )}
         </ReplayBlock>
 
-        <ReplayBlock title="Real-world clues">
-          <ReplayList values={topRealWorldClues(seedContext)} />
+        <ReplayBlock title="Real situation basis">
+          <ReplaySubhead>Decision topic</ReplaySubhead>
+          <ReplayList
+            values={[decisionTopic(seedContext)]}
+            empty="No decision topic was captured."
+          />
+          <ReplaySubhead>User free-form situation</ReplaySubhead>
+          <ReplayList
+            values={topRealWorldClues(seedContext)}
+            empty="No free-form situation was captured."
+          />
+          <ReplaySubhead>Extracted people</ReplaySubhead>
+          <ReplayList
+            values={people}
+            empty="No involved people were attached to this Finding."
+          />
+          <ReplaySubhead>Real-world clues</ReplaySubhead>
+          <ReplayList
+            values={uniqueStrings([
+              seedContext.recentEventsText ?? seedContext.recentEvents ?? "",
+              seedContext.worries ?? "",
+              seedContext.decisionOptionsText ?? seedContext.decisionOptions ?? "",
+              seedContext.desiredOutputText ?? seedContext.desiredOutput ?? "",
+            ])}
+            empty="No additional real-world clues were captured."
+          />
         </ReplayBlock>
 
-        <ReplayBlock title="Involved people">
-          <ReplayList values={people} empty="No involved people were attached." />
+        <ReplayBlock title="Dynamic sandbox basis">
+          {rawFindingEvents.length ? (
+            <div className="space-y-4">
+              {rawFindingEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-md border border-black/8 bg-white p-3"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                    {sandboxPathLabel(event)} / Tick {event.tickIndex} /{" "}
+                    {event.timeLabel}
+                  </div>
+                  <ReplayList
+                    values={uniqueStrings([
+                      `Sandbox event: ${event.userFacingEventTitle ?? event.summary}`,
+                      event.destinyInfluenceSummary
+                        ? `Destiny influence: ${event.destinyInfluenceSummary}`
+                        : "",
+                      event.interactionSummary
+                        ? `Interaction: ${event.interactionSummary}`
+                        : "",
+                      event.pressureDeltaSummary
+                        ? `Pressure delta: ${event.pressureDeltaSummary}`
+                        : "",
+                      ...(event.generatedClues ?? []).map(
+                        (clue) => `Generated clue: ${clue}`,
+                      ),
+                    ])}
+                    empty="No sandbox event summary was attached."
+                  />
+                  <code className="mt-2 block break-all text-xs text-[#7d8578]">
+                    {event.id}
+                  </code>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ReplayList values={fallbackEvents.map((event) => event.label)} />
+          )}
         </ReplayBlock>
 
         <ReplayBlock title="Relation changes">
@@ -1235,7 +1475,23 @@ function EvidenceReplayPanel({
             values={relations}
             empty="No relation changes were attached."
           />
-          {findingEvents.length ? (
+          {rawFindingEvents.length ? (
+            <div className="mt-3 space-y-2">
+              {rawFindingEvents.slice(0, 3).map((event) => (
+                <div key={event.id} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                    {sandboxPathLabel(event)} / Tick {event.tickIndex}
+                  </p>
+                  <EdgeDeltaView
+                    event={event}
+                    edges={relationEdges}
+                    agents={agents}
+                    compact
+                  />
+                </div>
+              ))}
+            </div>
+          ) : findingEvents.length ? (
             <div className="mt-3 space-y-2">
               {findingEvents.slice(0, 3).map((event) => (
                 <pre
@@ -1247,32 +1503,6 @@ function EvidenceReplayPanel({
               ))}
             </div>
           ) : null}
-        </ReplayBlock>
-
-        <ReplayBlock title="Sandbox events">
-          {findingEvents.length ? (
-            <div className="space-y-3">
-              {findingEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="rounded-md border border-black/8 bg-white p-3"
-                >
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                    {event.branchId} / Tick {event.tickIndex} /{" "}
-                    {event.timeLabel}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                    {event.action || event.eventType}
-                  </p>
-                  <code className="mt-2 block break-all text-xs text-[#7d8578]">
-                    {event.id}
-                  </code>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <ReplayList values={fallbackEvents.map((event) => event.label)} />
-          )}
         </ReplayBlock>
 
         <ReplayBlock title="Path divergence">
@@ -1299,8 +1529,55 @@ function EvidenceReplayPanel({
             </p>
           )}
         </ReplayBlock>
+
+        <ReplayBlock title="Generated clues">
+          <ReplayList
+            values={generatedClues}
+            empty="No generated clues were attached to these sandbox events."
+          />
+        </ReplayBlock>
+
+        <ReplayBlock title="Destiny-situation mappings">
+          {relatedFusionMappings.length ? (
+            <div className="space-y-2">
+              {relatedFusionMappings.map((mapping) => (
+                <div
+                  key={mapping.id}
+                  className="rounded border border-black/8 bg-white px-3 py-2"
+                >
+                  <div className="font-semibold text-[#11150f]">
+                    {mapping.themeLabel} {"->"} {mapping.personLabel}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[#62695d]">
+                    {mapping.pressureRole}. {mapping.userFacingSummary}
+                  </p>
+                  {mapping.mappingExplanation ? (
+                    <p className="mt-2 text-xs leading-5 text-[#7d8578]">
+                      Why linked: {mapping.mappingExplanation.whyLinked}
+                    </p>
+                  ) : null}
+                  {mapping.interpretationNotes?.[0] ? (
+                    <p className="mt-2 rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs leading-5 text-[#62695d]">
+                      {mapping.interpretationNotes[0]}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>No destiny-situation mapping was attached to this Finding.</p>
+          )}
+        </ReplayBlock>
       </div>
     </details>
+  );
+}
+
+function ReplaySubhead({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578] first:mt-0">
+      {children}
+    </div>
   );
 }
 
@@ -1349,19 +1626,27 @@ function ReplayList({
 function DestinySituationSummarySection({
   destinyClimate,
   destinyProfile,
+  destinyFusion,
   seedContext,
   agents,
   relationEdges,
   events,
 }: {
-  destinyClimate: DestinyClimateDraft;
+  destinyClimate: DestinyClimateDraft | null;
   destinyProfile: DestinyProfileDraft | null;
+  destinyFusion: DestinySituationFusionDraft | null;
   seedContext: SeedContextDraft;
   agents: AgentProfileDraft[];
   relationEdges: RelationEdgeDraft[];
   events: SimulationEventDraft[];
 }) {
-  const strongestPanels = destinyClimate.panels.slice(0, 3);
+  const strongestPanels = destinyClimate?.panels.slice(0, 3) ?? [];
+  const climateInterpretation = destinyClimate?.coreTendencies?.slice(0, 2) ?? [];
+  const profileInterpretation = destinyProfile?.coreTendencies?.slice(0, 2) ?? [];
+  const pressureThemes =
+    destinyClimate?.pressureThemes?.slice(0, 2) ??
+    destinyProfile?.pressureThemes?.slice(0, 2) ??
+    [];
   const topAgents = agents
     .filter((agent) =>
       events.some((event) => event.involvedAgentIds.includes(agent.id)),
@@ -1382,16 +1667,37 @@ function DestinySituationSummarySection({
               destiny climate
             </p>
             <h2 className="mt-2 text-base font-semibold text-[#11150f]">
-              Current climate summary
+              Destiny climate summary
             </h2>
             <p className="mt-2 text-sm leading-7 text-[#62695d]">
-              {destinyClimate.userFacingOverview}
+              {destinyClimate?.userFacingOverview ??
+                "This run used mostly real-situation evidence because destiny context was incomplete."}
             </p>
           </div>
-          <StatusPill tone="planned">{destinyClimate.mode}</StatusPill>
+          <StatusPill tone={destinyClimate ? "planned" : "blocked"}>
+            {destinyClimate?.mode ?? "low confidence"}
+          </StatusPill>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {[...climateInterpretation, ...profileInterpretation]
+            .slice(0, 3)
+            .map((item) => (
+              <div
+                key={item.id}
+                className="rounded-md border border-black/8 bg-[#f7f8f4] p-3"
+              >
+                <div className="text-sm font-semibold text-[#11150f]">
+                  {item.label}
+                </div>
+                <p className="mt-1 text-xs leading-5 text-[#62695d]">
+                  {item.intensity ?? "directional"}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-[#62695d]">
+                  {item.userFacingSummary}
+                </p>
+              </div>
+            ))}
           {strongestPanels.map((panel) => (
             <div
               key={panel.id}
@@ -1410,6 +1716,24 @@ function DestinySituationSummarySection({
           ))}
         </div>
 
+        {pressureThemes.length ? (
+          <div className="mt-4 rounded-md border border-black/8 bg-[#fbfcf8] p-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+              pressure themes to observe
+            </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              {pressureThemes.map((theme) => (
+                <p key={theme.id} className="text-xs leading-5 text-[#62695d]">
+                  <span className="font-semibold text-[#11150f]">
+                    {theme.label}:
+                  </span>{" "}
+                  {theme.userFacingSummary}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {destinyProfile ? (
           <p className="mt-4 rounded-md border border-black/8 bg-[#fbfcf8] p-3 text-xs leading-5 text-[#62695d]">
             Profile basis: {destinyProfile.userFacingSummary} This remains
@@ -1419,19 +1743,23 @@ function DestinySituationSummarySection({
       </section>
 
       <section className="rounded-lg border border-black/8 bg-[#f7f8f4] p-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-          fusion summary
-        </p>
         <h2 className="mt-2 text-base font-semibold text-[#11150f]">
-          How climate meets the real situation
+          Destiny themes mapped to real people
         </h2>
         <p className="mt-2 text-sm leading-7 text-[#62695d]">
           The sandbox maps climate themes onto the current question, involved
-          people, relation edges, and Event Logs. This is a basis summary, not a
+          people, situation map edges, and sandbox events. This is a basis summary, not a
           new Finding.
         </p>
 
         <div className="mt-4 space-y-3">
+          {destinyFusion?.mappings.slice(0, 4).map((mapping) => (
+            <FusionRow
+              key={mapping.id}
+              label={`${mapping.themeLabel} -> ${mapping.personLabel}`}
+              value={`${mapping.pressureRole}. ${mapping.mappingExplanation?.whyLinked ?? mapping.userFacingSummary}`}
+            />
+          ))}
           <FusionRow
             label="current question"
             value={
@@ -1488,7 +1816,7 @@ function LocalFullDepthBoundary({
         Local full-depth boundary
       </h2>
       <p className="mt-3 text-sm leading-7 text-[#62695d]">
-        Full depth reveals the complete Event Log chain, branch comparison,
+        Full depth reveals the complete sandbox event chain, path divergence,
         relation deltas, and strategy options. It uses the same stored finding id set and
         does not change confidence or risk level.
       </p>
@@ -1522,10 +1850,10 @@ function BranchComparison({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[#11150f]">
-            Branch comparison
+            Path divergence
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            Branches start from the same locked graph and differ by self-policy
+            Paths start from the same locked situation map and differ by self-policy
             strategy. Counts are evidence summaries, not stronger findings.
           </p>
         </div>
@@ -1547,7 +1875,7 @@ function BranchComparison({
             >
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold text-[#11150f]">
-                  {item.label}
+                  {pathLabel(item.branchId)}
                 </h3>
                 <span className="text-xs font-semibold text-[#568262]">
                   {item.eventCount} events
@@ -1644,7 +1972,7 @@ function FeedbackPanel({
   const resolvedTargetId = selectedTarget?.value ?? "";
   const targetHelp =
     target === "agent"
-      ? "Use this when an Agent feels mismatched. Corrections become future-run calibration signals, not edits to the stored Agent."
+      ? "Use this when an Agent feels mismatched. Corrections become future-run improvement signals, not edits to the stored Agent."
       : target === "relation_edge"
         ? "Use this when the relation reading feels off. Corrections never edit historical edge weights."
         : target === "strategy"
@@ -1658,11 +1986,11 @@ function FeedbackPanel({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[#11150f]">
-            Feedback calibration
+            Improve next run
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
             Mark what felt right or wrong. Feedback affects future runs only and
-            never rewrites Event Logs, Findings, Reports, or edge weights.
+            never rewrites sandbox events, Findings, results, or edge weights.
           </p>
         </div>
         <StatusPill tone={ledger?.feedback.length ? "ready" : "planned"}>
@@ -1795,7 +2123,7 @@ function FeedbackPanel({
           disabled={!resolvedTargetId}
           className="w-full rounded-md bg-[#11150f] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9aa096]"
         >
-          Save calibration feedback
+          Save improve-next-run feedback
         </button>
 
         {ledger?.feedback.length ? (
@@ -1906,7 +2234,7 @@ function CorrectionEditor({
         </div>
       </div>
       <p className="mt-3 text-xs leading-5 text-[#62695d]">
-        This note becomes a calibration signal for the next run. It does not
+        This note becomes an improve-next-run signal. It does not
         overwrite stored profile fields or relation weights.
       </p>
     </div>
@@ -1933,10 +2261,10 @@ function CalibrationSummary({ profile }: { profile: CalibrationProfile | null })
     return (
       <section className="rounded-lg border border-black/8 bg-[#f7f8f4] p-5">
         <h2 className="text-sm font-semibold text-[#11150f]">
-          Calibration summary
+          Improve next run summary
         </h2>
         <p className="mt-2 text-sm leading-6 text-[#62695d]">
-          Save feedback to build a local CalibrationProfile for future runs.
+          Save feedback to build local guidance for future runs.
           Historical evidence remains unchanged.
         </p>
       </section>
@@ -1951,11 +2279,11 @@ function CalibrationSummary({ profile }: { profile: CalibrationProfile | null })
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[#11150f]">
-            Calibration summary
+            Improve next run summary
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
             This profile is applied only when preparing future runs. It does not
-            mutate past Event Logs, Findings, Reports, or edge weights.
+            mutate past sandbox events, Findings, results, or edge weights.
           </p>
         </div>
         <StatusPill tone={profile.signals.length ? "ready" : "planned"}>
@@ -2022,7 +2350,7 @@ function CalibrationSummary({ profile }: { profile: CalibrationProfile | null })
             Historical evidence invariant
           </summary>
           <ul className="mt-3 space-y-1 text-xs leading-5 text-[#62695d]">
-            <li>Event Logs unchanged: {String(profile.historyInvariant.doesNotModifyEventLogs)}</li>
+            <li>Sandbox events unchanged: {String(profile.historyInvariant.doesNotModifyEventLogs)}</li>
             <li>Findings unchanged: {String(profile.historyInvariant.doesNotModifyClaims)}</li>
             <li>Edge weights unchanged: {String(profile.historyInvariant.doesNotModifyEdgeWeights)}</li>
             <li>Feedback is not absolute fact: {String(profile.historyInvariant.feedbackIsNotAbsoluteFact)}</li>
@@ -2084,10 +2412,10 @@ function AgentGraphSummary({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[#11150f]">
-            Agent / Graph summary
+            Agent / Situation map summary
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            Graph data remains read-only. Highlighting comes from the selected
+            Situation map data remains read-only. Highlighting comes from the selected
             finding evidence chain.
           </p>
         </div>

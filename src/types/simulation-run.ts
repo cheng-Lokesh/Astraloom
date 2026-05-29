@@ -4,7 +4,11 @@ import type { DestinySituationFusionSourceTag } from "./destiny-fusion";
 
 export type SimulationRunStatus = "not_ready" | "queued" | "blocked";
 
-export type SimulationBranchId = "baseline" | "cautious_self" | "decisive_self";
+export type SimulationBranchId =
+  | "baseline"
+  | "cautious_self"
+  | "decisive_self"
+  | "boundary_adjustment";
 
 export type SimulationGateId =
   | "agents"
@@ -143,6 +147,7 @@ export type SimulationRunDraft = {
   branches?: Array<{
     id: SimulationBranchId;
     label: string;
+    description?: string;
     tickIds: string[];
     eventIds: string[];
   }>;

@@ -12,6 +12,16 @@ export type DestinySituationFusionMapping = {
   personId: string;
   personLabel: string;
   pressureRole: string;
+  linkedInterpretationIds?: string[];
+  mappingExplanation?: {
+    destinyTheme: string;
+    realPersonOrPressure: string;
+    whyLinked: string;
+    evidenceBasis: string[];
+    confidence: number;
+  };
+  interpretationNotes?: string[];
+  lowConfidenceNotes?: string[];
   sourceTags: DestinySituationFusionSourceTag[];
   userFacingSummary: string;
   evidenceRefs: {

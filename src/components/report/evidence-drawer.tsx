@@ -16,7 +16,7 @@ export function EvidenceDrawer({
           Evidence drawer
         </h2>
         <p className="mt-3 text-sm leading-6 text-[#62695d]">
-          Select a Finding to inspect Event Log evidence.
+          Select a Finding to inspect sandbox event evidence.
         </p>
       </section>
     );
@@ -29,7 +29,7 @@ export function EvidenceDrawer({
       <div className="mf-section-header">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-            Evidence drawer
+            Evidence basis
           </p>
           <h2 className="mt-2 text-base font-semibold text-[#11150f]">
             {claim.claimType}
@@ -39,8 +39,8 @@ export function EvidenceDrawer({
       </div>
 
       <p className="mt-3 text-sm leading-6 text-[#62695d]">
-        This finding is shown only because the Event Log contains matching
-        evidence. Report copy does not create independent conclusions.
+        This finding is shown only because sandbox events contain matching
+        evidence. Result copy does not create independent conclusions.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -57,9 +57,9 @@ export function EvidenceDrawer({
               <p>{event.action}</p>
               <Meta label="branch" value={event.branchId} />
               <Meta label="participants" value={event.participants.join(", ")} />
-              <Meta label="relation edges" value={event.relationEdgeIds.join(", ")} />
+              <Meta label="situation map edges" value={event.relationEdgeIds.join(", ")} />
               <Meta label="causes" value={event.causes.join(", ")} />
-              <Meta label="evidence refs" value={event.evidenceRefs.join(", ")} />
+              <Meta label="evidence basis" value={event.evidenceRefs.join(", ")} />
               <pre className="max-h-48 overflow-auto rounded bg-white p-3 text-xs">
                 {JSON.stringify(event.edgeWeightDeltas, null, 2)}
               </pre>

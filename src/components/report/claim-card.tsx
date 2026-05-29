@@ -35,7 +35,7 @@ export function ClaimCard({
       }`}
     >
       <div className="mb-4 flex flex-wrap gap-2">
-        <EvidenceTag>evidence events {claim.evidenceEventIds.length}</EvidenceTag>
+        <EvidenceTag>sandbox events {claim.evidenceEventIds.length}</EvidenceTag>
         <ConfidenceTag value={claim.confidence} />
         <span
           className={`rounded-md border px-2 py-1 text-xs font-semibold ${riskClass(
@@ -56,12 +56,12 @@ export function ClaimCard({
         </div>
       </div>
       <p className="mt-4 text-sm leading-6 text-[#62695d]">
-        This finding comes from Event Log evidence. It is a reviewable sandbox
+        This finding comes from sandbox event evidence. It is a reviewable sandbox
         signal, not a certain result.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="mf-tag">agents {claim.relatedAgentIds.length}</span>
-        <span className="mf-tag">edges {claim.relatedRelationEdgeIds.length}</span>
+        <span className="mf-tag">map edges {claim.relatedRelationEdgeIds.length}</span>
         <span className="mf-tag">stored id {claim.id}</span>
       </div>
     </button>

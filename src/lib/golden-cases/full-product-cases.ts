@@ -62,6 +62,8 @@ export type GoldenCaseDefinition = {
 export type GoldenCaseStepId =
   | "birth_or_skip"
   | "destiny_profile"
+  | "destiny_core_v1_fields"
+  | "missing_birth_time_confidence"
   | "destiny_climate"
   | "seed_context_from_free_form"
   | "clarification_readiness"
@@ -69,6 +71,7 @@ export type GoldenCaseStepId =
   | "key_people_from_free_form"
   | "destiny_situation_fusion"
   | "dynamic_sandbox_data"
+  | "branch_path_shape"
   | "event_interaction_summaries"
   | "findings_source_tags"
   | "evidence_replay_refs"
@@ -130,9 +133,10 @@ type FindingDraft = {
 type EvidenceReplayDraft = {
   findingId: string;
   destinyBasis: string[];
-  realClues: string[];
-  sandboxEvents: string[];
+  realSituationBasis: string[];
+  dynamicSandboxBasis: string[];
   pathDivergence: string[];
+  layerLabels: Array<"destiny basis" | "real situation basis" | "dynamic sandbox basis">;
 };
 
 const goldenCases: GoldenCaseDefinition[] = [
@@ -424,14 +428,21 @@ function stableEventSnapshot(events: SimulationEventDraft[]) {
 function buildFindings(
   claims: ClaimDraft[],
   fusion: DestinySituationFusionDraft,
+  simulationRun: SimulationRunDraft,
 ): FindingDraft[] {
-  return claims.map((claim, index) => ({
+  const fallbackTags = fusion.sourceTags;
+
+  return claims.map((claim) => ({
     id: `finding_${claim.id}`,
     claimId: claim.id,
     summary: claim.summary,
-    sourceTags:
-      fusion.mappings[index % Math.max(fusion.mappings.length, 1)]?.sourceTags ??
-      fusion.sourceTags,
+    sourceTags: Array.from(
+      new Set(
+        simulationRun.events
+          .filter((event) => claim.evidenceEventIds.includes(event.id))
+          .flatMap((event) => event.sourceTags ?? fallbackTags),
+      ),
+    ) as DestinySituationFusionSourceTag[],
     evidenceEventIds: claim.evidenceEventIds,
   }));
 }
@@ -452,9 +463,14 @@ function buildEvidenceReplay({
   return findings.map((finding) => ({
     findingId: finding.id,
     destinyBasis: fusion.evidenceRefs.destinyBasis,
-    realClues: fusion.evidenceRefs.realClues,
-    sandboxEvents: finding.evidenceEventIds,
+    realSituationBasis: fusion.evidenceRefs.realClues,
+    dynamicSandboxBasis: finding.evidenceEventIds,
     pathDivergence: branchDivergence,
+    layerLabels: [
+      "destiny basis",
+      "real situation basis",
+      "dynamic sandbox basis",
+    ],
   }));
 }
 
@@ -466,6 +482,117 @@ function everyTickHasEventLog(simulationRun: SimulationRunDraft) {
       Array.isArray(tick.eventLogIds) &&
       tick.eventLogIds.length > 0 &&
       tick.eventLogIds.every((eventId) => eventIds.has(eventId)),
+  );
+}
+
+function hasDestinyCoreV1Fields({
+  definition,
+  profile,
+}: {
+  definition: GoldenCaseDefinition;
+  profile: ReturnType<typeof buildDestinyProfileDraft>;
+}) {
+  if (definition.skipDestiny) {
+    return (
+      profile.mode === "skipped" &&
+      profile.destinyCalculationConfidence?.precisionLevel === "skipped"
+    );
+  }
+
+  if (!definition.birthInfo?.birthDate) return false;
+
+  return Boolean(
+    profile.technicalSummary.destinyCoreVersion === "destiny-core-local-v1" &&
+      profile.destinyCalculationConfidence?.calculationVersion ===
+        "destiny-core-local-v1" &&
+      profile.destinyCalculationConfidence.hasBirthDate &&
+      profile.fourPillars?.year &&
+      profile.fourPillars.month &&
+      profile.fourPillars.day &&
+      profile.fourPillars.calculationMethod === "local-deterministic-v1" &&
+      profile.elementBalance?.dayMasterElement &&
+      profile.tenGodsSummary &&
+      profile.tenGodsSummary.length > 0 &&
+      profile.localWarnings?.includes(
+        "V1 uses local deterministic calculation and may require solar-term refinement.",
+      ),
+  );
+}
+
+function missingBirthTimeHandled({
+  definition,
+  profile,
+}: {
+  definition: GoldenCaseDefinition;
+  profile: ReturnType<typeof buildDestinyProfileDraft>;
+}) {
+  const birthTimeMissing =
+    Boolean(definition.birthInfo?.birthDate) && !definition.birthInfo?.birthTime;
+
+  if (!birthTimeMissing) return true;
+
+  return Boolean(
+    profile.mode === "rough" &&
+      profile.fourPillars &&
+      profile.fourPillars.hour === null &&
+      profile.fourPillars.pillarsAvailable === 3 &&
+      profile.destinyCalculationConfidence?.hasBirthTime === false &&
+      profile.destinyCalculationConfidence.precisionLevel === "date-only" &&
+      profile.confidence.score < 70 &&
+      profile.localWarnings?.includes(
+        "Unknown birth time reduces hour-pillar confidence.",
+      ),
+  );
+}
+
+function clarificationTriggerMatchesExpectation({
+  definition,
+  readiness,
+}: {
+  definition: GoldenCaseDefinition;
+  readiness: ReturnType<typeof evaluateSandboxReadiness>;
+}) {
+  const shouldTrigger =
+    definition.expected.readiness === "needs_clarification";
+
+  if (shouldTrigger) {
+    return (
+      readiness.questions.length > 0 &&
+      readiness.missingInfoTypes.includes("topic_unclear")
+    );
+  }
+
+  return readiness.questions.length === 0;
+}
+
+function eventsHaveDestinySandboxFields(events: SimulationEventDraft[]) {
+  return (
+    events.length > 0 &&
+    events.every(
+      (event) =>
+        Boolean(event.pathLabel) &&
+        Boolean(event.destinyInfluenceSummary) &&
+        Boolean(event.interactionSummary) &&
+        Boolean(event.pressureDeltaSummary) &&
+        Array.isArray(event.generatedClues) &&
+        event.generatedClues.length > 0 &&
+        Array.isArray(event.sourceTags) &&
+        event.sourceTags.includes("destiny climate") &&
+        event.sourceTags.includes("real situation") &&
+        event.sourceTags.includes("integrated simulation"),
+    )
+  );
+}
+
+function branchPathShapeIsValid(simulationRun: SimulationRunDraft) {
+  const branchIds = simulationRun.branches?.map((branch) => branch.id) ?? [];
+
+  return (
+    branchIds.length === 4 &&
+    branchIds.includes("baseline") &&
+    branchIds.includes("cautious_self") &&
+    branchIds.includes("decisive_self") &&
+    branchIds.includes("boundary_adjustment")
   );
 }
 
@@ -490,9 +617,15 @@ function evidenceReplayComplete(replays: EvidenceReplayDraft[]) {
     replays.every(
       (replay) =>
         replay.destinyBasis.length > 0 &&
-        replay.realClues.length > 0 &&
-        replay.sandboxEvents.length > 0 &&
+        replay.realSituationBasis.length > 0 &&
+        replay.dynamicSandboxBasis.length > 0 &&
         replay.pathDivergence.length >= 3,
+    ) &&
+    replays.every(
+      (replay) =>
+        replay.layerLabels.includes("destiny basis") &&
+        replay.layerLabels.includes("real situation basis") &&
+        replay.layerLabels.includes("dynamic sandbox basis"),
     )
   );
 }
@@ -673,7 +806,7 @@ function runOneGoldenCase(definition: GoldenCaseDefinition): GoldenCaseResult {
           relationEdges,
         })
       : null;
-  const findings = buildFindings(claimLedger.claims, fusion);
+  const findings = buildFindings(claimLedger.claims, fusion, simulationRun);
   const evidenceReplay = buildEvidenceReplay({ findings, fusion, simulationRun });
   const beforeClaimSnapshot = stableClaimSnapshot(claimLedger.claims);
   const beforeEventSnapshot = stableEventSnapshot(simulationRun.events);
@@ -752,6 +885,22 @@ function runOneGoldenCase(definition: GoldenCaseDefinition): GoldenCaseResult {
       "Ensure buildDestinyProfileDraft returns source evidence, confidence, and non-empty base themes.",
     ),
     createStep(
+      "destiny_core_v1_fields",
+      "Destiny Core V1 fields exist when birth info is available",
+      hasDestinyCoreV1Fields({ definition, profile: destinyProfile }),
+      `Core version=${destinyProfile.technicalSummary.destinyCoreVersion ?? "missing"}; pillars=${destinyProfile.fourPillars?.pillarsAvailable ?? 0}; tenGods=${destinyProfile.tenGodsSummary?.length ?? 0}.`,
+      "Ensure DestinyProfile includes fourPillars, elementBalance, tenGodsSummary, V1 confidence, and localWarnings for birth-date cases.",
+    ),
+    createStep(
+      "missing_birth_time_confidence",
+      "Missing birth time reduces confidence but does not block",
+      missingBirthTimeHandled({ definition, profile: destinyProfile }),
+      definition.birthInfo?.birthDate && !definition.birthInfo.birthTime
+        ? `Rough mode confidence=${destinyProfile.confidence.score}; hour pillar=${destinyProfile.fourPillars?.hour ? "present" : "absent"}.`
+        : "Birth time was available or destiny was skipped; no reduction expected.",
+      "Keep date-only birth info in rough mode with no hour pillar, date-only precision, and reduced confidence.",
+    ),
+    createStep(
       "destiny_climate",
       "DestinyClimateDraft builds",
       destinyClimate.version === "destiny-climate-local-v0" &&
@@ -772,11 +921,12 @@ function runOneGoldenCase(definition: GoldenCaseDefinition): GoldenCaseResult {
     ),
     createStep(
       "clarification_readiness",
-      "Clarification engine evaluates readiness",
+      "Clarification triggers only when needed",
       readiness.readiness === definition.expected.readiness &&
-        readiness.questions.length <= 3,
-      `Readiness=${readiness.readiness}; questions=${readiness.questions.length}.`,
-      "Keep clarification to one to three questions and only when input is insufficient.",
+        readiness.questions.length <= 3 &&
+        clarificationTriggerMatchesExpectation({ definition, readiness }),
+      `Readiness=${readiness.readiness}; questions=${readiness.questions.length}; missing=${readiness.missingInfoTypes.join(", ") || "none"}.`,
+      "Trigger clarification only for sparse inputs and include topic_unclear for vague cases.",
     ),
     createStep(
       "safety_blocks_or_downgrades",
@@ -818,16 +968,23 @@ function runOneGoldenCase(definition: GoldenCaseDefinition): GoldenCaseResult {
       "Generate and lock relation graph, then run Simulation Engine v1 to produce ticks and EventLogs.",
     ),
     createStep(
+      "branch_path_shape",
+      "Branch paths match implemented path model",
+      branchPathShapeIsValid(simulationRun),
+      `Branches=${simulationRun.branches?.map((branch) => branch.id).join(", ") ?? "none"}.`,
+      "Keep all four paths: baseline, cautious_self, decisive_self, and boundary_adjustment.",
+    ),
+    createStep(
       "event_interaction_summaries",
-      "Events include user-facing interaction/process summaries",
+      "Simulation events include destiny-situation replay fields",
       simulationRun.events.every(
         (event) =>
           event.summary.length > 20 &&
           Boolean(event.action?.length) &&
           (event.causes?.length ?? 0) > 0,
-      ),
-      "Every event has summary, action, and causes for visible process replay.",
-      "Ensure Sandbox Events expose interaction/process summaries, not opaque records.",
+      ) && eventsHaveDestinySandboxFields(simulationRun.events),
+      "Every event has pathLabel, destinyInfluenceSummary, interactionSummary, pressureDeltaSummary, generatedClues, sourceTags, summary, action, and causes.",
+      "Ensure Sandbox Events expose destiny-situation display fields, not opaque records.",
     ),
     createStep(
       "findings_source_tags",
@@ -838,10 +995,10 @@ function runOneGoldenCase(definition: GoldenCaseDefinition): GoldenCaseResult {
     ),
     createStep(
       "evidence_replay_refs",
-      "Evidence Replay references destiny basis, real clues, sandbox events, and path divergence",
+      "Evidence Replay supports destiny, real situation, and dynamic sandbox basis",
       evidenceReplayComplete(evidenceReplay),
-      `${evidenceReplay.length} replay records connect basis, clues, events, and branches.`,
-      "Build evidence replay from fusion evidence, claim evidence_event_ids, and branch divergence.",
+      `${evidenceReplay.length} replay records connect destiny basis, real situation basis, dynamic sandbox basis, and path divergence.`,
+      "Build evidence replay from fusion evidence, claim evidence_event_ids, event replay fields, and branch divergence.",
     ),
     createStep(
       "feedback_history_invariant",

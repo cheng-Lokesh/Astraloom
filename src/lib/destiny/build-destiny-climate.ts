@@ -8,6 +8,7 @@ import type {
 import type { TimeWindow } from "@/types/seed-context";
 
 import { destinyThemeLanguage, topicThemeHints } from "./destiny-language";
+import { interpretDestinyClimate } from "./interpret-destiny-climate";
 
 type BuildDestinyClimateInput = {
   profile: DestinyProfileDraft;
@@ -179,6 +180,14 @@ export function buildDestinyClimateDraft({
   const normalizedTopic = topic.trim() || "general current question";
   const activeThemes = mergeThemes(profile, dateOnly, normalizedTopic);
   const panels = buildPanels(activeThemes, profile, dateOnly);
+  const interpretation = interpretDestinyClimate({
+    profile,
+    referenceDate: dateOnly,
+    timeWindow,
+    topic: normalizedTopic,
+    activeThemes,
+    panels,
+  });
   const decisionRhythm = buildDecisionRhythm(dateOnly, timeWindow, panels);
   const strongestPanel = panels[0];
 
@@ -193,9 +202,16 @@ export function buildDestinyClimateDraft({
     topic: normalizedTopic,
     activeThemes,
     panels,
+    coreTendencies: interpretation.coreTendencies,
+    pressureThemes: interpretation.pressureThemes,
+    opportunityThemes: interpretation.opportunityThemes,
+    relationshipThemes: interpretation.relationshipThemes,
+    cautionNotes: interpretation.cautionNotes,
+    observationSignals: interpretation.observationSignals,
+    technicalDetails: interpretation.technicalDetails,
     decisionRhythm,
     userFacingOverview: strongestPanel
-      ? `Current climate is led by ${strongestPanel.label}. ${strongestPanel.userFacingSummary} This is a sandbox signal, not a deterministic prediction.`
+      ? `Current climate is led by ${strongestPanel.label}. ${strongestPanel.userFacingSummary} This climate can amplify observable signals, but it is not a deterministic prediction.`
       : "Current climate is low-detail because destiny context is limited. Use the real situation evidence as the main guide.",
     confidence: profile.confidence,
     evidenceRefs: [

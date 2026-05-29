@@ -15,6 +15,7 @@ const branchClasses: Record<SimulationBranchId | "unknown", string> = {
   baseline: "border-l-[#7d8578]",
   cautious_self: "border-l-[#5b7f9b]",
   decisive_self: "border-l-[#c4824a]",
+  boundary_adjustment: "border-l-[#568262]",
   unknown: "border-l-[#7d8578]",
 };
 
@@ -45,10 +46,12 @@ function displayPathLabel(event: SimulationEventDraft) {
   if (event.pathLabel === "Baseline path") return "Current inertia path";
   if (event.pathLabel === "Cautious self path") return "Cautious observation path";
   if (event.pathLabel === "Decisive self path") return "Active push path";
+  if (event.pathLabel === "Boundary adjustment path") return "Boundary adjustment path";
   if (event.pathLabel) return event.pathLabel;
   if (event.branchId === "baseline") return "Current inertia path";
   if (event.branchId === "cautious_self") return "Cautious observation path";
   if (event.branchId === "decisive_self") return "Active push path";
+  if (event.branchId === "boundary_adjustment") return "Boundary adjustment path";
   return branchLabel(event.branchId);
 }
 
@@ -202,11 +205,14 @@ export function EdgeDeltaView({
   agents?: AgentProfileDraft[];
   compact?: boolean;
 }) {
-  const rows = Object.entries(event.edgeWeightDeltas).flatMap(([edgeId, delta]) =>
+  const edgeWeightDeltas = event.edgeWeightDeltas ?? {};
+  const beforeWeights = event.beforeState?.weights ?? {};
+  const afterWeights = event.afterState?.weights ?? {};
+  const rows = Object.entries(edgeWeightDeltas).flatMap(([edgeId, delta]) =>
     Object.entries(delta).map(([key, value]) => {
       const typedKey = key as WeightKey;
-      const before = event.beforeState.weights[edgeId]?.[typedKey];
-      const after = event.afterState.weights[edgeId]?.[typedKey];
+      const before = beforeWeights[edgeId]?.[typedKey];
+      const after = afterWeights[edgeId]?.[typedKey];
       return {
         id: `${edgeId}:${key}`,
         edgeId,
@@ -261,13 +267,13 @@ export function AgentRefsView({
   agentIds,
   agents,
 }: {
-  agentIds: string[];
+  agentIds?: string[];
   agents: AgentProfileDraft[];
 }) {
   return (
     <RefList
       title="Agents"
-      values={agentIds.map((id) => agentLabel(agents, id))}
+      values={(agentIds ?? []).map((id) => agentLabel(agents, id))}
       empty="No agent refs."
     />
   );
@@ -278,14 +284,14 @@ export function RelationEdgeRefsView({
   edges,
   agents,
 }: {
-  edgeIds: string[];
+  edgeIds?: string[];
   edges: RelationEdgeDraft[];
   agents: AgentProfileDraft[];
 }) {
   return (
     <RefList
       title="Relation edges"
-      values={edgeIds.map((id) => edgeLabel(edges, agents, id))}
+      values={(edgeIds ?? []).map((id) => edgeLabel(edges, agents, id))}
       empty="No relation edge refs."
     />
   );
@@ -295,7 +301,7 @@ export function EvidenceRefsView({ refs }: { refs: string[] }) {
   return (
     <details className="rounded border border-black/8 bg-white p-3">
       <summary className="cursor-pointer text-xs font-semibold uppercase text-[#7d8578]">
-        Evidence refs ({refs.length})
+        Evidence basis ({refs.length})
       </summary>
       {refs.length ? (
         <div className="mt-2 space-y-1">
@@ -310,7 +316,7 @@ export function EvidenceRefsView({ refs }: { refs: string[] }) {
         </div>
       ) : (
         <p className="mt-2 text-xs leading-5 text-[#62695d]">
-          No evidence refs attached to this event.
+          No evidence basis attached to this event.
         </p>
       )}
     </details>
@@ -381,7 +387,10 @@ export function EventCard({
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <AgentRefsView agentIds={event.involvedAgentIds} agents={agents} />
+        <AgentRefsView
+          agentIds={event.involvedAgentIds ?? event.agentIds}
+          agents={agents}
+        />
         <RelationEdgeRefsView
           edgeIds={event.relationEdgeIds}
           edges={edges}
@@ -453,7 +462,7 @@ export function TickGroup({
               Empty tick slot
             </div>
             <p className="mt-2 text-sm leading-6 text-[#62695d]">
-              No Event Log was produced in this tick. This is a valid simulation
+              No sandbox event was produced in this tick. This is a valid simulation
               result and helps distinguish branch behavior.
             </p>
           </div>
@@ -471,8 +480,8 @@ export function TimelineFeed({
   highlightedEventIds = [],
   selectedEventId = "",
   onSelectEvent,
-  title = "Event Log timeline",
-  description = "Events are grouped by tick so claims can be traced back to the local audit trail.",
+  title = "Sandbox event timeline",
+  description = "Events are grouped by tick so findings can be traced back to the local audit trail.",
 }: {
   ticks?: SimulationTickDraft[];
   events: SimulationEventDraft[];
@@ -500,7 +509,7 @@ export function TimelineFeed({
                 id: `tick_${tickIndex}`,
                 tickIndex,
                 timeLabel: first?.timeLabel ?? `Tick ${tickIndex}`,
-                summary: `Tick ${tickIndex} Event Log entries.`,
+                summary: `Tick ${tickIndex} sandbox event entries.`,
               },
               events: tickEvents,
             };

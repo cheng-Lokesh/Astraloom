@@ -3,16 +3,14 @@ import type {
   DestinyConfidenceDraft,
   DestinyMode,
   DestinyProfileDraft,
-  DestinyThemeLabel,
-  DestinyThemeSignal,
 } from "@/types/destiny";
 
 import {
   confidenceSummary,
-  destinyThemeLanguage,
-  destinyThemeLabels,
   modeBoundarySummary,
 } from "./destiny-language";
+import { buildDestinyCoreV1 } from "./destiny-core-v1";
+import { interpretDestinyProfile } from "./interpret-destiny-profile";
 
 type BuildDestinyProfileInput = {
   birthInfo?: BirthInfo | null;
@@ -99,45 +97,6 @@ function parseDateParts(birthDate?: string) {
   };
 }
 
-function themeScore(seedHash: string, label: DestinyThemeLabel, index: number) {
-  const raw = parseInt(hashText(`${seedHash}:${label}:${index}`).slice(0, 4), 36);
-  return 42 + (raw % 44);
-}
-
-function buildBaseThemes(seedHash: string, mode: DestinyMode) {
-  if (mode === "skipped") {
-    return [
-      buildThemeSignal(seedHash, "information uncertainty", 34, 0),
-      buildThemeSignal(seedHash, "self-rhythm", 30, 1),
-    ];
-  }
-
-  return destinyThemeLabels
-    .map((label, index) =>
-      buildThemeSignal(seedHash, label, themeScore(seedHash, label, index), index),
-    )
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 4);
-}
-
-function buildThemeSignal(
-  seedHash: string,
-  label: DestinyThemeLabel,
-  score: number,
-  index: number,
-): DestinyThemeSignal {
-  const language = destinyThemeLanguage[label];
-
-  return {
-    id: `destiny_theme_${hashText(`${seedHash}:${label}:${index}`)}`,
-    label,
-    score,
-    polarity: language.polarity,
-    userFacingSummary: language.summary,
-    evidenceRefs: [`destiny:${seedHash}:theme:${label.replace(/\s+/g, "_")}`],
-  };
-}
-
 export function buildDestinyProfileDraft({
   birthInfo,
   seedContextId,
@@ -153,8 +112,29 @@ export function buildDestinyProfileDraft({
     }),
   );
   const { monthBucket, dayBucket } = parseDateParts(normalizedBirthInfo.birthDate);
-  const confidence = confidenceForMode(normalizedBirthInfo, mode);
-  const baseThemes = buildBaseThemes(seedHash, mode);
+  const destinyCore = buildDestinyCoreV1({
+    birthInfo: normalizedBirthInfo,
+    mode,
+    seedHash,
+  });
+  const confidence = {
+    ...confidenceForMode(normalizedBirthInfo, mode),
+    score: destinyCore.calculationConfidence.score,
+    userFacingSummary: confidenceSummary(
+      mode,
+      destinyCore.calculationConfidence.score,
+    ),
+  } satisfies DestinyConfidenceDraft;
+  const interpretation = interpretDestinyProfile({
+    mode,
+    confidenceScore: confidence.score,
+    seedHash,
+    fourPillars: destinyCore.fourPillars,
+    elementBalance: destinyCore.elementBalance,
+    tenGodsSummary: destinyCore.tenGodsSummary,
+    baseThemes: destinyCore.baseThemes,
+    localWarnings: destinyCore.localWarnings,
+  });
 
   return {
     id: `destiny_profile_${seedHash}`,
@@ -163,7 +143,19 @@ export function buildDestinyProfileDraft({
     mode,
     birthInfo: normalizedBirthInfo,
     confidence,
-    baseThemes,
+    fourPillars: destinyCore.fourPillars,
+    elementBalance: destinyCore.elementBalance,
+    tenGodsSummary: destinyCore.tenGodsSummary,
+    destinyCalculationConfidence: destinyCore.calculationConfidence,
+    localWarnings: destinyCore.localWarnings,
+    coreTendencies: interpretation.coreTendencies,
+    pressureThemes: interpretation.pressureThemes,
+    opportunityThemes: interpretation.opportunityThemes,
+    relationshipThemes: interpretation.relationshipThemes,
+    cautionNotes: interpretation.cautionNotes,
+    observationSignals: interpretation.observationSignals,
+    technicalDetails: interpretation.technicalDetails,
+    baseThemes: destinyCore.baseThemes,
     userFacingSummary: modeBoundarySummary(mode),
     technicalSummary: {
       seedHash,
@@ -171,9 +163,13 @@ export function buildDestinyProfileDraft({
       dayBucket,
       hasProfessionalChart: false,
       calculationNote:
-        "Local deterministic placeholder only. A professional-grade BaZi calculation core is not implemented in this module.",
+        "Destiny Core V1 uses local deterministic Four Pillars approximation. It is structured and explainable, but not professional-grade BaZi precision; solar-term and true-solar-time refinement are still future work.",
+      destinyCoreVersion: "destiny-core-local-v1",
     },
-    evidenceRefs: [`destiny:${seedHash}:birth_info`],
+    evidenceRefs: [
+      `destiny:${seedHash}:birth_info`,
+      `destiny:${seedHash}:core_v1`,
+    ],
     createdAt,
     updatedAt: createdAt,
   };

@@ -166,6 +166,18 @@ const branchLabels: Record<SimulationBranchId, string> = {
   baseline: "Current inertia path",
   cautious_self: "Cautious observation path",
   decisive_self: "Active push path",
+  boundary_adjustment: "Boundary adjustment path",
+};
+
+const branchDescriptions: Record<SimulationBranchId, string> = {
+  baseline:
+    "Models how pressure may move if the current pattern continues without a strong self-policy tilt.",
+  cautious_self:
+    "Models slower movement, more observation, and extra sensitivity to missing information.",
+  decisive_self:
+    "Models more direct movement and tests whether information gaps or resource pressure ease or rise.",
+  boundary_adjustment:
+    "Models setting a clearer time box, boundary, or alternative option so the situation shifts from passive waiting to controlled choice.",
 };
 
 function relationWeightLabel(key: keyof RelationWeights) {
@@ -488,7 +500,7 @@ export function buildSimulationEngineV1Run(
     eventLogIds: events
       .filter((event) => event.tickIndex === tick.tickIndex)
       .map((event) => event.id),
-    summary: `Tick ${tick.tickIndex} contains deterministic Event Logs for baseline, cautious self, and decisive self branches.`,
+    summary: `Tick ${tick.tickIndex} contains deterministic Event Logs for current inertia, cautious observation, active push, and boundary adjustment paths.`,
   }));
   const status = input.status ?? "not_ready";
 
@@ -514,6 +526,7 @@ export function buildSimulationEngineV1Run(
     branches: branchOutputs.map((output) => ({
       id: output.branch.id as SimulationBranchId,
       label: output.branch.label,
+      description: branchDescriptions[output.branch.id],
       tickIds: ticks.map((tick) => tick.id),
       eventIds: output.events.map((event) => event.id),
     })),

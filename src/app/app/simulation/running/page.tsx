@@ -61,7 +61,7 @@ const simulationStages = [
     id: "comparing_path_divergence",
     label: "Comparing path divergence",
     detail:
-      "Compare the current inertia, cautious observation, and active push paths for pressure shifts.",
+      "Compare the current inertia, cautious observation, active push, and boundary adjustment paths for pressure shifts.",
   },
   {
     id: "preparing_integrated_findings",
@@ -75,6 +75,7 @@ const branchNames: SimulationBranchId[] = [
   "baseline",
   "cautious_self",
   "decisive_self",
+  "boundary_adjustment",
 ];
 
 const branchMeta: Record<
@@ -95,6 +96,12 @@ const branchMeta: Record<
     title: "Active push path",
     detail: "Models more direct movement and tests whether information gaps or resource pressure ease or rise.",
     classes: "border-[#c4824a]/30 bg-[#fdf5ed]",
+  },
+  boundary_adjustment: {
+    title: "Boundary adjustment path",
+    detail:
+      "Models setting a clearer time box, boundary, or alternative option so the situation shifts from passive waiting to controlled choice.",
+    classes: "border-[#568262]/30 bg-[#eef5ee]",
   },
 };
 
@@ -120,6 +127,7 @@ function countByEventType(events: SimulationRunDraft["events"]) {
 function branchDisplayLabel(branchId: SimulationBranchId | undefined) {
   if (branchId === "cautious_self") return "Cautious observation path";
   if (branchId === "decisive_self") return "Active push path";
+  if (branchId === "boundary_adjustment") return "Boundary adjustment path";
   return "Current inertia path";
 }
 
@@ -134,7 +142,11 @@ function eventParticipantText(
   event: SimulationEventDraft,
   agents: AgentEcologyDraft["agents"],
 ) {
-  return event.involvedAgentIds.map((id) => agentName(agents, id)).join(" and ");
+  const participantIds = Array.isArray(event.involvedAgentIds)
+    ? event.involvedAgentIds
+    : event.agentIds;
+
+  return participantIds.map((id) => agentName(agents, id)).join(" and ");
 }
 
 function firstClue(event: SimulationEventDraft) {
@@ -145,7 +157,8 @@ function eventDisplayTitle(event: SimulationEventDraft) {
   return (event.userFacingEventTitle ?? eventTypeLabel(event.eventType))
     .replace("Baseline path:", "Current inertia path:")
     .replace("Cautious self path:", "Cautious observation path:")
-    .replace("Decisive self path:", "Active push path:");
+    .replace("Decisive self path:", "Active push path:")
+    .replace("Boundary adjustment path:", "Boundary adjustment path:");
 }
 
 function realSituationSummary(seedContext: SeedContextDraft) {
@@ -271,7 +284,18 @@ export default function RunsPage() {
   const [processError, setProcessError] = useState("");
 
   const visibleRun = processRun ?? run;
-  const generatedEventCount = visibleRun?.events.length ?? 0;
+  const visibleEvents = useMemo(() => visibleRun?.events ?? [], [visibleRun]);
+  const visibleTicks = useMemo(() => visibleRun?.ticks ?? [], [visibleRun]);
+  const visibleGates = useMemo(() => visibleRun?.gates ?? [], [visibleRun]);
+  const frozenAgentProfileIds = useMemo(
+    () => visibleRun?.frozenAgentProfileIds ?? [],
+    [visibleRun],
+  );
+  const frozenRelationEdgeIds = useMemo(
+    () => visibleRun?.frozenRelationEdgeIds ?? [],
+    [visibleRun],
+  );
+  const generatedEventCount = visibleEvents.length;
   const claimPreviewCount = useMemo(
     () => claimCountForRun(visibleRun),
     [visibleRun],
@@ -285,18 +309,18 @@ export default function RunsPage() {
     () => [
       {
         id: "graph_locked",
-        label: "Graph locked",
+        label: "Situation map ready",
         ready: relationGraph?.graphLocked === true,
-        fix: "Lock the Relation Graph snapshot before running.",
+        fix: "Lock the Situation Map snapshot before running.",
       },
       {
         id: "agents_ready",
-        label: "Agents ready",
+        label: "People and role models ready",
         ready:
           (agentEcology?.agents.length ?? 0) > 0 &&
           (agentEcology?.agents.some((agent) => agent.agentType === "npc") ??
             false),
-        fix: "Confirm Key People and save Agent Profiles.",
+        fix: "Confirm Key People and save usable role models.",
       },
       {
         id: "safety_checked",
@@ -306,19 +330,19 @@ export default function RunsPage() {
       },
       {
         id: "events_generated",
-        label: "Event Logs generated",
+        label: "Sandbox events recorded",
         ready: generatedEventCount > 0,
-        fix: "Run the visible simulation after graph lock.",
+        fix: "Run the visible sandbox after the Situation Map is ready.",
       },
       {
         id: "claims_built",
-        label: "Claims built from events",
+        label: "Findings prepared from evidence",
         ready: claimPreviewCount > 0,
-        fix: "Claims require saved Event Logs with relation edge evidence.",
+        fix: "Findings require saved sandbox events with situation-map evidence.",
       },
       {
         id: "report_ready",
-        label: "Result preview prepared",
+        label: "Result ready",
         ready: canOpenResult,
         fix: "Finish the stage sequence before opening results.",
       },
@@ -335,12 +359,12 @@ export default function RunsPage() {
   const branchEventCounts = useMemo(() => {
     const counts = new Map<SimulationBranchId, number>();
     branchNames.forEach((branchId) => counts.set(branchId, 0));
-    visibleRun?.events.forEach((event) => {
+    visibleEvents.forEach((event) => {
       const branchId = event.branchId ?? "baseline";
       counts.set(branchId, (counts.get(branchId) ?? 0) + 1);
     });
     return counts;
-  }, [visibleRun]);
+  }, [visibleEvents]);
 
   useEffect(() => {
     if (processState !== "complete") return;
@@ -897,7 +921,7 @@ export default function RunsPage() {
               primary sandbox view is the destiny-situation process above.
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {visibleRun?.ticks.map((tick) => (
+              {visibleTicks.map((tick) => (
                 <article
                   key={tick.id}
                   className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
@@ -924,14 +948,14 @@ export default function RunsPage() {
               Path divergence
             </h2>
             <p className="mt-2 text-sm leading-6 text-[#62695d]">
-              The same Situation Map is compared across three internal branch
+              The same Situation Map is compared across four internal branch
               IDs. Labels are user-facing; the saved branch IDs remain stable
               for evidence and reports.
             </p>
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <div className="mt-4 grid gap-4 lg:grid-cols-4">
               {branchNames.map((branchId) => {
                 const branchEvents =
-                  visibleRun?.events.filter(
+                  visibleEvents.filter(
                     (event) => (event.branchId ?? "baseline") === branchId,
                   ) ?? [];
                 const typeCounts = countByEventType(branchEvents);
@@ -996,13 +1020,13 @@ export default function RunsPage() {
           </section>
 
           <InteractionPreviewPanel
-            events={visibleRun?.events ?? []}
+            events={visibleEvents}
             agents={agentEcology.agents}
           />
 
           <TimelineFeed
-            ticks={visibleRun?.ticks ?? []}
-            events={visibleRun?.events ?? []}
+            ticks={visibleTicks}
+            events={visibleEvents}
             agents={agentEcology.agents}
             edges={relationGraph.edges}
             title="Event Log evidence"
@@ -1015,8 +1039,8 @@ export default function RunsPage() {
             Run summary
           </h2>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <Metric label="Agents" value={visibleRun?.frozenAgentProfileIds.length ?? 0} />
-            <Metric label="Edges" value={visibleRun?.frozenRelationEdgeIds.length ?? 0} />
+            <Metric label="Agents" value={frozenAgentProfileIds.length} />
+            <Metric label="Edges" value={frozenRelationEdgeIds.length} />
             <Metric label="Ticks" value={visibleRun?.tickCount ?? 0} />
             <Metric label="Events" value={generatedEventCount} />
             <Metric label="Branches" value={branchNames.length} />
@@ -1069,7 +1093,7 @@ export default function RunsPage() {
               Engine gate debug
             </summary>
             <div className="mt-3 space-y-2">
-              {visibleRun?.gates.map((gate) => (
+              {visibleGates.map((gate) => (
                 <div
                   key={gate.id}
                   className="rounded-md border border-white/10 bg-white/[0.06] p-3"
@@ -1134,6 +1158,28 @@ function DestinyClimatePanel({
         </StatusPill>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {(climate?.coreTendencies ?? profile?.coreTendencies ?? [])
+          .slice(0, 2)
+          .map((item) => (
+            <article
+              key={item.id}
+              className="rounded-md border border-[#568262]/15 bg-white p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-[#11150f]">
+                  {item.label}
+                </h3>
+                {item.intensity ? (
+                  <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
+                    {item.intensity}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[#62695d]">
+                {item.userFacingSummary}
+              </p>
+            </article>
+          ))}
         {(climate?.panels ?? []).slice(0, 4).map((panel) => (
           <article
             key={panel.id}
@@ -1153,6 +1199,23 @@ function DestinyClimatePanel({
           </article>
         ))}
       </div>
+      {climate?.observationSignals?.length ? (
+        <div className="mt-4 rounded-md border border-[#568262]/15 bg-white p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+            observation signals
+          </div>
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            {climate.observationSignals.slice(0, 2).map((signal) => (
+              <p key={signal.id} className="text-xs leading-5 text-[#62695d]">
+                <span className="font-semibold text-[#11150f]">
+                  {signal.label}:
+                </span>{" "}
+                {signal.userFacingSummary}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {climate?.decisionRhythm.phases.length ? (
         <div className="mt-4 rounded-md border border-[#568262]/15 bg-white p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
@@ -1257,6 +1320,16 @@ function FusionMappingPanel({
             <p className="mt-3 text-xs leading-5 text-[#62695d]">
               {mapping.userFacingSummary}
             </p>
+            {mapping.mappingExplanation ? (
+              <p className="mt-2 text-xs leading-5 text-[#7d8578]">
+                Why linked: {mapping.mappingExplanation.whyLinked}
+              </p>
+            ) : null}
+            {mapping.interpretationNotes?.[0] ? (
+              <p className="mt-2 rounded border border-black/8 bg-white px-2 py-1 text-xs leading-5 text-[#62695d]">
+                {mapping.interpretationNotes[0]}
+              </p>
+            ) : null}
           </article>
         ))}
         {!fusion?.mappings.length ? (

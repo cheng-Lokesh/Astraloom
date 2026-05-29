@@ -88,6 +88,11 @@ export function topicThemeHints(topic: string): DestinyThemeLabel[] {
   const normalized = topic.toLowerCase();
   const labels = new Set<DestinyThemeLabel>();
 
+  if (/boundary|boundaries|limit|limits|protect|exhausted|last-minute/.test(normalized)) {
+    labels.add("boundary pressure");
+    labels.add("self-rhythm");
+  }
+
   if (/job|career|work|promotion|manager|offer|team|business|client/.test(normalized)) {
     labels.add("resource pressure");
     labels.add("boundary pressure");
@@ -110,5 +115,16 @@ export function topicThemeHints(topic: string): DestinyThemeLabel[] {
     labels.add("boundary pressure");
   }
 
-  return Array.from(labels);
+  const priority: DestinyThemeLabel[] = [
+    "resource pressure",
+    "boundary pressure",
+    "information uncertainty",
+    "emotional pull",
+    "opportunity shift",
+    "expression friction",
+    "self-rhythm",
+    "relationship tension",
+  ];
+
+  return priority.filter((label) => labels.has(label)).slice(0, 5);
 }

@@ -17,10 +17,11 @@ export type SafetySnapshot = NonNullable<SimulationRunDraft["safetySnapshot"]>;
 export type BranchPolicy = {
   id: SimulationBranchId;
   label: string;
-  selfBias: "baseline" | "cautious" | "decisive";
+  selfBias: "baseline" | "cautious" | "decisive" | "boundary";
   edgePressureBias: number;
   disclosureBias: number;
   cooperationBias: number;
+  boundaryStabilizationBias?: number;
 };
 
 export type TickPolicy = {
