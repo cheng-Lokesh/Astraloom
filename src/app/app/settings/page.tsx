@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { useLanguage } from "@/components/language-provider";
+import {
+  type ChineseFontPreference,
+  type LatinFontPreference,
+  useLanguage,
+} from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { getRepositories } from "@/lib/repositories/repository-provider";
@@ -133,9 +137,38 @@ const copy = {
   },
 } as const;
 
+const latinFontOptions: Array<{
+  value: LatinFontPreference;
+  en: string;
+  zh: string;
+  sample: string;
+}> = [
+  { value: "modern", en: "Modern", zh: "现代", sample: "Decision rhythm" },
+  { value: "system", en: "System", zh: "系统", sample: "Evidence replay" },
+  { value: "serif", en: "Serif", zh: "衬线", sample: "Climate notes" },
+];
+
+const chineseFontOptions: Array<{
+  value: ChineseFontPreference;
+  en: string;
+  zh: string;
+  sample: string;
+}> = [
+  { value: "system", en: "System Chinese", zh: "系统中文", sample: "动态沙盘推演" },
+  { value: "hei", en: "Hei / UI", zh: "黑体界面", sample: "证据链与关系压力" },
+  { value: "song", en: "Song / Reading", zh: "宋体阅读", sample: "观察信号与决策节奏" },
+];
+
 export default function SettingsPage() {
   const [repos] = useState(() => getRepositories());
-  const { locale, setLocale } = useLanguage();
+  const {
+    chineseFont,
+    latinFont,
+    locale,
+    setChineseFont,
+    setLatinFont,
+    setLocale,
+  } = useLanguage();
   const t = copy[locale];
   const [showClearModal, setShowClearModal] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -250,6 +283,32 @@ export default function SettingsPage() {
                   {label}
                 </button>
               ))}
+            </div>
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <FontPreferenceGroup
+                title={locale === "zh" ? "英文字体" : "English font"}
+                description={
+                  locale === "zh"
+                    ? "用于英文导航、标签、数据字段和技术细节。"
+                    : "Used for English navigation, labels, data fields, and technical details."
+                }
+                activeValue={latinFont}
+                options={latinFontOptions}
+                locale={locale}
+                onChange={setLatinFont}
+              />
+              <FontPreferenceGroup
+                title={locale === "zh" ? "中文字体" : "Chinese font"}
+                description={
+                  locale === "zh"
+                    ? "用于中文标题、段落和结果解释。"
+                    : "Used for Chinese headings, paragraphs, and interpretation copy."
+                }
+                activeValue={chineseFont}
+                options={chineseFontOptions}
+                locale={locale}
+                onChange={setChineseFont}
+              />
             </div>
           </SurfaceCard>
 
@@ -413,6 +472,58 @@ function BoundaryCard({ title, body }: { title: string; body: string }) {
       <h3 className="text-sm font-semibold text-[#11150f]">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-[#62695d]">{body}</p>
     </article>
+  );
+}
+
+function FontPreferenceGroup<T extends string>({
+  title,
+  description,
+  activeValue,
+  options,
+  locale,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  activeValue: T;
+  options: Array<{ value: T; en: string; zh: string; sample: string }>;
+  locale: "en" | "zh";
+  onChange: (value: T) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-black/8 bg-[#fbfcf8] p-4">
+      <h3 className="text-sm font-semibold text-[#11150f]">{title}</h3>
+      <p className="mt-1 text-xs leading-5 text-[#62695d]">{description}</p>
+      <div className="mt-3 grid gap-2">
+        {options.map((option) => {
+          const active = option.value === activeValue;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className={`rounded-md border px-3 py-3 text-left transition ${
+                active
+                  ? "border-[#11150f] bg-[#11150f] text-white shadow-[0_14px_32px_rgba(17,21,15,0.16)]"
+                  : "border-black/8 bg-white text-[#52594d] hover:border-[#568262]/40 hover:bg-[#eef5ee]"
+              }`}
+            >
+              <span className="block text-sm font-semibold">
+                {locale === "zh" ? option.zh : option.en}
+              </span>
+              <span
+                className={`mt-1 block text-base ${
+                  active ? "text-white/72" : "text-[#62695d]"
+                }`}
+              >
+                {option.sample}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

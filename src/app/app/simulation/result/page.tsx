@@ -1459,7 +1459,10 @@ function EvidenceReplayPanel({
                     ])}
                     empty="No sandbox event summary was attached."
                   />
-                  <code className="mt-2 block break-all text-xs text-[#7d8578]">
+                  <code
+                    className="mt-2 block break-all text-xs text-[#7d8578]"
+                    data-no-localize
+                  >
                     {event.id}
                   </code>
                 </div>
@@ -2043,7 +2046,10 @@ function FeedbackPanel({
           )}
           {resolvedTargetId ? (
             <div className="mt-2 rounded bg-[#f7f8f4] px-3 py-2">
-              <code className="block break-all text-xs text-[#7d8578]">
+              <code
+                className="block break-all text-xs text-[#7d8578]"
+                data-no-localize
+              >
                 {resolvedTargetId}
               </code>
               <p className="mt-1 text-xs leading-5 text-[#62695d]">
@@ -2141,7 +2147,10 @@ function FeedbackPanel({
                     {entry.rating}
                   </span>
                 </div>
-                <code className="mt-2 block break-all text-[11px] text-[#7d8578]">
+                <code
+                  className="mt-2 block break-all text-[11px] text-[#7d8578]"
+                  data-no-localize
+                >
                   {entry.targetId}
                 </code>
                 {entry.note ? (
@@ -2468,7 +2477,10 @@ function AgentGraphSummary({
                   {edge.confidence}%
                 </span>
               </div>
-              <code className="mt-1 block break-all text-[11px] text-[#7d8578]">
+              <code
+                className="mt-1 block break-all text-[11px] text-[#7d8578]"
+                data-no-localize
+              >
                 {edge.id}
               </code>
             </div>
@@ -2494,7 +2506,11 @@ function EvidenceList({ title, values }: { title: string; values: string[] }) {
       </div>
       <div className="mt-2 space-y-1">
         {values.map((value) => (
-          <code key={value} className="block break-all text-xs text-white/54">
+          <code
+            key={value}
+            className="block break-all text-xs text-white/54"
+            data-no-localize
+          >
             {value}
           </code>
         ))}

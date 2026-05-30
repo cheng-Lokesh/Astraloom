@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { useLanguage } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
 import { Button, SurfaceCard } from "@/components/ui-foundation";
 import { getRepositories } from "@/lib/repositories/repository-provider";
@@ -26,32 +27,44 @@ import type {
 const ticketTypes: Array<{
   value: SupportTicketType;
   label: string;
+  zhLabel: string;
   helper: string;
+  zhHelper: string;
 }> = [
   {
     value: "generation_failure",
     label: "Generation failure",
+    zhLabel: "生成失败",
     helper: "Report a failed graph, simulation, claim, or report generation.",
+    zhHelper: "报告关系图、推演、关键发现或报告生成失败。",
   },
   {
     value: "safety_appeal",
     label: "Safety appeal",
+    zhLabel: "安全申诉",
     helper: "Ask for review when a safety adjustment seems too restrictive.",
+    zhHelper: "当安全调整看起来过于限制时，请求复核。",
   },
   {
     value: "privacy_delete_request",
     label: "Privacy delete request",
+    zhLabel: "隐私删除请求",
     helper: "Record an auditable request. No deletion is executed here.",
+    zhHelper: "记录一条可审计请求。这里不会执行删除。",
   },
   {
     value: "general_support",
     label: "General support",
+    zhLabel: "一般支持",
     helper: "Ask a product or account support question.",
+    zhHelper: "提出产品或账户支持问题。",
   },
   {
     value: "billing_question",
     label: "Billing question",
+    zhLabel: "账单问题",
     helper: "Placeholder for unlock or receipt questions. No payment action runs.",
+    zhHelper: "用于解锁或收据问题的占位请求。不会运行支付操作。",
   },
 ];
 
@@ -61,6 +74,7 @@ function trackingCode(ticket: SupportTicketDraft) {
 }
 
 export default function SupportPage() {
+  const { locale } = useLanguage();
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
     const result = repos.seedContexts.load();
@@ -222,10 +236,10 @@ export default function SupportPage() {
                 }`}
               >
                 <h2 className="text-sm font-semibold text-[#11150f]">
-                  {item.label}
+                  {locale === "zh" ? item.zhLabel : item.label}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                  {item.helper}
+                  {locale === "zh" ? item.zhHelper : item.helper}
                 </p>
               </button>
             ))}
@@ -276,7 +290,7 @@ export default function SupportPage() {
                 >
                   {ticketTypes.map((item) => (
                     <option key={item.value} value={item.value}>
-                      {item.label}
+                      {locale === "zh" ? item.zhLabel : item.label}
                     </option>
                   ))}
                 </select>

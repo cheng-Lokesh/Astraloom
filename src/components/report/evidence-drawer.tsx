@@ -77,7 +77,10 @@ function Meta({ label, value }: { label: string; value: string }) {
       <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
         {label}
       </div>
-      <code className="mt-1 block break-all text-xs text-[#62695d]">
+      <code
+        className="mt-1 block break-all text-xs text-[#62695d]"
+        data-no-localize
+      >
         {value || "none"}
       </code>
     </div>
