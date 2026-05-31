@@ -38,7 +38,11 @@ import type { CalibrationProfile } from "@/lib/calibration/calibration-types";
 import type { ClaimDraft, ClaimLedgerDraft } from "@/types/claim";
 import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
-import type { GroundedSocialSimulationDraft } from "@/types/grounded-social-simulation";
+import type {
+  GroundedRealityNode,
+  GroundedRealityPressure,
+  GroundedSocialSimulationDraft,
+} from "@/types/grounded-social-simulation";
 import type {
   FeedbackCorrectionConfidence,
   FeedbackFieldCorrection,
@@ -1011,7 +1015,7 @@ export default function ReportsPage() {
         onSelectFinding={selectClaim}
       />
 
-      <GroundedResultBasisPanel
+      <GroundedResultBasisInspectorPanel
         groundedSocialSimulation={groundedSocialSimulation}
         activeFinding={activeFinding}
         simulationEvents={simulationRun.events}
@@ -1282,6 +1286,62 @@ function TopFindingsSection({
   );
 }
 
+function nodeSourceLabel(source: GroundedRealityNode["source"], locale: Locale) {
+  if (locale === "en") return source;
+  if (source === "user_input") return "用户输入";
+  if (source === "inferred_from_user_context") return "现实语义推断";
+  if (source === "sample_data") return "示例数据";
+  return "未来外部数据";
+}
+
+function groundedListText(values: string[], locale: Locale) {
+  if (!values.length) return locale === "zh" ? "未记录" : "None recorded";
+  return values.join(locale === "zh" ? "、" : ", ");
+}
+
+function groundedNodeBasisText(node: GroundedRealityNode, locale: Locale) {
+  if (locale === "zh") {
+    return `${node.label}｜${node.nodeType}｜${nodeSourceLabel(node.source, locale)}｜${node.confidence}%：${node.roleInSituation}。控制资源：${groundedListText(node.resourcesControlled, locale)}。掌握信息：${groundedListText(node.informationHeld, locale)}。提供机会：${groundedListText(node.opportunitiesProvided, locale)}。制造约束：${groundedListText(node.constraintsCreated, locale)}。证据引用：${node.evidenceRefs.length} 条。`;
+  }
+
+  return `${node.label} | ${node.nodeType} | ${node.source} | ${node.confidence}%: ${node.roleInSituation}. Resources: ${groundedListText(node.resourcesControlled, locale)}. Information: ${groundedListText(node.informationHeld, locale)}. Opportunities: ${groundedListText(node.opportunitiesProvided, locale)}. Constraints: ${groundedListText(node.constraintsCreated, locale)}. Evidence refs: ${node.evidenceRefs.length}.`;
+}
+
+function groundedPressureBasisText(
+  pressure: GroundedRealityPressure,
+  nodeById: Map<string, GroundedRealityNode>,
+  locale: Locale,
+) {
+  const source = nodeById.get(pressure.sourceNodeId)?.label ?? pressure.sourceNodeId;
+  const target = nodeById.get(pressure.targetNodeId)?.label ?? pressure.targetNodeId;
+
+  if (locale === "zh") {
+    return `${pressure.pressureType}｜${source} → ${target}｜${pressure.confidence}%：${pressure.explanation}。证据引用：${pressure.evidenceRefs.length} 条。`;
+  }
+
+  return `${pressure.pressureType} | ${source} -> ${target} | ${pressure.confidence}%: ${pressure.explanation}. Evidence refs: ${pressure.evidenceRefs.length}.`;
+}
+
+function pathEventBasisText(
+  pathEvent: GroundedSocialSimulationDraft["pathEvents"][number],
+  linkedEvents: SimulationEventDraft[],
+  locale: Locale,
+) {
+  const linked = linkedEvents
+    .filter((event) => event.branchId === pathEvent.branchId)
+    .slice(0, 3)
+    .map((event) => `${event.id} / tick ${event.tickIndex}`)
+    .join(", ");
+
+  if (locale === "zh") {
+    return `${pathEvent.branchId}｜${pathEvent.confidence}%：用户动作：${pathEvent.userAction}。现实事件：${pathEvent.expectedRealityReaction}。命理调权：${pathEvent.destinyModifierEffect}。压力：${pathEvent.pressureChange}。信息：${pathEvent.informationChange}。机会：${pathEvent.opportunityChange}。关联 SimulationEvent：${linked || "暂无直接关联事件"}。`;
+  }
+
+  return `${pathEvent.branchId} | ${pathEvent.confidence}%: User action: ${pathEvent.userAction}. Reality event: ${pathEvent.expectedRealityReaction}. Destiny weighting: ${pathEvent.destinyModifierEffect}. Pressure: ${pathEvent.pressureChange}. Information: ${pathEvent.informationChange}. Opportunity: ${pathEvent.opportunityChange}. Linked SimulationEvent: ${linked || "No directly linked event"}.`;
+}
+
+// Kept during the evidence-panel transition so older local snapshots remain easy to compare.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function GroundedResultBasisPanel({
   groundedSocialSimulation,
   activeFinding,
@@ -1405,6 +1465,170 @@ function BasisColumn({
         ) : (
           <p className="text-xs leading-5 text-[#7d8578]">{empty}</p>
         )}
+      </div>
+    </section>
+  );
+}
+
+function GroundedResultBasisInspectorPanel({
+  groundedSocialSimulation,
+  activeFinding,
+  simulationEvents,
+  locale,
+}: {
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
+  activeFinding: ClaimDraft | null;
+  simulationEvents: SimulationEventDraft[];
+  locale: Locale;
+}) {
+  const title =
+    locale === "zh"
+      ? "这次结果的依据被拆成四层"
+      : "This result separates four basis layers";
+  const findingEvents = activeFinding
+    ? simulationEvents.filter((event) =>
+        activeFinding.evidenceEventIds.includes(event.id),
+      )
+    : [];
+
+  if (!groundedSocialSimulation) {
+    return (
+      <section className="my-5 rounded-lg border border-dashed border-black/12 bg-white p-6">
+        <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-[#62695d]">
+          {locale === "zh"
+            ? "还没有保存的 GroundedSocialSimulationDraft；旧结果仍可查看，但无法快速区分现实依据、命理调权和路径演化。"
+            : "No GroundedSocialSimulationDraft is saved yet. The legacy result still works, but reality basis, destiny weighting, and path evolution cannot be separated here."}
+        </p>
+      </section>
+    );
+  }
+
+  const modifier = groundedSocialSimulation.destinyPersonModifier;
+  const nodeById = new Map(
+    groundedSocialSimulation.realityNodes.map((node) => [node.id, node] as const),
+  );
+  const findingNodeIds = new Set(
+    findingEvents.flatMap((event) => event.groundedRealityNodeIds ?? []),
+  );
+  const findingNodes = groundedSocialSimulation.realityNodes.filter((node) =>
+    findingNodeIds.has(node.id),
+  );
+  const realityNodes = findingNodes.length
+    ? findingNodes
+    : groundedSocialSimulation.realityNodes;
+  const realityNodeIds = new Set(realityNodes.map((node) => node.id));
+  const realityPressures = groundedSocialSimulation.realityPressures.filter(
+    (pressure) =>
+      !findingNodes.length ||
+      realityNodeIds.has(pressure.sourceNodeId) ||
+      realityNodeIds.has(pressure.targetNodeId),
+  );
+  const linkedPathEvents = groundedSocialSimulation.pathEvents.filter(
+    (pathEvent) =>
+      !findingEvents.length ||
+      findingEvents.some((event) => event.branchId === pathEvent.branchId),
+  );
+  const lowConfidenceNotes = groundedSocialSimulation.pathEvents
+    .filter((event) => event.confidence < 55)
+    .map((event) =>
+      locale === "zh"
+        ? `${event.branchId} 路径置信度较低：${event.confidence}%`
+        : `${event.branchId} path has low confidence: ${event.confidence}%`,
+    );
+
+  return (
+    <section className="my-5 rounded-lg border border-[#568262]/20 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+            {locale === "zh"
+              ? "你可以快速检查每个发现到底来自现实依据、命理调权、路径事件，还是低置信的不确定信息。"
+              : "Use this to inspect whether each finding comes from reality, destiny weighting, path events, or low-confidence uncertainty."}
+          </p>
+        </div>
+        <StatusPill tone="ready">{groundedSocialSimulation.confidence}%</StatusPill>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <BasisColumn
+          title={
+            locale === "zh"
+              ? "现实依据：节点、压力、证据"
+              : "Reality basis: nodes, pressures, evidence"
+          }
+          items={[
+            ...realityNodes.map((node) => groundedNodeBasisText(node, locale)),
+            ...realityPressures.map((pressure) =>
+              groundedPressureBasisText(pressure, nodeById, locale),
+            ),
+            ...Array.from(
+              new Set(realityNodes.flatMap((node) => node.evidenceRefs)),
+            ).map((ref) =>
+              locale === "zh" ? `现实 evidenceRef：${ref}` : `Reality evidenceRef: ${ref}`,
+            ),
+          ]}
+          empty={locale === "zh" ? "暂无现实依据。" : "No reality basis."}
+        />
+        <BasisColumn
+          title={
+            locale === "zh"
+              ? "命理调权依据：只影响用户反应"
+              : "Destiny weighting basis: user reaction only"
+          }
+          items={[
+            locale === "zh"
+              ? "命理气候可能影响你的反应方式、时间敏感度和边界风格；它不创造现实人物、现实事实或现实结果。"
+              : "Destiny climate may affect your reaction style, timing sensitivity, and boundary posture. It does not create real people, real facts, or real outcomes.",
+            `${locale === "zh" ? "决策风格" : "Decision style"}: ${modifier.decisionStyle}`,
+            `${locale === "zh" ? "压力反应" : "Stress response"}: ${modifier.stressResponse}`,
+            `${locale === "zh" ? "机会响应" : "Opportunity response"}: ${modifier.opportunityResponse}`,
+            `${locale === "zh" ? "资源压力反应" : "Resource pressure response"}: ${modifier.resourcePressureResponse}`,
+            `${locale === "zh" ? "关系压力反应" : "Relationship pressure response"}: ${modifier.relationshipPressureResponse}`,
+            `${locale === "zh" ? "边界风格" : "Boundary style"}: ${modifier.boundaryStyle}`,
+            `${locale === "zh" ? "时间敏感度" : "Timing sensitivity"}: ${modifier.timingSensitivity}`,
+            ...modifier.uncertaintyNotes.map((note) =>
+              locale === "zh" ? `命理不确定性：${note}` : `Destiny uncertainty: ${note}`,
+            ),
+          ]}
+          empty={locale === "zh" ? "暂无命理调权。" : "No destiny modifier."}
+        />
+        <BasisColumn
+          title={
+            locale === "zh"
+              ? "路径演化依据：Grounded path + SimulationEvent"
+              : "Path evolution basis: grounded path + SimulationEvent"
+          }
+          items={linkedPathEvents.map((pathEvent) =>
+            pathEventBasisText(
+              pathEvent,
+              findingEvents.length ? findingEvents : simulationEvents,
+              locale,
+            ),
+          )}
+          empty={
+            locale === "zh"
+              ? "请选择一个有事件依据的发现。"
+              : "Select a finding with event evidence."
+          }
+        />
+        <BasisColumn
+          title={
+            locale === "zh"
+              ? "不确定性：低置信和可观察信号"
+              : "Uncertainty: low confidence and observable signals"
+          }
+          items={[
+            ...groundedSocialSimulation.keyUncertainties,
+            ...groundedSocialSimulation.destinyPersonModifier.uncertaintyNotes,
+            ...lowConfidenceNotes,
+            ...groundedSocialSimulation.observableSignals.map((signal) =>
+              locale === "zh" ? `可观察信号：${signal}` : `Observable signal: ${signal}`,
+            ),
+          ]}
+          empty={locale === "zh" ? "暂无关键不确定性。" : "No key uncertainty noted."}
+        />
       </div>
     </section>
   );

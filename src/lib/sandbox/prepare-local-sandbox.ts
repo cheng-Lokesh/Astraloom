@@ -160,15 +160,6 @@ export function prepareLocalSandboxArtifacts(
     realityPressures: groundedRealityModel.realityPressures,
     destinyPersonModifier,
   });
-  if (
-    !groundedPaths.pathEvents.some(
-      (event) => event.branchId === "boundary_adjustment",
-    )
-  ) {
-    localWarnings.push(
-      "Grounded Social Simulation warning: boundary_adjustment path event is not generated in V1 and should be added in a follow-up task.",
-    );
-  }
   const groundedSocialSimulation: GroundedSocialSimulationDraft = {
     id: `gss_${seedContext.id}`,
     seedContextId: seedContext.id,

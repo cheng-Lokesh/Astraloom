@@ -9,6 +9,7 @@ import {
   clampConfidence,
   extractGroundedDomains,
   getGroundedSeedText,
+  inferPrimaryGroundedDomain,
   seedEvidenceRef,
   stableGroundedHash,
 } from "./grounded-social-language";
@@ -78,9 +79,11 @@ function pressureForNode(
   seedContextId: string,
   node: GroundedRealityNode,
   userNodeId: string,
+  preferredPressureType?: GroundedRealityPressure["pressureType"],
 ): GroundedRealityPressure {
   const pressureType =
-    node.nodeType === "opportunity_source"
+    preferredPressureType ??
+    (node.nodeType === "opportunity_source"
       ? "opportunity_pull"
       : node.nodeType === "institution"
         ? "institutional_constraint"
@@ -90,7 +93,7 @@ function pressureForNode(
             ? "resource_control"
             : node.opportunitiesProvided.length
               ? "support"
-              : "information_gap";
+              : "information_gap");
 
   return {
     id: `grp_${stableGroundedHash(`${seedContextId}:${node.id}:${pressureType}`)}`,
@@ -103,6 +106,57 @@ function pressureForNode(
   };
 }
 
+function observableSignalsForDomain(
+  domain: ReturnType<typeof inferPrimaryGroundedDomain>["domain"],
+) {
+  if (domain === "career") {
+    return [
+      "A manager, recruiter, team, or work market signal makes timing, budget, or evaluation criteria explicit.",
+      "Portfolio evidence, written timeline, or compensation terms become concrete enough to compare.",
+    ];
+  }
+
+  if (domain === "relationship") {
+    return [
+      "The other person's observable reply pattern, availability, or boundary response becomes clearer.",
+      "Emotional pressure eases or rises after one low-pressure clarification or step-back boundary.",
+    ];
+  }
+
+  if (domain === "collaboration") {
+    return [
+      "A client, collaborator, or partner clarifies budget, ownership, roles, or delivery expectations.",
+      "Trust improves only if benefit boundaries and responsibilities become explicit.",
+    ];
+  }
+
+  if (domain === "family") {
+    return [
+      "Family expectations, support availability, or obligation timing becomes explicit.",
+      "The user can observe whether a boundary protects time while preserving practical connection.",
+    ];
+  }
+
+  if (domain === "migration") {
+    return [
+      "A city, visa, market, housing, or family-logistics constraint becomes explicit enough to schedule.",
+      "Relocation pressure changes when policy timing and alternative locations can be compared.",
+    ];
+  }
+
+  if (domain === "study") {
+    return [
+      "A school, advisor, credential, course, or deadline requirement becomes explicit.",
+      "Study pressure changes when application timing and qualification gaps are made visible.",
+    ];
+  }
+
+  return [
+    "A named stakeholder changes availability, stance, or response time.",
+    "A resource, deadline, offer, or approval condition becomes explicit.",
+  ];
+}
+
 export function buildGroundedRealityModel({
   seedContext,
   keyPeople,
@@ -112,6 +166,10 @@ export function buildGroundedRealityModel({
 }): GroundedRealityModelDraft {
   const text = getGroundedSeedText(seedContext);
   const nodes = new Map<string, GroundedRealityNode>();
+  const preferredPressureByNodeId = new Map<
+    string,
+    GroundedRealityPressure["pressureType"]
+  >();
   const rootUserNode = userNode(seedContext);
   nodes.set(rootUserNode.id, rootUserNode);
 
@@ -139,6 +197,7 @@ export function buildGroundedRealityModel({
     };
 
     nodes.set(node.id, node);
+    preferredPressureByNodeId.set(node.id, rule.pressureType);
   });
 
   const decisionText = firstText(
@@ -181,16 +240,30 @@ export function buildGroundedRealityModel({
   const realityNodes = Array.from(nodes.values());
   const realityPressures = realityNodes
     .filter((node) => node.id !== rootUserNode.id)
-    .map((node) => pressureForNode(seedContext.id, node, rootUserNode.id));
+    .map((node) =>
+      pressureForNode(
+        seedContext.id,
+        node,
+        rootUserNode.id,
+        preferredPressureByNodeId.get(node.id),
+      ),
+    );
+  const primaryDomain = inferPrimaryGroundedDomain({
+    seedContext,
+    realityNodes,
+    realityPressures,
+  });
   const keyUncertainties = [
     ...(seedContext.missingContextHints ?? []),
     ...(keyPeople.length === 0 ? ["No specific external stakeholder was grounded from the current context."] : []),
     ...(realityNodes.length <= 2 ? ["Reality model has few grounded nodes; later clarification may improve path quality."] : []),
     ...(decisionText.trim() ? [] : ["Decision options are not explicit, so path branches stay broad."]),
+    ...(primaryDomain.domain === "other" || primaryDomain.confidence < 50
+      ? ["Primary domain is not strongly grounded, so path language stays conservative."]
+      : []),
   ];
   const observableSignals = [
-    "A named stakeholder changes availability, stance, or response time.",
-    "A resource, deadline, offer, or approval condition becomes explicit.",
+    ...observableSignalsForDomain(primaryDomain.domain),
     "The user observes whether pressure rises after a small boundary or information request.",
   ];
   const averageNodeConfidence =

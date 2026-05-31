@@ -101,13 +101,35 @@ function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
   const realitySourceTags = event.realitySourceTags ?? [];
   const summaryItems = [
     ["Grounded reality", event.groundedRealitySummary],
+    [
+      "Grounded node ids",
+      event.groundedRealityNodeIds?.length
+        ? event.groundedRealityNodeIds.join(", ")
+        : "",
+    ],
     ["Grounded pressure", event.groundedPressureSummary],
     ["Destiny modifier", event.destinyModifierEffect],
+    [
+      "Destiny boundary",
+      event.destinyModifierEffect
+        ? "Destiny weighting only describes user reaction and timing sensitivity. It does not create reality facts or decide this event."
+        : "",
+    ],
     ["Destiny influence", event.destinyInfluenceSummary],
     ["Interaction", event.interactionSummary],
     ["Pressure delta", event.pressureDeltaSummary],
     ["Information gap", event.informationGapDeltaSummary],
     ["Resource pressure", event.resourcePressureDeltaSummary],
+    [
+      "Evidence refs",
+      event.evidence?.evidenceRefs
+        ? `${event.evidence.evidenceRefs.length} refs attached`
+        : "",
+    ],
+    [
+      "Rule sources",
+      event.evidence?.ruleIds?.length ? event.evidence.ruleIds.join(", ") : "",
+    ],
   ].filter(([, value]) => Boolean(value));
 
   if (
