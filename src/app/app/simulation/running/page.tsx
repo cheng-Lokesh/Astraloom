@@ -4,6 +4,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
+import { GroundedSimulationDebugPanel } from "@/components/grounded-social/grounded-simulation-debug-panel";
 import { useLanguage } from "@/components/language-provider";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { TimelineFeed } from "@/components/simulation/event-log";
@@ -24,11 +25,6 @@ import type { SafetySnapshot } from "@/lib/simulation/simulation-types";
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
-import type {
-  GroundedRealityNode,
-  GroundedRealityPressure,
-  GroundedSocialSimulationDraft,
-} from "@/types/grounded-social-simulation";
 import type { SeedContextDraft } from "@/types/seed-context";
 import type {
   SimulationBranchId,
@@ -1017,7 +1013,7 @@ export default function RunsPage() {
 
           <FusionMappingPanel fusion={destinyFusion} locale={locale} />
 
-          <GroundedSocialSimulationPanel
+          <GroundedSimulationDebugPanel
             groundedSocialSimulation={groundedSocialSimulation}
             locale={locale}
           />
@@ -1044,7 +1040,7 @@ export default function RunsPage() {
                 const active =
                   processState === "running" && index === activeStageIndex;
                 const blocked = processState === "failed" && index >= activeStageIndex;
-                const indicator = blocked ? "✕" : completed ? "✓" : active ? "◉" : "○";
+                const indicator = blocked ? "x" : completed ? "ok" : active ? "now" : "idle";
                 const text = stageCopy(locale, stage.id);
                 return (
                   <div
@@ -1516,333 +1512,6 @@ function FusionMappingPanel({
   );
 }
 
-function compactList(values: string[], locale: Locale) {
-  if (!values.length) return locale === "zh" ? "未记录" : "None recorded";
-  return values.join(locale === "zh" ? "、" : ", ");
-}
-
-function sourceLabel(source: GroundedRealityNode["source"], locale: Locale) {
-  if (locale === "en") return source;
-  if (source === "user_input") return "用户输入";
-  if (source === "inferred_from_user_context") return "现实语义推断";
-  if (source === "sample_data") return "示例数据";
-  return "未来外部数据";
-}
-
-function GroundedNodeInspector({
-  node,
-  locale,
-}: {
-  node: GroundedRealityNode;
-  locale: Locale;
-}) {
-  const rows = [
-    [locale === "zh" ? "现实角色" : "Role in situation", node.roleInSituation],
-    [
-      locale === "zh" ? "控制资源" : "Resources controlled",
-      compactList(node.resourcesControlled, locale),
-    ],
-    [
-      locale === "zh" ? "掌握信息" : "Information held",
-      compactList(node.informationHeld, locale),
-    ],
-    [
-      locale === "zh" ? "提供机会" : "Opportunities provided",
-      compactList(node.opportunitiesProvided, locale),
-    ],
-    [
-      locale === "zh" ? "制造约束" : "Constraints created",
-      compactList(node.constraintsCreated, locale),
-    ],
-  ];
-
-  return (
-    <article className="rounded-md border border-black/8 bg-white p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h4 className="text-sm font-semibold text-[#11150f]">{node.label}</h4>
-          <p className="mt-1 text-xs text-[#7d8578]">
-            {node.nodeType} / {sourceLabel(node.source, locale)}
-          </p>
-        </div>
-        <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs font-semibold text-[#3f483d]">
-          {node.confidence}%
-        </span>
-      </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-2">
-        {rows.map(([label, value]) => (
-          <div key={label} className="rounded border border-black/8 bg-[#f7f8f4] p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-              {label}
-            </div>
-            <p className="mt-1 text-xs leading-5 text-[#62695d]">{value}</p>
-          </div>
-        ))}
-      </div>
-      <details className="mt-3 rounded border border-black/8 bg-[#f7f8f4] p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-[#7d8578]">
-          {locale === "zh"
-            ? `证据引用 ${node.evidenceRefs.length} 条`
-            : `${node.evidenceRefs.length} evidence refs`}
-        </summary>
-        <div className="mt-2 space-y-1">
-          {node.evidenceRefs.length ? (
-            node.evidenceRefs.map((ref) => (
-              <code key={ref} className="block break-all text-xs text-[#62695d]">
-                {ref}
-              </code>
-            ))
-          ) : (
-            <p className="text-xs text-[#7d8578]">
-              {locale === "zh" ? "没有证据引用。" : "No evidence refs."}
-            </p>
-          )}
-        </div>
-      </details>
-    </article>
-  );
-}
-
-function GroundedPressureInspector({
-  pressure,
-  nodeById,
-  locale,
-}: {
-  pressure: GroundedRealityPressure;
-  nodeById: Map<string, GroundedRealityNode>;
-  locale: Locale;
-}) {
-  const source = nodeById.get(pressure.sourceNodeId)?.label ?? pressure.sourceNodeId;
-  const target = nodeById.get(pressure.targetNodeId)?.label ?? pressure.targetNodeId;
-
-  return (
-    <article className="rounded-md border border-black/8 bg-white p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-            {pressure.pressureType}
-          </div>
-          <h4 className="mt-2 text-sm font-semibold text-[#11150f]">
-            {source} → {target}
-          </h4>
-        </div>
-        <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs font-semibold text-[#3f483d]">
-          {pressure.confidence}%
-        </span>
-      </div>
-      <p className="mt-3 text-xs leading-5 text-[#62695d]">
-        {userFacingRunningText(pressure.explanation, locale)}
-      </p>
-      <p className="mt-3 rounded border border-black/8 bg-[#f7f8f4] px-3 py-2 text-xs text-[#7d8578]">
-        {locale === "zh" ? "证据引用数量" : "Evidence refs"}:{" "}
-        {pressure.evidenceRefs.length}
-      </p>
-    </article>
-  );
-}
-
-function GroundedSocialSimulationPanel({
-  groundedSocialSimulation,
-  locale,
-}: {
-  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
-  locale: Locale;
-}) {
-  const title =
-    locale === "zh"
-      ? "现实社会模型正在参与推演"
-      : "Grounded social model is shaping the simulation";
-  const intro =
-    locale === "zh"
-      ? "这里展示系统从用户问题中提取的现实节点、命理只调权了什么，以及路径事件如何从现实节点演化出来。"
-      : "This shows which real-world nodes were extracted, what destiny only weighted, and how path events evolve from grounded reality.";
-
-  if (!groundedSocialSimulation) {
-    return (
-      <section className="rounded-lg border border-dashed border-black/12 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-        <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-[#62695d]">
-          {locale === "zh"
-            ? "还没有保存的现实社会模型。本次页面仍可查看旧沙盘事件，但缺少现实优先调试层。"
-            : "No grounded social model is saved yet. Legacy sandbox events still work, but the reality-first inspection layer is unavailable."}
-        </p>
-      </section>
-    );
-  }
-
-  const nodes = groundedSocialSimulation.realityNodes;
-  const pressures = groundedSocialSimulation.realityPressures;
-  const modifier = groundedSocialSimulation.destinyPersonModifier;
-  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
-  const modifierRows = [
-    [locale === "zh" ? "用户决策风格" : "Decision style", modifier.decisionStyle],
-    [locale === "zh" ? "压力反应" : "Stress response", modifier.stressResponse],
-    [locale === "zh" ? "机会响应" : "Opportunity response", modifier.opportunityResponse],
-    [
-      locale === "zh" ? "资源压力反应" : "Resource pressure response",
-      modifier.resourcePressureResponse,
-    ],
-    [
-      locale === "zh" ? "关系压力反应" : "Relationship pressure response",
-      modifier.relationshipPressureResponse,
-    ],
-    [locale === "zh" ? "边界风格" : "Boundary style", modifier.boundaryStyle],
-    [locale === "zh" ? "时间敏感度" : "Timing sensitivity", modifier.timingSensitivity],
-  ];
-
-  return (
-    <section className="rounded-lg border border-[#568262]/20 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
-            {intro}
-          </p>
-        </div>
-        <StatusPill tone="ready">
-          {groundedSocialSimulation.confidence}%
-        </StatusPill>
-      </div>
-
-      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <div className="space-y-4">
-          <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[#11150f]">
-                {locale === "zh" ? "现实社会模型" : "Reality social model"}
-              </h3>
-              <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
-                {nodes.length} {locale === "zh" ? "个节点" : "nodes"}
-              </span>
-            </div>
-            <p className="mt-2 text-xs leading-5 text-[#62695d]">
-              {locale === "zh"
-                ? "这些节点来自你提供的现实信息或系统对文本的现实语义推断；它们不是命理生成的现实事实。"
-                : "These nodes come from your provided situation or grounded semantic inference. Destiny does not create these real-world facts."}
-            </p>
-            <div className="mt-4 grid gap-3">
-              {nodes.length ? (
-                nodes.map((node) => (
-                  <GroundedNodeInspector key={node.id} node={node} locale={locale} />
-                ))
-              ) : (
-                <p className="rounded border border-dashed border-black/12 bg-white p-4 text-xs leading-5 text-[#7d8578]">
-                  {locale === "zh" ? "暂无现实节点。" : "No reality nodes."}
-                </p>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[#11150f]">
-                {locale === "zh" ? "现实压力" : "Reality pressures"}
-              </h3>
-              <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
-                {pressures.length} {locale === "zh" ? "条压力" : "pressures"}
-              </span>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {pressures.length ? (
-                pressures.map((pressure) => (
-                  <GroundedPressureInspector
-                    key={pressure.id}
-                    pressure={pressure}
-                    nodeById={nodeById}
-                    locale={locale}
-                  />
-                ))
-              ) : (
-                <p className="rounded border border-dashed border-black/12 bg-white p-4 text-xs leading-5 text-[#7d8578]">
-                  {locale === "zh" ? "暂无现实压力。" : "No reality pressures."}
-                </p>
-              )}
-            </div>
-          </section>
-        </div>
-
-        <div className="space-y-4">
-          <section className="rounded-md border border-[#568262]/20 bg-[#eef5ee] p-4">
-            <h3 className="text-sm font-semibold text-[#11150f]">
-              {locale === "zh" ? "命理调权" : "Destiny weighting"}
-            </h3>
-            <p className="mt-2 text-xs leading-5 text-[#62695d]">
-              {locale === "zh"
-                ? "命理只影响用户反应倾向、压力处理、机会响应、边界风格和时间敏感度，不补齐现实事实，也不决定现实结果。"
-                : "Destiny only adjusts user reaction tendency, pressure handling, opportunity response, boundary style, and timing sensitivity. It does not fill real-world facts or decide outcomes."}
-            </p>
-            <div className="mt-3 space-y-2">
-              {modifierRows.map(([label, value]) => (
-                <div key={label} className="rounded border border-[#568262]/15 bg-white p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                    {label}
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-[#62695d]">{value}</p>
-                </div>
-              ))}
-              <div className="rounded border border-[#568262]/15 bg-white p-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                  {locale === "zh" ? "不确定性备注" : "Uncertainty notes"}
-                </div>
-                <div className="mt-2 space-y-1">
-                  {modifier.uncertaintyNotes.length ? (
-                    modifier.uncertaintyNotes.map((note) => (
-                      <p key={note} className="text-xs leading-5 text-[#62695d]">
-                        {note}
-                      </p>
-                    ))
-                  ) : (
-                    <p className="text-xs leading-5 text-[#7d8578]">
-                      {locale === "zh" ? "暂无不确定性备注。" : "No uncertainty notes."}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">
-            <h3 className="text-sm font-semibold text-[#11150f]">
-              {locale === "zh" ? "路径事件" : "Path events"}
-            </h3>
-            <div className="mt-3 space-y-3">
-              {groundedSocialSimulation.pathEvents.map((event) => (
-                <article key={event.id} className="rounded border border-black/8 bg-white p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                      {event.branchId} / step {event.step}
-                    </div>
-                    <span className="text-xs font-semibold text-[#568262]">
-                      {event.confidence}%
-                    </span>
-                  </div>
-                  <GroundedPathRow label={locale === "zh" ? "用户动作" : "User action"} value={event.userAction} />
-                  <GroundedPathRow label={locale === "zh" ? "现实节点反应" : "Reality reaction"} value={event.expectedRealityReaction} />
-                  <GroundedPathRow label={locale === "zh" ? "命理调权影响" : "Destiny modifier effect"} value={event.destinyModifierEffect} />
-                  <GroundedPathRow label={locale === "zh" ? "压力变化" : "Pressure change"} value={event.pressureChange} />
-                  <GroundedPathRow label={locale === "zh" ? "信息变化" : "Information change"} value={event.informationChange} />
-                  <GroundedPathRow label={locale === "zh" ? "机会变化" : "Opportunity change"} value={event.opportunityChange} />
-                  <GroundedPathRow label={locale === "zh" ? "关联现实节点" : "Reality node ids"} value={event.realityNodeIds.join(", ")} />
-                  <GroundedPathRow label={locale === "zh" ? "证据引用数量" : "Evidence refs"} value={`${event.evidenceRefs.length}`} />
-                </article>
-              ))}
-            </div>
-          </section>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function GroundedPathRow({ label, value }: { label: string; value: string }) {
-  return (
-    <p className="mt-2 text-xs leading-5 text-[#62695d]">
-      <span className="font-semibold text-[#11150f]">{label}: </span>
-      {value}
-    </p>
-  );
-}
-
 function InteractionPreviewPanel({
   events,
   agents,
@@ -1980,4 +1649,5 @@ function NotReadyPanel({ title, items }: { title: string; items: string[] }) {
     </div>
   );
 }
+
 

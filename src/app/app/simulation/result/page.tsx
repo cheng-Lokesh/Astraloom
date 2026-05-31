@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { RelationGraph } from "@/components/graph/relation-graph";
+import { GroundedSimulationDebugPanel } from "@/components/grounded-social/grounded-simulation-debug-panel";
 import { ReportSummary } from "@/components/report/report-summary";
 import { useLanguage } from "@/components/language-provider";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
@@ -1142,6 +1143,12 @@ export default function ReportsPage() {
           <p className="mb-4 text-sm leading-6 text-[#62695d]">
             {copy.technicalNote}
           </p>
+          <div className="mb-5">
+            <GroundedSimulationDebugPanel
+              groundedSocialSimulation={groundedSocialSimulation}
+              locale={locale}
+            />
+          </div>
           <div className="grid gap-4 md:grid-cols-5">
             <Metric label={copy.counts.roles} value={agentEcology?.agents.length ?? simulationRun.agentIds.length} />
             <Metric label={copy.counts.relations} value={relationGraph?.edges.length ?? simulationRun.relationEdgeIds.length} />
