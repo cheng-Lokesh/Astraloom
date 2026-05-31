@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { useLanguage } from "@/components/language-provider";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
-import { StatusPill } from "@/components/status-pill";
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { evaluateSandboxReadiness } from "@/lib/clarification/evaluate-sandbox-readiness";
 import { buildDestinyClimateDraft } from "@/lib/destiny/build-destiny-climate";
@@ -14,6 +14,123 @@ import { prepareLocalSandboxArtifacts } from "@/lib/sandbox/prepare-local-sandbo
 import type { ClarificationQuestion } from "@/types/clarification";
 import type { DestinyProfileDraft } from "@/types/destiny";
 import type { SeedContextDraft } from "@/types/seed-context";
+
+type Locale = "en" | "zh";
+
+const clarifyCopy = {
+  zh: {
+    noDraftTitle: "请先开始一个沙盘",
+    backToStart: "返回开始页",
+    title: "再补充一点，会让沙盘更清楚",
+    intro: "下面的问题是可选的。你可以回答一两个最有帮助的问题，也可以直接生成沙盘。",
+    readyTitle: "信息已经够用了",
+    readyBody: "你可以继续生成动态沙盘。",
+    safetyTitle: "安全提示",
+    messageNeedAnswer: "请先回答一个问题，或者直接生成沙盘。",
+    saveFailed: "保存失败，请再试一次。",
+    prepareFailed: "沙盘准备失败，请再试一次。",
+    continue: "补充后继续",
+    skip: "直接生成沙盘",
+    optionalHint: "可选补充",
+    lowerConfidenceHint: "如果现在不补充，沙盘会用已有信息继续推演。",
+    questions: {
+      topic_unclear: {
+        prompt: "你现在最想看清的核心问题是什么？",
+        helper: "用一句话说明也可以。",
+        placeholder: "例如：我该不该继续推进这段合作？",
+      },
+      key_people_missing: {
+        prompt: "这件事里最关键的人是谁？",
+        helper: "可以只写称呼或关系，不需要写真实姓名。",
+        placeholder: "例如：我、直属负责人、合作方、伴侣",
+      },
+      recent_event_missing: {
+        prompt: "最近发生了什么，让你开始想看清这件事？",
+        helper: "写最近一个变化、冲突、信号或决定点就够了。",
+        placeholder: "例如：上周对方突然改变了态度，我不确定该不该继续推进。",
+      },
+      decision_options_missing: {
+        prompt: "你现在大概在几个选择之间摇摆？",
+        helper: "简单写出选项即可，不需要分析。",
+        placeholder: "例如：继续观察、主动沟通、先设边界",
+      },
+      destiny_birth_time_missing: {
+        prompt: "出生时间不确定的话，你能补充一个大概范围吗？",
+        helper: "不知道也没关系，可以直接生成沙盘。",
+        placeholder: "例如：上午、下午、晚上，或者完全不确定",
+      },
+      destiny_skipped: {
+        prompt: "如果跳过命理，你希望沙盘更关注哪一类现实线索？",
+        helper: "可以写关系、职业、合作、家庭或其他现实局势。",
+        placeholder: "例如：重点看职业变化和合作压力",
+      },
+      safety_sensitive: {
+        prompt: "这件事有没有你不希望沙盘触碰的边界？",
+        helper: "可以写不想讨论的方向，或不希望系统给出的建议类型。",
+        placeholder: "例如：不要替我做决定，只帮我看清路径。",
+      },
+    },
+  },
+  en: {
+    noDraftTitle: "Start a sandbox first",
+    backToStart: "Back to start",
+    title: "One small clarification can make the sandbox clearer",
+    intro:
+      "These questions are optional. Answer one or two useful details, or generate the sandbox now.",
+    readyTitle: "This is enough to run",
+    readyBody: "You can continue and generate the dynamic sandbox.",
+    safetyTitle: "Safety note",
+    messageNeedAnswer:
+      "Answer one clarification, or generate the sandbox directly.",
+    saveFailed: "Saving failed. Please try again.",
+    prepareFailed: "Sandbox preparation failed. Please try again.",
+    continue: "Continue after answering",
+    skip: "Generate sandbox now",
+    optionalHint: "Optional detail",
+    lowerConfidenceHint:
+      "If you skip this, the sandbox will continue with the information already provided.",
+    questions: {
+      topic_unclear: {
+        prompt: "What is the core question you want to understand?",
+        helper: "A single sentence is enough.",
+        placeholder: "For example: should I keep pushing this collaboration?",
+      },
+      key_people_missing: {
+        prompt: "Who matters most in this situation?",
+        helper: "Use roles or relationships. Real names are not required.",
+        placeholder: "For example: me, my manager, the partner, my spouse",
+      },
+      recent_event_missing: {
+        prompt: "What happened recently that made this feel important?",
+        helper: "Name one recent change, conflict, signal, or decision point.",
+        placeholder:
+          "For example: last week their attitude changed and I am unsure whether to keep pushing.",
+      },
+      decision_options_missing: {
+        prompt: "Which options are you weighing right now?",
+        helper: "A rough list is enough.",
+        placeholder: "For example: observe, communicate directly, set a boundary",
+      },
+      destiny_birth_time_missing: {
+        prompt: "If the birth time is uncertain, can you add a rough range?",
+        helper: "It is fine if you do not know. You can generate the sandbox now.",
+        placeholder: "For example: morning, afternoon, evening, or completely unsure",
+      },
+      destiny_skipped: {
+        prompt: "If destiny is skipped, which real-world clues should matter most?",
+        helper: "You can name relationships, career, collaboration, family, or another situation.",
+        placeholder: "For example: focus on career change and collaboration pressure",
+      },
+      safety_sensitive: {
+        prompt: "Is there any boundary you want the sandbox to respect?",
+        helper:
+          "Mention anything you do not want discussed, or advice you do not want.",
+        placeholder:
+          "For example: do not decide for me; just help me compare paths.",
+      },
+    },
+  },
+} as const;
 
 function appendNote(base: string, label: string, value: string) {
   const trimmed = value.trim();
@@ -76,8 +193,20 @@ function applyAnswers(
   return next;
 }
 
+function questionText(question: ClarificationQuestion, locale: Locale) {
+  return (
+    clarifyCopy[locale].questions[question.missingInfoType] ?? {
+      prompt: question.prompt,
+      helper: question.helper,
+      placeholder: question.placeholder,
+    }
+  );
+}
+
 export default function ClarifyPage() {
   const router = useRouter();
+  const { locale } = useLanguage();
+  const t = clarifyCopy[locale];
   const [repos] = useState(() => getRepositories());
   const [seedContext, setSeedContext] = useState<SeedContextDraft | null>(() => {
     const result = repos.seedContexts.load();
@@ -107,12 +236,11 @@ export default function ClarifyPage() {
     return (
       <AppShell>
         <SurfaceCard emphasis="strong" className="mx-auto max-w-2xl p-7">
-          <StatusPill tone="blocked">No draft</StatusPill>
           <h1 className="mt-5 text-3xl font-semibold text-[#11150f]">
-            Start a sandbox first.
+            {t.noDraftTitle}
           </h1>
           <ButtonLink href="/app/start" className="mt-6 px-5 py-3">
-            Back to start
+            {t.backToStart}
           </ButtonLink>
         </SurfaceCard>
       </AppShell>
@@ -136,7 +264,7 @@ export default function ClarifyPage() {
     }
 
     if (!hasAnyAnswer) {
-      setMessage("Answer at least one clarification, or skip and run with lower confidence.");
+      setMessage(t.messageNeedAnswer);
       return;
     }
 
@@ -155,13 +283,13 @@ export default function ClarifyPage() {
     }
 
     if (!seedResult.ok) {
-      setMessage("Local save failed. Please try again.");
+      setMessage(t.saveFailed);
       return;
     }
 
     const sandboxResult = prepareLocalSandboxArtifacts(nextSeed);
     if (!sandboxResult.ok) {
-      setMessage(`Local sandbox preparation failed: ${sandboxResult.errorCode}`);
+      setMessage(t.prepareFailed);
       return;
     }
 
@@ -186,13 +314,13 @@ export default function ClarifyPage() {
     };
     const seedResult = repos.seedContexts.save(nextSeed);
     if (!seedResult.ok) {
-      setMessage("Local save failed. Please try again.");
+      setMessage(t.saveFailed);
       return;
     }
 
     const sandboxResult = prepareLocalSandboxArtifacts(nextSeed);
     if (!sandboxResult.ok) {
-      setMessage(`Local sandbox preparation failed: ${sandboxResult.errorCode}`);
+      setMessage(t.prepareFailed);
       return;
     }
 
@@ -203,79 +331,83 @@ export default function ClarifyPage() {
     <AppShell>
       <div className="mx-auto max-w-3xl space-y-5">
         <SurfaceCard emphasis="strong" className="p-7">
-          <StatusPill tone="planned">Short clarification</StatusPill>
           <h1 className="mt-5 text-3xl font-semibold leading-tight text-[#11150f]">
-            A few details would make this sandbox clearer.
+            {t.title}
           </h1>
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            Answer any useful question below, or skip and continue with lower
-            confidence. This is not a long questionnaire.
+            {t.intro}
           </p>
-          <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-3 text-sm text-[#62695d]">
-            Completeness {activeEvaluation.completenessScore}% -{" "}
-            {activeEvaluation.lowConfidenceReason ?? "Ready to continue."}
-          </div>
+          <p className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-3 text-sm text-[#62695d]">
+            {t.lowerConfidenceHint}
+          </p>
         </SurfaceCard>
 
         {activeEvaluation.safetyDecision.safetyLevel !== "safe" ? (
           <SafetyDowngradeNotice
             decision={activeEvaluation.safetyDecision}
-            title="Safety check"
+            title={t.safetyTitle}
           />
         ) : null}
 
         {questions.length ? (
           <SurfaceCard className="space-y-4 p-6">
-            {questions.map((question) => (
-              <label
-                key={question.id}
-                className="block rounded-md border border-black/8 bg-white p-4"
-              >
-                <span className="block text-sm font-semibold text-[#11150f]">
-                  {question.prompt}
-                </span>
-                <span className="mt-1 block text-xs leading-5 text-[#62695d]">
-                  {question.helper}
-                </span>
-                {question.options ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {question.options.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() =>
-                          setAnswers((current) => ({
-                            ...current,
-                            [question.id]: option,
-                          }))
-                        }
-                        className="rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-xs font-semibold text-[#52594d]"
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <textarea
-                  value={answers[question.id] ?? ""}
-                  onChange={(event) =>
-                    setAnswers((current) => ({
-                      ...current,
-                      [question.id]: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                  placeholder={question.placeholder}
-                  className="mf-input mt-3 w-full resize-none px-3 py-2 leading-6"
-                />
-              </label>
-            ))}
+            {questions.map((question) => {
+              const text = questionText(question, locale);
+              return (
+                <label
+                  key={question.id}
+                  className="block rounded-md border border-black/8 bg-white p-4"
+                >
+                  <span className="text-xs font-semibold text-[#7d8578]">
+                    {t.optionalHint}
+                  </span>
+                  <span className="mt-2 block text-sm font-semibold text-[#11150f]">
+                    {text.prompt}
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-[#62695d]">
+                    {text.helper}
+                  </span>
+                  {question.options ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {question.options.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() =>
+                            setAnswers((current) => ({
+                              ...current,
+                              [question.id]: option,
+                            }))
+                          }
+                          className="rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-xs font-semibold text-[#52594d]"
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <textarea
+                    value={answers[question.id] ?? ""}
+                    onChange={(event) =>
+                      setAnswers((current) => ({
+                        ...current,
+                        [question.id]: event.target.value,
+                      }))
+                    }
+                    rows={3}
+                    placeholder={text.placeholder}
+                    className="mf-input mt-3 w-full resize-none px-3 py-2 leading-6"
+                  />
+                </label>
+              );
+            })}
           </SurfaceCard>
         ) : (
           <SurfaceCard className="p-6">
-            <p className="text-sm leading-6 text-[#62695d]">
-              This sandbox is ready enough to run. You can continue now.
-            </p>
+            <h2 className="text-lg font-semibold text-[#11150f]">
+              {t.readyTitle}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#62695d]">{t.readyBody}</p>
           </SurfaceCard>
         )}
 
@@ -287,7 +419,7 @@ export default function ClarifyPage() {
 
         <div className="flex flex-wrap gap-3">
           <Button type="button" onClick={continueAfterAnswering}>
-            Continue after answering
+            {t.continue}
           </Button>
           <Button
             type="button"
@@ -295,7 +427,7 @@ export default function ClarifyPage() {
             onClick={skipAndRun}
             disabled={!activeEvaluation.canSkip}
           >
-            Skip and run with lower confidence
+            {t.skip}
           </Button>
         </div>
       </div>

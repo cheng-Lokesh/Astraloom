@@ -4,7 +4,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
-import { SampleSandboxBanner } from "@/components/sample-sandbox-banner";
+import { useLanguage } from "@/components/language-provider";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { TimelineFeed } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
@@ -21,7 +21,6 @@ import {
 import type { SafetyDecision } from "@/lib/safety/safety-types";
 import { verifySafety } from "@/lib/safety/safety-verifier";
 import type { SafetySnapshot } from "@/lib/simulation/simulation-types";
-import { isCompleteDestinySampleSeed } from "@/lib/trial/sample-workspace";
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
@@ -32,44 +31,264 @@ import type {
   SimulationRunDraft,
 } from "@/types/simulation-run";
 
+type Locale = "en" | "zh";
+
 const simulationStages = [
   {
     id: "reading_destiny_climate",
-    label: "Reading destiny climate",
-    detail:
-      "Bring the Destiny Profile and Current Destiny Climate into the sandbox as symbolic context, not fate.",
   },
   {
-    id: "structuring_real_situation",
-    label: "Structuring the real situation",
-    detail:
-      "Read the current question, key people, constraints, and observable pressure from the saved local setup.",
+    id: "understanding_current_situation",
   },
   {
-    id: "mapping_destiny_themes",
-    label: "Mapping destiny themes to key people",
-    detail:
-      "Connect climate themes to real people and pressure roles while keeping symbolic context separate from evidence.",
+    id: "mapping_key_pressure",
   },
   {
     id: "simulating_key_interactions",
-    label: "Simulating key interactions",
-    detail:
-      "Run local branch interactions and save Event Logs before any findings are prepared.",
   },
   {
-    id: "comparing_path_divergence",
-    label: "Comparing path divergence",
-    detail:
-      "Compare the current inertia, cautious observation, active push, and boundary adjustment paths for pressure shifts.",
+    id: "comparing_possible_paths",
   },
   {
-    id: "preparing_integrated_findings",
-    label: "Preparing integrated findings",
-    detail:
-      "Prepare findings only from saved Event Logs and evidence_event_ids for the Result Sandbox.",
+    id: "preparing_key_findings",
   },
 ] as const;
+
+type StageId = (typeof simulationStages)[number]["id"];
+
+const runningCopy = {
+  en: {
+    heroTitle: "Your sandbox is unfolding",
+    heroBody:
+      "Astraloom is combining your destiny climate, real situation, and possible paths into one dynamic sandbox.",
+    startRun: "Start unfolding",
+    rerun: "Run again",
+    reset: "Clear and rebuild",
+    running: "Unfolding",
+    complete: "Ready",
+    waiting: "Ready to unfold",
+    openingResult: "The sandbox is ready. Opening your key findings.",
+    runMessage:
+      "Astraloom is placing your destiny climate, real situation, and possible paths into motion.",
+    rebuildMessage: "Astraloom is rebuilding the sandbox from your latest inputs.",
+    resetMessage: "The current sandbox view has been cleared.",
+    saveFailed: "The sandbox could not be saved. Please try again.",
+    prepareFailed:
+      "The sandbox could not prepare enough usable movement. Please return to the start page and generate it again.",
+    noDataTitle: "The sandbox does not have enough runnable data yet.",
+    noDataBody:
+      "The sandbox does not have enough runnable data yet. Please start a new sandbox first.",
+    backToStart: "Start a new sandbox",
+    safetyTitle: "This sandbox is paused for safety",
+    backToSetup: "Back to start",
+    controlTitle: "Dynamic sandbox",
+    controlBody:
+      "Start the unfolding process and watch climate, pressure, interactions, and paths separate into readable signals.",
+    climateTitle: "Destiny climate",
+    climateFallback:
+      "No saved destiny climate was found. Astraloom will lean more on the real situation in this run.",
+    situationTitle: "Current situation",
+    windowLabel: "Window",
+    focusLabel: "Focus",
+    pressureTitle: "Key pressure map",
+    pressureBody:
+      "Astraloom is matching symbolic climate with people, roles, and pressure points without treating any outcome as certain.",
+    noPressure:
+      "No detailed pressure map is available yet. The sandbox can still unfold from your current situation.",
+    processTitle: "Sandbox unfolding",
+    processBody:
+      "The process moves from destiny climate and real pressure into interactions, path comparison, and key findings.",
+    pathTitle: "Possible paths",
+    pathBody:
+      "The same situation is compared through several path lenses so pressure shifts are easier to notice.",
+    noMovement: "No movement yet",
+    interactionTitle: "Dynamic event cards",
+    interactionBody:
+      "Each card shows what happened, who was involved, how climate and real pressure moved, and what clue appeared.",
+    runToGenerate: "Start unfolding to generate dynamic event cards.",
+    technicalTitle: "Technical details",
+    technicalBody:
+      "Internal run data is kept here for review without taking over the main sandbox experience.",
+    resultReady: "View key findings",
+    resultWaiting: "Finish unfolding first",
+    stageStatus: {
+      blocked: "blocked",
+      done: "done",
+      active: "now",
+      waiting: "waiting",
+    },
+    stages: {
+      reading_destiny_climate: {
+        label: "Reading destiny climate",
+        detail:
+          "Bringing birth context and current climate into the sandbox as symbolic background.",
+      },
+      understanding_current_situation: {
+        label: "Understanding your current situation",
+        detail:
+          "Reading the question, recent context, people, and pressure you described.",
+      },
+      mapping_key_pressure: {
+        label: "Mapping key pressure",
+        detail:
+          "Finding where timing, information, relationships, and resources may pull against each other.",
+      },
+      simulating_key_interactions: {
+        label: "Simulating key interactions",
+        detail:
+          "Letting the main interactions move forward inside the sandbox.",
+      },
+      comparing_possible_paths: {
+        label: "Comparing possible paths",
+        detail:
+          "Comparing how several paths may change pressure, clarity, and available resources.",
+      },
+      preparing_key_findings: {
+        label: "Preparing key findings",
+        detail:
+          "Turning the unfolding sandbox into readable findings for the result page.",
+      },
+    },
+    branches: {
+      baseline: {
+        title: "Current inertia path",
+        detail: "What may unfold if the current pattern keeps moving as it is.",
+      },
+      cautious_self: {
+        title: "Cautious observation path",
+        detail: "What may unfold if you slow down and wait for clearer signals.",
+      },
+      decisive_self: {
+        title: "Active push path",
+        detail: "What may unfold if you move more directly and test the pressure.",
+      },
+      boundary_adjustment: {
+        title: "Boundary adjustment path",
+        detail: "What may unfold if you set clearer limits or a firmer time box.",
+      },
+    },
+    eventLabels: {
+      branchTick: "Sandbox moment",
+      initial: "Initial situation forms",
+      confidence: "signal strength",
+      happened: "What happened",
+      involved: "Who was involved",
+      destiny: "Destiny climate influence",
+      pressure: "Real pressure change",
+      information: "Information gap change",
+      resource: "Resource pressure change",
+      clue: "Generated clue",
+    },
+  },
+  zh: {
+    heroTitle: "你的沙盘正在展开",
+    heroBody:
+      "Astraloom 正在把你的命理气候、现实局势和几种可能路径放进同一个动态沙盘中。",
+    startRun: "开始展开沙盘",
+    rerun: "重新推演",
+    reset: "清空并重建",
+    running: "正在展开",
+    complete: "已生成",
+    waiting: "等待展开",
+    openingResult: "沙盘已经展开完成，正在打开关键发现。",
+    runMessage: "Astraloom 正在把命理气候、现实局势和可能路径放进沙盘中。",
+    rebuildMessage: "Astraloom 正在根据最新输入重新展开沙盘。",
+    resetMessage: "当前沙盘视图已清空。",
+    saveFailed: "沙盘保存失败，请再试一次。",
+    prepareFailed: "沙盘没有生成足够可用的变化，请回到开始页重新生成一次。",
+    noDataTitle: "沙盘还缺少可运行的数据。",
+    noDataBody: "沙盘还缺少可运行的数据。请先回到开始页生成一次沙盘。",
+    backToStart: "回到开始页",
+    safetyTitle: "这个沙盘因安全原因暂停",
+    backToSetup: "回到开始页",
+    controlTitle: "动态沙盘",
+    controlBody: "开始展开后，你会看到命理气候、现实压力、关键互动和路径分化逐步浮现。",
+    climateTitle: "命理气候",
+    climateFallback: "还没有保存的命理气候。本次沙盘会更多依赖现实局势来展开。",
+    situationTitle: "当前局势",
+    windowLabel: "观察窗口",
+    focusLabel: "关注点",
+    pressureTitle: "关键压力映射",
+    pressureBody:
+      "Astraloom 会把象征性的命理气候与人物、角色和压力点放在一起观察，但不会把任何结果说成确定。",
+    noPressure: "还没有详细压力映射。沙盘仍然可以从你描述的当前局势开始展开。",
+    processTitle: "沙盘展开过程",
+    processBody: "沙盘会从命理气候和现实压力开始，逐步进入互动、路径比较和关键发现。",
+    pathTitle: "可能路径",
+    pathBody: "同一个局势会从几种路径角度展开，帮助你看见压力如何变化。",
+    noMovement: "还没有展开",
+    interactionTitle: "动态事件卡片",
+    interactionBody:
+      "每张卡片会显示发生了什么、涉及谁、命理气候与现实压力如何变化，以及出现了什么线索。",
+    runToGenerate: "开始展开沙盘后，会生成动态事件卡片。",
+    technicalTitle: "技术细节",
+    technicalBody: "内部运行数据仍保留在这里，方便检查，但不会占据主沙盘体验。",
+    resultReady: "查看关键发现",
+    resultWaiting: "请先完成沙盘展开",
+    stageStatus: {
+      blocked: "暂停",
+      done: "完成",
+      active: "正在进行",
+      waiting: "等待",
+    },
+    stages: {
+      reading_destiny_climate: {
+        label: "读取命理气候",
+        detail: "把出生背景和当前气候放入沙盘，作为象征性的背景信息。",
+      },
+      understanding_current_situation: {
+        label: "理解当前局势",
+        detail: "读取你描述的问题、近期背景、相关人物和现实压力。",
+      },
+      mapping_key_pressure: {
+        label: "映射关键压力",
+        detail: "观察时机、信息、关系和资源可能在哪里互相拉扯。",
+      },
+      simulating_key_interactions: {
+        label: "模拟关键互动",
+        detail: "让主要互动在沙盘中向前推进。",
+      },
+      comparing_possible_paths: {
+        label: "比较可能路径",
+        detail: "比较几种路径可能如何改变压力、清晰度和可用资源。",
+      },
+      preparing_key_findings: {
+        label: "生成关键发现",
+        detail: "把展开过程整理成结果页可以阅读的关键发现。",
+      },
+    },
+    branches: {
+      baseline: {
+        title: "当前惯性路径",
+        detail: "如果当前模式继续延续，事情可能如何展开。",
+      },
+      cautious_self: {
+        title: "谨慎观察路径",
+        detail: "如果你放慢节奏、等待更清楚的信号，事情可能如何展开。",
+      },
+      decisive_self: {
+        title: "主动推进路径",
+        detail: "如果你更直接地推进并测试压力，事情可能如何展开。",
+      },
+      boundary_adjustment: {
+        title: "边界调整路径",
+        detail: "如果你设定更清楚的边界或时间框，事情可能如何展开。",
+      },
+    },
+    eventLabels: {
+      branchTick: "沙盘片段",
+      initial: "初始局势成形",
+      confidence: "信号强度",
+      happened: "发生了什么",
+      involved: "涉及谁",
+      destiny: "命理气候如何影响",
+      pressure: "现实压力如何变化",
+      information: "信息差如何变化",
+      resource: "资源压力如何变化",
+      clue: "生成了什么线索",
+    },
+  },
+} as const;
 
 const branchNames: SimulationBranchId[] = [
   "baseline",
@@ -105,6 +324,14 @@ const branchMeta: Record<
   },
 };
 
+function stageCopy(locale: Locale, id: StageId) {
+  return runningCopy[locale].stages[id];
+}
+
+function branchCopy(locale: Locale, id: SimulationBranchId) {
+  return runningCopy[locale].branches[id];
+}
+
 function statusTone(status: string) {
   if (status === "ready" || status === "queued") return "ready";
   if (status === "blocked" || status === "missing" || status === "failed") {
@@ -117,18 +344,11 @@ function eventTypeLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
-function countByEventType(events: SimulationRunDraft["events"]) {
-  return events.reduce<Record<string, number>>((counts, event) => {
-    const label = eventTypeLabel(event.eventType);
-    return { ...counts, [label]: (counts[label] ?? 0) + 1 };
-  }, {});
-}
-
-function branchDisplayLabel(branchId: SimulationBranchId | undefined) {
-  if (branchId === "cautious_self") return "Cautious observation path";
-  if (branchId === "decisive_self") return "Active push path";
-  if (branchId === "boundary_adjustment") return "Boundary adjustment path";
-  return "Current inertia path";
+function branchDisplayLabel(
+  branchId: SimulationBranchId | undefined,
+  locale: Locale,
+) {
+  return branchCopy(locale, branchId ?? "baseline").title;
 }
 
 function agentName(
@@ -141,32 +361,118 @@ function agentName(
 function eventParticipantText(
   event: SimulationEventDraft,
   agents: AgentEcologyDraft["agents"],
+  locale: Locale,
 ) {
   const participantIds = Array.isArray(event.involvedAgentIds)
     ? event.involvedAgentIds
     : event.agentIds;
 
-  return participantIds.map((id) => agentName(agents, id)).join(" and ");
+  return participantIds.map((id) => agentName(agents, id)).join(locale === "zh" ? "、" : " and ");
 }
 
 function firstClue(event: SimulationEventDraft) {
   return event.generatedClues?.[0] ?? event.action ?? event.summary;
 }
 
-function eventDisplayTitle(event: SimulationEventDraft) {
-  return (event.userFacingEventTitle ?? eventTypeLabel(event.eventType))
-    .replace("Baseline path:", "Current inertia path:")
-    .replace("Cautious self path:", "Cautious observation path:")
-    .replace("Decisive self path:", "Active push path:")
-    .replace("Boundary adjustment path:", "Boundary adjustment path:");
+function userFacingRunningText(value: string | undefined, locale: Locale) {
+  if (!value) return "";
+
+  if (locale === "en") return value;
+
+  const cleaned = value
+    .replace(/^Sample:\s*/i, "示例：")
+    .replace(/situation map/gi, "局势地图")
+    .replace(/relation graph/gi, "局势地图")
+    .replace(/event logs?/gi, "沙盘事件")
+    .replace(/agent parameters/gi, "角色参数")
+    .replace(/\bagents?\b/gi, "角色模型")
+    .replace(/evidence basis/gi, "依据")
+    .replace(/resource pressure/gi, "资源压力")
+    .replace(/information uncertainty/gi, "信息不确定")
+    .replace(/information gap/gi, "信息差")
+    .replace(/opportunity shift/gi, "机会变化")
+    .replace(/boundary pressure/gi, "边界压力")
+    .replace(/current climate rhythm/gi, "当前气候节奏")
+    .replace(/current manager/gi, "当前负责人")
+    .replace(/resource or authority pressure holder/gi, "资源或权限压力相关方")
+    .replace(/\bsignal\b/gi, "信号")
+    .replace(/\bstrong\b/gi, "强")
+    .replace(/\brising\b/gi, "上升")
+    .replace(/\beasing\b/gi, "缓和")
+    .replace(/\bsteady\b/gi, "稳定")
+    .replace(/\bobserve\b/gi, "观察")
+    .replace(/事件日志/g, "沙盘事件")
+    .replace(/关系图/g, "局势地图")
+    .replace(
+      "Use the early window to gather evidence and keep the question flexible.",
+      "前期适合先收集证据，保持问题的弹性。",
+    )
+    .replace(
+      "Use the later window to compare paths after the situation map has more signal.",
+      "后期适合在局势信号更清楚后，再比较几条路径。",
+    )
+    .replace(/^early window$/i, "前期窗口")
+    .replace(/^later window$/i, "后期窗口");
+
+  const letters = cleaned.match(/[A-Za-z]/g)?.length ?? 0;
+  const visible = cleaned.replace(/\s/g, "").length || 1;
+
+  if (letters / visible > 0.7) {
+    return "这个片段记录了一次关键互动或压力变化，具体依据可在结果页展开查看。";
+  }
+
+  return cleaned;
 }
 
-function realSituationSummary(seedContext: SeedContextDraft) {
-  return (
+function eventDisplayTitle(event: SimulationEventDraft, locale: Locale) {
+  const pathReplacements = runningCopy[locale].branches;
+  const rawTitle = event.userFacingEventTitle ?? eventTypeLabel(event.eventType);
+  if (
+    event.eventType === "graph_freeze" ||
+    rawTitle.toLowerCase().includes("graph freeze")
+  ) {
+    return `${branchDisplayLabel(event.branchId, locale)}: ${runningCopy[locale].eventLabels.initial}`;
+  }
+
+  return userFacingRunningText(rawTitle, locale)
+    .replace("Baseline path:", `${pathReplacements.baseline.title}:`)
+    .replace("Cautious self path:", `${pathReplacements.cautious_self.title}:`)
+    .replace("Decisive self path:", `${pathReplacements.decisive_self.title}:`)
+    .replace("Boundary adjustment path:", `${pathReplacements.boundary_adjustment.title}:`);
+}
+
+function realSituationSummary(seedContext: SeedContextDraft, locale: Locale) {
+  const summary =
     seedContext.currentQuestionDescription ||
     seedContext.situationSummary ||
-    seedContext.questionText
-  );
+    seedContext.questionText;
+
+  if (locale === "zh" && /^Sample:/i.test(summary)) {
+    return "示例沙盘：一位用户正在比较高薪新机会与当前工作的长期发展，希望看清职业、关系压力和行动路径。";
+  }
+
+  return userFacingRunningText(summary, locale);
+}
+
+function userFacingTimeWindow(value: SeedContextDraft["timeWindow"], locale: Locale) {
+  const labels = {
+    en: {
+      "30_days": "30 days",
+      "90_days": "90 days",
+      "1_year": "1 year",
+      "3_years": "3 years",
+      "5_years": "5 years",
+    },
+    zh: {
+      "30_days": "30天",
+      "90_days": "90天",
+      "1_year": "1年",
+      "3_years": "3年",
+      "5_years": "5年",
+    },
+  } as const;
+
+  return labels[locale][value];
 }
 
 
@@ -217,6 +523,8 @@ function snapshotFromDecision(decision: SafetyDecision): SafetySnapshot {
 
 export default function RunsPage() {
   const router = useRouter();
+  const { locale } = useLanguage();
+  const t = runningCopy[locale];
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
     const result = repos.seedContexts.load();
@@ -385,20 +693,18 @@ export default function RunsPage() {
         const result = repos.simulations.save(processRun);
         if (!result.ok) {
           setProcessState("failed");
-          setProcessError(`Could not save Event Log: ${result.errorCode}`);
-          setMessage(`Save failed: ${result.errorCode}`);
+          setProcessError(t.saveFailed);
+          setMessage(t.saveFailed);
           return;
         }
       }
 
-      if (stage.id === "preparing_integrated_findings") {
+      if (stage.id === "preparing_key_findings") {
         const eventLogSaved = repos.simulations.load(seedContext.id);
         const savedRun = eventLogSaved.ok ? eventLogSaved.data : null;
         if (!savedRun || savedRun.events.length === 0) {
           setProcessState("failed");
-          setProcessError(
-            "Claims were not built because the Event Log is missing. Re-run the simulation after locking the graph.",
-          );
+          setProcessError(t.prepareFailed);
           return;
         }
 
@@ -406,15 +712,15 @@ export default function RunsPage() {
         const result = repos.reports.save(ledger);
         if (!result.ok) {
           setProcessState("failed");
-          setProcessError(`Could not save Claims: ${result.errorCode}`);
-          setMessage(`Save failed: ${result.errorCode}`);
+          setProcessError(t.saveFailed);
+          setMessage(t.saveFailed);
           return;
         }
       }
 
       if (activeStageIndex === simulationStages.length - 1) {
         setProcessState("complete");
-        setMessage("Simulation complete. Opening the Result Sandbox.");
+        setMessage(t.openingResult);
         return;
       }
 
@@ -429,86 +735,31 @@ export default function RunsPage() {
     repos,
     router,
     seedContext,
+    t.openingResult,
+    t.prepareFailed,
+    t.saveFailed,
   ]);
 
-  if (!seedContext || !agentEcology) {
+  if (
+    !seedContext ||
+    !agentEcology ||
+    !relationGraph ||
+    !run ||
+    !relationGraph.graphLocked ||
+    !agentEcology.agents.some((agent) => agent.agentType === "npc") ||
+    relationGraph.edges.length === 0
+  ) {
     return (
       <AppShell>
         <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">Needs Agent Profiles</StatusPill>
-          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            Save usable Agent Profiles before running the simulation.
+          <h1 className="text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
+            {t.noDataTitle}
           </h1>
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            Simulation runs can only freeze confirmed Agent Profiles. The flow
-            cannot jump directly from intake text to a report.
+            {t.noDataBody}
           </p>
-          <NotReadyPanel
-            title="Concrete fixes"
-            items={[
-              "Confirm Key People so candidates become usable actors.",
-              "Generate Agent Profiles for the user core, parallel selves, and confirmed NPCs.",
-              "Return here after the Agent Profile surface shows a saved ecology.",
-            ]}
-          />
-          <ButtonLink href="/app/new/agents" className="mt-6 px-5 py-3">
-            Open Agent Profiles
-          </ButtonLink>
-        </SurfaceCard>
-      </AppShell>
-    );
-  }
-
-  if (relationGraph && !relationGraph.graphLocked) {
-    return (
-      <AppShell>
-        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">Graph lock required</StatusPill>
-          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            Lock the scenario graph before running simulation ticks.
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            The local tick engine must freeze a locked Relation Graph before it writes Event Logs.
-            Return to the graph, review the read-only edges, and lock the snapshot.
-          </p>
-          <NotReadyPanel
-            title="Concrete fixes"
-            items={[
-              "Review the read-only Relation Graph for missing actors or edges.",
-              "Use regenerate from upstream facts if Agent Profiles changed.",
-              "Lock the graph snapshot before opening the simulation process.",
-            ]}
-          />
-          <ButtonLink href="/app/new/graph" className="mt-6 px-5 py-3">
-            Lock Relation Graph
-          </ButtonLink>
-        </SurfaceCard>
-      </AppShell>
-    );
-  }
-
-  if (!relationGraph || !run) {
-    return (
-      <AppShell>
-        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">Needs Relation Graph</StatusPill>
-          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            Save and lock the read-only relation graph before running ticks.
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            The local tick engine freezes Relation Edges, writes Event Logs,
-            and keeps before/after snapshots for evidence review.
-          </p>
-          <NotReadyPanel
-            title="Concrete fixes"
-            items={[
-              "Open Relation Graph and generate edges from the current Agent Profiles.",
-              "Confirm the graph is not empty.",
-              "Lock the graph so the simulation can freeze a stable snapshot.",
-            ]}
-          />
-          <ButtonLink href="/app/new/graph" className="mt-6 px-5 py-3">
-            Open Relation Graph
+          <ButtonLink href="/app/start" className="mt-6 px-5 py-3">
+            {t.backToStart}
           </ButtonLink>
         </SurfaceCard>
       </AppShell>
@@ -519,68 +770,11 @@ export default function RunsPage() {
     return (
       <AppShell>
         <section className="mx-auto max-w-3xl space-y-5">
-          <SafetyDowngradeNotice
-            decision={safetyDecision}
-            title="Simulation is paused for safety"
-          />
-          <ButtonLink href="/app/new/intake" className="px-5 py-3">
-            Back to situation setup
+          <SafetyDowngradeNotice decision={safetyDecision} title={t.safetyTitle} />
+          <ButtonLink href="/app/start" className="px-5 py-3">
+            {t.backToSetup}
           </ButtonLink>
         </section>
-      </AppShell>
-    );
-  }
-
-  if (!agentEcology.agents.some((agent) => agent.agentType === "npc")) {
-    return (
-      <AppShell>
-        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">NPC required</StatusPill>
-          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            Add at least one confirmed NPC before running ticks.
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            The simulation needs a user model and at least one confirmed NPC so Event Logs can connect agents through Relation Edges.
-          </p>
-          <NotReadyPanel
-            title="Concrete fixes"
-            items={[
-              "Return to Key People and confirm at least one person.",
-              "Regenerate Agent Profiles so confirmed people become NPC agents.",
-              "Regenerate and lock the Relation Graph before running again.",
-            ]}
-          />
-          <ButtonLink href="/app/new/people" className="mt-6 px-5 py-3">
-            Confirm Key People
-          </ButtonLink>
-        </SurfaceCard>
-      </AppShell>
-    );
-  }
-
-  if (relationGraph.edges.length === 0) {
-    return (
-      <AppShell>
-        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">Edges required</StatusPill>
-          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            The locked graph needs at least one Relation Edge.
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            Empty ticks cannot produce Event Logs, and Claims cannot be built from empty ticks.
-          </p>
-          <NotReadyPanel
-            title="Concrete fixes"
-            items={[
-              "Regenerate the Relation Graph from current Agent Profiles.",
-              "Check that the user core and NPC agents both exist.",
-              "Lock the regenerated graph before starting simulation.",
-            ]}
-          />
-          <ButtonLink href="/app/new/graph" className="mt-6 px-5 py-3">
-            Open Relation Graph
-          </ButtonLink>
-        </SurfaceCard>
       </AppShell>
     );
   }
@@ -588,7 +782,7 @@ export default function RunsPage() {
   function persist(nextRun: SimulationRunDraft, nextMessage: string) {
     const result = repos.simulations.save(nextRun);
     if (!result.ok) {
-      setMessage(`Save failed: ${result.errorCode}`);
+      setMessage(t.saveFailed);
       return;
     }
     setRun(nextRun);
@@ -617,7 +811,7 @@ export default function RunsPage() {
     if (!run || !seedContext || !agentEcology || !relationGraph) return;
     setProcessError("");
     if (!relationGraph.graphLocked) {
-      setMessage("Lock the Relation Graph before running simulation ticks.");
+      setMessage(t.noDataBody);
       return;
     }
     const decision = runSafetyGate(run);
@@ -638,25 +832,21 @@ export default function RunsPage() {
     const queuedRun = queueSimulationRunDraft(nextRun);
     if (queuedRun.events.length === 0) {
       setProcessState("failed");
-      setProcessError(
-        "No Event Logs were generated. Confirm at least one NPC and lock a Relation Graph with at least one edge.",
-      );
+      setProcessError(t.prepareFailed);
       return;
     }
     setRun(queuedRun);
     setProcessRun(queuedRun);
     setActiveStageIndex(0);
     setProcessState("running");
-    setMessage(
-      "The destiny-situation sandbox is running. Event Logs are saved before findings are prepared.",
-    );
+    setMessage(t.runMessage);
   }
 
   function rebuild() {
     if (!seedContext || !agentEcology || !relationGraph) return;
     setProcessError("");
     if (!relationGraph.graphLocked) {
-      setMessage("Lock the Relation Graph before rebuilding simulation ticks.");
+      setMessage(t.noDataBody);
       return;
     }
     const calibrated = applyFeedbackToNextRun({
@@ -685,9 +875,7 @@ export default function RunsPage() {
     const queuedRun = queueSimulationRunDraft(safeRun);
     if (queuedRun.events.length === 0) {
       setProcessState("failed");
-      setProcessError(
-        "No Event Logs were generated. Confirm Key People, regenerate Agents, and lock a graph with usable edges.",
-      );
+      setProcessError(t.prepareFailed);
       return;
     }
     repos.simulations.clearDraft(seedContext.id);
@@ -696,9 +884,7 @@ export default function RunsPage() {
     setProcessRun(queuedRun);
     setActiveStageIndex(0);
     setProcessState("running");
-    setMessage(
-      "Rebuilding from the latest destiny fusion, Agents, and Relation Edges before writing Event Logs.",
-    );
+    setMessage(t.rebuildMessage);
   }
 
   function reset() {
@@ -723,47 +909,47 @@ export default function RunsPage() {
     setProcessState("idle");
     setActiveStageIndex(0);
     setProcessError("");
-    setMessage("Local simulation run draft cleared.");
+    setMessage(t.resetMessage);
   }
 
   return (
     <AppShell>
-      {isCompleteDestinySampleSeed(seedContext.id) ? (
-        <SampleSandboxBanner />
-      ) : null}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <StatusPill tone="ready">Dynamic sandbox</StatusPill>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Watch destiny climate enter the real situation.
+            {t.heroTitle}
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Astraloom reads the current climate, maps it to real people and
-            pressures, runs local interaction events, compares path divergence,
-            and prepares findings only after Event Logs are saved.
+            {t.heroBody}
           </p>
         </div>
         <StatusPill tone={statusTone(processState === "failed" ? "failed" : run.status)}>
           {processState === "running"
-            ? "Running"
+            ? t.running
             : processState === "complete"
-              ? "Complete"
-              : run.status === "queued"
-                ? "Event Log ready"
-                : "Draft only"}
+              ? t.complete
+              : t.waiting}
         </StatusPill>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <main className="space-y-6">
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+            <div className="mb-5">
+              <h2 className="text-base font-semibold text-[#11150f]">
+                {t.controlTitle}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                {t.controlBody}
+              </p>
+            </div>
             <div className="flex flex-wrap gap-3">
               <Button
                 type="button"
                 onClick={queueRun}
                 disabled={processState === "running"}
               >
-                Run visible simulation
+                {t.startRun}
               </Button>
               <Button
                 type="button"
@@ -771,7 +957,7 @@ export default function RunsPage() {
                 onClick={rebuild}
                 disabled={processState === "running"}
               >
-                Regenerate and run
+                {t.rerun}
               </Button>
               <Button
                 type="button"
@@ -779,7 +965,7 @@ export default function RunsPage() {
                 onClick={reset}
                 disabled={processState === "running"}
               >
-                Clear local draft
+                {t.reset}
               </Button>
             </div>
             {message ? (
@@ -789,18 +975,14 @@ export default function RunsPage() {
               <div className="mt-5">
                 <SafetyDowngradeNotice
                   decision={safetyDecision}
-                  title="Safety check before simulation"
+                  title={t.safetyTitle}
                 />
               </div>
             ) : null}
             {processError ? (
               <NotReadyPanel
-                title="Simulation could not finish"
-                items={[
-                  processError,
-                  "Return to the Relation Graph and confirm it is locked.",
-                  "Regenerate Agents if no confirmed NPC exists.",
-                ]}
+                title={t.noDataTitle}
+                items={[processError]}
               />
             ) : null}
           </section>
@@ -809,26 +991,25 @@ export default function RunsPage() {
             <DestinyClimatePanel
               profile={destinyProfile}
               climate={destinyClimate}
+              locale={locale}
             />
-            <RealSituationPanel seedContext={seedContext} />
+            <RealSituationPanel seedContext={seedContext} locale={locale} />
           </section>
 
-          <FusionMappingPanel fusion={destinyFusion} />
+          <FusionMappingPanel fusion={destinyFusion} locale={locale} />
 
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-[#11150f]">
-                  Destiny-situation process
+                  {t.processTitle}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                  The visible process starts with climate and situation
-                  structure, then moves through fusion, interactions, path
-                  divergence, and evidence-backed findings.
+                  {t.processBody}
                 </p>
               </div>
               <StatusPill tone={processState === "failed" ? "blocked" : "planned"}>
-                {generatedEventCount} events generated
+                {generatedEventCount} {locale === "zh" ? "个片段" : "moments"}
               </StatusPill>
             </div>
             <div className="mt-5 space-y-3">
@@ -840,6 +1021,7 @@ export default function RunsPage() {
                   processState === "running" && index === activeStageIndex;
                 const blocked = processState === "failed" && index >= activeStageIndex;
                 const indicator = blocked ? "✕" : completed ? "✓" : active ? "◉" : "○";
+                const text = stageCopy(locale, stage.id);
                 return (
                   <div
                     key={stage.id}
@@ -870,7 +1052,7 @@ export default function RunsPage() {
                             {indicator}
                           </span>
                           <p className="text-sm font-semibold text-[#11150f]">
-                            {stage.label}
+                            {text.label}
                           </p>
                         </div>
                         <StatusPill
@@ -879,16 +1061,16 @@ export default function RunsPage() {
                           }
                         >
                           {blocked
-                            ? "blocked"
+                            ? t.stageStatus.blocked
                             : completed
-                              ? "done"
+                              ? t.stageStatus.done
                               : active
-                                ? "running"
-                                : "waiting"}
+                                ? t.stageStatus.active
+                                : t.stageStatus.waiting}
                         </StatusPill>
                       </div>
                       <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                        {stage.detail}
+                        {text.detail}
                       </p>
                     </div>
                     {active ? (
@@ -912,45 +1094,12 @@ export default function RunsPage() {
             </div>
           </section>
 
-          <details className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-            <summary className="cursor-pointer text-base font-semibold text-[#11150f]">
-              Technical tick queue
-            </summary>
-            <p className="mt-2 text-sm leading-6 text-[#62695d]">
-              Internal deterministic ticks remain available for audit, but the
-              primary sandbox view is the destiny-situation process above.
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {visibleTicks.map((tick) => (
-                <article
-                  key={tick.id}
-                  className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-[#11150f]">
-                      Tick {tick.tickIndex}
-                    </p>
-                    <StatusPill tone="planned">{tick.timeLabel}</StatusPill>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-[#62695d]">
-                    {tick.summary}
-                  </p>
-                  <code className="mt-3 block break-all text-xs text-[#7d8578]">
-                    {tick.traceId}
-                  </code>
-                </article>
-              ))}
-            </div>
-          </details>
-
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <h2 className="text-base font-semibold text-[#11150f]">
-              Path divergence
+              {t.pathTitle}
             </h2>
             <p className="mt-2 text-sm leading-6 text-[#62695d]">
-              The same Situation Map is compared across four internal branch
-              IDs. Labels are user-facing; the saved branch IDs remain stable
-              for evidence and reports.
+              {t.pathBody}
             </p>
             <div className="mt-4 grid gap-4 lg:grid-cols-4">
               {branchNames.map((branchId) => {
@@ -958,8 +1107,8 @@ export default function RunsPage() {
                   visibleEvents.filter(
                     (event) => (event.branchId ?? "baseline") === branchId,
                   ) ?? [];
-                const typeCounts = countByEventType(branchEvents);
                 const meta = branchMeta[branchId];
+                const branchText = branchCopy(locale, branchId);
                 return (
                   <article
                     key={branchId}
@@ -967,33 +1116,15 @@ export default function RunsPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-semibold text-[#11150f]">
-                        {meta.title}
+                        {branchText.title}
                       </h3>
                       <StatusPill tone="planned">
-                        {branchEventCounts.get(branchId) ?? 0} events
+                        {branchEventCounts.get(branchId) ?? 0}
                       </StatusPill>
                     </div>
                     <p className="mt-3 text-sm leading-6 text-[#62695d]">
-                      {meta.detail}
+                      {branchText.detail}
                     </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {Object.entries(typeCounts).length ? (
-                        Object.entries(typeCounts)
-                          .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
-                          .map(([type, count]) => (
-                            <span
-                              key={type}
-                              className="rounded border border-black/8 bg-white px-2 py-1 text-xs text-[#3f483d]"
-                            >
-                              {type}: {count}
-                            </span>
-                          ))
-                      ) : (
-                        <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs text-[#7d8578]">
-                          no events yet
-                        </span>
-                      )}
-                    </div>
                     <div className="mt-3 space-y-2">
                       {branchEvents.slice(0, 3).map((event) => (
                         <div
@@ -1001,14 +1132,14 @@ export default function RunsPage() {
                           className="rounded border border-black/8 bg-white p-3"
                         >
                           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                            Tick {event.tickIndex} / {event.timeLabel}
+                            {event.timeLabel}
                           </div>
                           <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#62695d]">
                             {event.interactionSummary ?? event.summary}
                           </p>
                           <p className="mt-2 text-xs leading-5 text-[#7d8578]">
                             {event.informationGapDeltaSummary ??
-                              "Information gap change is available in Event Log details."}
+                              t.noMovement}
                           </p>
                         </div>
                       ))}
@@ -1022,58 +1153,55 @@ export default function RunsPage() {
           <InteractionPreviewPanel
             events={visibleEvents}
             agents={agentEcology.agents}
-          />
-
-          <TimelineFeed
-            ticks={visibleTicks}
-            events={visibleEvents}
-            agents={agentEcology.agents}
-            edges={relationGraph.edges}
-            title="Event Log evidence"
-            description="Saved Event Logs stay available for audit. Findings are prepared only after these events exist and preserve evidence_event_ids."
+            locale={locale}
           />
         </main>
 
         <aside className="mf-panel-dark h-fit p-6">
           <h2 className="text-sm font-semibold text-[#b7e6c6]">
-            Run summary
+            {locale === "zh" ? "本次沙盘" : "This sandbox"}
           </h2>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <Metric label="Agents" value={frozenAgentProfileIds.length} />
-            <Metric label="Edges" value={frozenRelationEdgeIds.length} />
-            <Metric label="Ticks" value={visibleRun?.tickCount ?? 0} />
-            <Metric label="Events" value={generatedEventCount} />
-            <Metric label="Branches" value={branchNames.length} />
-            <Metric label="Claims" value={claimPreviewCount} />
+            <Metric label={locale === "zh" ? "角色" : "People"} value={frozenAgentProfileIds.length} />
+            <Metric label={locale === "zh" ? "压力点" : "Pressure"} value={frozenRelationEdgeIds.length} />
+            <Metric label={locale === "zh" ? "片段" : "Moments"} value={generatedEventCount} />
+            <Metric label={locale === "zh" ? "路径" : "Paths"} value={branchNames.length} />
           </div>
           <dl className="mt-5 space-y-4 text-sm">
             <div>
-              <dt className="font-semibold text-white">Question</dt>
+              <dt className="font-semibold text-white">
+                {locale === "zh" ? "你想看清的问题" : "Question"}
+              </dt>
               <dd className="mt-1 leading-6 text-white/62">
                 {seedContext.questionText}
               </dd>
             </div>
-            <div>
-              <dt className="font-semibold text-white">Trace</dt>
-              <dd className="mt-1 break-all font-mono text-xs leading-5 text-white/50">
-                {visibleRun?.traceId}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-white">Cost</dt>
-              <dd className="mt-1 leading-6 text-white/62">
-                0 cents, local deterministic preview
-              </dd>
-            </div>
           </dl>
-          <div className="mt-5 rounded-md border border-white/10 bg-white/[0.06] p-4">
-            <h3 className="text-sm font-semibold text-white">Gate checklist</h3>
-            <div className="mt-3 space-y-2">
+          <details className="mt-5 rounded-md border border-white/10 bg-white/[0.06] p-4">
+            <summary className="cursor-pointer text-xs font-semibold text-white/42">
+              {t.technicalTitle}
+            </summary>
+            <p className="mt-3 text-xs leading-5 text-white/50">
+              {t.technicalBody}
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Metric label="Ticks" value={visibleRun?.tickCount ?? 0} />
+              <Metric label="Claims" value={claimPreviewCount} />
+            </div>
+            <dl className="mt-4 space-y-3 text-xs">
+              <div>
+                <dt className="font-semibold text-white">traceId</dt>
+                <dd className="mt-1 break-all font-mono leading-5 text-white/50">
+                  {visibleRun?.traceId}
+                </dd>
+              </div>
+            </dl>
+            <div className="mt-4 space-y-2">
               {gateChecklist.map((gate) => (
                 <div key={gate.id} className="rounded border border-white/10 bg-white/[0.04] p-3">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-xs font-semibold text-white">
-                      {gate.label}
+                      {gate.id}: {gate.label}
                     </span>
                     <StatusPill tone={gate.ready ? "ready" : "blocked"}>
                       {gate.ready ? "ready" : "fix needed"}
@@ -1086,13 +1214,6 @@ export default function RunsPage() {
                   ) : null}
                 </div>
               ))}
-            </div>
-          </div>
-          <details className="mt-5 rounded-md border border-white/10 bg-white/[0.06] p-4">
-            <summary className="cursor-pointer text-xs font-semibold text-white/42">
-              Engine gate debug
-            </summary>
-            <div className="mt-3 space-y-2">
               {visibleGates.map((gate) => (
                 <div
                   key={gate.id}
@@ -1112,6 +1233,16 @@ export default function RunsPage() {
                 </div>
               ))}
             </div>
+            <div className="mt-5">
+              <TimelineFeed
+                ticks={visibleTicks}
+                events={visibleEvents}
+                agents={agentEcology.agents}
+                edges={relationGraph.edges}
+                title="Event Log evidence"
+                description="Saved Event Logs stay available for audit. Findings are prepared only after these events exist and preserve evidence_event_ids."
+              />
+            </div>
           </details>
           <ButtonLink
             href="/app/simulation/result"
@@ -1124,8 +1255,8 @@ export default function RunsPage() {
             }`}
           >
             {canOpenResult
-              ? "Continue to Result Sandbox"
-              : "Complete Event Log and Claims first"}
+              ? t.resultReady
+              : t.resultWaiting}
           </ButtonLink>
         </aside>
       </div>
@@ -1136,25 +1267,31 @@ export default function RunsPage() {
 function DestinyClimatePanel({
   profile,
   climate,
+  locale,
 }: {
   profile: DestinyProfileDraft | null;
   climate: DestinyClimateDraft | null;
+  locale: Locale;
 }) {
+  const t = runningCopy[locale];
   return (
     <section className="rounded-lg border border-[#568262]/20 bg-[#eef5ee] p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-[#11150f]">
-            Current Destiny Climate
+            {t.climateTitle}
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            {climate?.userFacingOverview ??
-              profile?.userFacingSummary ??
-              "No saved Destiny Climate was found. The sandbox can still run from real situation evidence, with lower destiny-layer confidence."}
+            {userFacingRunningText(
+              climate?.userFacingOverview ??
+                profile?.userFacingSummary ??
+                t.climateFallback,
+              locale,
+            )}
           </p>
         </div>
         <StatusPill tone={climate ? "ready" : "planned"}>
-          {climate ? `${climate.confidence.score}%` : "not loaded"}
+          {climate ? `${climate.confidence.score}%` : locale === "zh" ? "待读取" : "pending"}
         </StatusPill>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1167,16 +1304,16 @@ function DestinyClimatePanel({
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-[#11150f]">
-                  {item.label}
+                  {userFacingRunningText(item.label, locale)}
                 </h3>
                 {item.intensity ? (
                   <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
-                    {item.intensity}
+                    {userFacingRunningText(item.intensity, locale)}
                   </span>
                 ) : null}
               </div>
               <p className="mt-2 text-xs leading-5 text-[#62695d]">
-                {item.userFacingSummary}
+                  {userFacingRunningText(item.userFacingSummary, locale)}
               </p>
             </article>
           ))}
@@ -1187,14 +1324,15 @@ function DestinyClimatePanel({
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-[#11150f]">
-                {panel.label}
+                {userFacingRunningText(panel.label, locale)}
               </h3>
               <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
-                {panel.intensity} / {panel.direction}
+                {userFacingRunningText(panel.intensity, locale)} /{" "}
+                {userFacingRunningText(panel.direction, locale)}
               </span>
             </div>
             <p className="mt-2 text-xs leading-5 text-[#62695d]">
-              {panel.userFacingSummary}
+                {userFacingRunningText(panel.userFacingSummary, locale)}
             </p>
           </article>
         ))}
@@ -1202,15 +1340,15 @@ function DestinyClimatePanel({
       {climate?.observationSignals?.length ? (
         <div className="mt-4 rounded-md border border-[#568262]/15 bg-white p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-            observation signals
+            {locale === "zh" ? "观察信号" : "observation signals"}
           </div>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
             {climate.observationSignals.slice(0, 2).map((signal) => (
               <p key={signal.id} className="text-xs leading-5 text-[#62695d]">
                 <span className="font-semibold text-[#11150f]">
-                  {signal.label}:
+                  {userFacingRunningText(signal.label, locale)}:
                 </span>{" "}
-                {signal.userFacingSummary}
+                {userFacingRunningText(signal.userFacingSummary, locale)}
               </p>
             ))}
           </div>
@@ -1219,15 +1357,16 @@ function DestinyClimatePanel({
       {climate?.decisionRhythm.phases.length ? (
         <div className="mt-4 rounded-md border border-[#568262]/15 bg-white p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-            decision rhythm: {climate.decisionRhythm.overall}
+             {locale === "zh" ? "节奏" : "decision rhythm"}:{" "}
+             {userFacingRunningText(climate.decisionRhythm.overall, locale)}
           </div>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
             {climate.decisionRhythm.phases.map((phase) => (
               <p key={phase.label} className="text-xs leading-5 text-[#62695d]">
                 <span className="font-semibold text-[#11150f]">
-                  {phase.label}:
+                  {userFacingRunningText(phase.label, locale)}:
                 </span>{" "}
-                {phase.userFacingSummary}
+                {userFacingRunningText(phase.userFacingSummary, locale)}
               </p>
             ))}
           </div>
@@ -1237,28 +1376,37 @@ function DestinyClimatePanel({
   );
 }
 
-function RealSituationPanel({ seedContext }: { seedContext: SeedContextDraft }) {
+function RealSituationPanel({
+  seedContext,
+  locale,
+}: {
+  seedContext: SeedContextDraft;
+  locale: Locale;
+}) {
   const missingContextHint = seedContext.missingContextHints?.[0];
+  const t = runningCopy[locale];
 
   return (
     <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
       <h2 className="text-base font-semibold text-[#11150f]">
-        Real Situation Structure
+        {t.situationTitle}
       </h2>
       <p className="mt-2 line-clamp-6 text-sm leading-6 text-[#62695d]">
-        {realSituationSummary(seedContext)}
+        {realSituationSummary(seedContext, locale)}
       </p>
       <div className="mt-4 grid gap-2">
-        <SituationRow label="time window" value={seedContext.timeWindow} />
-        <SituationRow label="track" value={seedContext.trackType} />
         <SituationRow
-          label="quality"
-          value={`${seedContext.contextQualityScore ?? 0}% context score`}
+          label={t.windowLabel}
+          value={userFacingTimeWindow(seedContext.timeWindow, locale)}
+        />
+        <SituationRow
+          label={t.focusLabel}
+          value={`${seedContext.contextQualityScore ?? 0}%`}
         />
       </div>
       {missingContextHint ? (
         <p className="mt-3 text-xs leading-5 text-[#7d8578]">
-          {missingContextHint}
+          {userFacingRunningText(missingContextHint, locale)}
         </p>
       ) : null}
     </section>
@@ -1278,28 +1426,30 @@ function SituationRow({ label, value }: { label: string; value: string }) {
 
 function FusionMappingPanel({
   fusion,
+  locale,
 }: {
   fusion: DestinySituationFusionDraft | null;
+  locale: Locale;
 }) {
+  const t = runningCopy[locale];
   return (
     <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-[#11150f]">
-            Destiny themes mapped to people and pressures
+            {t.pressureTitle}
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            These mappings are symbolic-to-situation context. They do not claim
-            certainty about people or outcomes.
+            {t.pressureBody}
           </p>
         </div>
         <StatusPill tone={fusion?.mappings.length ? "ready" : "planned"}>
-          {fusion?.mappings.length ?? 0} mappings
+          {fusion?.mappings.length ?? 0}
         </StatusPill>
       </div>
       {fusion?.localWarnings?.length ? (
         <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-          {fusion.localWarnings[0]}
+          {userFacingRunningText(fusion.localWarnings[0], locale)}
         </p>
       ) : null}
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1309,33 +1459,32 @@ function FusionMappingPanel({
             className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
           >
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-              {mapping.themeLabel}
+              {userFacingRunningText(mapping.themeLabel, locale)}
             </div>
             <h3 className="mt-2 text-sm font-semibold text-[#11150f]">
-              {mapping.personLabel}
+              {userFacingRunningText(mapping.personLabel, locale)}
             </h3>
             <p className="mt-1 text-xs font-semibold text-[#3f483d]">
-              {mapping.pressureRole}
+              {userFacingRunningText(mapping.pressureRole, locale)}
             </p>
             <p className="mt-3 text-xs leading-5 text-[#62695d]">
-              {mapping.userFacingSummary}
+              {userFacingRunningText(mapping.userFacingSummary, locale)}
             </p>
             {mapping.mappingExplanation ? (
               <p className="mt-2 text-xs leading-5 text-[#7d8578]">
-                Why linked: {mapping.mappingExplanation.whyLinked}
+                {userFacingRunningText(mapping.mappingExplanation.whyLinked, locale)}
               </p>
             ) : null}
             {mapping.interpretationNotes?.[0] ? (
               <p className="mt-2 rounded border border-black/8 bg-white px-2 py-1 text-xs leading-5 text-[#62695d]">
-                {mapping.interpretationNotes[0]}
+                {userFacingRunningText(mapping.interpretationNotes[0], locale)}
               </p>
             ) : null}
           </article>
         ))}
         {!fusion?.mappings.length ? (
           <p className="rounded-md border border-dashed border-black/12 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#7d8578]">
-            No saved fusion mappings are available yet. Run preparation can
-            continue from the Situation Map and Event Logs.
+            {t.noPressure}
           </p>
         ) : null}
       </div>
@@ -1346,26 +1495,28 @@ function FusionMappingPanel({
 function InteractionPreviewPanel({
   events,
   agents,
+  locale,
 }: {
   events: SimulationEventDraft[];
   agents: AgentEcologyDraft["agents"];
+  locale: Locale;
 }) {
   const previewEvents = events.slice(0, 6);
+  const t = runningCopy[locale];
 
   return (
     <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-[#11150f]">
-            Dynamic interaction cards
+            {t.interactionTitle}
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            Each card shows what happened, who is involved, the destiny
-            influence, pressure changes, and one generated clue for inspection.
+            {t.interactionBody}
           </p>
         </div>
         <StatusPill tone={previewEvents.length ? "ready" : "planned"}>
-          {previewEvents.length} shown
+          {previewEvents.length}
         </StatusPill>
       </div>
       <div className="mt-4 grid gap-3 xl:grid-cols-2">
@@ -1377,44 +1528,49 @@ function InteractionPreviewPanel({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                  {branchDisplayLabel(event.branchId)} / Tick {event.tickIndex}
+                  {branchDisplayLabel(event.branchId, locale)} / {t.eventLabels.branchTick} {event.tickIndex}
                 </div>
                 <h3 className="mt-2 text-sm font-semibold text-[#11150f]">
-                  {eventDisplayTitle(event)}
+                  {eventDisplayTitle(event, locale)}
                 </h3>
               </div>
               <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
-                {event.confidence}%
+                {event.confidence}% {t.eventLabels.confidence}
               </span>
             </div>
-            <PreviewField label="what happened" value={event.summary} />
             <PreviewField
-              label="who is involved"
-              value={eventParticipantText(event, agents)}
+              label={t.eventLabels.happened}
+              value={userFacingRunningText(event.summary, locale)}
             />
             <PreviewField
-              label="destiny influence"
-              value={event.destinyInfluenceSummary}
+              label={t.eventLabels.involved}
+              value={eventParticipantText(event, agents, locale)}
             />
             <PreviewField
-              label="real-world pressure"
-              value={event.pressureDeltaSummary}
+              label={t.eventLabels.destiny}
+              value={userFacingRunningText(event.destinyInfluenceSummary, locale)}
             />
             <PreviewField
-              label="information/resource change"
-              value={[
-                event.informationGapDeltaSummary,
-                event.resourcePressureDeltaSummary,
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              label={t.eventLabels.pressure}
+              value={userFacingRunningText(event.pressureDeltaSummary, locale)}
             />
-            <PreviewField label="generated clue" value={firstClue(event)} />
+            <PreviewField
+              label={t.eventLabels.information}
+              value={userFacingRunningText(event.informationGapDeltaSummary, locale)}
+            />
+            <PreviewField
+              label={t.eventLabels.resource}
+              value={userFacingRunningText(event.resourcePressureDeltaSummary, locale)}
+            />
+            <PreviewField
+              label={t.eventLabels.clue}
+              value={userFacingRunningText(firstClue(event), locale)}
+            />
           </article>
         ))}
         {!previewEvents.length ? (
           <p className="rounded-md border border-dashed border-black/12 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#7d8578]">
-            Run the visible simulation to generate interaction cards.
+            {t.runToGenerate}
           </p>
         ) : null}
       </div>

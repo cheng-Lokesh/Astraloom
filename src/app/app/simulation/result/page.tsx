@@ -4,13 +4,9 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { GraphSummaryCards } from "@/components/graph/graph-summary-cards";
 import { RelationGraph } from "@/components/graph/relation-graph";
-import { ClaimCard } from "@/components/report/claim-card";
-import { EvidenceDrawer } from "@/components/report/evidence-drawer";
 import { ReportSummary } from "@/components/report/report-summary";
-import { StrategyOptions } from "@/components/report/strategy-options";
-import { SampleSandboxBanner } from "@/components/sample-sandbox-banner";
+import { useLanguage } from "@/components/language-provider";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import {
   AgentRefsView,
@@ -21,7 +17,6 @@ import {
   TimelineFeed,
 } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
-import { TrialSampleButton } from "@/components/trial-sample-button";
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import {
@@ -38,7 +33,6 @@ import {
   filterClaimsBySafety,
   verifySafety,
 } from "@/lib/safety/safety-verifier";
-import { isCompleteDestinySampleSeed } from "@/lib/trial/sample-workspace";
 import type { AgentProfileDraft } from "@/types/agent-profile";
 import type { CalibrationProfile } from "@/lib/calibration/calibration-types";
 import type { ClaimDraft, ClaimLedgerDraft } from "@/types/claim";
@@ -60,6 +54,148 @@ import type { SeedContextDraft } from "@/types/seed-context";
 import type { SimulationEventDraft } from "@/types/simulation-run";
 
 const emptyClaims: ClaimDraft[] = [];
+
+type Locale = "en" | "zh";
+
+const resultCopy = {
+  zh: {
+    noDataTitle: "\u6c99\u76d8\u8fd8\u6ca1\u6709\u751f\u6210\u7ed3\u679c",
+    noDataBody: "\u8bf7\u5148\u56de\u5230\u5f00\u59cb\u9875\u751f\u6210\u4e00\u6b21\u6c99\u76d8\uff0c\u518d\u67e5\u770b\u8fd9\u6b21\u6c99\u76d8\u7684\u5173\u952e\u53d1\u73b0\u3002",
+    startNew: "\u56de\u5230\u5f00\u59cb\u9875",
+    running: "\u67e5\u770b\u6c99\u76d8\u5c55\u5f00\u8fc7\u7a0b",
+    safetyTitle: "\u7ed3\u679c\u9875\u6682\u65f6\u65e0\u6cd5\u5c55\u793a",
+    backToRunning: "\u56de\u5230\u6c99\u76d8\u5c55\u5f00\u8fc7\u7a0b",
+    topTitle: "\u8fd9\u6b21\u6c99\u76d8\u6700\u503c\u5f97\u6ce8\u610f\u7684 3 \u4ef6\u4e8b",
+    noFindings: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u5f62\u6210\u53ef\u5c55\u793a\u7684\u5173\u952e\u53d1\u73b0\u3002\u8bf7\u5148\u56de\u5230\u5f00\u59cb\u9875\u91cd\u65b0\u751f\u6210\u4e00\u6b21\u6c99\u76d8\u3002",
+    findingLabel: "\u53d1\u73b0",
+    whyImportant: "\u4e3a\u4ec0\u4e48\u91cd\u8981",
+    confidence: "\u7f6e\u4fe1\u5ea6",
+    riskSignal: "\u538b\u529b\u4fe1\u53f7",
+    viewBasis: "\u67e5\u770b\u4f9d\u636e",
+    sourceTags: {
+      destiny: "\u547d\u7406\u6c14\u5019",
+      real: "\u73b0\u5b9e\u7ebf\u7d22",
+      dynamic: "\u52a8\u6001\u6c99\u76d8",
+    },
+    sections: {
+      basis: "\u67e5\u770b\u4f9d\u636e",
+      paths: "\u8def\u5f84\u5bf9\u6bd4",
+      map: "\u5c40\u52bf\u5730\u56fe",
+      events: "\u6c99\u76d8\u4e8b\u4ef6",
+      improve: "\u6821\u51c6\u4e0b\u6b21\u6c99\u76d8",
+      technical: "\u6280\u672f\u7ec6\u8282",
+      advanced: "\u9ad8\u7ea7\u6821\u51c6",
+    },
+    saveResult: "\u4fdd\u5b58\u7ed3\u679c",
+    rebuild: "\u91cd\u65b0\u751f\u6210\u53d1\u73b0",
+    saved: "\u7ed3\u679c\u5df2\u4fdd\u5b58\u3002",
+    rebuilt: "\u5df2\u6839\u636e\u5f53\u524d\u6c99\u76d8\u4e8b\u4ef6\u91cd\u65b0\u6574\u7406\u53d1\u73b0\u3002",
+    saveFailed: "\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u518d\u8bd5\u4e00\u6b21\u3002",
+    feedbackMissing: "\u8bf7\u5148\u9009\u62e9\u4e00\u6761\u53d1\u73b0\u6216\u6574\u4f53\u6c99\u76d8\uff0c\u518d\u4fdd\u5b58\u53cd\u9988\u3002",
+    feedbackSaved:
+      "\u53cd\u9988\u5df2\u4fdd\u5b58\u3002\u5b83\u53ea\u4f1a\u5e2e\u52a9\u4e0b\u6b21\u6c99\u76d8\u66f4\u8d34\u8fd1\u771f\u5b9e\u60c5\u51b5\uff0c\u4e0d\u4f1a\u6539\u5199\u8fd9\u6b21\u7ed3\u679c\u3002",
+    feedbackIntro:
+      "\u8fd9\u6b21\u5224\u65ad\u51c6\u4e0d\u51c6\uff1f\u4f60\u7684\u53cd\u9988\u4e0d\u4f1a\u6539\u5199\u8fd9\u6b21\u7ed3\u679c\uff0c\u53ea\u4f1a\u5e2e\u52a9\u4e0b\u6b21\u6c99\u76d8\u66f4\u8d34\u8fd1\u771f\u5b9e\u60c5\u51b5\u3002",
+    notePlaceholder: "\u53ef\u4ee5\u7b80\u5355\u5199\u54ea\u91cc\u8d34\u8fd1\u3001\u54ea\u91cc\u4e0d\u8d34\u8fd1\u3002",
+    saveFeedback: "\u4fdd\u5b58\u53cd\u9988",
+    targetFinding: "\u5f53\u524d\u53d1\u73b0",
+    targetOverall: "\u6574\u4f53\u6c99\u76d8",
+    basisEmpty: "\u9009\u62e9\u4e00\u6761\u53d1\u73b0\u540e\uff0c\u8fd9\u91cc\u4f1a\u5c55\u793a\u5b83\u7684\u4f9d\u636e\u3002",
+    destinyBasis: "\u547d\u7406\u6c14\u5019",
+    realBasis: "\u73b0\u5b9e\u7ebf\u7d22",
+    dynamicBasis: "\u52a8\u6001\u6c99\u76d8",
+    relationSignals: "\u5173\u7cfb\u4fe1\u53f7",
+    generatedClues: "\u751f\u6210\u7ebf\u7d22",
+    pathComparisonEmpty: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u5f62\u6210\u8def\u5f84\u5bf9\u6bd4\u3002",
+    situationMapEmpty: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u5f62\u6210\u5c40\u52bf\u5730\u56fe\u3002",
+    sandboxEventsEmpty: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u53ef\u5c55\u793a\u7684\u6c99\u76d8\u4e8b\u4ef6\u3002",
+    technicalNote:
+      "\u4ee5\u4e0b\u5185\u5bb9\u4fdd\u7559\u7ed9\u7ed3\u6784\u67e5\u770b\u548c\u6392\u67e5\u4f7f\u7528\uff0c\u9ed8\u8ba4\u6298\u53e0\uff0c\u4e0d\u4f5c\u4e3a\u666e\u901a\u7528\u6237\u7684\u4e3b\u9605\u8bfb\u8def\u5f84\u3002",
+    counts: {
+      roles: "\u89d2\u8272\u6a21\u578b",
+      relations: "\u5173\u7cfb\u4fe1\u53f7",
+      events: "\u6c99\u76d8\u4e8b\u4ef6",
+      findings: "\u53d1\u73b0",
+      feedback: "\u53cd\u9988",
+    },
+    pathLabels: {
+      inertia: "\u5f53\u524d\u60ef\u6027\u8def\u5f84",
+      cautious: "\u8c28\u614e\u89c2\u5bdf\u8def\u5f84",
+      active: "\u4e3b\u52a8\u63a8\u8fdb\u8def\u5f84",
+      boundary: "\u8fb9\u754c\u8c03\u6574\u8def\u5f84",
+    },
+  },
+  en: {
+    noDataTitle: "This sandbox does not have a result yet",
+    noDataBody:
+      "Start a sandbox first, then come back to review the key findings from this run.",
+    startNew: "Back to start",
+    running: "View sandbox unfolding",
+    safetyTitle: "Result view is paused for safety",
+    backToRunning: "Back to sandbox unfolding",
+    topTitle: "Top 3 findings from this sandbox",
+    noFindings:
+      "This sandbox has not produced displayable key findings yet. Start a new sandbox first.",
+    findingLabel: "Finding",
+    whyImportant: "Why it matters",
+    confidence: "Confidence",
+    riskSignal: "Pressure signal",
+    viewBasis: "View basis",
+    sourceTags: {
+      destiny: "Destiny climate",
+      real: "Real-world clues",
+      dynamic: "Dynamic sandbox",
+    },
+    sections: {
+      basis: "View basis",
+      paths: "Path comparison",
+      map: "Situation map",
+      events: "Sandbox events",
+      improve: "Improve next run",
+      technical: "Technical details",
+      advanced: "Advanced calibration",
+    },
+    saveResult: "Save result",
+    rebuild: "Rebuild findings",
+    saved: "Result saved.",
+    rebuilt: "Findings rebuilt from the current sandbox events.",
+    saveFailed: "Save failed. Please try again.",
+    feedbackMissing:
+      "Select a finding or the overall sandbox before saving feedback.",
+    feedbackSaved:
+      "Feedback saved. It only helps calibrate the next sandbox and does not rewrite this result.",
+    feedbackIntro:
+      "Was this useful? Your feedback will not rewrite this result. It only helps calibrate the next sandbox.",
+    notePlaceholder: "Briefly note what felt accurate or off.",
+    saveFeedback: "Save feedback",
+    targetFinding: "Current finding",
+    targetOverall: "Overall sandbox",
+    basisEmpty: "Select a finding to view its basis here.",
+    destinyBasis: "Destiny climate",
+    realBasis: "Real-world clues",
+    dynamicBasis: "Dynamic sandbox",
+    relationSignals: "Relation signals",
+    generatedClues: "Generated clues",
+    pathComparisonEmpty: "No path comparison is available for this sandbox yet.",
+    situationMapEmpty: "No situation map is available for this sandbox yet.",
+    sandboxEventsEmpty: "No sandbox events are available for this run yet.",
+    technicalNote:
+      "The details below are kept for structure review and troubleshooting. They stay folded by default.",
+    counts: {
+      roles: "Role models",
+      relations: "Relation signals",
+      events: "Sandbox events",
+      findings: "Findings",
+      feedback: "Feedback",
+    },
+    pathLabels: {
+      inertia: "Current inertia path",
+      cautious: "Cautious observation path",
+      active: "Active push path",
+      boundary: "Boundary adjustment path",
+    },
+  },
+};
 
 const feedbackTargets: { value: FeedbackTargetType; label: string }[] = [
   { value: "claim", label: "Selected finding" },
@@ -118,38 +254,38 @@ const relationCorrectionFields = [
 ];
 
 const correctionFieldLabels: Record<string, string> = {
-  role: "Role / 角色",
-  relationshipToUser: "Relationship to user / 与用户关系",
-  "motivation.primaryGoal": "Primary goal / 主要目标",
-  "motivation.fear": "Concern or fear / 主要顾虑",
-  "motivation.avoidancePattern": "Avoidance pattern / 回避模式",
-  "resources.authority": "Authority resource / 权限资源",
-  "resources.information": "Information resource / 信息资源",
-  "resources.socialCapital": "Social capital / 社交资源",
-  "resources.emotionalLeverage": "Emotional leverage / 情绪影响力",
-  "behaviorPolicy.actionSpeed": "Action speed / 行动速度",
-  "behaviorPolicy.initiative": "Initiative / 主动性",
-  "behaviorPolicy.cooperationBias": "Cooperation bias / 合作倾向",
-  "behaviorPolicy.communicationStyle": "Communication style / 沟通风格",
-  "state.stress": "Stress state / 压力状态",
-  "state.trustInUser": "Trust in user / 对用户信任",
-  "state.hostilityToUser": "Hostility to user / 对用户冲突压力",
-  "state.currentIntention": "Current intention label / 当前意图标签",
-  traits: "Traits / 特征",
-  constraints: "Constraints / 约束",
-  missingFields: "Missing fields / 缺失信息",
-  relationshipType: "Relationship type / 关系类型",
-  "weights.trust": "Trust weight / 信任权重",
-  "weights.hostility": "Hostility weight / 冲突压力权重",
-  "weights.dependency": "Dependency weight / 依赖权重",
-  "weights.attraction": "Attraction weight / 吸引权重",
-  "weights.competition": "Competition weight / 竞争权重",
-  "weights.informationGap": "Information gap weight / 信息差权重",
-  "weights.resourceControl": "Resource control weight / 资源控制权重",
-  "weights.emotionalDebt": "Emotional debt weight / 情绪债务权重",
-  "trend.volatility": "Volatility trend / 波动性趋势",
-  "trend.trustDelta3Ticks": "Trust trend / 信任趋势",
-  "trend.hostilityDelta3Ticks": "Hostility trend / 冲突压力趋势",
+  role: "Role",
+  relationshipToUser: "Relationship to user",
+  "motivation.primaryGoal": "Primary goal",
+  "motivation.fear": "Concern or fear",
+  "motivation.avoidancePattern": "Avoidance pattern",
+  "resources.authority": "Authority resource",
+  "resources.information": "Information resource",
+  "resources.socialCapital": "Social capital",
+  "resources.emotionalLeverage": "Emotional leverage",
+  "behaviorPolicy.actionSpeed": "Action speed",
+  "behaviorPolicy.initiative": "Initiative",
+  "behaviorPolicy.cooperationBias": "Cooperation bias",
+  "behaviorPolicy.communicationStyle": "Communication style",
+  "state.stress": "Stress state",
+  "state.trustInUser": "Trust in user",
+  "state.hostilityToUser": "Conflict pressure toward user",
+  "state.currentIntention": "Current intention label",
+  traits: "Traits",
+  constraints: "Constraints",
+  missingFields: "Missing fields",
+  relationshipType: "Relationship type",
+  "weights.trust": "Trust weight",
+  "weights.hostility": "Conflict pressure weight",
+  "weights.dependency": "Dependency weight",
+  "weights.attraction": "Attraction weight",
+  "weights.competition": "Competition weight",
+  "weights.informationGap": "Information gap weight",
+  "weights.resourceControl": "Resource control weight",
+  "weights.emotionalDebt": "Emotional debt weight",
+  "trend.volatility": "Volatility trend",
+  "trend.trustDelta3Ticks": "Trust trend",
+  "trend.hostilityDelta3Ticks": "Conflict pressure trend",
 };
 
 function correctionFieldLabel(field: string) {
@@ -199,20 +335,43 @@ function relationName(
   )} / ${edge.relationshipType}`;
 }
 
-function pathLabel(value: string | undefined) {
+function pathLabelForLocale(value: string | undefined, locale: Locale) {
+  const labels = resultCopy[locale].pathLabels;
   if (value === "cautious_self" || value === "Cautious self path") {
-    return "Cautious observation path";
+    return labels.cautious;
   }
   if (value === "decisive_self" || value === "Decisive self path") {
-    return "Active push path";
+    return labels.active;
   }
   if (value === "boundary_adjustment" || value === "Boundary adjustment path") {
-    return "Boundary adjustment path";
+    return labels.boundary;
   }
-  return "Current inertia path";
+  return labels.inertia;
 }
 
-function riskLanguage(riskLevel: ClaimDraft["riskLevel"]) {
+function riskLabel(riskLevel: ClaimDraft["riskLevel"], locale: Locale) {
+  if (locale === "zh") {
+    if (riskLevel === "high") return "高压力";
+    if (riskLevel === "medium") return "中等压力";
+    return "低压力";
+  }
+
+  return `${riskLevel} pressure`;
+}
+
+function riskLanguage(riskLevel: ClaimDraft["riskLevel"], locale: Locale = "en") {
+  if (locale === "zh") {
+    if (riskLevel === "high") {
+      return "这条压力在本次沙盘中较明显，行动前更需要先看依据。";
+    }
+
+    if (riskLevel === "medium") {
+      return "这条压力值得关注，但还需要和现实线索一起判断。";
+    }
+
+    return "这条压力相对较轻，适合先作为观察信号。";
+  }
+
   if (riskLevel === "high") {
     return "Pressure is elevated in this run; treat the window as sensitive and review the evidence before acting.";
   }
@@ -224,7 +383,23 @@ function riskLanguage(riskLevel: ClaimDraft["riskLevel"]) {
   return "Pressure is relatively light in this run; evidence still matters before drawing a strong conclusion.";
 }
 
-function confidenceLanguage(confidence: number) {
+function confidenceLanguage(confidence: number, locale: Locale = "en") {
+  if (locale === "zh") {
+    if (confidence >= 80) {
+      return "这条信号较稳定，但仍建议先看依据。";
+    }
+
+    if (confidence >= 55) {
+      return "这是中等强度信号，适合继续观察。";
+    }
+
+    if (confidence >= 25) {
+      return "这是较弱信号，适合当作待验证的问题。";
+    }
+
+    return "这条信号较弱，请只作为辅助参考。";
+  }
+
   if (confidence >= 80) {
     return "Strong sandbox signal, still not a certain outcome.";
   }
@@ -240,7 +415,27 @@ function confidenceLanguage(confidence: number) {
   return "Weak signal; keep this finding provisional.";
 }
 
-function whyFindingMatters(claim: ClaimDraft, eventCount: number) {
+function whyFindingMatters(
+  claim: ClaimDraft,
+  eventCount: number,
+  locale: Locale = "en",
+) {
+  if (locale === "zh") {
+    if (claim.claimType === "risk_window") {
+      return `这条发现重要，是因为 ${eventCount} 个沙盘事件都指向同一类压力变化，适合优先查看依据再决定下一步。`;
+    }
+
+    if (claim.claimType === "opportunity_window") {
+      return `这条发现重要，是因为 ${eventCount} 个沙盘事件显示这里可能出现可推进的窗口，但仍需要结合现实线索判断。`;
+    }
+
+    if (claim.claimType === "coordination_signal") {
+      return `这条发现重要，是因为 ${eventCount} 个沙盘事件显示这里可能有可沟通、可观察或可借力的空间。`;
+    }
+
+    return `这条发现重要，是因为 ${eventCount} 个沙盘事件显示这里有值得继续观察的摩擦或变化。`;
+  }
+
   const evidenceLabel = `${eventCount} sandbox event${
     eventCount === 1 ? "" : "s"
   }`;
@@ -258,6 +453,28 @@ function whyFindingMatters(claim: ClaimDraft, eventCount: number) {
   }
 
   return `This matters because ${evidenceLabel} show friction that is visible but not yet strong enough for heavier wording. The useful part is knowing what to inspect next.`;
+}
+
+function findingDisplayTitle(
+  finding: ClaimDraft,
+  eventCount: number,
+  locale: Locale,
+) {
+  if (locale === "en") return userFacingResultText(finding.summary, locale);
+
+  if (finding.claimType === "risk_window") {
+    return `${eventCount} 个沙盘事件提示：这里的压力正在升高`;
+  }
+
+  if (finding.claimType === "opportunity_window") {
+    return `${eventCount} 个沙盘事件提示：这里可能出现推进窗口`;
+  }
+
+  if (finding.claimType === "coordination_signal") {
+    return `${eventCount} 个沙盘事件提示：这里可能有可借力的空间`;
+  }
+
+  return `${eventCount} 个沙盘事件提示：这里值得继续观察`;
 }
 
 function topRealWorldClues(seedContext: SeedContextDraft) {
@@ -339,10 +556,6 @@ function decisionTopic(seedContext: SeedContextDraft) {
   );
 }
 
-function sandboxPathLabel(event: SimulationEventDraft) {
-  return pathLabel(event.pathLabel ?? event.branchId);
-}
-
 function sourceTagsForFinding(
   finding: ClaimDraft,
   events: SimulationEventDraft[],
@@ -361,7 +574,38 @@ function sourceTagsForFinding(
   return Array.from(tags);
 }
 
+function userFacingResultText(value: string, locale: Locale) {
+  const terms =
+    locale === "zh"
+      ? {
+          claim: "发现",
+          eventLog: "沙盘事件",
+          agent: "角色模型",
+          relationEdge: "关系信号",
+          evidence: "依据",
+        }
+      : {
+          claim: "finding",
+          eventLog: "sandbox event",
+          agent: "role model",
+          relationEdge: "relation signal",
+          evidence: "basis",
+        };
+
+  return value
+    .replace(/\bclaims?\b/gi, terms.claim)
+    .replace(/\bevent logs?\b/gi, terms.eventLog)
+    .replace(/\bagents?\b/gi, terms.agent)
+    .replace(/\brelation edges?\b/gi, terms.relationEdge)
+    .replace(/\brelation edge\b/gi, terms.relationEdge)
+    .replace(/\bevidence_event_ids\b/gi, terms.evidence)
+    .replace(/\bevidence refs?\b/gi, terms.evidence);
+}
+
 export default function ReportsPage() {
+  const { locale: languageLocale } = useLanguage();
+  const locale: Locale = languageLocale === "zh" ? "zh" : "en";
+  const copy = resultCopy[locale];
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
     const result = repos.seedContexts.load();
@@ -452,7 +696,6 @@ export default function ReportsPage() {
   const [relationCorrectionConfidence, setRelationCorrectionConfidence] =
     useState<FeedbackCorrectionConfidence>("medium");
   const [message, setMessage] = useState("");
-  const [paidMode, setPaidMode] = useState(false);
 
   const rawClaims = ledger?.claims ?? emptyClaims;
   const safetyDecision = useMemo(
@@ -496,24 +739,7 @@ export default function ReportsPage() {
       relationEdges: relationGraph?.edges ?? [],
     });
   }, [agentEcology, claims, relationGraph, seedContext, simulationRun]);
-  const fullDepthAllowed =
-    safetyDecision?.safetyLevel !== "blocked" &&
-    safetyDecision?.safetyLevel !== "downgraded";
-  const paidReportVisible = paidMode && fullDepthAllowed;
-  const reportClaims = report
-    ? paidReportVisible
-      ? report.paidReport.fullClaims
-      : report.freePreview.summaryClaims
-    : emptyClaims;
-  const reportEvidenceEvents = report
-    ? paidReportVisible
-      ? report.paidReport.fullEventChain
-      : report.paidReport.fullEventChain.filter((event) =>
-          report.freePreview.summaryClaimIds.some((claimId) =>
-            event.claimIds.includes(claimId),
-          ),
-        )
-    : [];
+  const paidReportVisible = false;
   const topFindings = report
     ? report.paidReport.fullClaims.slice(0, 3)
     : claims.slice(0, 3);
@@ -601,10 +827,10 @@ export default function ReportsPage() {
     if (!ledger) return;
     const result = repos.reports.save(ledger);
     if (!result.ok) {
-      setMessage(`Save failed: ${result.errorCode}`);
+      setMessage(copy.saveFailed);
       return;
     }
-    setMessage("Result Sandbox saved. Findings remain tied to evidence_event_ids.");
+    setMessage(copy.saved);
   }
 
   function rebuildLedger() {
@@ -612,13 +838,13 @@ export default function ReportsPage() {
     const nextLedger = buildClaimLedgerDraft(seedContext.id, simulationRun);
     const result = repos.reports.save(nextLedger);
     if (!result.ok) {
-      setMessage(`Save failed: ${result.errorCode}`);
+      setMessage(copy.saveFailed);
       return;
     }
     setLedger(nextLedger);
     setSelectedClaimId("");
     setSelectedEventId("");
-    setMessage("Rebuilt findings from the current sandbox events.");
+    setMessage(copy.rebuilt);
   }
 
   function saveFeedback() {
@@ -628,7 +854,7 @@ export default function ReportsPage() {
       !feedbackLedger ||
       !resolvedFeedbackTargetId
     ) {
-      setMessage("Select a finding, agent, edge, or run target before saving feedback.");
+      setMessage(copy.feedbackMissing);
       return;
     }
     const agentCorrection: FeedbackFieldCorrection | undefined =
@@ -665,7 +891,7 @@ export default function ReportsPage() {
     };
     const result = repos.feedback.save(nextLedger);
     if (!result.ok) {
-      setMessage(`Save failed: ${result.errorCode}`);
+      setMessage(copy.saveFailed);
       return;
     }
     setFeedbackLedger(nextLedger);
@@ -673,9 +899,7 @@ export default function ReportsPage() {
     setFeedbackNote("");
     setAgentCorrectionValue("");
     setRelationCorrectionValue("");
-    setMessage(
-      "Improve-next-run feedback saved locally for future runs only. Historical sandbox events, Findings, and results were not rewritten.",
-    );
+    setMessage(copy.feedbackSaved);
   }
 
   function changeFeedbackTarget(nextTarget: FeedbackTargetType) {
@@ -714,21 +938,18 @@ export default function ReportsPage() {
     return (
       <AppShell>
         <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">Sandbox data required</StatusPill>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-[#11150f]">
-            Generate a local run with sandbox events first.
+            {copy.noDataTitle}
           </h1>
           <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            Result Sandbox only reads frozen Agents, Relation Edges, Simulation
-            ticks, sandbox events, and Findings. Without event evidence, no finding is
-            shown.
+            {copy.noDataBody}
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <TrialSampleButton className="mf-button mf-button-primary px-5 py-3">
-              Try a complete destiny sandbox sample
-            </TrialSampleButton>
+            <ButtonLink href="/app/start" className="px-5 py-3">
+              {copy.startNew}
+            </ButtonLink>
             <ButtonLink href="/app/simulation/running" variant="secondary" className="px-5 py-3">
-              Open sandbox events
+              {copy.running}
             </ButtonLink>
           </div>
         </SurfaceCard>
@@ -742,13 +963,13 @@ export default function ReportsPage() {
         <section className="mx-auto max-w-3xl space-y-5">
           <SafetyDowngradeNotice
             decision={safetyDecision}
-            title="Result Sandbox is paused for safety"
+            title={copy.safetyTitle}
           />
           <ButtonLink
             href="/app/simulation/running"
             className="px-5 py-3"
           >
-            Back to sandbox events
+            {copy.backToRunning}
           </ButtonLink>
         </section>
       </AppShell>
@@ -757,38 +978,6 @@ export default function ReportsPage() {
 
   return (
     <AppShell>
-      {isCompleteDestinySampleSeed(seedContext.id) ? (
-        <SampleSandboxBanner showReplay />
-      ) : null}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <StatusPill tone="ready">Result sandbox</StatusPill>
-          <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-            Your destiny-situation sandbox is ready.
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Findings connect destiny climate, real-world clues, people,
-            relation changes, and sandbox events. They are inspectable signals,
-            not certainty statements.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            onClick={saveLedger}
-          >
-            Save result
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={rebuildLedger}
-          >
-            Rebuild from events
-          </Button>
-        </div>
-      </div>
-
       {message ? (
         <p className="mb-5 rounded-md border border-[#568262]/20 bg-[#eef5ee] px-4 py-3 text-sm text-[#2f5d3d]">
           {message}
@@ -798,7 +987,7 @@ export default function ReportsPage() {
         <div className="mb-5">
           <SafetyDowngradeNotice
             decision={safetyDecision}
-            title="Result safety restrictions"
+            title={copy.safetyTitle}
           />
         </div>
       ) : null}
@@ -807,121 +996,56 @@ export default function ReportsPage() {
         findings={topFindings}
         selectedFindingId={activeFinding?.id ?? ""}
         destinyClimate={destinyClimate}
-        destinyProfile={destinyProfile}
-        destinyFusion={destinyFusion}
-        seedContext={seedContext}
-        agents={agentEcology?.agents ?? []}
-        relationEdges={relationGraph?.edges ?? []}
         evidenceEvents={activeFindingEvidenceEvents}
         simulationEvents={simulationRun.events}
-        branchComparison={report?.paidReport.branchComparison ?? []}
+        locale={locale}
         onSelectFinding={selectClaim}
       />
 
-      <DestinySituationSummarySection
-        destinyClimate={destinyClimate}
-        destinyProfile={destinyProfile}
-        destinyFusion={destinyFusion}
-        seedContext={seedContext}
-        agents={agentEcology?.agents ?? []}
-        relationEdges={relationGraph?.edges ?? []}
-        events={simulationRun.events}
-      />
+      <section className="space-y-3">
+        <ResultFold title={copy.sections.basis}>
+          <EvidenceReplayPanel
+            finding={activeFinding}
+            destinyClimate={destinyClimate}
+            destinyProfile={destinyProfile}
+            destinyFusion={destinyFusion}
+            seedContext={seedContext}
+            agents={agentEcology?.agents ?? []}
+            relationEdges={relationGraph?.edges ?? []}
+            simulationEvents={simulationRun.events}
+            branchComparison={report?.paidReport.branchComparison ?? []}
+            locale={locale}
+          />
+        </ResultFold>
 
-      {report ? (
-        <section className="mb-6 space-y-5">
-          <ReportSummary report={report} paidMode={paidReportVisible} />
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setPaidMode(false)}
-              className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                !paidMode
-                  ? "bg-[#11150f] text-white"
-                  : "border border-black/10 bg-white text-[#11150f]"
-              }`}
-            >
-              Free preview
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (fullDepthAllowed) {
-                  setPaidMode(true);
-                }
-              }}
-              disabled={!fullDepthAllowed}
-              className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                paidReportVisible
-                  ? "bg-[#11150f] text-white"
-                  : "border border-black/10 bg-white text-[#11150f] disabled:cursor-not-allowed disabled:opacity-55"
-              }`}
-            >
-              Local full depth
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-[#7d8578]">
-            Local full depth shows more evidence and strategy detail - same
-            findings, same confidence, same risk level.
-          </p>
-          <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-            <main className="space-y-4">
-              {reportClaims.length ? (
-                reportClaims.map((claim) => (
-                  <ClaimCard
-                    key={claim.id}
-                    claim={claim}
-                    selected={selectedClaim?.id === claim.id}
-                    onSelect={selectClaim}
-                  />
-                ))
-              ) : (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
-                  No evidence-backed Finding is available. Items without
-                  evidence_event_ids are hidden by the result engine.
-                </p>
-              )}
-            </main>
-            <aside className="space-y-5">
-              <EvidenceDrawer
-                claim={selectedClaim}
-                events={reportEvidenceEvents}
-              />
-              {paidReportVisible ? (
-                <StrategyOptions
-                  options={report.paidReport.strategyOptions}
-                  selectedClaimId={selectedClaim?.id ?? ""}
-                />
-              ) : (
-                <LocalFullDepthBoundary
-                  allowed={fullDepthAllowed}
-                  onOpen={() => setPaidMode(true)}
-                />
-              )}
-            </aside>
-          </section>
-        </section>
-      ) : null}
+        <ResultFold title={copy.sections.paths}>
+          {report?.paidReport.branchComparison.length ? (
+            <BranchComparison
+              items={report.paidReport.branchComparison}
+              selectedClaimId={activeFinding?.id ?? ""}
+              locale={locale}
+            />
+          ) : (
+            <EmptyFoldMessage>{copy.pathComparisonEmpty}</EmptyFoldMessage>
+          )}
+        </ResultFold>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <main className="space-y-6">
-          <section className="grid gap-4 md:grid-cols-5">
-            <Metric label="Agents" value={agentEcology?.agents.length ?? simulationRun.agentIds.length} />
-            <Metric label="Edges" value={relationGraph?.edges.length ?? simulationRun.relationEdgeIds.length} />
-            <Metric label="Events" value={simulationRun.events.length} />
-            <Metric label="Findings" value={report?.invariant.claimIds.length ?? claims.length} />
-            <Metric label="Feedback" value={feedbackLedger?.feedback.length ?? 0} />
-          </section>
-
+        <ResultFold title={copy.sections.map}>
           {relationGraph?.edges.length ? (
-            <GraphSummaryCards
-              edges={relationGraph.edges}
+            <RelationGraph
               agents={agentEcology?.agents ?? []}
+              edges={relationGraph.edges}
+              selectedEdgeId={highlightedEdgeIds[0] ?? ""}
+              locked={relationGraph.graphLocked}
               onSelectEdge={selectEdge}
             />
-          ) : null}
+          ) : (
+            <EmptyFoldMessage>{copy.situationMapEmpty}</EmptyFoldMessage>
+          )}
+        </ResultFold>
 
-          <section className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(300px,0.55fr)]">
+        <ResultFold title={copy.sections.events}>
+          {simulationRun.events.length ? (
             <TimelineFeed
               ticks={simulationRun.ticks}
               events={simulationRun.events}
@@ -930,139 +1054,151 @@ export default function ReportsPage() {
               highlightedEventIds={highlightedEventIds}
               selectedEventId={selectedEvent?.id ?? ""}
               onSelectEvent={selectEvent}
-              title="Sandbox event replay"
-              description="Click a sandbox event to inspect involved people, situation map edges, confidence, evidence basis, and pressure changes."
+              title={copy.sections.events}
+              description={
+                locale === "zh"
+                  ? "这里按时间展示动态沙盘中发生的互动、压力变化和生成线索。"
+                  : "This lists the interactions, pressure changes, and generated clues from the dynamic sandbox."
+              }
             />
-            <AgentGraphSummary
-              agents={agentEcology?.agents ?? []}
-              edges={relationGraph?.edges ?? []}
-              highlightedAgentIds={highlightedAgentIds}
-              highlightedEdgeIds={highlightedEdgeIds}
-            />
-          </section>
+          ) : (
+            <EmptyFoldMessage>{copy.sandboxEventsEmpty}</EmptyFoldMessage>
+          )}
+        </ResultFold>
 
-          {report?.paidReport.branchComparison.length ? (
-            <BranchComparison
-              items={report.paidReport.branchComparison}
-              selectedClaimId={selectedClaim?.id ?? ""}
-            />
-          ) : null}
-
-          {relationGraph?.edges.length ? (
-            <details className="mt-6 rounded-lg border border-black/8 bg-white">
-              <summary className="cursor-pointer p-5 text-sm font-semibold text-[#11150f]">
-                Situation map snapshot ({relationGraph.edges.length} edges)
-              </summary>
-              <div className="border-t border-black/8 p-4">
-                <RelationGraph
-                  agents={agentEcology?.agents ?? []}
-                  edges={relationGraph.edges}
-                  selectedEdgeId={highlightedEdgeIds[0] ?? ""}
-                  locked={relationGraph.graphLocked}
-                  onSelectEdge={selectEdge}
-                />
-              </div>
-            </details>
-          ) : null}
-        </main>
-
-        <aside className="h-fit space-y-5">
-          <section className="rounded-lg border border-black/8 bg-[#11150f] p-6 text-white shadow-[0_24px_80px_rgba(17,21,15,0.14)]">
-              <h2 className="text-sm font-semibold text-[#b7e6c6]">
-              Evidence replay
-            </h2>
-            {selectedClaim ? (
-              <div className="mt-5 space-y-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
-                    selected finding
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-white/72">
-                    {selectedClaim.summary}
-                  </p>
-                </div>
-                <EvidenceList title="evidence_event_ids" values={selectedClaim.evidenceEventIds} />
-                <EvidenceCount count={selectedClaim.evidenceEventIds.length} />
-                <EvidenceList title="related_agent_ids" values={selectedClaim.relatedAgentIds} />
-                <EvidenceList title="related_relation_edge_ids" values={selectedClaim.relatedRelationEdgeIds} />
-              </div>
-            ) : (
-              <p className="mt-4 text-sm leading-6 text-white/62">
-                Select a finding card to inspect evidence.
-              </p>
-            )}
-          </section>
-
-          <section className="rounded-lg border border-black/8 bg-white p-5">
-            <h2 className="text-sm font-semibold text-[#11150f]">
-              Sandbox event detail
-            </h2>
-            {selectedEvent ? (
-              <div className="mt-4 space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                      {selectedEvent.eventType.replaceAll("_", " ")} / {selectedEvent.timeLabel}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                      {selectedEvent.summary}
-                    </p>
-                  </div>
-                  <StatusPill tone="planned">{selectedEvent.confidence}%</StatusPill>
-                </div>
-                <ConfidenceExplanation value={selectedEvent.confidence} />
-                <AgentRefsView
-                  agentIds={selectedEvent.involvedAgentIds}
-                  agents={agentEcology?.agents ?? []}
-                />
-                <RelationEdgeRefsView
-                  edgeIds={selectedEvent.relationEdgeIds}
-                  edges={relationGraph?.edges ?? []}
-                  agents={agentEcology?.agents ?? []}
-                />
-                <EdgeDeltaView
-                  event={selectedEvent}
-                  edges={relationGraph?.edges ?? []}
-                  agents={agentEcology?.agents ?? []}
-                />
-                <EvidenceRefsView refs={selectedEvent.evidence?.evidenceRefs ?? []} />
-                <EventDebugStateDisclosure event={selectedEvent} />
-              </div>
-            ) : (
-              <p className="mt-4 text-sm leading-6 text-[#62695d]">
-                Select a timeline event to inspect before/after.
-              </p>
-            )}
-          </section>
-
-          <FeedbackPanel
+        <ResultFold title={copy.sections.improve}>
+          <SimpleFeedbackPanel
             target={feedbackTarget}
             targetId={resolvedFeedbackTargetId}
             targetOptions={feedbackTargetOptions}
             rating={feedbackRating}
             note={feedbackNote}
             ledger={feedbackLedger}
-            agentCorrectionField={agentCorrectionField}
-            agentCorrectionValue={agentCorrectionValue}
-            agentCorrectionConfidence={agentCorrectionConfidence}
-            relationCorrectionField={relationCorrectionField}
-            relationCorrectionValue={relationCorrectionValue}
-            relationCorrectionConfidence={relationCorrectionConfidence}
             onTargetChange={changeFeedbackTarget}
             onTargetIdChange={setFeedbackTargetId}
             onRatingChange={setFeedbackRating}
             onNoteChange={setFeedbackNote}
-            onAgentCorrectionFieldChange={setAgentCorrectionField}
-            onAgentCorrectionValueChange={setAgentCorrectionValue}
-            onAgentCorrectionConfidenceChange={setAgentCorrectionConfidence}
-            onRelationCorrectionFieldChange={setRelationCorrectionField}
-            onRelationCorrectionValueChange={setRelationCorrectionValue}
-            onRelationCorrectionConfidenceChange={setRelationCorrectionConfidence}
             onSave={saveFeedback}
+            locale={locale}
           />
+          <details className="mt-4 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
+              {copy.sections.advanced}
+            </summary>
+            <div className="mt-4">
+              <FeedbackPanel
+                target={feedbackTarget}
+                targetId={resolvedFeedbackTargetId}
+                targetOptions={feedbackTargetOptions}
+                rating={feedbackRating}
+                note={feedbackNote}
+                ledger={feedbackLedger}
+                agentCorrectionField={agentCorrectionField}
+                agentCorrectionValue={agentCorrectionValue}
+                agentCorrectionConfidence={agentCorrectionConfidence}
+                relationCorrectionField={relationCorrectionField}
+                relationCorrectionValue={relationCorrectionValue}
+                relationCorrectionConfidence={relationCorrectionConfidence}
+                onTargetChange={changeFeedbackTarget}
+                onTargetIdChange={setFeedbackTargetId}
+                onRatingChange={setFeedbackRating}
+                onNoteChange={setFeedbackNote}
+                onAgentCorrectionFieldChange={setAgentCorrectionField}
+                onAgentCorrectionValueChange={setAgentCorrectionValue}
+                onAgentCorrectionConfidenceChange={setAgentCorrectionConfidence}
+                onRelationCorrectionFieldChange={setRelationCorrectionField}
+                onRelationCorrectionValueChange={setRelationCorrectionValue}
+                onRelationCorrectionConfidenceChange={
+                  setRelationCorrectionConfidence
+                }
+                onSave={saveFeedback}
+              />
+            </div>
+          </details>
+        </ResultFold>
 
-          <CalibrationSummary profile={calibrationProfile} />
-        </aside>
+        <ResultFold title={copy.sections.technical}>
+          <p className="mb-4 text-sm leading-6 text-[#62695d]">
+            {copy.technicalNote}
+          </p>
+          <div className="grid gap-4 md:grid-cols-5">
+            <Metric label={copy.counts.roles} value={agentEcology?.agents.length ?? simulationRun.agentIds.length} />
+            <Metric label={copy.counts.relations} value={relationGraph?.edges.length ?? simulationRun.relationEdgeIds.length} />
+            <Metric label={copy.counts.events} value={simulationRun.events.length} />
+            <Metric label={copy.counts.findings} value={report?.invariant.claimIds.length ?? claims.length} />
+            <Metric label={copy.counts.feedback} value={feedbackLedger?.feedback.length ?? 0} />
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button type="button" onClick={saveLedger}>
+              {copy.saveResult}
+            </Button>
+            <Button type="button" variant="secondary" onClick={rebuildLedger}>
+              {copy.rebuild}
+            </Button>
+          </div>
+          <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <div className="space-y-5">
+              {report ? (
+                <ReportSummary report={report} paidMode={paidReportVisible} />
+              ) : null}
+              <DestinySituationSummarySection
+                destinyClimate={destinyClimate}
+                destinyProfile={destinyProfile}
+                destinyFusion={destinyFusion}
+                seedContext={seedContext}
+                agents={agentEcology?.agents ?? []}
+                relationEdges={relationGraph?.edges ?? []}
+                events={simulationRun.events}
+              />
+              <AgentGraphSummary
+                agents={agentEcology?.agents ?? []}
+                edges={relationGraph?.edges ?? []}
+                highlightedAgentIds={highlightedAgentIds}
+                highlightedEdgeIds={highlightedEdgeIds}
+              />
+              {selectedEvent ? (
+                <section className="rounded-lg border border-black/8 bg-white p-5">
+                  <h2 className="text-sm font-semibold text-[#11150f]">
+                    {copy.sections.events}
+                  </h2>
+                  <div className="mt-4 space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                          {selectedEvent.eventType.replaceAll("_", " ")} / {selectedEvent.timeLabel}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                          {selectedEvent.summary}
+                        </p>
+                      </div>
+                      <StatusPill tone="planned">{selectedEvent.confidence}%</StatusPill>
+                    </div>
+                    <ConfidenceExplanation value={selectedEvent.confidence} />
+                    <AgentRefsView
+                      agentIds={selectedEvent.involvedAgentIds}
+                      agents={agentEcology?.agents ?? []}
+                    />
+                    <RelationEdgeRefsView
+                      edgeIds={selectedEvent.relationEdgeIds}
+                      edges={relationGraph?.edges ?? []}
+                      agents={agentEcology?.agents ?? []}
+                    />
+                    <EdgeDeltaView
+                      event={selectedEvent}
+                      edges={relationGraph?.edges ?? []}
+                      agents={agentEcology?.agents ?? []}
+                    />
+                    <EvidenceRefsView refs={selectedEvent.evidence?.evidenceRefs ?? []} />
+                    <EventDebugStateDisclosure event={selectedEvent} />
+                  </div>
+                </section>
+              ) : null}
+            </div>
+            <div className="space-y-5">
+              <CalibrationSummary profile={calibrationProfile} />
+            </div>
+          </div>
+        </ResultFold>
       </section>
     </AppShell>
   );
@@ -1072,29 +1208,20 @@ function TopFindingsSection({
   findings,
   selectedFindingId,
   destinyClimate,
-  destinyProfile,
-  destinyFusion,
-  seedContext,
-  agents,
-  relationEdges,
   evidenceEvents,
   simulationEvents,
-  branchComparison,
+  locale,
   onSelectFinding,
 }: {
   findings: ClaimDraft[];
   selectedFindingId: string;
   destinyClimate: DestinyClimateDraft | null;
-  destinyProfile: DestinyProfileDraft | null;
-  destinyFusion: DestinySituationFusionDraft | null;
-  seedContext: SeedContextDraft;
-  agents: AgentProfileDraft[];
-  relationEdges: RelationEdgeDraft[];
   evidenceEvents: ReportEvidenceEvent[];
   simulationEvents: SimulationEventDraft[];
-  branchComparison: ReportBranchComparison[];
+  locale: Locale;
   onSelectFinding: (findingId: string) => void;
 }) {
+  const copy = resultCopy[locale];
   const selectedFinding =
     findings.find((finding) => finding.id === selectedFindingId) ??
     findings[0] ??
@@ -1102,31 +1229,9 @@ function TopFindingsSection({
 
   return (
     <section className="mb-6 rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-            integrated result
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold text-[#11150f]">
-            Top findings from this destiny sandbox
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-7 text-[#62695d]">
-            These are the first three evidence-backed findings from the existing
-            stored finding ledger. Source tags show which layers contributed to
-            the replayable basis.
-          </p>
-        </div>
-        <StatusPill tone={findings.length ? "ready" : "planned"}>
-          {findings.length} findings
-        </StatusPill>
-      </div>
-
-      {!destinyClimate || !destinyFusion ? (
-        <p className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-          This run used mostly real-situation evidence because destiny context
-          was incomplete.
-        </p>
-      ) : null}
+      <h1 className="max-w-4xl text-3xl font-semibold tracking-[-0.02em] text-[#11150f] md:text-4xl">
+        {copy.topTitle}
+      </h1>
 
       {findings.length ? (
         <div className="mt-5 grid gap-4 xl:grid-cols-3">
@@ -1136,7 +1241,6 @@ function TopFindingsSection({
               finding={finding}
               index={index}
               selected={selectedFinding?.id === finding.id}
-              destinyClimate={destinyClimate}
               sourceTags={sourceTagsForFinding(
                 finding,
                 simulationEvents,
@@ -1148,28 +1252,15 @@ function TopFindingsSection({
                 ).length || finding.evidenceEventIds.length
               }
               onSelect={onSelectFinding}
+              locale={locale}
             />
           ))}
         </div>
       ) : (
         <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
-          No evidence-backed Finding is available. Items without
-          evidence_event_ids stay hidden.
+          {copy.noFindings}
         </p>
       )}
-
-      <EvidenceReplayPanel
-        finding={selectedFinding}
-        destinyClimate={destinyClimate}
-        destinyProfile={destinyProfile}
-        destinyFusion={destinyFusion}
-        seedContext={seedContext}
-        agents={agents}
-        relationEdges={relationEdges}
-        evidenceEvents={evidenceEvents}
-        simulationEvents={simulationEvents}
-        branchComparison={branchComparison}
-      />
     </section>
   );
 }
@@ -1178,19 +1269,20 @@ function FindingCard({
   finding,
   index,
   selected,
-  destinyClimate,
   sourceTags,
   eventCount,
   onSelect,
+  locale,
 }: {
   finding: ClaimDraft;
   index: number;
   selected: boolean;
-  destinyClimate: DestinyClimateDraft | null;
   sourceTags: string[];
   eventCount: number;
   onSelect: (findingId: string) => void;
+  locale: Locale;
 }) {
+  const copy = resultCopy[locale];
   return (
     <article
       className={`rounded-lg border p-5 transition ${
@@ -1201,48 +1293,59 @@ function FindingCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="rounded border border-black/10 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
-          Finding {index + 1}
-        </span>
-        <span className="text-xs font-semibold text-[#7d8578]">
-          stored id {finding.id}
+          {copy.findingLabel} {index + 1}
         </span>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <SourceTag
-          label="Destiny climate"
-          active={sourceTags.includes("destiny climate") && Boolean(destinyClimate)}
+          label={copy.sourceTags.destiny}
+          active={sourceTags.includes("destiny climate")}
         />
         <SourceTag
-          label="Real situation"
+          label={copy.sourceTags.real}
           active={sourceTags.includes("real situation")}
         />
         <SourceTag
-          label="Integrated simulation"
+          label={copy.sourceTags.dynamic}
           active={sourceTags.includes("integrated simulation")}
         />
       </div>
 
       <h3 className="mt-4 text-base font-semibold leading-7 text-[#11150f]">
-        {finding.summary}
+        {findingDisplayTitle(finding, eventCount, locale)}
       </h3>
 
       <div className="mt-4 space-y-3">
         <FindingMeta
-          label="why it matters"
-          value={whyFindingMatters(finding, eventCount)}
+          label={copy.whyImportant}
+          value={whyFindingMatters(finding, eventCount, locale)}
         />
         <FindingMeta
-          label="pressure / risk"
-          value={`${finding.riskLevel} pressure. ${riskLanguage(
-            finding.riskLevel,
-          )}`}
+          label={copy.riskSignal}
+          value={
+            locale === "zh"
+              ? `${riskLabel(finding.riskLevel, locale)}。${riskLanguage(
+                  finding.riskLevel,
+                  locale,
+                )}`
+              : `${riskLabel(finding.riskLevel, locale)}. ${riskLanguage(
+                  finding.riskLevel,
+                )}`
+          }
         />
         <FindingMeta
-          label="confidence"
-          value={`${finding.confidence}% confidence. ${confidenceLanguage(
-            finding.confidence,
-          )}`}
+          label={copy.confidence}
+          value={
+            locale === "zh"
+              ? `${finding.confidence}% 置信度。${confidenceLanguage(
+                  finding.confidence,
+                  locale,
+                )}`
+              : `${finding.confidence}% confidence. ${confidenceLanguage(
+                  finding.confidence,
+                )}`
+          }
         />
       </div>
 
@@ -1251,7 +1354,7 @@ function FindingCard({
         onClick={() => onSelect(finding.id)}
         className="mt-5 w-full rounded-md border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#11150f] hover:border-[#568262]/30"
       >
-        View basis
+        {copy.viewBasis}
       </button>
     </article>
   );
@@ -1268,6 +1371,36 @@ function SourceTag({ label, active }: { label: string; active: boolean }) {
     >
       {label}
     </span>
+  );
+}
+
+function ResultFold({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="rounded-lg border border-black/8 bg-white shadow-[0_16px_48px_rgba(17,21,15,0.04)]"
+    >
+      <summary className="cursor-pointer px-5 py-4 text-base font-semibold text-[#11150f]">
+        {title}
+      </summary>
+      <div className="border-t border-black/8 p-5">{children}</div>
+    </details>
+  );
+}
+
+function EmptyFoldMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-md border border-dashed border-black/16 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
+      {children}
+    </p>
   );
 }
 
@@ -1290,9 +1423,9 @@ function EvidenceReplayPanel({
   seedContext,
   agents,
   relationEdges,
-  evidenceEvents,
   simulationEvents,
   branchComparison,
+  locale,
 }: {
   finding: ClaimDraft | null;
   destinyClimate: DestinyClimateDraft | null;
@@ -1301,22 +1434,19 @@ function EvidenceReplayPanel({
   seedContext: SeedContextDraft;
   agents: AgentProfileDraft[];
   relationEdges: RelationEdgeDraft[];
-  evidenceEvents: ReportEvidenceEvent[];
   simulationEvents: SimulationEventDraft[];
   branchComparison: ReportBranchComparison[];
+  locale: Locale;
 }) {
+  const copy = resultCopy[locale];
   if (!finding) {
     return (
-      <div className="mt-5 rounded-md border border-dashed border-black/16 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
-        Evidence Replay appears after the sandbox has at least one
-        evidence-backed Finding.
+      <div className="rounded-md border border-dashed border-black/16 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
+        {copy.basisEmpty}
       </div>
     );
   }
 
-  const findingEvents = evidenceEvents.filter((event) =>
-    event.claimIds.includes(finding.id),
-  );
   const rawFindingEvents = simulationEvents.filter((event) =>
     finding.evidenceEventIds.includes(event.id),
   );
@@ -1357,67 +1487,93 @@ function EvidenceReplayPanel({
   );
 
   return (
-    <details
-      className="mt-5 rounded-lg border border-black/8 bg-[#fbfcf8] p-5"
-      open
-    >
-      <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
-        Evidence Replay for selected Finding
-      </summary>
-
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <ReplayBlock title="Destiny basis">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReplayBlock title={copy.destinyBasis}>
           {destinySkipped ? (
             <p>
-              This finding used real-situation and sandbox evidence; destiny
-              basis was skipped.
+              {locale === "zh"
+                ? "这条发现主要来自现实线索和动态沙盘；本次已跳过命理。"
+                : "This finding used real-world clues and sandbox evidence; destiny climate was skipped."}
             </p>
           ) : destinyClimate || destinyProfile ? (
             <div className="space-y-3">
-              <ReplaySubhead>Mode and confidence</ReplaySubhead>
+              <ReplaySubhead>{copy.confidence}</ReplaySubhead>
               <ReplayList
                 values={confidenceNotes}
-                empty="No destiny confidence note is available."
+                empty={
+                  locale === "zh"
+                    ? "没有可展示的命理置信度说明。"
+                    : "No destiny confidence note is available."
+                }
               />
               {destinyClimate?.userFacingOverview ? (
                 <p>{destinyClimate.userFacingOverview}</p>
               ) : null}
-              <ReplaySubhead>Key climate themes</ReplaySubhead>
+              <ReplaySubhead>{copy.sourceTags.destiny}</ReplaySubhead>
               <ReplayList
                 values={climateThemes}
-                empty="No key climate themes were attached to this Finding."
+                empty={
+                  locale === "zh"
+                    ? "这条发现没有关联到可展示的命理气候主题。"
+                    : "No key climate themes were attached to this finding."
+                }
               />
-              <ReplaySubhead>Relevant interpretation notes</ReplaySubhead>
+              <ReplaySubhead>
+                {locale === "zh" ? "相关解读" : "Relevant notes"}
+              </ReplaySubhead>
               <ReplayList
                 values={interpretationNotes}
-                empty="No interpretation notes were attached to this Finding."
+                empty={
+                  locale === "zh"
+                    ? "没有更多可展示的解读说明。"
+                    : "No interpretation notes were attached to this finding."
+                }
               />
             </div>
           ) : (
             <p>
-              Destiny basis is not available for this run, so the replay relies
-              on real-situation clues and sandbox events.
+              {locale === "zh"
+                ? "本次没有可用的命理气候依据，因此主要参考现实线索和动态沙盘。"
+                : "Destiny climate is not available for this run, so the basis relies on real-world clues and sandbox events."}
             </p>
           )}
         </ReplayBlock>
 
-        <ReplayBlock title="Real situation basis">
-          <ReplaySubhead>Decision topic</ReplaySubhead>
+        <ReplayBlock title={copy.realBasis}>
+          <ReplaySubhead>
+            {locale === "zh" ? "当前问题" : "Current question"}
+          </ReplaySubhead>
           <ReplayList
             values={[decisionTopic(seedContext)]}
-            empty="No decision topic was captured."
+            empty={
+              locale === "zh"
+                ? "没有记录当前问题。"
+                : "No current question was captured."
+            }
           />
-          <ReplaySubhead>User free-form situation</ReplaySubhead>
+          <ReplaySubhead>
+            {locale === "zh" ? "你的描述" : "Your description"}
+          </ReplaySubhead>
           <ReplayList
             values={topRealWorldClues(seedContext)}
-            empty="No free-form situation was captured."
+            empty={
+              locale === "zh"
+                ? "没有记录更多现实描述。"
+                : "No free-form situation was captured."
+            }
           />
-          <ReplaySubhead>Extracted people</ReplaySubhead>
+          <ReplaySubhead>
+            {locale === "zh" ? "涉及的人" : "People involved"}
+          </ReplaySubhead>
           <ReplayList
             values={people}
-            empty="No involved people were attached to this Finding."
+            empty={
+              locale === "zh"
+                ? "这条发现没有关联到具体人物。"
+                : "No involved people were attached to this finding."
+            }
           />
-          <ReplaySubhead>Real-world clues</ReplaySubhead>
+          <ReplaySubhead>{copy.sourceTags.real}</ReplaySubhead>
           <ReplayList
             values={uniqueStrings([
               seedContext.recentEventsText ?? seedContext.recentEvents ?? "",
@@ -1425,11 +1581,15 @@ function EvidenceReplayPanel({
               seedContext.decisionOptionsText ?? seedContext.decisionOptions ?? "",
               seedContext.desiredOutputText ?? seedContext.desiredOutput ?? "",
             ])}
-            empty="No additional real-world clues were captured."
+            empty={
+              locale === "zh"
+                ? "没有更多现实线索。"
+                : "No additional real-world clues were captured."
+            }
           />
         </ReplayBlock>
 
-        <ReplayBlock title="Dynamic sandbox basis">
+        <ReplayBlock title={copy.dynamicBasis}>
           {rawFindingEvents.length ? (
             <div className="space-y-4">
               {rawFindingEvents.map((event) => (
@@ -1438,52 +1598,58 @@ function EvidenceReplayPanel({
                   className="rounded-md border border-black/8 bg-white p-3"
                 >
                   <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                    {sandboxPathLabel(event)} / Tick {event.tickIndex} /{" "}
+                    {pathLabelForLocale(event.pathLabel ?? event.branchId, locale)} /{" "}
                     {event.timeLabel}
                   </div>
                   <ReplayList
                     values={uniqueStrings([
-                      `Sandbox event: ${event.userFacingEventTitle ?? event.summary}`,
+                      event.userFacingEventTitle ?? event.summary,
                       event.destinyInfluenceSummary
-                        ? `Destiny influence: ${event.destinyInfluenceSummary}`
+                        ? `${copy.sourceTags.destiny}: ${event.destinyInfluenceSummary}`
                         : "",
                       event.interactionSummary
-                        ? `Interaction: ${event.interactionSummary}`
+                        ? `${locale === "zh" ? "互动" : "Interaction"}: ${event.interactionSummary}`
                         : "",
                       event.pressureDeltaSummary
-                        ? `Pressure delta: ${event.pressureDeltaSummary}`
+                        ? `${locale === "zh" ? "压力变化" : "Pressure change"}: ${event.pressureDeltaSummary}`
                         : "",
                       ...(event.generatedClues ?? []).map(
-                        (clue) => `Generated clue: ${clue}`,
+                        (clue) => `${copy.generatedClues}: ${clue}`,
                       ),
                     ])}
-                    empty="No sandbox event summary was attached."
+                    empty={
+                      locale === "zh"
+                        ? "没有可展示的沙盘事件说明。"
+                        : "No sandbox event summary was attached."
+                    }
                   />
-                  <code
-                    className="mt-2 block break-all text-xs text-[#7d8578]"
-                    data-no-localize
-                  >
-                    {event.id}
-                  </code>
                 </div>
               ))}
             </div>
           ) : (
-            <ReplayList values={fallbackEvents.map((event) => event.label)} />
+            <p>
+              {locale === "zh"
+                ? `已找到 ${fallbackEvents.length} 条依据，但没有可展示的沙盘事件详情。`
+                : `${fallbackEvents.length} basis item(s) were found, but no displayable sandbox event details are available.`}
+            </p>
           )}
         </ReplayBlock>
 
-        <ReplayBlock title="Relation changes">
+        <ReplayBlock title={copy.relationSignals}>
           <ReplayList
             values={relations}
-            empty="No relation changes were attached."
+            empty={
+              locale === "zh"
+                ? "这条发现没有关联到关系信号。"
+                : "No relation signal was attached."
+            }
           />
           {rawFindingEvents.length ? (
             <div className="mt-3 space-y-2">
               {rawFindingEvents.slice(0, 3).map((event) => (
                 <div key={event.id} className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                    {sandboxPathLabel(event)} / Tick {event.tickIndex}
+                    {pathLabelForLocale(event.pathLabel ?? event.branchId, locale)}
                   </p>
                   <EdgeDeltaView
                     event={event}
@@ -1494,21 +1660,10 @@ function EvidenceReplayPanel({
                 </div>
               ))}
             </div>
-          ) : findingEvents.length ? (
-            <div className="mt-3 space-y-2">
-              {findingEvents.slice(0, 3).map((event) => (
-                <pre
-                  key={event.id}
-                  className="max-h-36 overflow-auto rounded bg-white p-3 text-xs leading-5 text-[#62695d]"
-                >
-                  {JSON.stringify(event.edgeWeightDeltas, null, 2)}
-                </pre>
-              ))}
-            </div>
           ) : null}
         </ReplayBlock>
 
-        <ReplayBlock title="Path divergence">
+        <ReplayBlock title={copy.sections.paths}>
           {branchItems.length ? (
             <div className="space-y-2">
               {branchItems.map((branch) => (
@@ -1517,30 +1672,35 @@ function EvidenceReplayPanel({
                   className="rounded-md border border-black/8 bg-white p-3"
                 >
                   <div className="text-sm font-semibold text-[#11150f]">
-                    {branch.label}
+                    {pathLabelForLocale(branch.branchId, locale)}
                   </div>
                   <p className="mt-1 text-xs leading-5 text-[#62695d]">
-                    {branch.eventCount} events, {branch.riskSignalCount} risk
-                    signals, {branch.supportSignalCount} support signals.
+                    {locale === "zh"
+                      ? `${branch.eventCount} 个事件，${branch.riskSignalCount} 个压力信号，${branch.supportSignalCount} 个支持信号。`
+                      : `${branch.eventCount} events, ${branch.riskSignalCount} pressure signals, ${branch.supportSignalCount} support signals.`}
                   </p>
                 </div>
               ))}
             </div>
           ) : (
             <p>
-              No branch-specific divergence is attached to this Finding yet.
+              {copy.pathComparisonEmpty}
             </p>
           )}
         </ReplayBlock>
 
-        <ReplayBlock title="Generated clues">
+        <ReplayBlock title={copy.generatedClues}>
           <ReplayList
             values={generatedClues}
-            empty="No generated clues were attached to these sandbox events."
+            empty={
+              locale === "zh"
+                ? "这些沙盘事件没有生成更多线索。"
+                : "No generated clues were attached to these sandbox events."
+            }
           />
         </ReplayBlock>
 
-        <ReplayBlock title="Destiny-situation mappings">
+        <ReplayBlock title={locale === "zh" ? "命理气候与现实局势的对应" : "Destiny-situation mapping"}>
           {relatedFusionMappings.length ? (
             <div className="space-y-2">
               {relatedFusionMappings.map((mapping) => (
@@ -1556,7 +1716,8 @@ function EvidenceReplayPanel({
                   </p>
                   {mapping.mappingExplanation ? (
                     <p className="mt-2 text-xs leading-5 text-[#7d8578]">
-                      Why linked: {mapping.mappingExplanation.whyLinked}
+                      {locale === "zh" ? "对应原因" : "Why linked"}:{" "}
+                      {mapping.mappingExplanation.whyLinked}
                     </p>
                   ) : null}
                   {mapping.interpretationNotes?.[0] ? (
@@ -1568,11 +1729,14 @@ function EvidenceReplayPanel({
               ))}
             </div>
           ) : (
-            <p>No destiny-situation mapping was attached to this Finding.</p>
+            <p>
+              {locale === "zh"
+                ? "这条发现没有关联到命理气候与现实局势的对应。"
+                : "No destiny-situation mapping was attached to this finding."}
+            </p>
           )}
         </ReplayBlock>
       </div>
-    </details>
   );
 }
 
@@ -1806,61 +1970,32 @@ function FusionRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LocalFullDepthBoundary({
-  allowed,
-  onOpen,
-}: {
-  allowed: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <section className="rounded-lg border border-black/8 bg-[#f7f8f4] p-5">
-      <h2 className="text-sm font-semibold text-[#11150f]">
-        Local full-depth boundary
-      </h2>
-      <p className="mt-3 text-sm leading-7 text-[#62695d]">
-        Full depth reveals the complete sandbox event chain, path divergence,
-        relation deltas, and strategy options. It uses the same stored finding id set and
-        does not change confidence or risk level.
-      </p>
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={onOpen}
-        disabled={!allowed}
-        className="mt-4 w-full px-4 py-3"
-      >
-        Open local full depth
-      </Button>
-      {!allowed ? (
-        <p className="mt-3 text-xs leading-5 text-[#7c5524]">
-          Safety restrictions keep this report in preview depth.
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
 function BranchComparison({
   items,
   selectedClaimId,
+  locale,
 }: {
   items: ReportBranchComparison[];
   selectedClaimId: string;
+  locale: Locale;
 }) {
+  const copy = resultCopy[locale];
   return (
     <section className="rounded-lg border border-black/8 bg-white p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[#11150f]">
-            Path divergence
+            {copy.sections.paths}
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            Paths start from the same locked situation map and differ by self-policy
-            strategy. Counts are evidence summaries, not stronger findings.
+            {locale === "zh"
+              ? "这些路径从同一个局势出发，展示不同推进方式下压力和支持信号如何分化。"
+              : "These paths start from the same situation and show how pressure and support signals may diverge."}
           </p>
         </div>
-        <StatusPill tone="planned">{items.length} branches</StatusPill>
+        <StatusPill tone="planned">
+          {items.length} {locale === "zh" ? "条路径" : "paths"}
+        </StatusPill>
       </div>
       <div className="mt-4 space-y-3">
         {items.map((item) => {
@@ -1878,16 +2013,16 @@ function BranchComparison({
             >
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold text-[#11150f]">
-                  {pathLabel(item.branchId)}
+                  {pathLabelForLocale(item.branchId, locale)}
                 </h3>
                 <span className="text-xs font-semibold text-[#568262]">
-                  {item.eventCount} events
+                  {item.eventCount} {locale === "zh" ? "个事件" : "events"}
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <BranchMetric label="findings" value={item.claimIds.length} />
-                <BranchMetric label="risk" value={item.riskSignalCount} />
-                <BranchMetric label="support" value={item.supportSignalCount} />
+                <BranchMetric label={copy.counts.findings} value={item.claimIds.length} />
+                <BranchMetric label={locale === "zh" ? "压力" : "Pressure"} value={item.riskSignalCount} />
+                <BranchMetric label={locale === "zh" ? "支持" : "Support"} value={item.supportSignalCount} />
               </div>
             </article>
           );
@@ -1914,6 +2049,145 @@ function Metric({ label, value }: { label: string; value: number }) {
       </div>
       <div className="mt-2 text-3xl font-semibold text-[#11150f]">{value}</div>
     </div>
+  );
+}
+
+function SimpleFeedbackPanel({
+  target,
+  targetId,
+  targetOptions,
+  rating,
+  note,
+  ledger,
+  onTargetChange,
+  onTargetIdChange,
+  onRatingChange,
+  onNoteChange,
+  onSave,
+  locale,
+}: {
+  target: FeedbackTargetType;
+  targetId: string;
+  targetOptions: FeedbackTargetOption[];
+  rating: FeedbackRating;
+  note: string;
+  ledger: FeedbackLedgerDraft | null;
+  onTargetChange: (target: FeedbackTargetType) => void;
+  onTargetIdChange: (targetId: string) => void;
+  onRatingChange: (rating: FeedbackRating) => void;
+  onNoteChange: (note: string) => void;
+  onSave: () => void;
+  locale: Locale;
+}) {
+  const copy = resultCopy[locale];
+  const visibleTargets: { value: FeedbackTargetType; label: string }[] = [
+    { value: "claim", label: copy.targetFinding },
+    { value: "overall", label: copy.targetOverall },
+  ];
+  const selectedTarget =
+    targetOptions.find((item) => item.value === targetId) ?? targetOptions[0];
+  const resolvedTargetId = selectedTarget?.value ?? "";
+  const simpleRatings = feedbackRatings.filter((item) =>
+    ["accurate", "partly_right", "off", "useful", "not_useful", "unclear"].includes(
+      item.value,
+    ),
+  );
+
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">
+            {copy.sections.improve}
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#62695d]">
+            {copy.feedbackIntro}
+          </p>
+        </div>
+        <StatusPill tone={ledger?.feedback.length ? "ready" : "planned"}>
+          {ledger?.feedback.length ?? 0}
+        </StatusPill>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+            {locale === "zh" ? "反馈对象" : "Feedback for"}
+          </label>
+          <select
+            value={target === "overall" ? "overall" : "claim"}
+            onChange={(event) =>
+              onTargetChange(event.target.value as FeedbackTargetType)
+            }
+            className="mt-2 w-full rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-sm text-[#11150f]"
+          >
+            {visibleTargets.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {target === "claim" ? (
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+              {copy.findingLabel}
+            </label>
+            {targetOptions.length ? (
+              <select
+                value={resolvedTargetId}
+                onChange={(event) => onTargetIdChange(event.target.value)}
+                className="mt-2 w-full rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-sm text-[#11150f]"
+              >
+                {targetOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <EmptyFoldMessage>{copy.noFindings}</EmptyFoldMessage>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        {simpleRatings.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => onRatingChange(item.value)}
+            className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+              rating === item.value
+                ? "border-[#568262]/50 bg-[#eef5ee] text-[#2f5d3d]"
+                : "border-black/10 bg-white text-[#52594d] hover:border-[#568262]/30"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <textarea
+        value={note}
+        onChange={(event) => onNoteChange(event.target.value)}
+        maxLength={280}
+        rows={3}
+        placeholder={copy.notePlaceholder}
+        className="mt-4 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-2 text-sm leading-6 text-[#11150f] outline-none focus:border-[#568262]"
+      />
+
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={!resolvedTargetId}
+        className="mt-4 rounded-md bg-[#11150f] px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9aa096]"
+      >
+        {copy.saveFeedback}
+      </button>
+    </section>
   );
 }
 
@@ -2495,38 +2769,6 @@ function AgentGraphSummary({
         Open read-only graph
       </Link>
     </section>
-  );
-}
-
-function EvidenceList({ title, values }: { title: string; values: string[] }) {
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
-        {title}
-      </div>
-      <div className="mt-2 space-y-1">
-        {values.map((value) => (
-          <code
-            key={value}
-            className="block break-all text-xs text-white/54"
-            data-no-localize
-          >
-            {value}
-          </code>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EvidenceCount({ count }: { count: number }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
-      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
-        evidence count
-      </div>
-      <div className="mt-2 text-2xl font-semibold text-white">{count}</div>
-    </div>
   );
 }
 

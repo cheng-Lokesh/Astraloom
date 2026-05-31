@@ -14,18 +14,13 @@ type AppShellProps = {
 };
 
 const navItems = [
-  { href: "/app/dashboard", en: "Dashboard", zh: "仪表盘" },
-  { href: "/app/new/scene", en: "New run", zh: "新沙盘" },
-  { href: "/app/new/people", en: "People", zh: "人物" },
-  { href: "/app/new/agents", en: "Agents", zh: "Agent" },
-  { href: "/app/new/graph", en: "Graph", zh: "关系图" },
-  { href: "/app/simulation/running", en: "Simulation", zh: "推演" },
+  { href: "/app/dashboard", en: "Home", zh: "首页" },
+  { href: "/app/start", en: "Start", zh: "开始" },
+  { href: "/app/simulation/running", en: "Sandbox", zh: "沙盘" },
   { href: "/app/simulation/result", en: "Result", zh: "结果" },
   { href: "/app/archive", en: "Archive", zh: "归档" },
-  { href: "/app/billing", en: "Billing", zh: "解锁" },
   { href: "/app/settings", en: "Settings", zh: "设置" },
   { href: "/app/support", en: "Support", zh: "支持" },
-  { href: "/app/admin", en: "Admin", zh: "管理" },
 ];
 
 export function AppShell({ children }: AppShellProps) {
@@ -48,7 +43,7 @@ export function AppShell({ children }: AppShellProps) {
                 {BRAND_NAME}
               </span>
               <span className="block truncate text-[15px] font-semibold text-[#11150f]">
-                {locale === "zh" ? "动态沙盘推演器" : "AI Life Simulator"}
+                {locale === "zh" ? "动态沙盘推演器" : "Dynamic destiny sandbox"}
               </span>
             </span>
           </Link>
