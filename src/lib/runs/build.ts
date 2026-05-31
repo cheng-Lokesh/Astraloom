@@ -1,6 +1,7 @@
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import { recordSimulationRunEvent } from "@/lib/observability/audit-event";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
+import type { GroundedSocialSimulationDraft } from "@/types/grounded-social-simulation";
 import type { RelationEdgeDraft } from "@/types/relation-edge";
 import { buildRelationEdges } from "@/lib/relations/build";
 import type { SeedContextDraft } from "@/types/seed-context";
@@ -21,12 +22,14 @@ export function buildSimulationRunDraft(
   status: SimulationRunStatus = "not_ready",
   safetySnapshot?: SafetySnapshot,
   destinyFusion?: DestinySituationFusionDraft | null,
+  groundedSocialSimulation?: GroundedSocialSimulationDraft | null,
 ) {
   const run = buildSimulationEngineV1Run({
     seedContext,
     agentEcology,
     relationEdges,
     destinyFusion,
+    groundedSocialSimulation,
     status,
     safetySnapshot,
   });

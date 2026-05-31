@@ -1,5 +1,8 @@
 import { buildAgentProfiles } from "@/lib/agents/build";
 import { buildDestinySituationFusionDraft } from "@/lib/destiny-fusion/build-destiny-situation-fusion";
+import { buildDestinyPersonModifier } from "@/lib/grounded-social-simulation/build-destiny-person-modifier";
+import { buildGroundedRealityModel } from "@/lib/grounded-social-simulation/build-grounded-reality-model";
+import { simulateGroundedPaths } from "@/lib/grounded-social-simulation/simulate-grounded-paths";
 import {
   extractPeopleCandidates,
   mergePeopleCandidates,
@@ -8,6 +11,7 @@ import { buildRelationEdges } from "@/lib/relations/build";
 import { getRepositories } from "@/lib/repositories/repository-provider";
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
+import type { GroundedSocialSimulationDraft } from "@/types/grounded-social-simulation";
 import type { KeyPeopleDraft } from "@/types/key-person";
 import type { RelationGraphDraft } from "@/types/relation-edge";
 import type { SeedContextDraft } from "@/types/seed-context";
@@ -17,6 +21,7 @@ type PrepareLocalSandboxResult =
       ok: true;
       keyPeople: KeyPeopleDraft;
       destinyFusion: DestinySituationFusionDraft;
+      groundedSocialSimulation: GroundedSocialSimulationDraft;
       agentEcology: AgentEcologyDraft;
       relationGraph: RelationGraphDraft;
       localWarnings: string[];
@@ -95,12 +100,25 @@ export function prepareLocalSandboxArtifacts(
   );
   const localWarnings: string[] = [];
   const climateResult = repos.destinyClimates.load(seedContext.id);
+  const profileResult = repos.destinyProfiles.load(seedContext.id);
+  const destinyProfile = profileResult.ok ? profileResult.data : null;
   let destinyFusion: DestinySituationFusionDraft;
+  const destinyClimate = climateResult.ok ? climateResult.data : null;
+  if (!destinyProfile) {
+    localWarnings.push(
+      "Grounded Social Simulation warning: DestinyProfileDraft was not available, so DestinyPersonModifier uses a low-confidence placeholder while the grounded reality model continues.",
+    );
+  }
+  if (!destinyClimate) {
+    localWarnings.push(
+      "Grounded Social Simulation warning: DestinyClimateDraft was not available, so DestinyPersonModifier timing sensitivity stays low confidence while the grounded reality model continues.",
+    );
+  }
 
-  if (climateResult.ok && climateResult.data) {
+  if (destinyClimate) {
     destinyFusion = buildDestinySituationFusionDraft({
       seedContext,
-      destinyClimate: climateResult.data,
+      destinyClimate,
       keyPeople: confirmedPeople,
       now,
     });
@@ -125,6 +143,55 @@ export function prepareLocalSandboxArtifacts(
         "Local Destiny-Situation Fusion warning: placeholder fusion could not be saved, but people, agents, and relation graph preparation continued.",
       );
     }
+  }
+
+  const groundedRealityModel = buildGroundedRealityModel({
+    seedContext,
+    keyPeople: confirmedPeople,
+  });
+  const destinyPersonModifier = buildDestinyPersonModifier({
+    seedContext,
+    destinyProfile,
+    destinyClimate,
+  });
+  const groundedPaths = simulateGroundedPaths({
+    seedContext,
+    realityNodes: groundedRealityModel.realityNodes,
+    realityPressures: groundedRealityModel.realityPressures,
+    destinyPersonModifier,
+  });
+  if (
+    !groundedPaths.pathEvents.some(
+      (event) => event.branchId === "boundary_adjustment",
+    )
+  ) {
+    localWarnings.push(
+      "Grounded Social Simulation warning: boundary_adjustment path event is not generated in V1 and should be added in a follow-up task.",
+    );
+  }
+  const groundedSocialSimulation: GroundedSocialSimulationDraft = {
+    id: `gss_${seedContext.id}`,
+    seedContextId: seedContext.id,
+    destinyProfileId: destinyPersonModifier.destinyProfileId,
+    destinyClimateId: destinyPersonModifier.destinyClimateId,
+    realityNodes: groundedRealityModel.realityNodes,
+    realityPressures: groundedRealityModel.realityPressures,
+    destinyPersonModifier,
+    pathEvents: groundedPaths.pathEvents,
+    simulationSummary: groundedPaths.simulationSummary,
+    keyUncertainties: groundedRealityModel.keyUncertainties,
+    observableSignals: groundedRealityModel.observableSignals,
+    confidence: Math.min(
+      groundedRealityModel.confidence,
+      destinyPersonModifier.confidence,
+      ...groundedPaths.pathEvents.map((event) => event.confidence),
+    ),
+    createdAt: now,
+  };
+  const groundedResult =
+    repos.groundedSocialSimulations.save(groundedSocialSimulation);
+  if (!groundedResult.ok) {
+    return { ok: false, errorCode: groundedResult.errorCode };
   }
 
   const agentEcology: AgentEcologyDraft = {
@@ -152,6 +219,7 @@ export function prepareLocalSandboxArtifacts(
     ok: true,
     keyPeople,
     destinyFusion,
+    groundedSocialSimulation,
     agentEcology,
     relationGraph,
     localWarnings,

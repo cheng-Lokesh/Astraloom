@@ -8,10 +8,16 @@ import type { RelationEdgeDraft, RelationWeights } from "@/types/relation-edge";
 import type {
   SimulationBranchId,
   SimulationEventDraft,
+  SimulationRealitySourceTag,
   SimulationGateDraft,
   SimulationRunDraft,
   SimulationTickDraft,
 } from "@/types/simulation-run";
+import type {
+  GroundedRealityNode,
+  GroundedRealityPressure,
+  GroundedSimulationPathEvent,
+} from "@/types/grounded-social-simulation";
 
 import { agentForBranch, branchPolicies } from "./branch-policy";
 import { scoreEventConfidence } from "./confidence-scoring";
@@ -162,6 +168,12 @@ const fusionSourceTags: DestinySituationFusionSourceTag[] = [
   "integrated simulation",
 ];
 
+const groundedRealitySourceTags: SimulationRealitySourceTag[] = [
+  "real-world evidence",
+  "destiny weighting",
+  "path simulation",
+];
+
 const branchLabels: Record<SimulationBranchId, string> = {
   baseline: "Current inertia path",
   cautious_self: "Cautious observation path",
@@ -241,6 +253,105 @@ function mappingForEvent({
   return directMapping ?? mappings[(tickIndex - 1) % mappings.length] ?? null;
 }
 
+function groundedBranchAliases(branchId: SimulationBranchId) {
+  if (branchId === "cautious_self") return ["cautious_self", "cautious"];
+  if (branchId === "decisive_self") return ["decisive_self", "decisive"];
+  if (branchId === "boundary_adjustment") {
+    return ["boundary_adjustment", "boundary"];
+  }
+  return [branchId];
+}
+
+function groundedPathEventForEvent({
+  branchId,
+  tickIndex,
+  pathEvents,
+}: {
+  branchId: SimulationBranchId;
+  tickIndex: number;
+  pathEvents: GroundedSimulationPathEvent[];
+}) {
+  const branchAliases = groundedBranchAliases(branchId);
+  const branchEvents = pathEvents.filter((event) =>
+    branchAliases.includes(event.branchId),
+  );
+  const pool = branchEvents.length ? branchEvents : pathEvents;
+
+  return (
+    pool.find((event) => event.step === tickIndex) ??
+    pool[(tickIndex - 1) % Math.max(pool.length, 1)] ??
+    null
+  );
+}
+
+function summarizeGroundedNodes(nodes: GroundedRealityNode[]) {
+  if (!nodes.length) return undefined;
+
+  return nodes
+    .slice(0, 3)
+    .map((node) => `${node.label}: ${node.roleInSituation}`)
+    .join(" ");
+}
+
+function summarizeGroundedPressures(pressures: GroundedRealityPressure[]) {
+  if (!pressures.length) return undefined;
+
+  return pressures
+    .slice(0, 3)
+    .map((pressure) => pressure.explanation)
+    .join(" ");
+}
+
+function buildGroundedDisplayFields({
+  input,
+  branch,
+  tickIndex,
+}: {
+  input: SimulationEngineInput;
+  branch: BranchPolicy;
+  tickIndex: number;
+}) {
+  const grounded = input.groundedSocialSimulation;
+  if (!grounded) return {};
+
+  const pathEvent = groundedPathEventForEvent({
+    branchId: branch.id,
+    tickIndex,
+    pathEvents: grounded.pathEvents,
+  });
+  const groundedRealityNodeIds =
+    pathEvent?.realityNodeIds.length
+      ? pathEvent.realityNodeIds
+      : grounded.realityNodes.slice(0, 3).map((node) => node.id);
+  const groundedNodes = grounded.realityNodes.filter((node) =>
+    groundedRealityNodeIds.includes(node.id),
+  );
+  const groundedPressures = grounded.realityPressures.filter(
+    (pressure) =>
+      groundedRealityNodeIds.includes(pressure.sourceNodeId) ||
+      groundedRealityNodeIds.includes(pressure.targetNodeId),
+  );
+
+  return {
+    groundedRealitySummary:
+      pathEvent?.expectedRealityReaction ?? summarizeGroundedNodes(groundedNodes),
+    groundedRealityNodeIds,
+    groundedPressureSummary:
+      pathEvent?.pressureChange ?? summarizeGroundedPressures(groundedPressures),
+    destinyModifierEffect:
+      pathEvent?.destinyModifierEffect ??
+      grounded.destinyPersonModifier.timingSensitivity,
+    realitySourceTags: groundedRealitySourceTags,
+  } satisfies Pick<
+    SimulationEventDraft,
+    | "groundedRealitySummary"
+    | "groundedRealityNodeIds"
+    | "groundedPressureSummary"
+    | "destinyModifierEffect"
+    | "realitySourceTags"
+  >;
+}
+
 function buildEventDisplayFields({
   eventType,
   eventSummary,
@@ -251,6 +362,7 @@ function buildEventDisplayFields({
   tickIndex,
   delta,
   destinyFusion,
+  input,
 }: {
   eventType: SimulationEventDraft["eventType"];
   eventSummary: string;
@@ -261,6 +373,7 @@ function buildEventDisplayFields({
   tickIndex: number;
   delta: Partial<RelationWeights>;
   destinyFusion?: DestinySituationFusionDraft | null;
+  input: SimulationEngineInput;
 }) {
   const mapping = mappingForEvent({
     destinyFusion,
@@ -294,6 +407,7 @@ function buildEventDisplayFields({
     ),
     generatedClues: buildGeneratedClues(mapping, action, delta),
     sourceTags: fusionSourceTags,
+    ...buildGroundedDisplayFields({ input, branch, tickIndex }),
   } satisfies Pick<
     SimulationEventDraft,
     | "userFacingEventTitle"
@@ -306,6 +420,11 @@ function buildEventDisplayFields({
     | "resourcePressureDeltaSummary"
     | "generatedClues"
     | "sourceTags"
+    | "groundedRealitySummary"
+    | "groundedRealityNodeIds"
+    | "groundedPressureSummary"
+    | "destinyModifierEffect"
+    | "realitySourceTags"
   >;
 }
 
@@ -440,6 +559,7 @@ function buildBranchTicksAndEvents(
         tickIndex,
         delta: update.delta,
         destinyFusion: input.destinyFusion,
+        input,
       }),
       agentIds: participants,
       involvedAgentIds: participants,

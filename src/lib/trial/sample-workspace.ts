@@ -9,6 +9,10 @@ import {
 } from "@/lib/destiny/storage";
 import { buildDestinySituationFusionDraft } from "@/lib/destiny-fusion/build-destiny-situation-fusion";
 import { saveDestinySituationFusionDraft } from "@/lib/destiny-fusion/storage";
+import { buildDestinyPersonModifier } from "@/lib/grounded-social-simulation/build-destiny-person-modifier";
+import { buildGroundedRealityModel } from "@/lib/grounded-social-simulation/build-grounded-reality-model";
+import { saveGroundedSocialSimulationDraft } from "@/lib/grounded-social-simulation/storage";
+import { simulateGroundedPaths } from "@/lib/grounded-social-simulation/simulate-grounded-paths";
 import { saveKeyPeopleDraft } from "@/lib/people/storage";
 import { buildRelationEdges } from "@/lib/relations/build";
 import { saveRelationGraphDraft } from "@/lib/relations/storage";
@@ -21,6 +25,7 @@ import type {
   AgentStance,
   AgentType,
 } from "@/types/agent-profile";
+import type { GroundedSocialSimulationDraft } from "@/types/grounded-social-simulation";
 import type { KeyPersonDraft } from "@/types/key-person";
 import type { RelationEdgeDraft } from "@/types/relation-edge";
 import type { SeedContextDraft } from "@/types/seed-context";
@@ -506,6 +511,40 @@ export function createTrialWorkspace() {
     keyPeople: people,
     now,
   });
+  const groundedRealityModel = buildGroundedRealityModel({
+    seedContext,
+    keyPeople: people,
+  });
+  const destinyPersonModifier = buildDestinyPersonModifier({
+    seedContext,
+    destinyProfile,
+    destinyClimate,
+  });
+  const groundedPaths = simulateGroundedPaths({
+    seedContext,
+    realityNodes: groundedRealityModel.realityNodes,
+    realityPressures: groundedRealityModel.realityPressures,
+    destinyPersonModifier,
+  });
+  const groundedSocialSimulation: GroundedSocialSimulationDraft = {
+    id: `gss_${seedContext.id}`,
+    seedContextId: seedContext.id,
+    destinyProfileId: destinyPersonModifier.destinyProfileId,
+    destinyClimateId: destinyPersonModifier.destinyClimateId,
+    realityNodes: groundedRealityModel.realityNodes,
+    realityPressures: groundedRealityModel.realityPressures,
+    destinyPersonModifier,
+    pathEvents: groundedPaths.pathEvents,
+    simulationSummary: groundedPaths.simulationSummary,
+    keyUncertainties: groundedRealityModel.keyUncertainties,
+    observableSignals: groundedRealityModel.observableSignals,
+    confidence: Math.min(
+      groundedRealityModel.confidence,
+      destinyPersonModifier.confidence,
+      ...groundedPaths.pathEvents.map((event) => event.confidence),
+    ),
+    createdAt: now,
+  };
   const relationEdges = tuneCareerSampleEdges(
     buildRelationEdges(seedContext.id, agents),
   );
@@ -526,6 +565,7 @@ export function createTrialWorkspace() {
       undefined,
       undefined,
       destinyFusion,
+      groundedSocialSimulation,
     ),
   );
   const claimLedger = buildClaimLedgerDraft(seedContext.id, simulationRun);
@@ -534,6 +574,7 @@ export function createTrialWorkspace() {
   saveDestinyProfileDraft(destinyProfile);
   saveDestinyClimateDraft(destinyClimate);
   saveDestinySituationFusionDraft(destinyFusion);
+  saveGroundedSocialSimulationDraft(groundedSocialSimulation);
   saveKeyPeopleDraft({ seedContextId: seedContext.id, people, updatedAt: now });
   saveAgentEcologyDraft({
     seedContextId: seedContext.id,
@@ -552,6 +593,7 @@ export function createTrialWorkspace() {
     destinyProfile,
     destinyClimate,
     destinyFusion,
+    groundedSocialSimulation,
     relationEdges,
     simulationRun,
     claimLedger,

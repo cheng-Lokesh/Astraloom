@@ -41,6 +41,11 @@ export type SimulationEventType =
   | "agent_signal"
   | "empty_slot";
 
+export type SimulationRealitySourceTag =
+  | "real-world evidence"
+  | "destiny weighting"
+  | "path simulation";
+
 export type SimulationTickDraft = {
   id: string;
   simulationRunId: string;
@@ -101,6 +106,11 @@ export type SimulationEventDraft = {
   resourcePressureDeltaSummary?: string;
   generatedClues?: string[];
   sourceTags?: DestinySituationFusionSourceTag[];
+  groundedRealitySummary?: string;
+  groundedRealityNodeIds?: string[];
+  groundedPressureSummary?: string;
+  destinyModifierEffect?: string;
+  realitySourceTags?: SimulationRealitySourceTag[];
   agentIds: string[];
   involvedAgentIds: string[];
   relationEdgeIds: string[];

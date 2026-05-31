@@ -38,6 +38,7 @@ import type { CalibrationProfile } from "@/lib/calibration/calibration-types";
 import type { ClaimDraft, ClaimLedgerDraft } from "@/types/claim";
 import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
+import type { GroundedSocialSimulationDraft } from "@/types/grounded-social-simulation";
 import type {
   FeedbackCorrectionConfidence,
   FeedbackFieldCorrection,
@@ -653,6 +654,14 @@ export default function ReportsPage() {
     const result = repos.destinyFusions.load(seed.id);
     return result.ok ? result.data : null;
   });
+  const [groundedSocialSimulation] =
+    useState<GroundedSocialSimulationDraft | null>(() => {
+      const seedResult = repos.seedContexts.load();
+      const seed = seedResult.ok ? seedResult.data : null;
+      if (!seed) return null;
+      const result = repos.groundedSocialSimulations.load(seed.id);
+      return result.ok ? result.data : null;
+    });
   const [ledger, setLedger] = useState<ClaimLedgerDraft | null>(() => {
     const seedResult = repos.seedContexts.load();
     const seed = seedResult.ok ? seedResult.data : null;
@@ -1002,6 +1011,13 @@ export default function ReportsPage() {
         onSelectFinding={selectClaim}
       />
 
+      <GroundedResultBasisPanel
+        groundedSocialSimulation={groundedSocialSimulation}
+        activeFinding={activeFinding}
+        simulationEvents={simulationRun.events}
+        locale={locale}
+      />
+
       <section className="space-y-3">
         <ResultFold title={copy.sections.basis}>
           <EvidenceReplayPanel
@@ -1009,6 +1025,7 @@ export default function ReportsPage() {
             destinyClimate={destinyClimate}
             destinyProfile={destinyProfile}
             destinyFusion={destinyFusion}
+            groundedSocialSimulation={groundedSocialSimulation}
             seedContext={seedContext}
             agents={agentEcology?.agents ?? []}
             relationEdges={relationGraph?.edges ?? []}
@@ -1265,6 +1282,134 @@ function TopFindingsSection({
   );
 }
 
+function GroundedResultBasisPanel({
+  groundedSocialSimulation,
+  activeFinding,
+  simulationEvents,
+  locale,
+}: {
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
+  activeFinding: ClaimDraft | null;
+  simulationEvents: SimulationEventDraft[];
+  locale: Locale;
+}) {
+  const title =
+    locale === "zh"
+      ? "这次结果的依据被拆成四层"
+      : "This result separates four basis layers";
+  const findingEvents = activeFinding
+    ? simulationEvents.filter((event) =>
+        activeFinding.evidenceEventIds.includes(event.id),
+      )
+    : [];
+  const groundedEvents = findingEvents.filter(
+    (event) =>
+      event.groundedRealitySummary ||
+      event.groundedPressureSummary ||
+      event.destinyModifierEffect,
+  );
+
+  if (!groundedSocialSimulation) {
+    return (
+      <section className="my-5 rounded-lg border border-dashed border-black/12 bg-white p-6">
+        <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-[#62695d]">
+          {locale === "zh"
+            ? "还没有保存的 GroundedSocialSimulationDraft；旧结果仍可查看，但无法快速区分现实依据、命理调权和路径演化。"
+            : "No GroundedSocialSimulationDraft is saved yet. The legacy result still works, but reality basis, destiny weighting, and path evolution cannot be separated here."}
+        </p>
+      </section>
+    );
+  }
+
+  const modifier = groundedSocialSimulation.destinyPersonModifier;
+
+  return (
+    <section className="my-5 rounded-lg border border-[#568262]/20 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+            {locale === "zh"
+              ? "你可以快速检查每个发现到底来自现实、命理调权、路径事件，还是低置信的不确定信息。"
+              : "Use this to inspect whether each finding comes from reality, destiny weighting, path events, or low-confidence uncertainty."}
+          </p>
+        </div>
+        <StatusPill tone="ready">{groundedSocialSimulation.confidence}%</StatusPill>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-4">
+        <BasisColumn
+          title={locale === "zh" ? "现实依据" : "Reality basis"}
+          items={groundedSocialSimulation.realityNodes.slice(0, 5).map(
+            (node) =>
+              `${node.label} (${node.source}, ${node.confidence}%): ${node.roleInSituation}`,
+          )}
+          empty={locale === "zh" ? "暂无现实节点。" : "No reality nodes."}
+        />
+        <BasisColumn
+          title={locale === "zh" ? "命理调权依据" : "Destiny weighting basis"}
+          items={[
+            `${locale === "zh" ? "决策风格" : "Decision style"}: ${modifier.decisionStyle}`,
+            `${locale === "zh" ? "压力反应" : "Stress response"}: ${modifier.stressResponse}`,
+            `${locale === "zh" ? "边界风格" : "Boundary style"}: ${modifier.boundaryStyle}`,
+            `${locale === "zh" ? "时间敏感度" : "Timing sensitivity"}: ${modifier.timingSensitivity}`,
+          ]}
+          empty={locale === "zh" ? "暂无命理调权。" : "No destiny modifier."}
+        />
+        <BasisColumn
+          title={locale === "zh" ? "路径演化依据" : "Path evolution basis"}
+          items={(groundedEvents.length ? groundedEvents : findingEvents)
+            .slice(0, 5)
+            .map(
+              (event) =>
+                `${pathLabelForLocale(event.pathLabel ?? event.branchId, locale)}: ${
+                  event.groundedRealitySummary ?? event.summary
+                }`,
+            )}
+          empty={locale === "zh" ? "请选择一个有事件依据的发现。" : "Select a finding with event evidence."}
+        />
+        <BasisColumn
+          title={locale === "zh" ? "不确定性" : "Uncertainty"}
+          items={groundedSocialSimulation.keyUncertainties.concat(
+            groundedSocialSimulation.destinyPersonModifier.uncertaintyNotes,
+          )}
+          empty={locale === "zh" ? "暂无关键不确定性。" : "No key uncertainty noted."}
+        />
+      </div>
+    </section>
+  );
+}
+
+function BasisColumn({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: string[];
+  empty: string;
+}) {
+  return (
+    <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+        {title}
+      </h3>
+      <div className="mt-3 space-y-2">
+        {items.length ? (
+          items.map((item, index) => (
+            <p key={`${item}-${index}`} className="rounded border border-black/8 bg-white p-3 text-xs leading-5 text-[#62695d]">
+              {item}
+            </p>
+          ))
+        ) : (
+          <p className="text-xs leading-5 text-[#7d8578]">{empty}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function FindingCard({
   finding,
   index,
@@ -1420,6 +1565,7 @@ function EvidenceReplayPanel({
   destinyClimate,
   destinyProfile,
   destinyFusion,
+  groundedSocialSimulation,
   seedContext,
   agents,
   relationEdges,
@@ -1431,6 +1577,7 @@ function EvidenceReplayPanel({
   destinyClimate: DestinyClimateDraft | null;
   destinyProfile: DestinyProfileDraft | null;
   destinyFusion: DestinySituationFusionDraft | null;
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
   seedContext: SeedContextDraft;
   agents: AgentProfileDraft[];
   relationEdges: RelationEdgeDraft[];
@@ -1485,9 +1632,102 @@ function EvidenceReplayPanel({
   const branchItems = branchComparison.filter((branch) =>
     branch.claimIds.includes(finding.id),
   );
+  const groundedNodesForFinding = groundedSocialSimulation?.realityNodes.filter(
+    (node) =>
+      rawFindingEvents.some((event) =>
+        event.groundedRealityNodeIds?.includes(node.id),
+      ),
+  ) ?? [];
+  const groundedUncertainties = [
+    ...(groundedSocialSimulation?.keyUncertainties ?? []),
+    ...(groundedSocialSimulation?.destinyPersonModifier.uncertaintyNotes ?? []),
+  ];
 
   return (
       <div className="grid gap-4 lg:grid-cols-2">
+        <ReplayBlock title={locale === "zh" ? "现实依据" : "Reality basis"}>
+          <ReplayList
+            values={groundedNodesForFinding.length
+              ? groundedNodesForFinding.map(
+                  (node) =>
+                    `${node.label} (${node.source}, ${node.confidence}%): ${node.roleInSituation}`,
+                )
+              : topRealWorldClues(seedContext)}
+            empty={
+              locale === "zh"
+                ? "没有可展示的现实依据。"
+                : "No displayable reality basis is attached."
+            }
+          />
+          <ReplaySubhead>
+            {locale === "zh" ? "现实压力" : "Grounded pressures"}
+          </ReplaySubhead>
+          <ReplayList
+            values={uniqueStrings(
+              rawFindingEvents.map((event) => event.groundedPressureSummary ?? ""),
+            )}
+            empty={
+              locale === "zh"
+                ? "没有可展示的现实压力摘要。"
+                : "No grounded pressure summary is attached."
+            }
+          />
+        </ReplayBlock>
+
+        <ReplayBlock title={locale === "zh" ? "命理调权依据" : "Destiny weighting basis"}>
+          <ReplayList
+            values={uniqueStrings([
+              groundedSocialSimulation?.destinyPersonModifier.decisionStyle ?? "",
+              groundedSocialSimulation?.destinyPersonModifier.stressResponse ?? "",
+              groundedSocialSimulation?.destinyPersonModifier.opportunityResponse ?? "",
+              groundedSocialSimulation?.destinyPersonModifier.boundaryStyle ?? "",
+              groundedSocialSimulation?.destinyPersonModifier.timingSensitivity ?? "",
+              ...rawFindingEvents.map((event) => event.destinyModifierEffect ?? ""),
+            ])}
+            empty={
+              locale === "zh"
+                ? "没有可展示的命理调权依据。"
+                : "No destiny weighting basis is attached."
+            }
+          />
+          <p className="mt-3 rounded border border-[#568262]/15 bg-white px-3 py-2 text-xs leading-5 text-[#62695d]">
+            {locale === "zh"
+              ? "命理气候只解释用户反应倾向和时间敏感度，不补齐现实事实。"
+              : "Destiny climate only explains user reaction tendency and timing sensitivity. It does not fill real-world facts."}
+          </p>
+        </ReplayBlock>
+
+        <ReplayBlock title={locale === "zh" ? "路径演化依据" : "Path evolution basis"}>
+          <ReplayList
+            values={uniqueStrings(
+              rawFindingEvents.flatMap((event) => [
+                event.groundedRealitySummary
+                  ? `${pathLabelForLocale(event.pathLabel ?? event.branchId, locale)}: ${event.groundedRealitySummary}`
+                  : "",
+                event.groundedPressureSummary
+                  ? `${locale === "zh" ? "压力变化" : "Pressure change"}: ${event.groundedPressureSummary}`
+                  : "",
+              ]),
+            )}
+            empty={
+              locale === "zh"
+                ? "没有可展示的路径演化依据。"
+                : "No path evolution basis is attached."
+            }
+          />
+        </ReplayBlock>
+
+        <ReplayBlock title={locale === "zh" ? "不确定性" : "Uncertainty"}>
+          <ReplayList
+            values={groundedUncertainties}
+            empty={
+              locale === "zh"
+                ? "没有记录关键不确定性。"
+                : "No key uncertainty is recorded."
+            }
+          />
+        </ReplayBlock>
+
         <ReplayBlock title={copy.destinyBasis}>
           {destinySkipped ? (
             <p>
@@ -1778,9 +2018,9 @@ function ReplayList({
 
   return (
     <ul className="space-y-2">
-      {values.map((value) => (
+      {values.map((value, index) => (
         <li
-          key={value}
+          key={`${value}-${index}`}
           className="rounded border border-black/8 bg-white px-3 py-2"
         >
           {value}

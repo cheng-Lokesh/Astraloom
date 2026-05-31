@@ -2,6 +2,7 @@ import type { AgentEcologyDraft, AgentProfileDraft } from "@/types/agent-profile
 import type { RelationEdgeDraft, RelationWeights } from "@/types/relation-edge";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
+import type { GroundedSocialSimulationDraft } from "@/types/grounded-social-simulation";
 import type {
   SimulationBranchId,
   SimulationEventDraft,
@@ -62,6 +63,7 @@ export type SimulationEngineInput = {
   agentEcology: AgentEcologyDraft;
   relationEdges: RelationEdgeDraft[];
   destinyFusion?: DestinySituationFusionDraft | null;
+  groundedSocialSimulation?: GroundedSocialSimulationDraft | null;
   safetySnapshot?: SafetySnapshot;
   status?: SimulationRunDraft["status"];
 };

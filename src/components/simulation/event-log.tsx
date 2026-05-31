@@ -98,7 +98,11 @@ function eventCardClasses(tone: EventTone, lowConfidence: boolean) {
 
 function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
   const sourceTags = event.sourceTags ?? [];
+  const realitySourceTags = event.realitySourceTags ?? [];
   const summaryItems = [
+    ["Grounded reality", event.groundedRealitySummary],
+    ["Grounded pressure", event.groundedPressureSummary],
+    ["Destiny modifier", event.destinyModifierEffect],
     ["Destiny influence", event.destinyInfluenceSummary],
     ["Interaction", event.interactionSummary],
     ["Pressure delta", event.pressureDeltaSummary],
@@ -106,7 +110,12 @@ function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
     ["Resource pressure", event.resourcePressureDeltaSummary],
   ].filter(([, value]) => Boolean(value));
 
-  if (!summaryItems.length && !event.generatedClues?.length && !sourceTags.length) {
+  if (
+    !summaryItems.length &&
+    !event.generatedClues?.length &&
+    !sourceTags.length &&
+    !realitySourceTags.length
+  ) {
     return null;
   }
 
@@ -114,7 +123,20 @@ function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
     <div className="mt-4 space-y-3 rounded-md border border-black/8 bg-white p-3">
       {sourceTags.length ? (
         <div className="flex flex-wrap gap-2">
-          {sourceTags.map((tag) => (
+          {[...sourceTags, ...realitySourceTags].map((tag) => (
+            <span
+              key={tag}
+              className="rounded border border-[#568262]/20 bg-[#eef5ee] px-2 py-1 text-xs font-semibold text-[#2f5d3d]"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {!sourceTags.length && realitySourceTags.length ? (
+        <div className="flex flex-wrap gap-2">
+          {realitySourceTags.map((tag) => (
             <span
               key={tag}
               className="rounded border border-[#568262]/20 bg-[#eef5ee] px-2 py-1 text-xs font-semibold text-[#2f5d3d]"

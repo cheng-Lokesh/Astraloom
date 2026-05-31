@@ -24,6 +24,10 @@ import type { SafetySnapshot } from "@/lib/simulation/simulation-types";
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
+import type {
+  GroundedRealityNode,
+  GroundedSocialSimulationDraft,
+} from "@/types/grounded-social-simulation";
 import type { SeedContextDraft } from "@/types/seed-context";
 import type {
   SimulationBranchId,
@@ -494,6 +498,8 @@ function buildDraftFromLocalState(repos: ReturnType<typeof getRepositories>) {
   if (!graph.graphLocked) return null;
   const fusionResult = repos.destinyFusions.load(seed.id);
   const destinyFusion = fusionResult.ok ? fusionResult.data : null;
+  const groundedResult = repos.groundedSocialSimulations.load(seed.id);
+  const groundedSocialSimulation = groundedResult.ok ? groundedResult.data : null;
 
   const calibrated = applyFeedbackToNextRun({
     agentEcology: ecology,
@@ -508,6 +514,7 @@ function buildDraftFromLocalState(repos: ReturnType<typeof getRepositories>) {
     undefined,
     undefined,
     destinyFusion,
+    groundedSocialSimulation,
   );
 }
 
@@ -563,6 +570,13 @@ export default function RunsPage() {
     const seed = seedResult.ok ? seedResult.data : null;
     if (!seed) return null;
     const result = repos.destinyFusions.load(seed.id);
+    return result.ok ? result.data : null;
+  });
+  const [groundedSocialSimulation] = useState(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.groundedSocialSimulations.load(seed.id);
     return result.ok ? result.data : null;
   });
   const [run, setRun] = useState<SimulationRunDraft | null>(() => {
@@ -828,6 +842,7 @@ export default function RunsPage() {
       run.status,
       snapshotFromDecision(decision),
       destinyFusion,
+      groundedSocialSimulation,
     );
     const queuedRun = queueSimulationRunDraft(nextRun);
     if (queuedRun.events.length === 0) {
@@ -861,6 +876,7 @@ export default function RunsPage() {
       undefined,
       undefined,
       destinyFusion,
+      groundedSocialSimulation,
     );
     const decision = runSafetyGate(nextRun);
     if (!decision) return;
@@ -871,6 +887,7 @@ export default function RunsPage() {
       nextRun.status,
       snapshotFromDecision(decision),
       destinyFusion,
+      groundedSocialSimulation,
     );
     const queuedRun = queueSimulationRunDraft(safeRun);
     if (queuedRun.events.length === 0) {
@@ -903,6 +920,7 @@ export default function RunsPage() {
         undefined,
         undefined,
         destinyFusion,
+        groundedSocialSimulation,
       ),
     );
     setProcessRun(null);
@@ -997,6 +1015,11 @@ export default function RunsPage() {
           </section>
 
           <FusionMappingPanel fusion={destinyFusion} locale={locale} />
+
+          <GroundedSocialSimulationPanel
+            groundedSocialSimulation={groundedSocialSimulation}
+            locale={locale}
+          />
 
           <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1492,6 +1515,194 @@ function FusionMappingPanel({
   );
 }
 
+function groundedNodeGroup(
+  nodes: GroundedRealityNode[],
+  types: GroundedRealityNode["nodeType"][],
+) {
+  return nodes.filter((node) => types.includes(node.nodeType)).slice(0, 5);
+}
+
+function GroundedSocialSimulationPanel({
+  groundedSocialSimulation,
+  locale,
+}: {
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
+  locale: Locale;
+}) {
+  const title =
+    locale === "zh"
+      ? "现实社会模型正在参与推演"
+      : "Grounded social model is shaping the simulation";
+  const intro =
+    locale === "zh"
+      ? "这里展示系统从用户问题中提取的现实节点、命理只调权了什么，以及路径事件如何从现实节点演化出来。"
+      : "This shows which real-world nodes were extracted, what destiny only weighted, and how path events evolve from grounded reality.";
+
+  if (!groundedSocialSimulation) {
+    return (
+      <section className="rounded-lg border border-dashed border-black/12 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+        <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-[#62695d]">
+          {locale === "zh"
+            ? "还没有保存的现实社会模型。本次页面仍可查看旧沙盘事件，但缺少现实优先调试层。"
+            : "No grounded social model is saved yet. Legacy sandbox events still work, but the reality-first inspection layer is unavailable."}
+        </p>
+      </section>
+    );
+  }
+
+  const nodes = groundedSocialSimulation.realityNodes;
+  const modifier = groundedSocialSimulation.destinyPersonModifier;
+  const nodeGroups = [
+    {
+      title: locale === "zh" ? "资源控制者" : "Resource holders",
+      nodes: groundedNodeGroup(nodes, ["resource_holder", "organization", "institution"]),
+    },
+    {
+      title: locale === "zh" ? "信息差来源" : "Information sources",
+      nodes: groundedNodeGroup(nodes, ["information_source", "person", "organization"]),
+    },
+    {
+      title: locale === "zh" ? "机会来源" : "Opportunity sources",
+      nodes: groundedNodeGroup(nodes, ["opportunity_source", "market"]),
+    },
+    {
+      title: locale === "zh" ? "现实约束" : "Real constraints",
+      nodes: groundedNodeGroup(nodes, ["constraint", "policy", "institution"]),
+    },
+    {
+      title: locale === "zh" ? "市场/组织/环境节点" : "Market / org / environment",
+      nodes: groundedNodeGroup(nodes, ["market", "organization", "environment"]),
+    },
+  ];
+  const modifierRows = [
+    [locale === "zh" ? "用户决策风格" : "Decision style", modifier.decisionStyle],
+    [locale === "zh" ? "压力反应" : "Stress response", modifier.stressResponse],
+    [locale === "zh" ? "机会响应" : "Opportunity response", modifier.opportunityResponse],
+    [locale === "zh" ? "边界风格" : "Boundary style", modifier.boundaryStyle],
+    [locale === "zh" ? "时间敏感度" : "Timing sensitivity", modifier.timingSensitivity],
+  ];
+
+  return (
+    <section className="rounded-lg border border-[#568262]/20 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">{title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+            {intro}
+          </p>
+        </div>
+        <StatusPill tone="ready">
+          {groundedSocialSimulation.confidence}%
+        </StatusPill>
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+        <div>
+          <h3 className="text-sm font-semibold text-[#11150f]">
+            {locale === "zh" ? "当前现实节点" : "Current reality nodes"}
+          </h3>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {nodeGroups.map((group) => (
+              <div key={group.title} className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                  {group.title}
+                </div>
+                <div className="mt-3 space-y-2">
+                  {group.nodes.length ? (
+                    group.nodes.map((node) => (
+                      <div key={node.id} className="rounded border border-black/8 bg-white p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-[#11150f]">
+                              {node.label}
+                            </div>
+                            <div className="mt-1 text-xs text-[#7d8578]">
+                              {node.source} / {node.nodeType}
+                            </div>
+                          </div>
+                          <span className="rounded border border-black/8 px-2 py-1 text-xs font-semibold text-[#3f483d]">
+                            {node.confidence}%
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-[#62695d]">
+                          {node.roleInSituation}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs leading-5 text-[#7d8578]">
+                      {locale === "zh" ? "暂无高可见节点。" : "No visible nodes yet."}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <section className="rounded-md border border-[#568262]/20 bg-[#eef5ee] p-4">
+            <h3 className="text-sm font-semibold text-[#11150f]">
+              {locale === "zh" ? "命理调权" : "Destiny weighting"}
+            </h3>
+            <p className="mt-2 text-xs leading-5 text-[#62695d]">
+              {locale === "zh"
+                ? "命理只影响用户反应倾向和时间敏感度，不补齐现实事实。"
+                : "Destiny only adjusts user reaction tendency and timing sensitivity. It does not fill real-world facts."}
+            </p>
+            <div className="mt-3 space-y-2">
+              {modifierRows.map(([label, value]) => (
+                <div key={label} className="rounded border border-[#568262]/15 bg-white p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                    {label}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[#62695d]">{value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+            <h3 className="text-sm font-semibold text-[#11150f]">
+              {locale === "zh" ? "路径事件" : "Path events"}
+            </h3>
+            <div className="mt-3 space-y-3">
+              {groundedSocialSimulation.pathEvents.map((event) => (
+                <article key={event.id} className="rounded border border-black/8 bg-white p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                      {event.branchId} / step {event.step}
+                    </div>
+                    <span className="text-xs font-semibold text-[#568262]">
+                      {event.confidence}%
+                    </span>
+                  </div>
+                  <GroundedPathRow label={locale === "zh" ? "用户动作" : "User action"} value={event.userAction} />
+                  <GroundedPathRow label={locale === "zh" ? "现实节点反应" : "Reality reaction"} value={event.expectedRealityReaction} />
+                  <GroundedPathRow label={locale === "zh" ? "命理调权影响" : "Destiny modifier effect"} value={event.destinyModifierEffect} />
+                  <GroundedPathRow label={locale === "zh" ? "压力变化" : "Pressure change"} value={event.pressureChange} />
+                  <GroundedPathRow label={locale === "zh" ? "信息变化" : "Information change"} value={event.informationChange} />
+                  <GroundedPathRow label={locale === "zh" ? "机会变化" : "Opportunity change"} value={event.opportunityChange} />
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GroundedPathRow({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="mt-2 text-xs leading-5 text-[#62695d]">
+      <span className="font-semibold text-[#11150f]">{label}: </span>
+      {value}
+    </p>
+  );
+}
+
 function InteractionPreviewPanel({
   events,
   agents,
@@ -1547,12 +1758,23 @@ function InteractionPreviewPanel({
               value={eventParticipantText(event, agents, locale)}
             />
             <PreviewField
+              label={locale === "zh" ? "现实依据" : "Grounded reality"}
+              value={userFacingRunningText(event.groundedRealitySummary, locale)}
+            />
+            <PreviewField
+              label={locale === "zh" ? "命理调权" : "Destiny weighting"}
+              value={userFacingRunningText(event.destinyModifierEffect, locale)}
+            />
+            <PreviewField
               label={t.eventLabels.destiny}
               value={userFacingRunningText(event.destinyInfluenceSummary, locale)}
             />
             <PreviewField
               label={t.eventLabels.pressure}
-              value={userFacingRunningText(event.pressureDeltaSummary, locale)}
+              value={userFacingRunningText(
+                event.groundedPressureSummary ?? event.pressureDeltaSummary,
+                locale,
+              )}
             />
             <PreviewField
               label={t.eventLabels.information}
