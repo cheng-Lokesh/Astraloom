@@ -11,8 +11,13 @@ import { evaluateSandboxReadiness } from "@/lib/clarification/evaluate-sandbox-r
 import { buildDestinyClimateDraft } from "@/lib/destiny/build-destiny-climate";
 import { buildDestinyProfileDraft } from "@/lib/destiny/build-destiny-profile";
 import { getRepositories } from "@/lib/repositories/repository-provider";
+import {
+  buildManualRealitySource,
+  buildRealityIntakeDraft,
+} from "@/lib/reality-intake/build-manual-reality-intake";
 import { prepareLocalSandboxArtifacts } from "@/lib/sandbox/prepare-local-sandbox";
 import type { BirthInfo, DestinyMode } from "@/types/destiny";
+import type { ManualRealitySourceType } from "@/types/reality-intake";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
 
 const startCopy = {
@@ -34,6 +39,17 @@ const startCopy = {
     questionTitle: "What do you want to understand right now?",
     questionPlaceholder:
       "Describe what you are facing, the choice you are weighing, the relationship pressure, career change, or trend you want to understand. You do not need a format.",
+    realityTitle: "Add real-world materials (optional, but improves grounding)",
+    realityIntro:
+      "If you want a more grounded simulation, paste materials related to your situation, such as job descriptions, chat summaries, company information, policy notes, offer terms, agreement summaries, or market notes. Without them, Astraloom can only run a local assumption simulation.",
+    realityAdd: "Add material",
+    realityRemove: "Remove",
+    realityItemTitle: "Title",
+    realityType: "Type",
+    realityContent: "Content",
+    realityTitlePlaceholder: "Example: Offer terms from Company A",
+    realityContentPlaceholder:
+      "Paste the material here. Astraloom will only use it locally as user-provided grounding.",
     windowTitle: "Time window",
     generate: "Generate destiny sandbox",
     sample: "Try complete sample",
@@ -67,6 +83,17 @@ const startCopy = {
     questionTitle: "你现在想看清什么？",
     questionPlaceholder:
       "直接描述你现在遇到的事、正在纠结的选择、关系里的困扰、职业上的变化，或者你想看清的趋势。不用按格式写，系统会自动整理关键人物、关系压力和可能路径。",
+    realityTitle: "补充现实材料（可选，但会显著提高推演可信度）",
+    realityIntro:
+      "如果你希望沙盘更接近现实推演，可以粘贴与当前问题有关的材料，例如岗位描述、聊天摘要、公司信息、政策说明、offer 条款、合作协议摘要或市场信息。没有这些材料时，系统只能做本地假设推演。",
+    realityAdd: "添加材料",
+    realityRemove: "删除",
+    realityItemTitle: "标题",
+    realityType: "类型",
+    realityContent: "内容",
+    realityTitlePlaceholder: "例如：A 公司 offer 条款",
+    realityContentPlaceholder:
+      "把材料粘贴在这里。Astraloom 只会把它作为你手动提供的现实依据在本地使用。",
     windowTitle: "想看多长时间",
     generate: "生成命运沙盘",
     sample: "查看完整示例",
@@ -83,6 +110,51 @@ const startCopy = {
     },
   },
 } as const;
+
+const manualRealitySourceTypes: ManualRealitySourceType[] = [
+  "user_note",
+  "chat_summary",
+  "job_description",
+  "company_info",
+  "policy_info",
+  "news_summary",
+  "offer_terms",
+  "agreement_summary",
+  "market_note",
+  "other",
+];
+
+const manualRealitySourceLabels: Record<
+  ManualRealitySourceType,
+  { en: string; zh: string }
+> = {
+  user_note: { en: "User note", zh: "个人备注" },
+  chat_summary: { en: "Chat summary", zh: "聊天摘要" },
+  job_description: { en: "Job description", zh: "岗位描述" },
+  company_info: { en: "Company info", zh: "公司信息" },
+  policy_info: { en: "Policy info", zh: "政策说明" },
+  news_summary: { en: "News summary", zh: "新闻摘要" },
+  offer_terms: { en: "Offer terms", zh: "Offer 条款" },
+  agreement_summary: { en: "Agreement summary", zh: "协议摘要" },
+  market_note: { en: "Market note", zh: "市场信息" },
+  other: { en: "Other", zh: "其他" },
+};
+
+type ManualRealityInput = {
+  id: string;
+  title: string;
+  sourceType: ManualRealitySourceType;
+  content: string;
+};
+
+function emptyManualRealityInput(index = 1): ManualRealityInput {
+  return {
+    id: `manual_input_${index}`,
+    title: "",
+    sourceType: "user_note",
+    content: "",
+  };
+}
 
 function firstQuestion(description: string) {
   const match = description.match(/[^.!?\n]*\?+/);
@@ -194,6 +266,11 @@ export default function StartPage() {
     const result = repos.seedContexts.load();
     return result.ok ? result.data : null;
   });
+  const [initialRealityIntake] = useState(() => {
+    if (!initialSeed) return null;
+    const result = repos.realityIntakes.load(initialSeed.id);
+    return result.ok ? result.data : null;
+  });
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [birthPlace, setBirthPlace] = useState("");
@@ -205,6 +282,21 @@ export default function StartPage() {
   );
   const [description, setDescription] = useState(
     initialSeed?.currentQuestionDescription ?? initialSeed?.situationSummary ?? "",
+  );
+  const [manualRealityOpen, setManualRealityOpen] = useState(
+    (initialRealityIntake?.manualSources.length ?? 0) > 0,
+  );
+  const [manualRealityInputs, setManualRealityInputs] = useState<
+    ManualRealityInput[]
+  >(() =>
+    initialRealityIntake?.manualSources.length
+      ? initialRealityIntake.manualSources.slice(0, 5).map((source, index) => ({
+          id: source.id || `manual_input_${index + 1}`,
+          title: source.title,
+          sourceType: source.sourceType,
+          content: source.content,
+        }))
+      : [emptyManualRealityInput()],
   );
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -255,6 +347,25 @@ export default function StartPage() {
       createdAt: initialSeed?.createdAt ?? now,
       locale,
     });
+    const manualSources = manualRealityInputs
+      .slice(0, 5)
+      .map((input, index) =>
+        buildManualRealitySource({
+          seedContext,
+          title: input.title,
+          sourceType: input.sourceType,
+          content: input.content,
+          now,
+          id: `mrs_${seedContextId}_${index + 1}`,
+        }),
+      )
+      .filter((source): source is NonNullable<typeof source> => Boolean(source));
+    const realityIntake = buildRealityIntakeDraft({
+      seedContext,
+      manualSources,
+      externalSources: initialRealityIntake?.externalSources ?? [],
+      now,
+    });
     const climate = buildDestinyClimateDraft({
       profile,
       referenceDate: now,
@@ -277,8 +388,14 @@ export default function StartPage() {
     const seedResult = repos.seedContexts.save(seedContext);
     const profileResult = repos.destinyProfiles.save(profile);
     const climateResult = repos.destinyClimates.save(climate);
+    const realityIntakeResult = repos.realityIntakes.save(realityIntake);
 
-    if (!seedResult.ok || !profileResult.ok || !climateResult.ok) {
+    if (
+      !seedResult.ok ||
+      !profileResult.ok ||
+      !climateResult.ok ||
+      !realityIntakeResult.ok
+    ) {
       setSaving(false);
       setMessage(t.saveFailed);
       return;
@@ -297,6 +414,32 @@ export default function StartPage() {
     }
 
     router.push("/app/simulation/running");
+  }
+
+  function updateManualRealityInput(
+    id: string,
+    patch: Partial<ManualRealityInput>,
+  ) {
+    setManualRealityInputs((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function addManualRealityInput() {
+    setManualRealityInputs((items) =>
+      items.length >= 5
+        ? items
+        : [...items, emptyManualRealityInput(items.length + 1)],
+    );
+    setManualRealityOpen(true);
+  }
+
+  function removeManualRealityInput(id: string) {
+    setManualRealityInputs((items) =>
+      items.length <= 1
+        ? [emptyManualRealityInput()]
+        : items.filter((item) => item.id !== id),
+    );
   }
 
   return (
@@ -399,6 +542,93 @@ export default function StartPage() {
             placeholder={t.questionPlaceholder}
             className="mf-input mt-5 w-full resize-none px-4 py-3 text-base leading-7"
           />
+
+          <details
+            open={manualRealityOpen}
+            onToggle={(event) => setManualRealityOpen(event.currentTarget.open)}
+            className="mt-5 rounded-md border border-black/10 bg-[#f7f8f4] p-4"
+          >
+            <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
+              {t.realityTitle}
+            </summary>
+            <p className="mt-3 text-sm leading-6 text-[#62695d]">
+              {t.realityIntro}
+            </p>
+            <div className="mt-4 space-y-4">
+              {manualRealityInputs.map((item, index) => (
+                <div
+                  key={item.id}
+                  className="rounded-md border border-black/8 bg-white p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
+                      {locale === "zh" ? `材料 ${index + 1}` : `Material ${index + 1}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeManualRealityInput(item.id)}
+                      className="rounded-md border border-black/10 px-3 py-1.5 text-xs font-semibold text-[#52594d] hover:border-[#11150f]"
+                    >
+                      {t.realityRemove}
+                    </button>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                    <Field label={t.realityItemTitle}>
+                      <input
+                        value={item.title}
+                        onChange={(event) =>
+                          updateManualRealityInput(item.id, {
+                            title: event.target.value,
+                          })
+                        }
+                        placeholder={t.realityTitlePlaceholder}
+                        className="mf-input w-full px-3 py-2"
+                      />
+                    </Field>
+                    <Field label={t.realityType}>
+                      <select
+                        value={item.sourceType}
+                        onChange={(event) =>
+                          updateManualRealityInput(item.id, {
+                            sourceType: event.target
+                              .value as ManualRealitySourceType,
+                          })
+                        }
+                        className="mf-input w-full px-3 py-2"
+                      >
+                        {manualRealitySourceTypes.map((sourceType) => (
+                          <option key={sourceType} value={sourceType}>
+                            {manualRealitySourceLabels[sourceType][locale]}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label={t.realityContent}>
+                    <textarea
+                      value={item.content}
+                      onChange={(event) =>
+                        updateManualRealityInput(item.id, {
+                          content: event.target.value,
+                        })
+                      }
+                      rows={4}
+                      placeholder={t.realityContentPlaceholder}
+                      className="mf-input mt-2 w-full resize-none px-3 py-2 text-sm leading-6"
+                    />
+                  </Field>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addManualRealityInput}
+              disabled={manualRealityInputs.length >= 5}
+              className="mt-4 rounded-md border border-black/10 bg-white px-3 py-2 text-sm font-semibold text-[#3f483d] transition hover:border-[#11150f] disabled:opacity-50"
+            >
+              {t.realityAdd}
+            </button>
+          </details>
 
           <div className="mt-5">
             <h3 className="text-sm font-semibold text-[#11150f]">{t.windowTitle}</h3>

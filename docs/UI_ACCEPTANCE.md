@@ -91,11 +91,18 @@ Must include:
 - Key people hints.
 - Worries and decision options.
 - Safety/action boundaries.
+- Optional Manual Reality Intake for user-provided materials such as job
+  descriptions, chat summaries, company information, policy notes, offer terms,
+  agreement summaries, or market notes.
 
 Must not feel like:
 
 - A dry questionnaire.
 - A mystic birth-chart form as the main experience.
+
+Manual Reality Intake must not be required. If it is empty, Running and Result
+surfaces must clearly state that the run is Local Assumption Mode and no
+external reality data was retrieved.
 
 ### Key People Confirmation
 

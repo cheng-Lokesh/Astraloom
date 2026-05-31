@@ -8,6 +8,16 @@ All important generated output must be traceable through this chain:
 
 `user_profiles -> seed_contexts -> key_people -> agent_profiles -> relation_edges -> simulations -> simulation_ticks/event_logs -> claims -> reports -> feedback_logs`
 
+Manual Reality Intake V1 adds a local MVP grounding draft before Grounded
+Social Simulation:
+
+`seed_contexts -> reality_intake_drafts -> grounded_social_simulations`
+
+`reality_intake_drafts.mode` must distinguish `local_assumption`,
+`manual_reality`, and `external_reality`. When no manual or external sources
+exist, downstream reality confidence stays capped and UI copy must not imply
+external reality information was retrieved.
+
 ## Table Principles
 
 - Every user-owned table must include `user_id`.

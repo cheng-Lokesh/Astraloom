@@ -42,6 +42,9 @@ export type SimulationEventType =
   | "empty_slot";
 
 export type SimulationRealitySourceTag =
+  | "local assumption"
+  | "manual reality material"
+  | "external reality source"
   | "real-world evidence"
   | "destiny weighting"
   | "path simulation";

@@ -168,11 +168,19 @@ const fusionSourceTags: DestinySituationFusionSourceTag[] = [
   "integrated simulation",
 ];
 
-const groundedRealitySourceTags: SimulationRealitySourceTag[] = [
-  "real-world evidence",
-  "destiny weighting",
-  "path simulation",
-];
+function groundedRealitySourceTags(
+  grounded: NonNullable<SimulationEngineInput["groundedSocialSimulation"]>,
+): SimulationRealitySourceTag[] {
+  const mode = grounded.realityIntake?.mode ?? "local_assumption";
+  const realityTag: SimulationRealitySourceTag =
+    mode === "external_reality"
+      ? "external reality source"
+      : mode === "manual_reality"
+        ? "manual reality material"
+        : "local assumption";
+
+  return [realityTag, "destiny weighting", "path simulation"];
+}
 
 const branchLabels: Record<SimulationBranchId, string> = {
   baseline: "Current inertia path",
@@ -341,7 +349,7 @@ function buildGroundedDisplayFields({
     destinyModifierEffect:
       pathEvent?.destinyModifierEffect ??
       grounded.destinyPersonModifier.timingSensitivity,
-    realitySourceTags: groundedRealitySourceTags,
+    realitySourceTags: groundedRealitySourceTags(grounded),
   } satisfies Pick<
     SimulationEventDraft,
     | "groundedRealitySummary"

@@ -9,17 +9,20 @@ import {
 } from "@/lib/people/extract";
 import { buildRelationEdges } from "@/lib/relations/build";
 import { getRepositories } from "@/lib/repositories/repository-provider";
+import { buildRealityIntakeDraft } from "@/lib/reality-intake/build-manual-reality-intake";
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
 import type { GroundedSocialSimulationDraft } from "@/types/grounded-social-simulation";
 import type { KeyPeopleDraft } from "@/types/key-person";
 import type { RelationGraphDraft } from "@/types/relation-edge";
+import type { RealityIntakeDraft } from "@/types/reality-intake";
 import type { SeedContextDraft } from "@/types/seed-context";
 
 type PrepareLocalSandboxResult =
   | {
       ok: true;
       keyPeople: KeyPeopleDraft;
+      realityIntake: RealityIntakeDraft;
       destinyFusion: DestinySituationFusionDraft;
       groundedSocialSimulation: GroundedSocialSimulationDraft;
       agentEcology: AgentEcologyDraft;
@@ -99,6 +102,25 @@ export function prepareLocalSandboxArtifacts(
     (person) => person.confirmed && person.status === "confirmed",
   );
   const localWarnings: string[] = [];
+  const savedRealityIntakeResult = repos.realityIntakes.load(seedContext.id);
+  const savedRealityIntake = savedRealityIntakeResult.ok
+    ? savedRealityIntakeResult.data
+    : null;
+  const realityIntake = buildRealityIntakeDraft({
+    seedContext,
+    manualSources: savedRealityIntake?.manualSources ?? [],
+    externalSources: savedRealityIntake?.externalSources ?? [],
+    now,
+  });
+  const realityIntakeResult = repos.realityIntakes.save(realityIntake);
+  if (!realityIntakeResult.ok) {
+    return { ok: false, errorCode: realityIntakeResult.errorCode };
+  }
+  if (realityIntake.mode === "local_assumption") {
+    localWarnings.push(
+      "Reality Intake warning: Local Assumption Mode only. No manual or external reality material is available, so reality judgments stay capped and provisional.",
+    );
+  }
   const climateResult = repos.destinyClimates.load(seedContext.id);
   const profileResult = repos.destinyProfiles.load(seedContext.id);
   const destinyProfile = profileResult.ok ? profileResult.data : null;
@@ -148,6 +170,7 @@ export function prepareLocalSandboxArtifacts(
   const groundedRealityModel = buildGroundedRealityModel({
     seedContext,
     keyPeople: confirmedPeople,
+    realityIntake,
   });
   const destinyPersonModifier = buildDestinyPersonModifier({
     seedContext,
@@ -165,6 +188,7 @@ export function prepareLocalSandboxArtifacts(
     seedContextId: seedContext.id,
     destinyProfileId: destinyPersonModifier.destinyProfileId,
     destinyClimateId: destinyPersonModifier.destinyClimateId,
+    realityIntake,
     realityNodes: groundedRealityModel.realityNodes,
     realityPressures: groundedRealityModel.realityPressures,
     destinyPersonModifier,
@@ -209,6 +233,7 @@ export function prepareLocalSandboxArtifacts(
   return {
     ok: true,
     keyPeople,
+    realityIntake,
     destinyFusion,
     groundedSocialSimulation,
     agentEcology,

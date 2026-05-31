@@ -1,6 +1,11 @@
 "use client";
 
 import { StatusPill } from "@/components/status-pill";
+import {
+  realityIntakeModeDescription,
+  realityIntakeModeLabel,
+} from "@/lib/reality-intake/reality-intake-language";
+import type { RealityIntakeDraft } from "@/types/reality-intake";
 import type {
   GroundedRealityNode,
   GroundedRealityPressure,
@@ -26,6 +31,12 @@ const copy = {
       "Reality nodes come from user input or grounded real-world semantic inference; destiny is only used to weight user reactions and is not used to create real-world facts.",
     purpose:
       "Use this panel to inspect whether the product is grounded enough to trust before treating a path as useful.",
+    realityIntake: "Reality Intake",
+    mode: "mode",
+    manualSources: "manualSources",
+    externalSources: "externalSources",
+    missingExternalInfo: "missingExternalInfo",
+    intakeSummary: "intakeSummary",
     nodes: "Reality Nodes",
     pressures: "Reality Pressures",
     modifier: "Destiny Person Modifier",
@@ -82,6 +93,12 @@ const copy = {
       "现实节点来自用户输入或现实语义推断；命理只用于调权用户反应，不用于创造现实事实。",
     purpose:
       "这个面板用于快速检查产品是否足够 grounded，避免把证据不足的路径当成可信结论。",
+    realityIntake: "Reality Intake",
+    mode: "mode",
+    manualSources: "manualSources",
+    externalSources: "externalSources",
+    missingExternalInfo: "missingExternalInfo",
+    intakeSummary: "intakeSummary",
     nodes: "现实节点 Reality Nodes",
     pressures: "现实压力 Reality Pressures",
     modifier: "命理调权 Destiny Person Modifier",
@@ -130,6 +147,25 @@ const copy = {
   },
 } as const;
 
+function fallbackRealityIntake(
+  groundedSocialSimulation: GroundedSocialSimulationDraft,
+): RealityIntakeDraft {
+  return {
+    id: `reality_intake_${groundedSocialSimulation.seedContextId}`,
+    seedContextId: groundedSocialSimulation.seedContextId,
+    mode: "local_assumption",
+    manualSources: [],
+    externalSources: [],
+    missingExternalInfo: [
+      "No saved RealityIntakeDraft was attached to this snapshot.",
+    ],
+    intakeSummary:
+      "Local assumption mode only: this snapshot has no attached manual or external reality material.",
+    confidence: Math.min(42, groundedSocialSimulation.confidence),
+    createdAt: groundedSocialSimulation.createdAt,
+  };
+}
+
 function compactList(values: string[], locale: Locale) {
   if (!values.length) return copy[locale].noItems;
   return values.join(locale === "zh" ? "、" : ", ");
@@ -138,6 +174,7 @@ function compactList(values: string[], locale: Locale) {
 function sourceLabel(source: GroundedRealityNode["source"], locale: Locale) {
   if (locale === "en") return source;
   if (source === "user_input") return "用户输入";
+  if (source === "manual_reality_source") return "手动现实材料";
   if (source === "inferred_from_user_context") return "现实语义推断";
   if (source === "sample_data") return "示例数据";
   return "未来外部数据";
@@ -318,6 +355,9 @@ export function GroundedSimulationDebugPanel({
   const nodes = groundedSocialSimulation.realityNodes;
   const pressures = groundedSocialSimulation.realityPressures;
   const modifier = groundedSocialSimulation.destinyPersonModifier;
+  const realityIntake =
+    groundedSocialSimulation.realityIntake ??
+    fallbackRealityIntake(groundedSocialSimulation);
   const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
   const groupedPathEvents = branchGroups(groundedSocialSimulation.pathEvents);
   const modifierFields = copy[locale].modifierFields;
@@ -348,6 +388,43 @@ export function GroundedSimulationDebugPanel({
       </div>
 
       <div className="mt-5 grid gap-5">
+        <section className="rounded-md border border-[#c4824a]/25 bg-[#fff8ef] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-[#11150f]">
+              {t.realityIntake}
+            </h3>
+            <span className="rounded border border-[#c4824a]/25 bg-white px-2 py-1 text-xs font-semibold text-[#6c5842]">
+              {realityIntake.confidence}% {t.confidence}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            <Field
+              label={t.mode}
+              value={realityIntakeModeLabel(realityIntake.mode, locale)}
+            />
+            <Field
+              label={t.manualSources}
+              value={realityIntake.manualSources.length}
+            />
+            <Field
+              label={t.externalSources}
+              value={realityIntake.externalSources.length}
+            />
+            <Field
+              label={t.intakeSummary}
+              value={realityIntake.intakeSummary}
+            />
+          </div>
+          <p className="mt-3 rounded border border-[#c4824a]/20 bg-white px-3 py-2 text-xs leading-5 text-[#6c5842]">
+            {realityIntakeModeDescription(realityIntake.mode, locale)}
+          </p>
+          <ListBlock
+            title={t.missingExternalInfo}
+            items={realityIntake.missingExternalInfo}
+            locale={locale}
+          />
+        </section>
+
         <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-[#11150f]">{t.nodes}</h3>

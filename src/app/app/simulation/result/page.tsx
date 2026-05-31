@@ -8,6 +8,7 @@ import { RelationGraph } from "@/components/graph/relation-graph";
 import { GroundedSimulationDebugPanel } from "@/components/grounded-social/grounded-simulation-debug-panel";
 import { ReportSummary } from "@/components/report/report-summary";
 import { useLanguage } from "@/components/language-provider";
+import { RealityIntakeModeBanner } from "@/components/reality-intake-mode-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import {
   AgentRefsView,
@@ -1006,6 +1007,13 @@ export default function ReportsPage() {
         </div>
       ) : null}
 
+      <div className="mb-5">
+        <RealityIntakeModeBanner
+          realityIntake={groundedSocialSimulation?.realityIntake}
+          locale={locale}
+        />
+      </div>
+
       <TopFindingsSection
         findings={topFindings}
         selectedFindingId={activeFinding?.id ?? ""}
@@ -1296,6 +1304,7 @@ function TopFindingsSection({
 function nodeSourceLabel(source: GroundedRealityNode["source"], locale: Locale) {
   if (locale === "en") return source;
   if (source === "user_input") return "用户输入";
+  if (source === "manual_reality_source") return "手动现实材料";
   if (source === "inferred_from_user_context") return "现实语义推断";
   if (source === "sample_data") return "示例数据";
   return "未来外部数据";

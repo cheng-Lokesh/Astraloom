@@ -14,6 +14,8 @@ import { buildGroundedRealityModel } from "@/lib/grounded-social-simulation/buil
 import { saveGroundedSocialSimulationDraft } from "@/lib/grounded-social-simulation/storage";
 import { simulateGroundedPaths } from "@/lib/grounded-social-simulation/simulate-grounded-paths";
 import { saveKeyPeopleDraft } from "@/lib/people/storage";
+import { buildRealityIntakeDraft } from "@/lib/reality-intake/build-manual-reality-intake";
+import { saveRealityIntakeDraft } from "@/lib/reality-intake/storage";
 import { buildRelationEdges } from "@/lib/relations/build";
 import { saveRelationGraphDraft } from "@/lib/relations/storage";
 import { buildSimulationRunDraft, queueSimulationRunDraft } from "@/lib/runs/build";
@@ -511,9 +513,16 @@ export function createTrialWorkspace() {
     keyPeople: people,
     now,
   });
+  const realityIntake = buildRealityIntakeDraft({
+    seedContext,
+    manualSources: [],
+    externalSources: [],
+    now,
+  });
   const groundedRealityModel = buildGroundedRealityModel({
     seedContext,
     keyPeople: people,
+    realityIntake,
   });
   const destinyPersonModifier = buildDestinyPersonModifier({
     seedContext,
@@ -531,6 +540,7 @@ export function createTrialWorkspace() {
     seedContextId: seedContext.id,
     destinyProfileId: destinyPersonModifier.destinyProfileId,
     destinyClimateId: destinyPersonModifier.destinyClimateId,
+    realityIntake,
     realityNodes: groundedRealityModel.realityNodes,
     realityPressures: groundedRealityModel.realityPressures,
     destinyPersonModifier,
@@ -574,6 +584,7 @@ export function createTrialWorkspace() {
   saveDestinyProfileDraft(destinyProfile);
   saveDestinyClimateDraft(destinyClimate);
   saveDestinySituationFusionDraft(destinyFusion);
+  saveRealityIntakeDraft(realityIntake);
   saveGroundedSocialSimulationDraft(groundedSocialSimulation);
   saveKeyPeopleDraft({ seedContextId: seedContext.id, people, updatedAt: now });
   saveAgentEcologyDraft({

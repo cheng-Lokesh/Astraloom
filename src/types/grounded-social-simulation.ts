@@ -13,6 +13,7 @@ export type GroundedRealityNodeType =
 
 export type GroundedRealitySource =
   | "user_input"
+  | "manual_reality_source"
   | "inferred_from_user_context"
   | "sample_data"
   | "future_external_data";
@@ -88,6 +89,7 @@ export type GroundedSocialSimulationDraft = {
   seedContextId: string;
   destinyProfileId: string;
   destinyClimateId: string;
+  realityIntake: RealityIntakeDraft;
   realityNodes: GroundedRealityNode[];
   realityPressures: GroundedRealityPressure[];
   destinyPersonModifier: DestinyPersonModifier;
@@ -98,3 +100,4 @@ export type GroundedSocialSimulationDraft = {
   confidence: number;
   createdAt: string;
 };
+import type { RealityIntakeDraft } from "./reality-intake";

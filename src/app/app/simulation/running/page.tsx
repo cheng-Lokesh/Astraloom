@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { GroundedSimulationDebugPanel } from "@/components/grounded-social/grounded-simulation-debug-panel";
 import { useLanguage } from "@/components/language-provider";
+import { RealityIntakeModeBanner } from "@/components/reality-intake-mode-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { TimelineFeed } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
@@ -1010,6 +1011,11 @@ export default function RunsPage() {
             />
             <RealSituationPanel seedContext={seedContext} locale={locale} />
           </section>
+
+          <RealityIntakeModeBanner
+            realityIntake={groundedSocialSimulation?.realityIntake}
+            locale={locale}
+          />
 
           <FusionMappingPanel fusion={destinyFusion} locale={locale} />
 
