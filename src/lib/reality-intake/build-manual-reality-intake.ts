@@ -132,7 +132,11 @@ export function buildRealityIntakeDraft({
     .filter((source) => source.content.trim())
     .slice(0, 5);
   const cleanExternalSources = externalSources.filter(
-    (source) => source.title.trim() || source.contentSummary?.trim(),
+    (source) =>
+      source.title.trim() ||
+      source.url?.trim() ||
+      source.summary?.trim() ||
+      source.contentSummary?.trim(),
   );
   const mode: RealityIntakeMode = cleanExternalSources.length
     ? "external_reality"

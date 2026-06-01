@@ -121,6 +121,116 @@ Forbidden:
 - Do not judge whether a third party loves, betrays, deceives, or secretly
   intends something.
 
+### `/api/reality-intake`
+
+Purpose: Run DeepSeek only for Reality Intake extraction before Grounded Reality
+Model construction.
+
+Allowed operations:
+
+- Call DeepSeek only when `LLM_ENABLED=true`, `LLM_PROVIDER=deepseek`, and
+  `DEEPSEEK_API_KEY` is configured.
+- Extract structured reality nodes, grounded pressures, missing information,
+  external search questions, clarification questions, and safety notes.
+- Validate model JSON before returning it to the product flow.
+- Return `llmUsed`, provider, warnings, validation errors, and a
+  `RealityIntakeDraft`.
+- Fall back to local/manual Reality Intake without blocking the run when the
+  model is disabled, unavailable, returns invalid JSON, or fails validation.
+
+Input:
+
+```json
+{
+  "seedContext": {},
+  "destinyProfile": {},
+  "destinyClimate": {},
+  "manualRealitySources": [],
+  "locale": "en"
+}
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "llmUsed": true,
+  "provider": "deepseek",
+  "realityIntake": {},
+  "warnings": [],
+  "validationErrors": []
+}
+```
+
+Forbidden:
+
+- Do not use DeepSeek outside Reality Intake for this route.
+- Do not generate final findings, report text, destiny judgments, or risk level.
+- Do not create Claims, Reports, RelationEdges, payments, Stripe writes, or
+  production database writes.
+- Do not raise confidence above validator caps.
+- Do not accept model output that cannot trace back to user input, manual
+  material, or explicit external search need.
+
+### `/api/reality-search`
+
+Purpose: Fetch external reality sources for validator-reviewed Reality Intake
+search questions.
+
+Allowed operations:
+
+- Return `noop` fallback when `REALITY_SEARCH_ENABLED=false` or provider is not
+  configured.
+- Support `generic_http_search` through `REALITY_SEARCH_ENDPOINT` for future
+  Tavily, SerpAPI, Bing, Perplexity, or self-hosted search adapters.
+- Send only `query`, `locale`, `domain`, and `expectedSourceType` to the generic
+  endpoint.
+- Convert returned search results into `ExternalRealitySource`.
+- Validate every source before it enters `RealityIntakeDraft.externalSources`.
+- Return warnings and validation errors without blocking the main run.
+
+Input:
+
+```json
+{
+  "searchQuestions": [
+    {
+      "id": "string",
+      "question": "string",
+      "reason": "string",
+      "expectedSourceType": "job_market",
+      "priority": 80,
+      "confidence": 60
+    }
+  ],
+  "locale": "en",
+  "primaryDomain": "career"
+}
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "searchUsed": false,
+  "provider": "noop",
+  "sources": [],
+  "warnings": [],
+  "validationErrors": []
+}
+```
+
+Forbidden:
+
+- Do not generate final findings, Reports, Claims, destiny judgments, or
+  deterministic predictions from search results.
+- Do not treat search output as absolute fact.
+- Do not raise confidence above validator caps.
+- Do not create payments, Stripe writes, privileged writers, or production
+  database writes.
+
 ### `/api/key-people/confirm`
 
 Purpose: Save user confirmation decisions.

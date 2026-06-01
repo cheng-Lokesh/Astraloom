@@ -7,6 +7,7 @@ import { AppShell } from "@/components/app-shell";
 import { GroundedSimulationDebugPanel } from "@/components/grounded-social/grounded-simulation-debug-panel";
 import { useLanguage } from "@/components/language-provider";
 import { RealityIntakeModeBanner } from "@/components/reality-intake-mode-banner";
+import { RuntimeCapabilityBanner } from "@/components/runtime-capability-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { TimelineFeed } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
@@ -62,7 +63,7 @@ const runningCopy = {
   en: {
     heroTitle: "Your sandbox is unfolding",
     heroBody:
-      "Astraloom is combining your destiny climate, real situation, and possible paths into one dynamic sandbox.",
+      "Astraloom is combining your destiny climate, current situation text, and possible paths into one dynamic sandbox.",
     startRun: "Start unfolding",
     rerun: "Run again",
     reset: "Clear and rebuild",
@@ -71,7 +72,7 @@ const runningCopy = {
     waiting: "Ready to unfold",
     openingResult: "The sandbox is ready. Opening your key findings.",
     runMessage:
-      "Astraloom is placing your destiny climate, real situation, and possible paths into motion.",
+      "Astraloom is placing your destiny climate, current situation text, and possible paths into motion.",
     rebuildMessage: "Astraloom is rebuilding the sandbox from your latest inputs.",
     resetMessage: "The current sandbox view has been cleared.",
     saveFailed: "The sandbox could not be saved. Please try again.",
@@ -88,7 +89,7 @@ const runningCopy = {
       "Start the unfolding process and watch climate, pressure, interactions, and paths separate into readable signals.",
     climateTitle: "Destiny climate",
     climateFallback:
-      "No saved destiny climate was found. Astraloom will lean more on the real situation in this run.",
+      "No saved destiny climate was found. Astraloom will lean more on the current situation text in this run.",
     situationTitle: "Current situation",
     windowLabel: "Window",
     focusLabel: "Focus",
@@ -1015,6 +1016,10 @@ export default function RunsPage() {
           <RealityIntakeModeBanner
             realityIntake={groundedSocialSimulation?.realityIntake}
             locale={locale}
+          />
+
+          <RuntimeCapabilityBanner
+            realityIntake={groundedSocialSimulation?.realityIntake}
           />
 
           <FusionMappingPanel fusion={destinyFusion} locale={locale} />

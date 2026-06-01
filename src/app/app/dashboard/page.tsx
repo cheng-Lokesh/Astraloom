@@ -1,19 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useLanguage } from "@/components/language-provider";
 import { LocalSandboxSnapshot } from "@/components/local-sandbox-snapshot";
+import { RuntimeCapabilityBanner } from "@/components/runtime-capability-banner";
 import { TrialSampleButton } from "@/components/trial-sample-button";
 import { ButtonLink, SurfaceCard } from "@/components/ui-foundation";
+import { getRepositories } from "@/lib/repositories/repository-provider";
 
 const dashboardCopy = {
   en: {
     title:
-      "Astraloom combines your birth context, destiny climate, and current situation to show how several paths may unfold.",
+      "Astraloom builds a scenario sandbox from your birth context and current situation.",
     intro:
-      "Start with your birth information and one real question. Astraloom turns them into a dynamic sandbox so you can compare possible paths before choosing your next move.",
+      "Start with your birth information and one real question. When AI intake or external reality sources are unavailable, the product stays in local assumption demo mode.",
     start: "Start my destiny sandbox",
     sample: "View complete sample",
     progressTitle: "Local progress",
@@ -46,10 +49,20 @@ const dashboardCopy = {
 export default function DashboardPage() {
   const { locale } = useLanguage();
   const t = dashboardCopy[locale];
+  const [repos] = useState(() => getRepositories());
+  const [realityIntake] = useState(() => {
+    const seedResult = repos.seedContexts.load();
+    const seed = seedResult.ok ? seedResult.data : null;
+    if (!seed) return null;
+    const result = repos.realityIntakes.load(seed.id);
+    return result.ok ? result.data : null;
+  });
 
   return (
     <AppShell>
       <div className="space-y-7">
+        <RuntimeCapabilityBanner realityIntake={realityIntake} />
+
         <section className="mf-page-grid items-start">
           <SurfaceCard emphasis="strong" className="p-7 sm:p-9">
             <h1 className="max-w-4xl text-4xl font-semibold leading-tight text-[#11150f] sm:text-5xl">

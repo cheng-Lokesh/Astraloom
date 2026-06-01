@@ -18,6 +18,23 @@ Social Simulation:
 exist, downstream reality confidence stays capped and UI copy must not imply
 external reality information was retrieved.
 
+DeepSeek Reality Intake may attach `llmStatus` and `llmExtraction` to a local
+`RealityIntakeDraft`. `llmExtraction.sourceType` must be `llm_extraction` and
+is allowed only for structured intake fields: primary domain, grounded reality
+nodes, grounded reality pressures, external search questions, clarification
+questions, missing information, and safety notes. It must not create final
+findings, reports, destiny judgments, risk-level changes, payments, Stripe
+writes, production database writes, or stronger confidence than validator caps.
+
+External Reality Search may attach `realitySearchStatus` and validated
+`externalSources` to `RealityIntakeDraft`. External sources are evidence inputs
+only: they include `questionId`, title, optional URL, source type, retrieval
+time, summary, relevant nodes, relevant pressures, limitations, and confidence.
+No-URL sources remain capped at 60 confidence; all external sources remain
+capped at 80 and must not create final findings, Reports, Claims, destiny
+judgments, risk-level changes, payments, Stripe writes, production database
+writes, or deterministic predictions.
+
 ## Table Principles
 
 - Every user-owned table must include `user_id`.

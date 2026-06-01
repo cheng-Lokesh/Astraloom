@@ -5,19 +5,22 @@ import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useLanguage } from "@/components/language-provider";
+import { RuntimeCapabilityBanner } from "@/components/runtime-capability-banner";
 import { TrialSampleButton } from "@/components/trial-sample-button";
 import { Button, SurfaceCard } from "@/components/ui-foundation";
 import { evaluateSandboxReadiness } from "@/lib/clarification/evaluate-sandbox-readiness";
 import { buildDestinyClimateDraft } from "@/lib/destiny/build-destiny-climate";
 import { buildDestinyProfileDraft } from "@/lib/destiny/build-destiny-profile";
+import type { RealityIntakeApiResponse } from "@/lib/llm/llm-task-types";
 import { getRepositories } from "@/lib/repositories/repository-provider";
+import type { ExternalRealitySearchResult } from "@/lib/reality-intake/external-reality-search";
 import {
   buildManualRealitySource,
   buildRealityIntakeDraft,
 } from "@/lib/reality-intake/build-manual-reality-intake";
 import { prepareLocalSandboxArtifacts } from "@/lib/sandbox/prepare-local-sandbox";
 import type { BirthInfo, DestinyMode } from "@/types/destiny";
-import type { ManualRealitySourceType } from "@/types/reality-intake";
+import type { ManualRealitySourceType, RealityIntakeDraft } from "@/types/reality-intake";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
 
 const startCopy = {
@@ -35,13 +38,13 @@ const startCopy = {
     female: "Female",
     male: "Male",
     unknownTime: "I do not know the exact time",
-    skipDestiny: "Skip destiny and only simulate the real situation",
+    skipDestiny: "Skip destiny and review the current situation structure",
     questionTitle: "What do you want to understand right now?",
     questionPlaceholder:
       "Describe what you are facing, the choice you are weighing, the relationship pressure, career change, or trend you want to understand. You do not need a format.",
     realityTitle: "Add real-world materials (optional, but improves grounding)",
     realityIntro:
-      "If you want a more grounded simulation, paste materials related to your situation, such as job descriptions, chat summaries, company information, policy notes, offer terms, agreement summaries, or market notes. Without them, Astraloom can only run a local assumption simulation.",
+      "If you want a more source-aware structure preview, paste materials related to your situation, such as job descriptions, chat summaries, company information, policy notes, offer terms, agreement summaries, or market notes. Without them, Astraloom can only run a local assumption demo.",
     realityAdd: "Add material",
     realityRemove: "Remove",
     realityItemTitle: "Title",
@@ -317,7 +320,7 @@ export default function StartPage() {
   const canSubmit =
     description.trim().length >= 20 && (skipDestiny || birthDate.trim().length > 0);
 
-  function submit() {
+  async function submit() {
     if (saving) return;
 
     if (!skipDestiny && !birthDate.trim()) {
@@ -360,7 +363,7 @@ export default function StartPage() {
         }),
       )
       .filter((source): source is NonNullable<typeof source> => Boolean(source));
-    const realityIntake = buildRealityIntakeDraft({
+    const localRealityIntake = buildRealityIntakeDraft({
       seedContext,
       manualSources,
       externalSources: initialRealityIntake?.externalSources ?? [],
@@ -383,6 +386,104 @@ export default function StartPage() {
       setSaving(false);
       setMessage(readiness.safetyDecision.userMessage);
       return;
+    }
+
+    let realityIntake: RealityIntakeDraft = localRealityIntake;
+    try {
+      const response = await fetch("/api/reality-intake", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          seedContext,
+          destinyProfile: profile,
+          destinyClimate: climate,
+          manualRealitySources: manualSources,
+          locale,
+        }),
+      });
+      if (response.ok) {
+        const payload = (await response.json()) as RealityIntakeApiResponse;
+        if (payload.ok && payload.realityIntake) {
+          realityIntake = payload.realityIntake;
+        }
+      }
+    } catch {
+      realityIntake = {
+        ...localRealityIntake,
+        missingExternalInfo: Array.from(
+          new Set([
+            ...localRealityIntake.missingExternalInfo,
+            "DeepSeek Reality Intake failed; this run uses local fallback only.",
+          ]),
+        ),
+        llmStatus: {
+          enabled: true,
+          attempted: true,
+          succeeded: false,
+          fallback: true,
+          provider: "deepseek",
+          warning:
+            "DeepSeek Reality Intake failed; this run uses local fallback only.",
+        },
+      };
+    }
+
+    if (realityIntake.llmExtraction?.searchQuestions.length) {
+      try {
+        const searchResponse = await fetch("/api/reality-search", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            searchQuestions: realityIntake.llmExtraction.searchQuestions,
+            locale,
+            primaryDomain: realityIntake.llmExtraction.primaryDomain,
+          }),
+        });
+        if (searchResponse.ok) {
+          const searchPayload =
+            (await searchResponse.json()) as ExternalRealitySearchResult;
+          realityIntake = {
+            ...realityIntake,
+            mode: searchPayload.sources.length
+              ? "external_reality"
+              : realityIntake.mode,
+            externalSources: searchPayload.sources,
+            missingExternalInfo: Array.from(
+              new Set([
+                ...realityIntake.missingExternalInfo,
+                ...searchPayload.warnings,
+              ]),
+            ),
+            realitySearchStatus: {
+              enabled: searchPayload.provider !== "noop",
+              attempted: true,
+              succeeded: searchPayload.searchUsed,
+              fallback: !searchPayload.searchUsed,
+              provider: searchPayload.provider,
+              warning: searchPayload.warnings[0],
+            },
+          };
+        }
+      } catch {
+        realityIntake = {
+          ...realityIntake,
+          missingExternalInfo: Array.from(
+            new Set([
+              ...realityIntake.missingExternalInfo,
+              "External reality search unavailable; this run uses local and intake evidence only.",
+            ]),
+          ),
+          realitySearchStatus: {
+            enabled: true,
+            attempted: true,
+            succeeded: false,
+            fallback: true,
+            provider: "generic_http_search",
+            warning:
+              "External reality search unavailable; this run uses local and intake evidence only.",
+          },
+        };
+      }
     }
 
     const seedResult = repos.seedContexts.save(seedContext);
@@ -445,6 +546,8 @@ export default function StartPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl space-y-5">
+        <RuntimeCapabilityBanner realityIntake={initialRealityIntake} />
+
         <header className="max-w-3xl">
           <h1 className="text-4xl font-semibold leading-tight text-[#11150f]">
             {t.title}

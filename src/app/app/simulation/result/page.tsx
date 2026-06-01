@@ -9,6 +9,7 @@ import { GroundedSimulationDebugPanel } from "@/components/grounded-social/groun
 import { ReportSummary } from "@/components/report/report-summary";
 import { useLanguage } from "@/components/language-provider";
 import { RealityIntakeModeBanner } from "@/components/reality-intake-mode-banner";
+import { RuntimeCapabilityBanner } from "@/components/runtime-capability-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import {
   AgentRefsView,
@@ -1006,6 +1007,12 @@ export default function ReportsPage() {
           />
         </div>
       ) : null}
+
+      <div className="mb-5">
+        <RuntimeCapabilityBanner
+          realityIntake={groundedSocialSimulation?.realityIntake}
+        />
+      </div>
 
       <div className="mb-5">
         <RealityIntakeModeBanner

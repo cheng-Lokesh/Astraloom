@@ -423,6 +423,14 @@ export function GroundedSimulationDebugPanel({
             items={realityIntake.missingExternalInfo}
             locale={locale}
           />
+          <ListBlock
+            title={t.externalSources}
+            items={realityIntake.externalSources.map(
+              (source) =>
+                `${source.title} / ${source.sourceType} / ${source.confidence}% / ${source.retrievedAt}${source.url ? ` / ${source.url}` : ""}`,
+            )}
+            locale={locale}
+          />
         </section>
 
         <section className="rounded-md border border-black/8 bg-[#f7f8f4] p-4">

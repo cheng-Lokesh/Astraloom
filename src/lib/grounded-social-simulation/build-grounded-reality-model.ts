@@ -1,9 +1,15 @@
 import type { KeyPersonDraft } from "@/types/key-person";
-import type { ManualRealitySource, RealityIntakeDraft } from "@/types/reality-intake";
+import type {
+  ExternalRealitySource,
+  ManualRealitySource,
+  RealityIntakeDraft,
+} from "@/types/reality-intake";
 import type { SeedContextDraft } from "@/types/seed-context";
 import type {
   GroundedRealityNode,
+  GroundedRealityNodeType,
   GroundedRealityPressure,
+  GroundedRealityPressureType,
 } from "@/types/grounded-social-simulation";
 
 import {
@@ -25,6 +31,7 @@ export type GroundedRealityModelDraft = {
 
 const localAssumptionConfidenceCap = 62;
 const manualRealityConfidenceCap = 76;
+const externalRealityConfidenceCap = 80;
 
 function firstText(...values: Array<string | undefined>) {
   return values.find((value) => value?.trim()) ?? "";
@@ -217,6 +224,137 @@ function manualSourceNode(
   };
 }
 
+function nodeTypeForExternalSource(
+  source: ExternalRealitySource,
+): GroundedRealityNode["nodeType"] {
+  if (source.sourceType === "company") return "organization";
+  if (source.sourceType === "policy" || source.sourceType === "migration") {
+    return "policy";
+  }
+  if (
+    source.sourceType === "job_market" ||
+    source.sourceType === "industry" ||
+    source.sourceType === "finance"
+  ) {
+    return "market";
+  }
+  if (source.sourceType === "education") return "institution";
+  if (source.sourceType === "city") return "environment";
+  if (source.sourceType === "relationship_context") return "information_source";
+  return "information_source";
+}
+
+function pressureTypeForExternalSource(
+  source: ExternalRealitySource,
+): GroundedRealityPressure["pressureType"] {
+  if (source.sourceType === "policy" || source.sourceType === "migration") {
+    return "institutional_constraint";
+  }
+  if (
+    source.sourceType === "job_market" ||
+    source.sourceType === "industry" ||
+    source.sourceType === "finance"
+  ) {
+    return "market_pressure";
+  }
+  if (source.sourceType === "company") return "resource_control";
+  if (source.sourceType === "education") return "institutional_constraint";
+  if (source.sourceType === "news") return "information_gap";
+  return "information_gap";
+}
+
+function externalSourceNode(
+  seedContextId: string,
+  source: ExternalRealitySource,
+): GroundedRealityNode {
+  const nodeType = nodeTypeForExternalSource(source);
+  const summary = source.summary || source.contentSummary || source.title;
+
+  return {
+    id: `grn_external_${source.id}`,
+    label: source.title,
+    nodeType,
+    source: "external_reality_source",
+    roleInSituation: `External ${source.sourceType.replaceAll("_", " ")} source retrieved for the current question. Treat as contextual evidence, not an absolute fact or final conclusion.`,
+    resourcesControlled:
+      nodeType === "organization" || nodeType === "market"
+        ? ["public context", "market or institutional signal"]
+        : [],
+    informationHeld: uniqueRefs([
+      summary,
+      ...source.relevantNodes,
+      ...source.limitations,
+    ]).slice(0, 8),
+    opportunitiesProvided: source.relevantNodes
+      .filter((item) => /opportunity|opening|option|role|program/i.test(item))
+      .slice(0, 4),
+    constraintsCreated: uniqueRefs([
+      ...source.relevantPressures,
+      ...source.limitations,
+    ]).slice(0, 8),
+    evidenceRefs: [
+      `external-reality:${seedContextId}:${source.questionId}:${source.id}:${stableGroundedHash(`${source.url}:${summary}`)}`,
+    ],
+    confidence: clampConfidence(Math.min(source.confidence, externalRealityConfidenceCap)),
+  };
+}
+
+function groundedNodeType(value: string): GroundedRealityNodeType {
+  const allowed: GroundedRealityNodeType[] = [
+    "user",
+    "person",
+    "organization",
+    "institution",
+    "market",
+    "policy",
+    "opportunity_source",
+    "resource_holder",
+    "information_source",
+    "constraint",
+    "environment",
+  ];
+  return allowed.includes(value as GroundedRealityNodeType)
+    ? (value as GroundedRealityNodeType)
+    : "information_source";
+}
+
+function groundedPressureType(value: string): GroundedRealityPressureType {
+  const allowed: GroundedRealityPressureType[] = [
+    "resource_control",
+    "information_gap",
+    "timing_pressure",
+    "market_pressure",
+    "institutional_constraint",
+    "emotional_pressure",
+    "opportunity_pull",
+    "competition",
+    "support",
+  ];
+  return allowed.includes(value as GroundedRealityPressureType)
+    ? (value as GroundedRealityPressureType)
+    : "information_gap";
+}
+
+function llmExtractionNode(
+  seedContextId: string,
+  labelIndex: number,
+  node: NonNullable<RealityIntakeDraft["llmExtraction"]>["groundedRealityNodes"][number],
+): GroundedRealityNode {
+  return {
+    id: `grn_llm_${seedContextId}_${stableGroundedHash(`${labelIndex}:${node.label}:${node.sourceText}`)}`,
+    label: node.label,
+    nodeType: groundedNodeType(node.nodeType),
+    source: "llm_extraction",
+    roleInSituation: node.roleInSituation,
+    resourcesControlled: node.resourcesControlled,
+    informationHeld: node.informationHeld,
+    opportunitiesProvided: node.opportunitiesProvided,
+    constraintsCreated: node.constraintsCreated,
+    evidenceRefs: node.evidenceRefs,
+    confidence: clampConfidence(Math.min(node.confidence, 65)),
+  };
+}
+
 function observableSignalsForDomain(
   domain: ReturnType<typeof inferPrimaryGroundedDomain>["domain"],
 ) {
@@ -299,6 +437,26 @@ export function buildGroundedRealityModel({
     preferredPressureByNodeId.set(node.id, pressureTypeForManualSource(source));
   });
 
+  realityIntake.externalSources.forEach((source) => {
+    const node = externalSourceNode(seedContext.id, source);
+    nodes.set(node.id, capNodeConfidence(node, realityIntake));
+    preferredPressureByNodeId.set(node.id, pressureTypeForExternalSource(source));
+  });
+
+  const llmNodesByLabel = new Map<string, GroundedRealityNode>();
+  realityIntake.llmExtraction?.groundedRealityNodes.forEach((extractedNode, index) => {
+    const node = llmExtractionNode(seedContext.id, index, extractedNode);
+    nodes.set(node.id, capNodeConfidence(node, realityIntake));
+    llmNodesByLabel.set(node.label, node);
+  });
+
+  realityIntake.llmExtraction?.groundedRealityPressures.forEach((pressure) => {
+    const node = llmNodesByLabel.get(pressure.sourceLabel);
+    if (node) {
+      preferredPressureByNodeId.set(node.id, groundedPressureType(pressure.pressureType));
+    }
+  });
+
   extractGroundedDomains(text).forEach((rule) => {
     const evidenceRef = seedEvidenceRef(seedContext.id, rule.id, text);
     const node: GroundedRealityNode = {
@@ -367,6 +525,25 @@ export function buildGroundedRealityModel({
         preferredPressureByNodeId.get(node.id),
       ), realityIntake),
     );
+  const llmPressures =
+    realityIntake.llmExtraction?.groundedRealityPressures
+      .map((pressure, index): GroundedRealityPressure | null => {
+        const sourceNode = llmNodesByLabel.get(pressure.sourceLabel);
+        const targetNode =
+          llmNodesByLabel.get(pressure.targetLabel) ?? rootUserNode;
+        if (!sourceNode) return null;
+
+        return capPressureConfidence({
+          id: `grp_llm_${stableGroundedHash(`${seedContext.id}:${index}:${pressure.sourceLabel}:${pressure.targetLabel}`)}`,
+          sourceNodeId: sourceNode.id,
+          targetNodeId: targetNode.id,
+          pressureType: groundedPressureType(pressure.pressureType),
+          explanation: pressure.explanation,
+          evidenceRefs: uniqueRefs(pressure.evidenceRefs),
+          confidence: clampConfidence(Math.min(pressure.confidence, sourceNode.confidence, 65)),
+        }, realityIntake);
+      })
+      .filter((pressure): pressure is GroundedRealityPressure => Boolean(pressure)) ?? [];
   const primaryDomain = inferPrimaryGroundedDomain({
     seedContext,
     realityNodes,
@@ -379,6 +556,19 @@ export function buildGroundedRealityModel({
       ? ["No manual or external reality material was provided; reality judgments are capped and must stay provisional."]
       : []),
     ...(realityIntake.missingExternalInfo ?? []),
+    ...(realityIntake.llmExtraction?.externalInfoNeeded
+      ? ["DeepSeek Reality Intake marked external reality search as still needed before high-confidence social grounding."]
+      : []),
+    ...(realityIntake.llmStatus?.fallback
+      ? ["DeepSeek Reality Intake did not participate successfully; this grounded model uses local fallback only."]
+      : []),
+    ...(realityIntake.realitySearchStatus?.fallback
+      ? ["External reality search did not participate successfully; source-backed reality remains limited."]
+      : []),
+    ...(realityIntake.externalSources.length === 0 &&
+    realityIntake.llmExtraction?.externalInfoNeeded
+      ? ["Search questions exist, but no validated external source has been attached yet."]
+      : []),
     ...(realityNodes.length <= 2 ? ["Reality model has few grounded nodes; later clarification may improve path quality."] : []),
     ...(decisionText.trim() ? [] : ["Decision options are not explicit, so path branches stay broad."]),
     ...(primaryDomain.domain === "other" || primaryDomain.confidence < 50
@@ -396,7 +586,7 @@ export function buildGroundedRealityModel({
 
   return {
     realityNodes,
-    realityPressures: realityPressures.map((pressure) => ({
+    realityPressures: [...realityPressures, ...llmPressures].map((pressure) => ({
       ...pressure,
       evidenceRefs: uniqueRefs(pressure.evidenceRefs),
     })),
