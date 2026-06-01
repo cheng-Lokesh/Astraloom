@@ -269,6 +269,7 @@ function externalSourceNode(
 ): GroundedRealityNode {
   const nodeType = nodeTypeForExternalSource(source);
   const summary = source.summary || source.contentSummary || source.title;
+  const confidenceCap = source.url?.trim() ? externalRealityConfidenceCap : 60;
 
   return {
     id: `grn_external_${source.id}`,
@@ -295,7 +296,7 @@ function externalSourceNode(
     evidenceRefs: [
       `external-reality:${seedContextId}:${source.questionId}:${source.id}:${stableGroundedHash(`${source.url}:${summary}`)}`,
     ],
-    confidence: clampConfidence(Math.min(source.confidence, externalRealityConfidenceCap)),
+    confidence: clampConfidence(Math.min(source.confidence, confidenceCap)),
   };
 }
 

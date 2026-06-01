@@ -9,9 +9,8 @@ import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { evaluateSandboxReadiness } from "@/lib/clarification/evaluate-sandbox-readiness";
 import { buildDestinyClimateDraft } from "@/lib/destiny/build-destiny-climate";
-import type { RealityIntakeApiResponse } from "@/lib/llm/llm-task-types";
 import { getRepositories } from "@/lib/repositories/repository-provider";
-import type { ExternalRealitySearchResult } from "@/lib/reality-intake/external-reality-search";
+import { runRealityIntakeFlow } from "@/lib/reality-intake/run-reality-intake-flow";
 import { prepareLocalSandboxArtifacts } from "@/lib/sandbox/prepare-local-sandbox";
 import type { ClarificationQuestion } from "@/types/clarification";
 import type { DestinyProfileDraft } from "@/types/destiny";
@@ -257,80 +256,16 @@ export default function ClarifyPage() {
   async function refreshRealityIntake(nextSeed: SeedContextDraft) {
     const savedIntakeResult = repos.realityIntakes.load(nextSeed.id);
     const savedIntake = savedIntakeResult.ok ? savedIntakeResult.data : null;
-    try {
-      const response = await fetch("/api/reality-intake", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          seedContext: nextSeed,
-          destinyProfile: profile,
-          manualRealitySources: savedIntake?.manualSources ?? [],
-          locale,
-        }),
-      });
-      if (!response.ok) return;
-      const payload = (await response.json()) as RealityIntakeApiResponse;
-      if (payload.ok && payload.realityIntake) {
-        let realityIntake = payload.realityIntake;
-        if (realityIntake.llmExtraction?.searchQuestions.length) {
-          const searchResponse = await fetch("/api/reality-search", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              searchQuestions: realityIntake.llmExtraction.searchQuestions,
-              locale,
-              primaryDomain: realityIntake.llmExtraction.primaryDomain,
-            }),
-          });
-          if (searchResponse.ok) {
-            const searchPayload =
-              (await searchResponse.json()) as ExternalRealitySearchResult;
-            realityIntake = {
-              ...realityIntake,
-              mode: searchPayload.sources.length
-                ? "external_reality"
-                : realityIntake.mode,
-              externalSources: searchPayload.sources,
-              missingExternalInfo: Array.from(
-                new Set([
-                  ...realityIntake.missingExternalInfo,
-                  ...searchPayload.warnings,
-                ]),
-              ),
-              realitySearchStatus: {
-                enabled: searchPayload.provider !== "noop",
-                attempted: true,
-                succeeded: searchPayload.searchUsed,
-                fallback: !searchPayload.searchUsed,
-                provider: searchPayload.provider,
-                warning: searchPayload.warnings[0],
-              },
-            };
-          }
-        }
-        repos.realityIntakes.save(realityIntake);
-      }
-    } catch {
-      if (!savedIntake) return;
-      repos.realityIntakes.save({
-        ...savedIntake,
-        missingExternalInfo: Array.from(
-          new Set([
-            ...savedIntake.missingExternalInfo,
-            "DeepSeek Reality Intake failed; this run uses local fallback only.",
-          ]),
-        ),
-        llmStatus: {
-          enabled: true,
-          attempted: true,
-          succeeded: false,
-          fallback: true,
-          provider: "deepseek",
-          warning:
-            "DeepSeek Reality Intake failed; this run uses local fallback only.",
-        },
-      });
-    }
+    const climateResult = repos.destinyClimates.load(nextSeed.id);
+    const realityIntake = await runRealityIntakeFlow({
+      seedContext: nextSeed,
+      destinyProfile: profile,
+      destinyClimate: climateResult.ok ? climateResult.data : null,
+      manualRealitySources: savedIntake?.manualSources ?? [],
+      existingExternalSources: savedIntake?.externalSources ?? [],
+      locale,
+    });
+    repos.realityIntakes.save(realityIntake);
   }
 
   async function continueAfterAnswering() {

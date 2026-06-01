@@ -11,16 +11,15 @@ import { Button, SurfaceCard } from "@/components/ui-foundation";
 import { evaluateSandboxReadiness } from "@/lib/clarification/evaluate-sandbox-readiness";
 import { buildDestinyClimateDraft } from "@/lib/destiny/build-destiny-climate";
 import { buildDestinyProfileDraft } from "@/lib/destiny/build-destiny-profile";
-import type { RealityIntakeApiResponse } from "@/lib/llm/llm-task-types";
 import { getRepositories } from "@/lib/repositories/repository-provider";
-import type { ExternalRealitySearchResult } from "@/lib/reality-intake/external-reality-search";
 import {
   buildManualRealitySource,
   buildRealityIntakeDraft,
 } from "@/lib/reality-intake/build-manual-reality-intake";
+import { runRealityIntakeFlow } from "@/lib/reality-intake/run-reality-intake-flow";
 import { prepareLocalSandboxArtifacts } from "@/lib/sandbox/prepare-local-sandbox";
 import type { BirthInfo, DestinyMode } from "@/types/destiny";
-import type { ManualRealitySourceType, RealityIntakeDraft } from "@/types/reality-intake";
+import type { ManualRealitySourceType } from "@/types/reality-intake";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
 
 const startCopy = {
@@ -388,115 +387,33 @@ export default function StartPage() {
       return;
     }
 
-    let realityIntake: RealityIntakeDraft = localRealityIntake;
-    try {
-      const response = await fetch("/api/reality-intake", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          seedContext,
-          destinyProfile: profile,
-          destinyClimate: climate,
-          manualRealitySources: manualSources,
-          locale,
-        }),
-      });
-      if (response.ok) {
-        const payload = (await response.json()) as RealityIntakeApiResponse;
-        if (payload.ok && payload.realityIntake) {
-          realityIntake = payload.realityIntake;
-        }
-      }
-    } catch {
-      realityIntake = {
-        ...localRealityIntake,
-        missingExternalInfo: Array.from(
-          new Set([
-            ...localRealityIntake.missingExternalInfo,
-            "DeepSeek Reality Intake failed; this run uses local fallback only.",
-          ]),
-        ),
-        llmStatus: {
-          enabled: true,
-          attempted: true,
-          succeeded: false,
-          fallback: true,
-          provider: "deepseek",
-          warning:
-            "DeepSeek Reality Intake failed; this run uses local fallback only.",
-        },
-      };
-    }
-
-    if (realityIntake.llmExtraction?.searchQuestions.length) {
-      try {
-        const searchResponse = await fetch("/api/reality-search", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            searchQuestions: realityIntake.llmExtraction.searchQuestions,
-            locale,
-            primaryDomain: realityIntake.llmExtraction.primaryDomain,
-          }),
-        });
-        if (searchResponse.ok) {
-          const searchPayload =
-            (await searchResponse.json()) as ExternalRealitySearchResult;
-          realityIntake = {
-            ...realityIntake,
-            mode: searchPayload.sources.length
-              ? "external_reality"
-              : realityIntake.mode,
-            externalSources: searchPayload.sources,
-            missingExternalInfo: Array.from(
-              new Set([
-                ...realityIntake.missingExternalInfo,
-                ...searchPayload.warnings,
-              ]),
-            ),
-            realitySearchStatus: {
-              enabled: searchPayload.provider !== "noop",
-              attempted: true,
-              succeeded: searchPayload.searchUsed,
-              fallback: !searchPayload.searchUsed,
-              provider: searchPayload.provider,
-              warning: searchPayload.warnings[0],
-            },
-          };
-        }
-      } catch {
-        realityIntake = {
-          ...realityIntake,
-          missingExternalInfo: Array.from(
-            new Set([
-              ...realityIntake.missingExternalInfo,
-              "External reality search unavailable; this run uses local and intake evidence only.",
-            ]),
-          ),
-          realitySearchStatus: {
-            enabled: true,
-            attempted: true,
-            succeeded: false,
-            fallback: true,
-            provider: "generic_http_search",
-            warning:
-              "External reality search unavailable; this run uses local and intake evidence only.",
-          },
-        };
-      }
-    }
-
     const seedResult = repos.seedContexts.save(seedContext);
     const profileResult = repos.destinyProfiles.save(profile);
     const climateResult = repos.destinyClimates.save(climate);
-    const realityIntakeResult = repos.realityIntakes.save(realityIntake);
+    const localRealityIntakeResult = repos.realityIntakes.save(localRealityIntake);
 
     if (
       !seedResult.ok ||
       !profileResult.ok ||
       !climateResult.ok ||
-      !realityIntakeResult.ok
+      !localRealityIntakeResult.ok
     ) {
+      setSaving(false);
+      setMessage(t.saveFailed);
+      return;
+    }
+
+    const realityIntake = await runRealityIntakeFlow({
+      seedContext,
+      destinyProfile: profile,
+      destinyClimate: climate,
+      manualRealitySources: manualSources,
+      existingExternalSources: initialRealityIntake?.externalSources ?? [],
+      locale,
+      now,
+    });
+    const realityIntakeResult = repos.realityIntakes.save(realityIntake);
+    if (!realityIntakeResult.ok) {
       setSaving(false);
       setMessage(t.saveFailed);
       return;

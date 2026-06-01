@@ -70,7 +70,7 @@ export function RuntimeCapabilityBanner({
         />
       </div>
 
-      {!ready && state.blockingIssues.length ? (
+      {state.blockingIssues.length ? (
         <ul className="mt-3 space-y-1 text-xs leading-5 text-[#6c5842]">
           {state.blockingIssues.slice(0, 3).map((issue) => (
             <li key={issue}>- {issue}</li>

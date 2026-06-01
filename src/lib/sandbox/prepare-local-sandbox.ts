@@ -106,35 +106,19 @@ export function prepareLocalSandboxArtifacts(
   const savedRealityIntake = savedRealityIntakeResult.ok
     ? savedRealityIntakeResult.data
     : null;
-  const realityIntake = buildRealityIntakeDraft({
-    seedContext,
-    manualSources: savedRealityIntake?.manualSources ?? [],
-    externalSources: savedRealityIntake?.externalSources ?? [],
-    now,
-  });
-  if (
-    savedRealityIntake?.llmStatus ||
-    savedRealityIntake?.llmExtraction ||
-    savedRealityIntake?.realitySearchStatus
-  ) {
-    realityIntake.llmStatus = savedRealityIntake.llmStatus;
-    realityIntake.llmExtraction = savedRealityIntake.llmExtraction;
-    realityIntake.realitySearchStatus = savedRealityIntake.realitySearchStatus;
-    realityIntake.missingExternalInfo = Array.from(
-      new Set([
-        ...realityIntake.missingExternalInfo,
-        ...(savedRealityIntake.missingExternalInfo ?? []),
-      ]),
-    );
-    realityIntake.intakeSummary = savedRealityIntake.intakeSummary;
-    realityIntake.confidence = Math.min(
-      realityIntake.confidence,
-      savedRealityIntake.confidence,
-    );
-  }
-  const realityIntakeResult = repos.realityIntakes.save(realityIntake);
-  if (!realityIntakeResult.ok) {
-    return { ok: false, errorCode: realityIntakeResult.errorCode };
+  const realityIntake =
+    savedRealityIntake ??
+    buildRealityIntakeDraft({
+      seedContext,
+      manualSources: [],
+      externalSources: [],
+      now,
+    });
+  if (!savedRealityIntake) {
+    const realityIntakeResult = repos.realityIntakes.save(realityIntake);
+    if (!realityIntakeResult.ok) {
+      return { ok: false, errorCode: realityIntakeResult.errorCode };
+    }
   }
   if (realityIntake.mode === "local_assumption") {
     localWarnings.push(
