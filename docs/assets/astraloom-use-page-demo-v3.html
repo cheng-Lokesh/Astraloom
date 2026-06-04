@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astraloom Use Page Demo V3</title>
+    <style>
+      :root {
+        --bg: #f7f3ea;
+        --paper: #fffdf7;
+        --paper-2: #f1eadf;
+        --ink: #17211d;
+        --muted: #68726b;
+        --line: #ded6c8;
+        --green: #587968;
+        --green-2: #dfeae1;
+        --clay: #a7654e;
+        --gold: #b98b48;
+        --blue: #536f8d;
+        --shadow: 0 22px 60px rgba(39, 42, 34, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", Arial,
+          sans-serif;
+        letter-spacing: 0;
+      }
+
+      .screen {
+        width: 1440px;
+        height: 1000px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 88px 1fr;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)),
+          var(--bg);
+        overflow: hidden;
+      }
+
+      .rail {
+        border-right: 1px solid var(--line);
+        padding: 26px 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        background: rgba(255, 253, 247, 0.52);
+      }
+
+      .mark {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        background: var(--ink);
+        color: #fffdf7;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 20px;
+      }
+
+      .rail-button {
+        width: 46px;
+        height: 46px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        display: grid;
+        place-items: center;
+        color: #5f675f;
+        font-size: 18px;
+      }
+
+      .rail-button.active {
+        background: var(--green-2);
+        color: var(--green);
+        border-color: #c8d7cd;
+      }
+
+      .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 99px;
+        background: currentColor;
+        box-shadow: 10px 0 0 currentColor, 20px 0 0 currentColor;
+      }
+
+      .main {
+        padding: 30px 48px 34px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 26px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .brand {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .brand strong {
+        font-size: 25px;
+        line-height: 1.05;
+      }
+
+      .brand span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .ghost {
+        height: 40px;
+        padding: 0 15px;
+        border: 1px solid var(--line);
+        background: rgba(255, 253, 247, 0.72);
+        border-radius: 12px;
+        color: var(--ink);
+        font-size: 14px;
+      }
+
+      .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #d7c9b5;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 370px;
+        gap: 26px;
+        align-items: stretch;
+      }
+
+      .compose {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .headline {
+        max-width: 760px;
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        color: var(--green);
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 12px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 54px;
+        line-height: 1.04;
+        font-weight: 760;
+      }
+
+      .subcopy {
+        margin: 16px 0 0;
+        max-width: 670px;
+        color: #515b54;
+        font-size: 18px;
+        line-height: 1.65;
+      }
+
+      .input-panel {
+        background: var(--paper);
+        border: 1px solid #e3dace;
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+        padding: 24px;
+      }
+
+      .prompt-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 14px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 99px;
+        padding: 8px 12px;
+        background: var(--green-2);
+        color: #315243;
+        font-weight: 650;
+      }
+
+      .status-pill::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4d8a61;
+      }
+
+      .textarea {
+        min-height: 190px;
+        padding: 24px;
+        border: 1px solid #d8d0c4;
+        border-radius: 22px;
+        background: #fffaf1;
+        color: #2a312d;
+        font-size: 23px;
+        line-height: 1.5;
+        display: flex;
+        align-items: flex-start;
+      }
+
+      .textarea span {
+        color: #7b827b;
+      }
+
+      .example-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 14px 0 6px;
+      }
+
+      .chip {
+        border: 1px solid #d9d0c3;
+        background: #faf6ee;
+        color: #4f5b53;
+        border-radius: 99px;
+        padding: 10px 13px;
+        font-size: 14px;
+      }
+
+      .input-footer {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 16px;
+        align-items: center;
+        margin-top: 18px;
+      }
+
+      .optional-strip {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+
+      .option {
+        min-height: 42px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 12px;
+        border: 1px solid #ddd4c8;
+        background: #fbf7ef;
+        padding: 0 13px;
+        color: #3f4943;
+        font-size: 14px;
+      }
+
+      .icon {
+        width: 20px;
+        height: 20px;
+        display: inline-grid;
+        place-items: center;
+      }
+
+      .primary {
+        height: 54px;
+        padding: 0 22px;
+        border: 0;
+        border-radius: 15px;
+        background: var(--ink);
+        color: white;
+        font-size: 16px;
+        font-weight: 760;
+        white-space: nowrap;
+      }
+
+      .below {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        margin-top: 18px;
+      }
+
+      .plain-card {
+        border: 1px solid #ded6c8;
+        border-radius: 18px;
+        padding: 18px;
+        background: rgba(255, 253, 247, 0.68);
+      }
+
+      .plain-card h3 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+
+      .plain-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.58;
+        font-size: 14px;
+      }
+
+      .side {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .side-panel {
+        background: rgba(255, 253, 247, 0.72);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 22px;
+      }
+
+      .side-panel h2 {
+        margin: 0 0 14px;
+        font-size: 20px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 12px;
+        padding: 13px 0;
+        border-top: 1px solid #e4dccf;
+      }
+
+      .step:first-of-type {
+        border-top: 0;
+      }
+
+      .number {
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+        background: #e7eee8;
+        color: #385947;
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+        font-size: 13px;
+      }
+
+      .step strong {
+        display: block;
+        font-size: 15px;
+        margin-bottom: 4px;
+      }
+
+      .step span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .mini {
+        background: #f6efe5;
+      }
+
+      .notice {
+        border-left: 4px solid var(--gold);
+        padding: 13px 0 13px 14px;
+        color: #5a5248;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .window-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .window {
+        border: 1px solid #d8d0c4;
+        border-radius: 12px;
+        padding: 11px 8px;
+        text-align: center;
+        font-size: 13px;
+        color: #576159;
+        background: #fffaf1;
+      }
+
+      .window.active {
+        background: var(--green);
+        color: white;
+        border-color: var(--green);
+      }
+
+      .bottom-flow {
+        margin-top: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #6c746d;
+        font-size: 13px;
+      }
+
+      .flow-node {
+        padding: 9px 11px;
+        border-radius: 11px;
+        border: 1px solid #d9d1c4;
+        background: rgba(255, 253, 247, 0.75);
+      }
+
+      .flow-line {
+        height: 1px;
+        flex: 1;
+        min-width: 28px;
+        background: #d9d1c4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="screen">
+      <aside class="rail" aria-label="Navigation">
+        <div class="mark">A</div>
+        <div class="rail-button active">✎</div>
+        <div class="rail-button">◷</div>
+        <div class="rail-button">◇</div>
+        <div class="rail-button">✓</div>
+        <div style="flex: 1"></div>
+        <div class="rail-button"><span class="dot"></span></div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="brand">
+            <strong>Astraloom</strong>
+            <span>Reality-first path sandbox</span>
+          </div>
+          <div class="top-actions">
+            <button class="ghost">历史沙盘</button>
+            <button class="ghost">证据库</button>
+            <button class="ghost">中文</button>
+            <div class="avatar">林</div>
+          </div>
+        </header>
+
+        <section class="workspace">
+          <div class="compose">
+            <div class="headline">
+              <div class="eyebrow">开始一个真实处境沙盘</div>
+              <h1>先说你正在面对什么。<br />一句话也可以。</h1>
+              <p class="subcopy">
+                Astraloom 会先读取现实处境，再把时间气候作为轻量镜头，生成几种可观察的路径。你不需要先填一长串表格。
+              </p>
+            </div>
+
+            <section class="input-panel">
+              <div class="prompt-meta">
+                <span>你的问题或处境</span>
+                <span class="status-pill">仅使用你确认的材料</span>
+              </div>
+              <div class="textarea">
+                <span>例如：我最近在考虑要不要离开现在的工作。主管态度变得模糊，但外部机会还不稳定，我想知道接下来三个月应该观察什么、怎么行动。</span>
+              </div>
+              <div class="example-row">
+                <button class="chip">职业选择</button>
+                <button class="chip">关系推进</button>
+                <button class="chip">合作/合伙</button>
+                <button class="chip">家庭压力</button>
+                <button class="chip">我只想先描述，不想分类</button>
+              </div>
+              <div class="input-footer">
+                <div class="optional-strip">
+                  <button class="option"><span class="icon">＋</span>补充截图/聊天摘要</button>
+                  <button class="option"><span class="icon">◷</span>时间窗口：未来 3 个月</button>
+                  <button class="option"><span class="icon">▾</span>出生信息可稍后补</button>
+                </div>
+                <button class="primary">生成沙盘</button>
+              </div>
+            </section>
+
+            <div class="below">
+              <section class="plain-card">
+                <h3>系统只会追问必要信息</h3>
+                <p>
+                  如果一句话足够清楚，会直接进入沙盘；如果缺少关键边界，最多追问 1-3 个问题。
+                </p>
+              </section>
+              <section class="plain-card">
+                <h3>命理不是事实来源</h3>
+                <p>
+                  它只调整你的压力反应、边界风格和时机敏感度；现实事实仍以你的材料为准。
+                </p>
+              </section>
+            </div>
+
+            <div class="bottom-flow">
+              <div class="flow-node">输入处境</div>
+              <div class="flow-line"></div>
+              <div class="flow-node">确认关键人物</div>
+              <div class="flow-line"></div>
+              <div class="flow-node">生成路径</div>
+              <div class="flow-line"></div>
+              <div class="flow-node">观察下一步</div>
+            </div>
+          </div>
+
+          <aside class="side">
+            <section class="side-panel">
+              <h2>提交后会发生什么</h2>
+              <div class="step">
+                <div class="number">1</div>
+                <div>
+                  <strong>读懂你的现实处境</strong>
+                  <span>识别人物、压力、选择、限制和已经发生的事实。</span>
+                </div>
+              </div>
+              <div class="step">
+                <div class="number">2</div>
+                <div>
+                  <strong>把不确定处标出来</strong>
+                  <span>缺失事实不会被命理或 AI 自动补成结论。</span>
+                </div>
+              </div>
+              <div class="step">
+                <div class="number">3</div>
+                <div>
+                  <strong>生成几条可观察路径</strong>
+                  <span>每条路径都附带下一步观察信号，而不是确定预言。</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="side-panel mini">
+              <h2>本次沙盘范围</h2>
+              <div class="notice">
+                当前模式适合关系、职业、合作等现实选择。高风险、医疗、法律或财务决策会降级为保守支持和求助建议。
+              </div>
+              <div class="window-row">
+                <div class="window">1 个月</div>
+                <div class="window active">3 个月</div>
+                <div class="window">6 个月</div>
+              </div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
