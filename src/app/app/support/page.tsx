@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
@@ -35,8 +35,9 @@ const ticketTypes: Array<{
     value: "generation_failure",
     label: "Generation failure",
     zhLabel: "生成失败",
-    helper: "Report a failed graph, simulation, claim, or report generation.",
-    zhHelper: "报告关系图、推演、关键发现或报告生成失败。",
+    helper:
+      "Report a failed relation structure, sandbox run, finding, or report generation.",
+    zhHelper: "报告关系结构、推演、关键发现或报告生成失败。",
   },
   {
     value: "safety_appeal",
@@ -57,7 +58,7 @@ const ticketTypes: Array<{
     label: "General support",
     zhLabel: "一般支持",
     helper: "Ask a product or account support question.",
-    zhHelper: "提出产品或账户支持问题。",
+    zhHelper: "提出产品或账号支持问题。",
   },
   {
     value: "billing_question",
@@ -68,6 +69,93 @@ const ticketTypes: Array<{
   },
 ];
 
+const supportCopy = {
+  en: {
+    badge: "Support",
+    title: "Local support drafts and safe requests.",
+    body:
+      "This page records local support tickets and drafts. It does not execute refunds, payments, production deletion, or admin actions.",
+    requestTitle: "Request details",
+    requestBody:
+      "Keep only the context needed for support. Avoid unnecessary private source text.",
+    editingDraft: "editing draft",
+    newDraft: "new draft",
+    ticketType: "Ticket type",
+    subject: "Subject",
+    subjectPlaceholder: "Short issue title",
+    relatedResult: "Related result reference",
+    relatedSandbox: "Related sandbox reference",
+    optional: "Optional",
+    message: "Message",
+    messagePlaceholder:
+      "Describe the issue. Local support tickets store only a short preview in summaries.",
+    saveTicket: "Save local ticket",
+    saveDraft: "Save draft",
+    clearForm: "Clear form",
+    billingNotice:
+      "Billing questions are placeholders in local MVP. This screen cannot issue payments, refunds, or receipt changes.",
+    ticketsTitle: "Local submitted tickets",
+    tickets: "Tickets",
+    delete: "Delete",
+    ticketsEmpty:
+      "Saved local tickets will appear here with a short preview and tracking code.",
+    draftsTitle: "Drafts",
+    draftsEmpty: "Save a draft if you need to come back before submitting.",
+    untitledDraft: "Untitled draft",
+    edit: "Edit",
+    remove: "Remove",
+    noSafety: "No saved safety review is available yet.",
+    safetyContext: "Current safety level",
+    safetyReason: "Reason",
+    draftSaved: "Support draft saved locally in this browser.",
+    draftLoaded: "Draft loaded for editing.",
+    draftRemoved: "Local support draft removed.",
+    ticketFailed: "Local ticket was not saved",
+    ticketSavedSuffix:
+      "saved locally. This does not execute refunds, deletion, payment, or production writes.",
+  },
+  zh: {
+    badge: "支持",
+    title: "本地支持草稿与安全请求",
+    body:
+      "这里只记录本地支持工单和草稿，不会执行退款、支付、生产删除或管理员操作。",
+    requestTitle: "请求详情",
+    requestBody: "只保留支持所需的上下文，避免填写不必要的私人原文。",
+    editingDraft: "正在编辑草稿",
+    newDraft: "新草稿",
+    ticketType: "工单类型",
+    subject: "主题",
+    subjectPlaceholder: "简短问题标题",
+    relatedResult: "相关结果编号",
+    relatedSandbox: "相关沙盘编号",
+    optional: "可选",
+    message: "说明",
+    messagePlaceholder: "描述问题。工单摘要只会保留较短预览。",
+    saveTicket: "保存本地工单",
+    saveDraft: "保存草稿",
+    clearForm: "清空表单",
+    billingNotice:
+      "账单问题目前只是本地 MVP 占位。此页面不能发起支付、退款或收据变更。",
+    ticketsTitle: "已提交的本地工单",
+    tickets: "工单",
+    delete: "删除",
+    ticketsEmpty: "保存后的本地工单会显示短预览和追踪编号。",
+    draftsTitle: "草稿",
+    draftsEmpty: "如果需要稍后再提交，可以先保存草稿。",
+    untitledDraft: "未命名草稿",
+    edit: "编辑",
+    remove: "删除",
+    noSafety: "还没有保存的安全复核。",
+    safetyContext: "当前安全级别",
+    safetyReason: "原因",
+    draftSaved: "支持草稿已保存在当前浏览器。",
+    draftLoaded: "草稿已载入，可以继续编辑。",
+    draftRemoved: "本地支持草稿已删除。",
+    ticketFailed: "本地工单保存失败",
+    ticketSavedSuffix: "已保存在本地。这里不会执行退款、删除、支付或生产写入。",
+  },
+} as const;
+
 function trackingCode(ticket: SupportTicketDraft) {
   const compact = ticket.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
   return `AL-${compact || "LOCAL1"}`;
@@ -75,6 +163,7 @@ function trackingCode(ticket: SupportTicketDraft) {
 
 export default function SupportPage() {
   const { locale } = useLanguage();
+  const t = supportCopy[locale];
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
     const result = repos.seedContexts.load();
@@ -117,13 +206,18 @@ export default function SupportPage() {
   });
 
   const safetyContext = useMemo(() => {
-    if (!safetyReview) return "No saved safety review is available yet.";
-    return `Current safety level: ${safetyReview.safetyLevel}. Reason: ${safetyReview.reportBlockedReason}`;
-  }, [safetyReview]);
+    if (!safetyReview) return t.noSafety;
+    return `${t.safetyContext}: ${safetyReview.safetyLevel}. ${t.safetyReason}: ${safetyReview.reportBlockedReason}`;
+  }, [safetyReview, t]);
 
   function selectTicketType(nextType: SupportTicketType) {
     setTicketType(nextType);
-    setSubject(ticketTypes.find((item) => item.value === nextType)?.label ?? "");
+    const selectedType = ticketTypes.find((item) => item.value === nextType);
+    setSubject(
+      locale === "zh"
+        ? (selectedType?.zhLabel ?? "")
+        : (selectedType?.label ?? ""),
+    );
     if (nextType === "safety_appeal") {
       setMessage(safetyContext);
     } else if (nextType === "privacy_delete_request") {
@@ -156,7 +250,7 @@ export default function SupportPage() {
     });
     setEditingDraftId(draft.id);
     setDrafts(listLocalSupportDrafts());
-    setStatus("Support draft saved locally in this browser.");
+    setStatus(t.draftSaved);
   }
 
   function loadDraft(draft: LocalSupportDraft) {
@@ -166,14 +260,14 @@ export default function SupportPage() {
     setMessage(draft.message);
     setRelatedReportId(draft.relatedReportId);
     setRelatedSimulationId(draft.relatedSimulationId);
-    setStatus("Draft loaded for editing.");
+    setStatus(t.draftLoaded);
   }
 
   function deleteDraft(id: string) {
     deleteLocalSupportDraft(id);
     setDrafts(listLocalSupportDrafts());
     if (editingDraftId === id) resetForm();
-    setStatus("Local support draft removed.");
+    setStatus(t.draftRemoved);
   }
 
   function submitTicket(event: FormEvent<HTMLFormElement>) {
@@ -192,7 +286,7 @@ export default function SupportPage() {
         : saveSupportTicket(input);
 
     if (!result.ok) {
-      setStatus(`Local ticket was not saved: ${result.errorCode}`);
+      setStatus(`${t.ticketFailed}: ${result.errorCode}`);
       return;
     }
 
@@ -204,7 +298,7 @@ export default function SupportPage() {
     const ticket =
       "ticket" in result.data ? result.data.ticket : result.data;
     setStatus(
-      `${trackingCode(ticket)} saved locally. This does not execute refunds, deletion, payment, or production writes.`,
+      `${trackingCode(ticket)} ${t.ticketSavedSuffix}`,
     );
   }
 
@@ -213,13 +307,12 @@ export default function SupportPage() {
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
         <main className="space-y-6">
           <SurfaceCard emphasis="strong" className="p-6">
-            <StatusPill tone="planned">Support</StatusPill>
+            <StatusPill tone="planned">{t.badge}</StatusPill>
             <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.03em] text-[#11150f]">
-              Local support drafts and safe requests.
+              {t.title}
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-              This page records local support tickets and drafts. It does not
-              execute refunds, payments, production deletion, or admin actions.
+              {t.body}
             </p>
           </SurfaceCard>
 
@@ -252,15 +345,14 @@ export default function SupportPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-[#11150f]">
-                  Request details
+                  {t.requestTitle}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#62695d]">
-                  Keep only the context needed for support. Avoid unnecessary
-                  private source text.
+                  {t.requestBody}
                 </p>
               </div>
               <StatusPill tone={editingDraftId ? "active" : "planned"}>
-                {editingDraftId ? "editing draft" : "new draft"}
+                {editingDraftId ? t.editingDraft : t.newDraft}
               </StatusPill>
             </div>
 
@@ -271,15 +363,14 @@ export default function SupportPage() {
             ) : null}
             {ticketType === "billing_question" ? (
               <div className="mt-4 rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
-                Billing questions are placeholders in local MVP. This screen
-                cannot issue payments, refunds, or receipt changes.
+                {t.billingNotice}
               </div>
             ) : null}
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                  Ticket type
+                  {t.ticketType}
                 </span>
                 <select
                   value={ticketType}
@@ -297,29 +388,29 @@ export default function SupportPage() {
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                  Subject
+                  {t.subject}
                 </span>
                 <input
                   value={subject}
                   onChange={(event) => setSubject(event.target.value)}
                   className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
-                  placeholder="Short issue title"
+                  placeholder={t.subjectPlaceholder}
                 />
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                  Related report id
+                  {t.relatedResult}
                 </span>
                 <input
                   value={relatedReportId}
                   onChange={(event) => setRelatedReportId(event.target.value)}
                   className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
-                  placeholder="Optional"
+                  placeholder={t.optional}
                 />
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                  Related simulation id
+                  {t.relatedSandbox}
                 </span>
                 <input
                   value={relatedSimulationId}
@@ -327,26 +418,26 @@ export default function SupportPage() {
                     setRelatedSimulationId(event.target.value)
                   }
                   className="mt-2 w-full rounded-md border border-black/10 bg-white px-3 py-3 text-sm text-[#11150f] outline-none focus:border-[#568262]"
-                  placeholder="Optional"
+                  placeholder={t.optional}
                 />
               </label>
             </div>
 
             <label className="mt-4 block">
               <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
-                Message
+                {t.message}
               </span>
               <textarea
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 rows={5}
                 className="mt-2 w-full resize-none rounded-md border border-black/10 bg-[#f7f8f4] px-3 py-3 text-sm leading-6 text-[#11150f] outline-none focus:border-[#568262]"
-                placeholder="Describe the issue. Local support tickets store only a short preview in summaries."
+                placeholder={t.messagePlaceholder}
               />
             </label>
             <div className="mt-5 flex flex-wrap gap-3">
               <Button type="submit" className="px-5 py-3">
-                Save local ticket
+                {t.saveTicket}
               </Button>
               <Button
                 type="button"
@@ -354,7 +445,7 @@ export default function SupportPage() {
                 onClick={saveDraft}
                 className="px-5 py-3"
               >
-                Save draft
+                {t.saveDraft}
               </Button>
               <Button
                 type="button"
@@ -362,7 +453,7 @@ export default function SupportPage() {
                 onClick={resetForm}
                 className="px-5 py-3"
               >
-                Clear form
+                {t.clearForm}
               </Button>
             </div>
             {status ? (
@@ -374,12 +465,12 @@ export default function SupportPage() {
         <aside className="h-fit space-y-5">
           <SurfaceCard emphasis="dark" className="p-6">
             <h2 className="text-sm font-semibold text-[#b7e6c6]">
-              Local submitted tickets
+              {t.ticketsTitle}
             </h2>
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <Metric label="Tickets" value={tickets.length} />
+              <Metric label={t.tickets} value={tickets.length} />
               <Metric
-                label="Delete"
+                label={t.delete}
                 value={
                   tickets.filter(
                     (ticket) =>
@@ -391,8 +482,7 @@ export default function SupportPage() {
             <div className="mt-5 space-y-3">
               {tickets.length === 0 ? (
                 <p className="text-sm leading-6 text-white/56">
-                  Saved local tickets will appear here with a short preview and
-                  tracking code.
+                  {t.ticketsEmpty}
                 </p>
               ) : null}
               {tickets.slice(0, 6).map((ticket) => (
@@ -421,12 +511,12 @@ export default function SupportPage() {
 
           <SurfaceCard className="p-5">
             <h2 className="text-sm font-semibold text-[#11150f]">
-              Drafts
+              {t.draftsTitle}
             </h2>
             <div className="mt-4 space-y-3">
               {drafts.length === 0 ? (
                 <p className="rounded-md border border-dashed border-black/16 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
-                  Save a draft if you need to come back before submitting.
+                  {t.draftsEmpty}
                 </p>
               ) : null}
               {drafts.map((draft) => (
@@ -438,7 +528,7 @@ export default function SupportPage() {
                     {draft.ticketType}
                   </div>
                   <p className="mt-2 text-sm font-semibold text-[#11150f]">
-                    {draft.subject || "Untitled draft"}
+                    {draft.subject || t.untitledDraft}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -447,7 +537,7 @@ export default function SupportPage() {
                       onClick={() => loadDraft(draft)}
                       className="px-3 py-2"
                     >
-                      Edit
+                      {t.edit}
                     </Button>
                     <Button
                       type="button"
@@ -455,7 +545,7 @@ export default function SupportPage() {
                       onClick={() => deleteDraft(draft.id)}
                       className="px-3 py-2"
                     >
-                      Remove
+                      {t.remove}
                     </Button>
                   </div>
                 </article>
@@ -476,3 +566,4 @@ function Metric({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
+

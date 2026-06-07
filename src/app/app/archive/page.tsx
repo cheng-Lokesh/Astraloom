@@ -3,18 +3,19 @@
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { useLanguage } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
 import { ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { getRepositories } from "@/lib/repositories/repository-provider";
 
 const flowSteps = [
-  "Seed",
-  "People",
-  "Agents",
-  "Graph",
-  "Events",
-  "Claims",
-  "Feedback",
+  { en: "Case", zh: "案例" },
+  { en: "People", zh: "人物" },
+  { en: "Reality nodes", zh: "现实节点" },
+  { en: "Structure", zh: "关系结构" },
+  { en: "Path events", zh: "路径事件" },
+  { en: "Findings", zh: "发现" },
+  { en: "Feedback", zh: "反馈" },
 ];
 
 function safetyTone(level: string) {
@@ -23,7 +24,14 @@ function safetyTone(level: string) {
   return "ready";
 }
 
-function safetyLabel(level: string) {
+function safetyLabel(level: string, locale: "en" | "zh") {
+  if (locale === "zh") {
+    if (level === "blocked") return "安全暂停";
+    if (level === "downgraded") return "安全降级";
+    if (level === "caution") return "安全谨慎";
+    if (level === "safe" || level === "normal") return "安全通过";
+    return "尚未安全复核";
+  }
   if (level === "blocked") return "Safety paused";
   if (level === "downgraded") return "Safety adjusted";
   if (level === "caution") return "Safety caution";
@@ -32,6 +40,7 @@ function safetyLabel(level: string) {
 }
 
 export default function ArchivePage() {
+  const { locale } = useLanguage();
   const [repos] = useState(() => getRepositories());
   const [seedContext] = useState(() => {
     const result = repos.seedContexts.load();
@@ -107,9 +116,9 @@ export default function ArchivePage() {
             Local sandbox history and drafts.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">
-            Archive reads the browser-local Astraloom ledger: scenario, agents,
-            read-only graph, simulation events, evidence-backed claims, and
-            feedback. It does not connect to production storage.
+            {locale === "zh"
+              ? "归档读取当前浏览器里的 Astraloom 草稿：案例、现实节点、关系结构、路径事件、有依据的发现和反馈。它不会连接生产存储。"
+              : "Archive reads the browser-local Astraloom record: case, reality nodes, relation structure, path events, evidence-backed findings, and feedback. It does not connect to production storage."}
           </p>
         </div>
         <ButtonLink href="/app/dashboard" variant="secondary" className="px-4 py-2">
@@ -138,7 +147,7 @@ export default function ArchivePage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h2 className="text-base font-semibold text-[#11150f]">
-                    Current local sandbox
+                    {locale === "zh" ? "当前本地沙盘" : "Current local sandbox"}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-[#62695d]">
                     {seedContext?.questionText ||
@@ -147,7 +156,7 @@ export default function ArchivePage() {
                   </p>
                 </div>
                 <StatusPill tone={safetyTone(safetyLevel)}>
-                  {safetyLabel(safetyLevel)}
+                  {safetyLabel(safetyLevel, locale)}
                 </StatusPill>
               </div>
 
@@ -164,69 +173,88 @@ export default function ArchivePage() {
               <div className="mt-4 grid gap-2 md:grid-cols-7">
                 {flowSteps.map((step, index) => (
                   <div
-                    key={step}
+                    key={step.en}
                     className={`rounded-md border px-2 py-2 text-center text-xs font-semibold ${
                       progress[index]
                         ? "border-[#568262]/25 bg-[#eef5ee] text-[#2f5d3d]"
                         : "border-black/8 bg-[#f7f8f4] text-[#7d8578]"
                     }`}
                   >
-                    {step}
+                    {step[locale]}
                   </div>
                 ))}
               </div>
 
               <div className="mt-5 grid gap-3 md:grid-cols-3">
-                <ArchiveMetric label="Agents" value={agentEcology?.agents.length ?? 0} />
-                <ArchiveMetric label="Edges" value={relationGraph?.edges.length ?? 0} />
-                <ArchiveMetric label="Events" value={simulationRun?.events.length ?? 0} />
-                <ArchiveMetric label="Claims" value={claimLedger?.claims.length ?? 0} />
-                <ArchiveMetric label="Feedback" value={feedbackLedger?.feedback.length ?? 0} />
-                <ArchiveMetric label="Horizon" value={seedContext?.timeWindow ?? "draft"} />
+                <ArchiveMetric label={locale === "zh" ? "现实节点" : "Reality nodes"} value={agentEcology?.agents.length ?? 0} />
+                <ArchiveMetric label={locale === "zh" ? "关系线索" : "Relation clues"} value={relationGraph?.edges.length ?? 0} />
+                <ArchiveMetric label={locale === "zh" ? "路径事件" : "Path events"} value={simulationRun?.events.length ?? 0} />
+                <ArchiveMetric label={locale === "zh" ? "发现" : "Findings"} value={claimLedger?.claims.length ?? 0} />
+                <ArchiveMetric label={locale === "zh" ? "反馈" : "Feedback"} value={feedbackLedger?.feedback.length ?? 0} />
+                <ArchiveMetric label={locale === "zh" ? "时间窗口" : "Horizon"} value={seedContext?.timeWindow ?? "draft"} />
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3">
                 <ButtonLink href="/app/simulation/result" className="px-5 py-3">
-                  Continue result
+                  {locale === "zh" ? "继续查看结果" : "Continue result"}
                 </ButtonLink>
                 <ButtonLink
                   href="/app/simulation/running"
                   variant="secondary"
                   className="px-5 py-3"
                 >
-                  Open Event Log
+                  {locale === "zh" ? "查看路径事件" : "Open path events"}
                 </ButtonLink>
               </div>
             </SurfaceCard>
 
             <SurfaceCard className="p-6">
               <h2 className="text-base font-semibold text-[#11150f]">
-                Draft cards
+                {locale === "zh" ? "草稿卡片" : "Draft cards"}
               </h2>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <DraftCard
-                  title="Scenario setup"
+                  title={locale === "zh" ? "案例设置" : "Scenario setup"}
                   ready={Boolean(seedContext)}
                   href="/app/new/intake"
-                  detail={seedContext?.updatedAt ?? "No saved scenario"}
+                  locale={locale}
+                  detail={
+                    seedContext?.updatedAt ??
+                    (locale === "zh" ? "暂无保存案例" : "No saved case")
+                  }
                 />
                 <DraftCard
-                  title="Agent ecology"
+                  title={locale === "zh" ? "现实节点" : "Reality nodes"}
                   ready={Boolean(agentEcology?.agents.length)}
                   href="/app/new/agents"
-                  detail={`${agentEcology?.agents.length ?? 0} agents`}
+                  locale={locale}
+                  detail={
+                    locale === "zh"
+                      ? `${agentEcology?.agents.length ?? 0} 个节点`
+                      : `${agentEcology?.agents.length ?? 0} nodes`
+                  }
                 />
                 <DraftCard
-                  title="Relation graph"
+                  title={locale === "zh" ? "关系结构" : "Relation structure"}
                   ready={Boolean(relationGraph?.edges.length)}
                   href="/app/new/graph"
-                  detail={`${relationGraph?.edges.length ?? 0} edges`}
+                  locale={locale}
+                  detail={
+                    locale === "zh"
+                      ? `${relationGraph?.edges.length ?? 0} 条线索`
+                      : `${relationGraph?.edges.length ?? 0} clues`
+                  }
                 />
                 <DraftCard
-                  title="Claim ledger"
+                  title={locale === "zh" ? "发现记录" : "Finding record"}
                   ready={Boolean(claimLedger?.claims.length)}
                   href="/app/simulation/result"
-                  detail={`${claimLedger?.claims.length ?? 0} claims`}
+                  locale={locale}
+                  detail={
+                    locale === "zh"
+                      ? `${claimLedger?.claims.length ?? 0} 条发现`
+                      : `${claimLedger?.claims.length ?? 0} findings`
+                  }
                 />
               </div>
             </SurfaceCard>
@@ -240,7 +268,11 @@ export default function ArchivePage() {
               <div className="mt-4 space-y-3 text-sm leading-6 text-white/68">
                 <p>Only browser-local drafts are shown here.</p>
                 <p>No production database sync is started from Archive.</p>
-                <p>Reports stay downstream of evidence-backed Claims.</p>
+                <p>
+                  {locale === "zh"
+                    ? "报告始终位于有依据的发现之后。"
+                    : "Reports stay downstream of evidence-backed findings."}
+                </p>
               </div>
             </SurfaceCard>
             <SurfaceCard className="p-5">
@@ -297,23 +329,31 @@ function DraftCard({
   ready,
   href,
   detail,
+  locale,
 }: {
   title: string;
   ready: boolean;
   href: string;
   detail: string;
+  locale: "en" | "zh";
 }) {
   return (
     <article className="rounded-lg border border-black/8 bg-[#f7f8f4] p-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-[#11150f]">{title}</h3>
         <StatusPill tone={ready ? "ready" : "planned"}>
-          {ready ? "ready" : "draft"}
+          {ready
+            ? locale === "zh"
+              ? "就绪"
+              : "ready"
+            : locale === "zh"
+              ? "草稿"
+              : "draft"}
         </StatusPill>
       </div>
       <p className="mt-2 break-all text-xs leading-5 text-[#7d8578]">{detail}</p>
       <ButtonLink href={href} variant="secondary" className="mt-4 px-3 py-2">
-        Open
+        {locale === "zh" ? "打开" : "Open"}
       </ButtonLink>
     </article>
   );

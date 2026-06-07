@@ -23,15 +23,15 @@ const clarifyCopy = {
     noDraftTitle: "请先开始一个沙盘",
     backToStart: "返回开始页",
     title: "再补充一点，会让沙盘更清楚",
-    intro: "下面的问题是可选的。你可以回答一两个最有帮助的问题，也可以直接生成沙盘。",
+    intro: "下面的问题是可选的。你可以回答一两个最有帮助的问题，也可以直接开始分析。",
     readyTitle: "信息已经够用了",
     readyBody: "你可以继续生成动态沙盘。",
     safetyTitle: "安全提示",
-    messageNeedAnswer: "请先回答一个问题，或者直接生成沙盘。",
+    messageNeedAnswer: "请先回答一个问题，或者直接开始分析。",
     saveFailed: "保存失败，请再试一次。",
-    prepareFailed: "沙盘准备失败，请再试一次。",
+    prepareFailed: "分析准备失败，请再试一次。",
     continue: "补充后继续",
-    skip: "直接生成沙盘",
+    skip: "直接开始分析",
     optionalHint: "可选补充",
     lowerConfidenceHint: "如果现在不补充，沙盘会用已有信息继续推演。",
     questions: {
@@ -57,7 +57,7 @@ const clarifyCopy = {
       },
       destiny_birth_time_missing: {
         prompt: "出生时间不确定的话，你能补充一个大概范围吗？",
-        helper: "不知道也没关系，可以直接生成沙盘。",
+        helper: "不知道也没关系，可以直接开始分析。",
         placeholder: "例如：上午、下午、晚上，或者完全不确定",
       },
       destiny_skipped: {
@@ -73,23 +73,23 @@ const clarifyCopy = {
     },
   },
   en: {
-    noDraftTitle: "Start a sandbox first",
+    noDraftTitle: "Describe what you want to understand first",
     backToStart: "Back to start",
-    title: "One small clarification can make the sandbox clearer",
+    title: "One small clarification can make the analysis clearer",
     intro:
-      "These questions are optional. Answer one or two useful details, or generate the sandbox now.",
+      "These questions are optional. Answer one or two useful details, or start the analysis now.",
     readyTitle: "This is enough to run",
-    readyBody: "You can continue and generate the dynamic sandbox.",
+    readyBody: "You can continue and start the analysis.",
     safetyTitle: "Safety note",
     messageNeedAnswer:
-      "Answer one clarification, or generate the sandbox directly.",
+      "Answer one clarification, or start the analysis directly.",
     saveFailed: "Saving failed. Please try again.",
-    prepareFailed: "Sandbox preparation failed. Please try again.",
+    prepareFailed: "Analysis preparation failed. Please try again.",
     continue: "Continue after answering",
-    skip: "Generate sandbox now",
+    skip: "Start analysis now",
     optionalHint: "Optional detail",
     lowerConfidenceHint:
-      "If you skip this, the sandbox will continue with the information already provided.",
+      "If you skip this, the analysis will continue with the information already provided.",
     questions: {
       topic_unclear: {
         prompt: "What is the core question you want to understand?",
@@ -114,7 +114,7 @@ const clarifyCopy = {
       },
       destiny_birth_time_missing: {
         prompt: "If the birth time is uncertain, can you add a rough range?",
-        helper: "It is fine if you do not know. You can generate the sandbox now.",
+        helper: "It is fine if you do not know. You can start the analysis now.",
         placeholder: "For example: morning, afternoon, evening, or completely unsure",
       },
       destiny_skipped: {

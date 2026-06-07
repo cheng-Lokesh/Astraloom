@@ -9,14 +9,23 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { defaultLocale, localeStorageKey, type Locale } from "@/lib/i18n";
+import {
+  baseLocale,
+  defaultLocale,
+  htmlLang,
+  isAppLocale,
+  localeStorageKey,
+  type AppLocale,
+  type Locale,
+} from "@/lib/i18n";
 
 export type LatinFontPreference = "modern" | "system" | "serif";
 export type ChineseFontPreference = "system" | "hei" | "song";
 
 type LanguageContextValue = {
   locale: Locale;
-  setLocale: (locale: Locale) => void;
+  displayLocale: AppLocale;
+  setLocale: (locale: AppLocale) => void;
   latinFont: LatinFontPreference;
   setLatinFont: (font: LatinFontPreference) => void;
   chineseFont: ChineseFontPreference;
@@ -29,13 +38,13 @@ const fontChangeEvent = "mirofish.font-change";
 const latinFontStorageKey = "mirofish.font.latin";
 const chineseFontStorageKey = "mirofish.font.zh";
 
-function readStoredLocale(): Locale {
+function readStoredDisplayLocale(): AppLocale {
   if (typeof window === "undefined") {
     return defaultLocale;
   }
 
   const stored = window.localStorage.getItem(localeStorageKey);
-  if (stored === "en" || stored === "zh") {
+  if (isAppLocale(stored)) {
     return stored;
   }
 
@@ -77,11 +86,12 @@ function readStoredChineseFont(): ChineseFontPreference {
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const locale = useSyncExternalStore(
+  const displayLocale = useSyncExternalStore(
     subscribeToLocaleChange,
-    readStoredLocale,
+    readStoredDisplayLocale,
     () => defaultLocale,
   );
+  const locale = baseLocale(displayLocale);
   const latinFont = useSyncExternalStore(
     subscribeToLocaleChange,
     readStoredLatinFont,
@@ -92,7 +102,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     readStoredChineseFont,
     (): ChineseFontPreference => "system",
   );
-  const setLocale = useCallback((nextLocale: Locale) => {
+  const setLocale = useCallback((nextLocale: AppLocale) => {
     window.localStorage.setItem(localeStorageKey, nextLocale);
     window.dispatchEvent(new Event(localeChangeEvent));
   }, []);
@@ -106,8 +116,9 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
-  }, [locale]);
+    document.documentElement.lang = htmlLang(displayLocale);
+    document.documentElement.dataset.locale = displayLocale;
+  }, [displayLocale]);
 
   useEffect(() => {
     document.documentElement.dataset.latinFont = latinFont;
@@ -117,13 +128,22 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       locale,
+      displayLocale,
       setLocale,
       latinFont,
       setLatinFont,
       chineseFont,
       setChineseFont,
     }),
-    [chineseFont, latinFont, locale, setChineseFont, setLatinFont, setLocale],
+    [
+      chineseFont,
+      displayLocale,
+      latinFont,
+      locale,
+      setChineseFont,
+      setLatinFont,
+      setLocale,
+    ],
   );
 
   return (

@@ -10,6 +10,7 @@ import {
 } from "@/components/language-provider";
 import { StatusPill } from "@/components/status-pill";
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
+import { languageOptions } from "@/lib/i18n";
 import { getRepositories } from "@/lib/repositories/repository-provider";
 import { clearLocalSupportDrafts } from "@/lib/support/support-drafts";
 
@@ -22,6 +23,20 @@ function storageEstimate() {
     total += key.length + (window.localStorage.getItem(key)?.length ?? 0);
   }
   return `${Math.max(1, Math.round(total / 1024))} KB`;
+}
+
+function localStatusLabel(key: string, locale: "en" | "zh") {
+  const labels: Record<string, Record<"en" | "zh", string>> = {
+    seed: { en: "case", zh: "案例" },
+    people: { en: "people", zh: "人物" },
+    agents: { en: "reality nodes", zh: "现实节点" },
+    graph: { en: "structure", zh: "关系结构" },
+    run: { en: "sandbox run", zh: "推演沙盘" },
+    report: { en: "report", zh: "报告" },
+    feedback: { en: "feedback", zh: "反馈" },
+    storage: { en: "storage", zh: "存储空间" },
+  };
+  return labels[key]?.[locale] ?? key;
 }
 
 const copy = {
@@ -39,7 +54,7 @@ const copy = {
       "Astraloom Local MVP stores drafts in this browser. Production database sync is not started from Settings.",
     privacyTitle: "Privacy and local data",
     privacyItems: [
-      "Local drafts are stored in browser localStorage.",
+      "Local drafts are stored in this browser.",
       "Support drafts are local unless submitted as a local ticket.",
       "Deletion requests are recorded as requests, not executed as production deletion.",
     ],
@@ -55,8 +70,8 @@ const copy = {
         "The sandbox uses evidence-linked scenario dynamics, not certain future claims.",
       ],
       [
-        "Read-only graph",
-        "Users can inspect relation edges but cannot edit trust, hostility, dependency, or other weights.",
+        "Read-only relation structure",
+        "Users can inspect relation clues but cannot edit trust, hostility, dependency, or other weights.",
       ],
       [
         "Safety gate first",
@@ -67,7 +82,7 @@ const copy = {
     safetyRows: [
       ["Safe", "The full local flow can continue."],
       ["Caution", "The flow continues with careful confidence language."],
-      ["Downgraded", "Strong claims and depth expansion stay unavailable."],
+      ["Downgraded", "Strong findings and depth expansion stay unavailable."],
       ["Blocked", "The flow pauses until setup is revised or reviewed."],
     ],
     accountTitle: "Account placeholders",
@@ -77,7 +92,7 @@ const copy = {
     localOnly: "Browser-local only",
     clearTitle: "Clear local Astraloom drafts?",
     clearBody:
-      "This clears local scenario, people, agents, graph, simulation, report, feedback, support drafts, and placeholder unlock state in this browser. It does not execute production deletion.",
+      "This clears local case, people, reality-node models, structure, sandbox runs, reports, feedback, support drafts, and placeholder unlock state in this browser. It does not execute production deletion.",
     typeClear: "Type CLEAR LOCAL DATA",
     clearLocal: "Clear local drafts",
     keepData: "Keep data",
@@ -100,7 +115,7 @@ const copy = {
       "Astraloom Local MVP 会把草稿保存在这个浏览器里。设置页不会启动生产数据库同步。",
     privacyTitle: "隐私与本地数据",
     privacyItems: [
-      "本地草稿保存在浏览器 localStorage 中。",
+      "本地草稿保存在当前浏览器中。",
       "支持请求草稿在提交为本地工单前只保存在本地。",
       "删除请求会被记录为请求，不会在这里执行生产删除。",
     ],
@@ -109,14 +124,14 @@ const copy = {
     boundaryCards: [
       ["不是专业建议", "Astraloom 不提供医疗、法律、投资或心理治疗建议。"],
       ["不是预测引擎", "沙盘使用有证据链接的情景动态，而不是确定未来的断言。"],
-      ["只读关系图", "用户可以检查关系边，但不能编辑信任、敌意、依赖等权重。"],
+      ["只读关系结构", "用户可以检查关系线索，但不能编辑信任、敌意、依赖等权重。"],
       ["安全门先行", "安全降级或暂停状态不能被完整深度视图绕过。"],
     ],
     safetyTitle: "安全等级",
     safetyRows: [
       ["安全", "完整本地流程可以继续。"],
       ["谨慎", "流程继续，但会使用更谨慎的置信度语言。"],
-      ["降级", "强 Claim 和深度展开保持不可用。"],
+      ["降级", "强发现和深度展开保持不可用。"],
       ["暂停", "流程会暂停，直到设置被修改或复核。"],
     ],
     accountTitle: "账户占位功能",
@@ -126,7 +141,7 @@ const copy = {
     localOnly: "仅浏览器本地",
     clearTitle: "清除本地 Astraloom 草稿？",
     clearBody:
-      "这会清除当前浏览器中的本地处境、人物、Agent、关系图、推演、报告、反馈、支持草稿和占位解锁状态。它不会执行生产删除。",
+      "这会清除当前浏览器中的本地案例、人物、现实节点模型、关系结构、推演、报告、反馈、支持草稿和占位解锁状态。它不会执行生产删除。",
     typeClear: "输入 CLEAR LOCAL DATA",
     clearLocal: "清除本地草稿",
     keepData: "保留数据",
@@ -163,6 +178,7 @@ export default function SettingsPage() {
   const [repos] = useState(() => getRepositories());
   const {
     chineseFont,
+    displayLocale,
     latinFont,
     locale,
     setChineseFont,
@@ -266,21 +282,18 @@ export default function SettingsPage() {
               {t.languageBody}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                ["en", "English"],
-                ["zh", "中文"],
-              ].map(([optionLocale, label]) => (
+              {languageOptions.map((option) => (
                 <button
-                  key={optionLocale}
+                  key={option.locale}
                   type="button"
-                  onClick={() => setLocale(optionLocale as "en" | "zh")}
+                  onClick={() => setLocale(option.locale)}
                   className={`rounded-md border px-4 py-2 text-sm font-semibold ${
-                    locale === optionLocale
+                    displayLocale === option.locale
                       ? "border-[#11150f] bg-[#11150f] text-white"
                       : "border-black/10 bg-white text-[#52594d]"
                   }`}
                 >
-                  {label}
+                  {option.nativeLabel}
                 </button>
               ))}
             </div>
@@ -323,14 +336,14 @@ export default function SettingsPage() {
               {Object.entries(localStatus).map(([key, ready]) => (
                 <SettingState
                   key={key}
-                  label={key}
+                  label={localStatusLabel(key, locale)}
                   ready={ready}
                   emptyLabel={t.empty}
                   storedLabel={t.stored}
                 />
               ))}
               <SettingState
-                label="storage"
+                label={localStatusLabel("storage", locale)}
                 ready={seedContext !== null}
                 value={storageSize}
                 emptyLabel={t.empty}

@@ -8,7 +8,6 @@ import { RelationGraph } from "@/components/graph/relation-graph";
 import { GroundedSimulationDebugPanel } from "@/components/grounded-social/grounded-simulation-debug-panel";
 import { ReportSummary } from "@/components/report/report-summary";
 import { useLanguage } from "@/components/language-provider";
-import { RealityIntakeModeBanner } from "@/components/reality-intake-mode-banner";
 import { RuntimeCapabilityBanner } from "@/components/runtime-capability-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import {
@@ -20,7 +19,17 @@ import {
   TimelineFeed,
 } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
-import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
+import {
+  Button,
+  ButtonLink,
+  CapabilityCard,
+  FindingCard as UiFindingCard,
+  PathCard,
+  RealityCard,
+  StatusBadge,
+  SurfaceCard,
+  WarningPanel,
+} from "@/components/ui-foundation";
 import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import {
   buildCalibrationProfile,
@@ -32,6 +41,7 @@ import {
 } from "@/lib/feedback/build";
 import { getRepositories } from "@/lib/repositories/repository-provider";
 import { buildReportEngineV1 } from "@/lib/reports/report-engine";
+import { getRuntimeCapability } from "@/lib/runtime-capability/get-runtime-capability";
 import {
   filterClaimsBySafety,
   verifySafety,
@@ -55,26 +65,84 @@ import type {
 } from "@/types/feedback";
 import type { RelationEdgeDraft } from "@/types/relation-edge";
 import type {
+  RuntimeCapabilityMode,
+  RuntimeCapabilityState,
+} from "@/types/runtime-capability";
+import type {
   ReportBranchComparison,
   ReportEvidenceEvent,
 } from "@/types/report";
 import type { SeedContextDraft } from "@/types/seed-context";
-import type { SimulationEventDraft } from "@/types/simulation-run";
+import type {
+  SimulationBranchId,
+  SimulationEventDraft,
+} from "@/types/simulation-run";
 
 const emptyClaims: ClaimDraft[] = [];
 
 type Locale = "en" | "zh";
 
+const runtimeModeLabels: Record<RuntimeCapabilityMode, Record<Locale, string>> = {
+  local_assumption: { en: "Local assumption", zh: "本地假设" },
+  manual_reality: { en: "Manual reality", zh: "手动材料" },
+  ai_reality_intake: { en: "AI intake", zh: "AI 现实抽取" },
+  external_reality: { en: "External reality", zh: "外部现实来源" },
+  full_grounded_reality: { en: "Full grounded reality", zh: "完整现实来源支撑" },
+};
+
+const runtimeModeBadgeVariant: Record<
+  RuntimeCapabilityMode,
+  React.ComponentProps<typeof StatusBadge>["variant"]
+> = {
+  local_assumption: "localAssumption",
+  manual_reality: "warning",
+  ai_reality_intake: "aiIntake",
+  external_reality: "externalReality",
+  full_grounded_reality: "fullGrounded",
+};
+
 const resultCopy = {
   zh: {
-    noDataTitle: "\u6c99\u76d8\u8fd8\u6ca1\u6709\u751f\u6210\u7ed3\u679c",
-    noDataBody: "\u8bf7\u5148\u56de\u5230\u5f00\u59cb\u9875\u751f\u6210\u4e00\u6b21\u6c99\u76d8\uff0c\u518d\u67e5\u770b\u8fd9\u6b21\u6c99\u76d8\u7684\u5173\u952e\u53d1\u73b0\u3002",
+    noDataTitle: "\u8fd8\u6ca1\u6709\u5206\u6790\u7ed3\u679c",
+    noDataBody: "\u8bf7\u5148\u56de\u5230\u5f00\u59cb\u9875\u5b8c\u6210\u4e00\u6b21\u5206\u6790\uff0c\u518d\u67e5\u770b\u8fd9\u6b21\u5206\u6790\u7684\u5173\u952e\u53d1\u73b0\u3002",
     startNew: "\u56de\u5230\u5f00\u59cb\u9875",
-    running: "\u67e5\u770b\u6c99\u76d8\u5c55\u5f00\u8fc7\u7a0b",
+    running: "\u67e5\u770b\u5206\u6790\u8fc7\u7a0b",
     safetyTitle: "\u7ed3\u679c\u9875\u6682\u65f6\u65e0\u6cd5\u5c55\u793a",
-    backToRunning: "\u56de\u5230\u6c99\u76d8\u5c55\u5f00\u8fc7\u7a0b",
-    topTitle: "\u8fd9\u6b21\u6c99\u76d8\u6700\u503c\u5f97\u6ce8\u610f\u7684 3 \u4ef6\u4e8b",
-    noFindings: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u5f62\u6210\u53ef\u5c55\u793a\u7684\u5173\u952e\u53d1\u73b0\u3002\u8bf7\u5148\u56de\u5230\u5f00\u59cb\u9875\u91cd\u65b0\u751f\u6210\u4e00\u6b21\u6c99\u76d8\u3002",
+    backToRunning: "\u56de\u5230\u5206\u6790\u8fc7\u7a0b",
+    topTitle: "你可以重点看这几件事",
+    capabilityTitle: "本次结果能力状态",
+    modeLabel: "当前模式",
+    sourceBacked: "有现实来源支撑",
+    notSourceBacked: "缺少现实来源支撑",
+    deepSeek: "DeepSeek",
+    externalSources: "外部现实来源",
+    manualMaterials: "手动材料",
+    participated: "已参与",
+    notParticipated: "未参与",
+    notFullGrounded: "当前结果不能视为完整现实推演。",
+    uncertaintyLabel: "不确定性提示",
+    findingSources: {
+      reality: "现实依据",
+      ai: "AI 现实抽取",
+      external: "外部现实来源",
+      destiny: "命理调权",
+      path: "路径演化",
+    },
+    pathReportTitle: "几种可能路径",
+    pathReportBody: "以下四条路径是在当前信息下的可能展开，不代表确定结果。",
+    pathFields: {
+      suitable: "适合什么情况",
+      benefit: "主要收益",
+      cost: "主要代价",
+      signal: "现实信号",
+      risk: "风险",
+      confidence: "置信度",
+    },
+    watchTitle: "接下来应该观察什么？",
+    watchBody: "把这些点作为观察、验证和补充材料的方向，不需要把它们当作确定建议。",
+    evidenceLayerTitle: "依据和过程",
+    debugTitle: "调试细节（默认折叠）",
+    noFindings: "\u8fd9\u6b21\u5206\u6790\u8fd8\u6ca1\u6709\u5f62\u6210\u53ef\u5c55\u793a\u7684\u5173\u952e\u53d1\u73b0\u3002\u8bf7\u5148\u56de\u5230\u5f00\u59cb\u9875\u91cd\u65b0\u5206\u6790\u4e00\u6b21\u3002",
     findingLabel: "\u53d1\u73b0",
     whyImportant: "\u4e3a\u4ec0\u4e48\u91cd\u8981",
     confidence: "\u7f6e\u4fe1\u5ea6",
@@ -89,40 +157,40 @@ const resultCopy = {
       basis: "\u67e5\u770b\u4f9d\u636e",
       paths: "\u8def\u5f84\u5bf9\u6bd4",
       map: "\u5c40\u52bf\u5730\u56fe",
-      events: "\u6c99\u76d8\u4e8b\u4ef6",
-      improve: "\u6821\u51c6\u4e0b\u6b21\u6c99\u76d8",
+      events: "\u5206\u6790\u8fc7\u7a0b",
+      improve: "反馈",
       technical: "\u6280\u672f\u7ec6\u8282",
       advanced: "\u9ad8\u7ea7\u6821\u51c6",
     },
     saveResult: "\u4fdd\u5b58\u7ed3\u679c",
     rebuild: "\u91cd\u65b0\u751f\u6210\u53d1\u73b0",
     saved: "\u7ed3\u679c\u5df2\u4fdd\u5b58\u3002",
-    rebuilt: "\u5df2\u6839\u636e\u5f53\u524d\u6c99\u76d8\u4e8b\u4ef6\u91cd\u65b0\u6574\u7406\u53d1\u73b0\u3002",
+    rebuilt: "\u5df2\u6839\u636e\u5f53\u524d\u5206\u6790\u8fc7\u7a0b\u91cd\u65b0\u6574\u7406\u53d1\u73b0\u3002",
     saveFailed: "\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u518d\u8bd5\u4e00\u6b21\u3002",
-    feedbackMissing: "\u8bf7\u5148\u9009\u62e9\u4e00\u6761\u53d1\u73b0\u6216\u6574\u4f53\u6c99\u76d8\uff0c\u518d\u4fdd\u5b58\u53cd\u9988\u3002",
+    feedbackMissing: "\u8bf7\u5148\u9009\u62e9\u4e00\u6761\u53d1\u73b0\u6216\u6574\u4f53\u5206\u6790\uff0c\u518d\u4fdd\u5b58\u53cd\u9988\u3002",
     feedbackSaved:
-      "\u53cd\u9988\u5df2\u4fdd\u5b58\u3002\u5b83\u53ea\u4f1a\u5e2e\u52a9\u4e0b\u6b21\u6c99\u76d8\u66f4\u8d34\u8fd1\u771f\u5b9e\u60c5\u51b5\uff0c\u4e0d\u4f1a\u6539\u5199\u8fd9\u6b21\u7ed3\u679c\u3002",
+      "\u53cd\u9988\u5df2\u4fdd\u5b58\u3002\u5b83\u53ea\u4f1a\u5e2e\u52a9\u4e0b\u6b21\u5206\u6790\u66f4\u8d34\u8fd1\u771f\u5b9e\u60c5\u51b5\uff0c\u4e0d\u4f1a\u6539\u5199\u8fd9\u6b21\u7ed3\u679c\u3002",
     feedbackIntro:
-      "\u8fd9\u6b21\u5224\u65ad\u51c6\u4e0d\u51c6\uff1f\u4f60\u7684\u53cd\u9988\u4e0d\u4f1a\u6539\u5199\u8fd9\u6b21\u7ed3\u679c\uff0c\u53ea\u4f1a\u5e2e\u52a9\u4e0b\u6b21\u6c99\u76d8\u66f4\u8d34\u8fd1\u771f\u5b9e\u60c5\u51b5\u3002",
+      "这次推演贴近现实吗？你的反馈不会改写本次结果，只会帮助下次更准。",
     notePlaceholder: "\u53ef\u4ee5\u7b80\u5355\u5199\u54ea\u91cc\u8d34\u8fd1\u3001\u54ea\u91cc\u4e0d\u8d34\u8fd1\u3002",
     saveFeedback: "\u4fdd\u5b58\u53cd\u9988",
     targetFinding: "\u5f53\u524d\u53d1\u73b0",
-    targetOverall: "\u6574\u4f53\u6c99\u76d8",
+    targetOverall: "\u6574\u4f53\u5206\u6790",
     basisEmpty: "\u9009\u62e9\u4e00\u6761\u53d1\u73b0\u540e\uff0c\u8fd9\u91cc\u4f1a\u5c55\u793a\u5b83\u7684\u4f9d\u636e\u3002",
     destinyBasis: "\u547d\u7406\u6c14\u5019",
     realBasis: "\u73b0\u5b9e\u7ebf\u7d22",
     dynamicBasis: "\u52a8\u6001\u6c99\u76d8",
     relationSignals: "\u5173\u7cfb\u4fe1\u53f7",
     generatedClues: "\u751f\u6210\u7ebf\u7d22",
-    pathComparisonEmpty: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u5f62\u6210\u8def\u5f84\u5bf9\u6bd4\u3002",
-    situationMapEmpty: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u5f62\u6210\u5c40\u52bf\u5730\u56fe\u3002",
-    sandboxEventsEmpty: "\u8fd9\u6b21\u6c99\u76d8\u8fd8\u6ca1\u6709\u53ef\u5c55\u793a\u7684\u6c99\u76d8\u4e8b\u4ef6\u3002",
+    pathComparisonEmpty: "\u8fd9\u6b21\u5206\u6790\u8fd8\u6ca1\u6709\u5f62\u6210\u8def\u5f84\u5bf9\u6bd4\u3002",
+    situationMapEmpty: "\u8fd9\u6b21\u5206\u6790\u8fd8\u6ca1\u6709\u5f62\u6210\u5c40\u52bf\u5730\u56fe\u3002",
+    sandboxEventsEmpty: "\u8fd9\u6b21\u5206\u6790\u8fd8\u6ca1\u6709\u53ef\u5c55\u793a\u7684\u8fc7\u7a0b\u8bb0\u5f55\u3002",
     technicalNote:
       "\u4ee5\u4e0b\u5185\u5bb9\u4fdd\u7559\u7ed9\u7ed3\u6784\u67e5\u770b\u548c\u6392\u67e5\u4f7f\u7528\uff0c\u9ed8\u8ba4\u6298\u53e0\uff0c\u4e0d\u4f5c\u4e3a\u666e\u901a\u7528\u6237\u7684\u4e3b\u9605\u8bfb\u8def\u5f84\u3002",
     counts: {
       roles: "\u89d2\u8272\u6a21\u578b",
       relations: "\u5173\u7cfb\u4fe1\u53f7",
-      events: "\u6c99\u76d8\u4e8b\u4ef6",
+      events: "\u5206\u6790\u8fc7\u7a0b",
       findings: "\u53d1\u73b0",
       feedback: "\u53cd\u9988",
     },
@@ -134,16 +202,50 @@ const resultCopy = {
     },
   },
   en: {
-    noDataTitle: "This sandbox does not have a result yet",
+    noDataTitle: "This analysis does not have a result yet",
     noDataBody:
-      "Start a sandbox first, then come back to review the key findings from this run.",
+      "Start an analysis first, then come back to review the key findings from this run.",
     startNew: "Back to start",
-    running: "View sandbox unfolding",
+    running: "View analysis process",
     safetyTitle: "Result view is paused for safety",
-    backToRunning: "Back to sandbox unfolding",
-    topTitle: "Top 3 findings from this sandbox",
+    backToRunning: "Back to analysis process",
+    topTitle: "What to watch next",
+    capabilityTitle: "Grounding status for this result",
+    modeLabel: "Current mode",
+    sourceBacked: "source-backed",
+    notSourceBacked: "not source-backed",
+    deepSeek: "DeepSeek",
+    externalSources: "external sources",
+    manualMaterials: "manual materials",
+    participated: "active",
+    notParticipated: "not active",
+    notFullGrounded: "This result is not a full grounded simulation.",
+    uncertaintyLabel: "Uncertainty",
+    findingSources: {
+      reality: "Reality basis",
+      ai: "AI reality intake",
+      external: "External reality source",
+      destiny: "Destiny weighting",
+      path: "Path evolution",
+    },
+    pathReportTitle: "Possible paths",
+    pathReportBody:
+      "These four paths are possible developments under current information, not certain outcomes.",
+    pathFields: {
+      suitable: "Best fit",
+      benefit: "Main upside",
+      cost: "Main cost",
+      signal: "Reality signal",
+      risk: "Risk",
+      confidence: "Confidence",
+    },
+    watchTitle: "What to watch next",
+    watchBody:
+      "Use these as observation, verification, and material-gathering prompts, not deterministic advice.",
+    evidenceLayerTitle: "Basis and process",
+    debugTitle: "Debug details (folded)",
     noFindings:
-      "This sandbox has not produced displayable key findings yet. Start a new sandbox first.",
+      "This analysis has not produced displayable key findings yet. Start a new analysis first.",
     findingLabel: "Finding",
     whyImportant: "Why it matters",
     confidence: "Confidence",
@@ -152,47 +254,47 @@ const resultCopy = {
     sourceTags: {
       destiny: "Destiny climate",
       real: "Real-world clues",
-      dynamic: "Dynamic sandbox",
+      dynamic: "Analysis process",
     },
     sections: {
       basis: "View basis",
       paths: "Path comparison",
       map: "Situation map",
-      events: "Sandbox events",
-      improve: "Improve next run",
+      events: "Analysis process",
+      improve: "Feedback",
       technical: "Technical details",
       advanced: "Advanced calibration",
     },
     saveResult: "Save result",
     rebuild: "Rebuild findings",
     saved: "Result saved.",
-    rebuilt: "Findings rebuilt from the current sandbox events.",
+    rebuilt: "Findings rebuilt from the current analysis events.",
     saveFailed: "Save failed. Please try again.",
     feedbackMissing:
-      "Select a finding or the overall sandbox before saving feedback.",
+      "Select a finding or the overall analysis before saving feedback.",
     feedbackSaved:
-      "Feedback saved. It only helps calibrate the next sandbox and does not rewrite this result.",
+      "Feedback saved. It only helps calibrate the next analysis and does not rewrite this result.",
     feedbackIntro:
-      "Was this useful? Your feedback will not rewrite this result. It only helps calibrate the next sandbox.",
+      "Did this feel grounded? Your feedback will not rewrite this result. It only helps calibrate the next run.",
     notePlaceholder: "Briefly note what felt accurate or off.",
     saveFeedback: "Save feedback",
     targetFinding: "Current finding",
-    targetOverall: "Overall sandbox",
+    targetOverall: "Overall analysis",
     basisEmpty: "Select a finding to view its basis here.",
     destinyBasis: "Destiny climate",
     realBasis: "Real-world clues",
-    dynamicBasis: "Dynamic sandbox",
+    dynamicBasis: "Analysis process",
     relationSignals: "Relation signals",
     generatedClues: "Generated clues",
-    pathComparisonEmpty: "No path comparison is available for this sandbox yet.",
-    situationMapEmpty: "No situation map is available for this sandbox yet.",
-    sandboxEventsEmpty: "No sandbox events are available for this run yet.",
+    pathComparisonEmpty: "No path comparison is available for this analysis yet.",
+    situationMapEmpty: "No situation map is available for this analysis yet.",
+    sandboxEventsEmpty: "No analysis events are available for this run yet.",
     technicalNote:
       "The details below are kept for structure review and troubleshooting. They stay folded by default.",
     counts: {
       roles: "Role models",
       relations: "Relation signals",
-      events: "Sandbox events",
+      events: "Analysis events",
       findings: "Findings",
       feedback: "Feedback",
     },
@@ -207,8 +309,8 @@ const resultCopy = {
 
 const feedbackTargets: { value: FeedbackTargetType; label: string }[] = [
   { value: "claim", label: "Selected finding" },
-  { value: "agent", label: "Highlighted agent" },
-  { value: "relation_edge", label: "Highlighted edge" },
+  { value: "agent", label: "Highlighted reality node" },
+  { value: "relation_edge", label: "Highlighted relation clue" },
   { value: "strategy", label: "Strategy usefulness" },
   { value: "overall", label: "Overall run" },
 ];
@@ -568,16 +670,26 @@ function sourceTagsForFinding(
   finding: ClaimDraft,
   events: SimulationEventDraft[],
   hasDestinyClimate: boolean,
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null,
 ) {
   const tags = new Set<string>();
-  events
-    .filter((event) => finding.evidenceEventIds.includes(event.id))
-    .flatMap((event) => event.sourceTags ?? [])
-    .forEach((tag) => tags.add(tag));
+  const findingEvents = events.filter((event) =>
+    finding.evidenceEventIds.includes(event.id),
+  );
+  findingEvents.flatMap((event) => event.sourceTags ?? []).forEach((tag) => tags.add(tag));
+  findingEvents.flatMap((event) => event.realitySourceTags ?? []).forEach((tag) => tags.add(tag));
 
   if (hasDestinyClimate) tags.add("destiny climate");
-  tags.add("real situation");
-  tags.add("integrated simulation");
+  if (groundedSocialSimulation?.realityNodes.length) tags.add("reality basis");
+  if (groundedSocialSimulation?.realityIntake.llmStatus?.succeeded) {
+    tags.add("ai reality intake");
+  }
+  if (groundedSocialSimulation?.realityIntake.externalSources.length) {
+    tags.add("external reality source");
+  }
+  if (finding.evidenceEventIds.length || groundedSocialSimulation?.pathEvents.length) {
+    tags.add("path evolution");
+  }
 
   return Array.from(tags);
 }
@@ -755,6 +867,13 @@ export default function ReportsPage() {
       relationEdges: relationGraph?.edges ?? [],
     });
   }, [agentEcology, claims, relationGraph, seedContext, simulationRun]);
+  const runtimeCapability = useMemo(
+    () =>
+      getRuntimeCapability({
+        realityIntake: groundedSocialSimulation?.realityIntake,
+      }),
+    [groundedSocialSimulation],
+  );
   const paidReportVisible = false;
   const topFindings = report
     ? report.paidReport.fullClaims.slice(0, 3)
@@ -1008,38 +1127,40 @@ export default function ReportsPage() {
         </div>
       ) : null}
 
-      <div className="mb-5">
-        <RuntimeCapabilityBanner
-          realityIntake={groundedSocialSimulation?.realityIntake}
-        />
-      </div>
-
-      <div className="mb-5">
-        <RealityIntakeModeBanner
-          realityIntake={groundedSocialSimulation?.realityIntake}
-          locale={locale}
-        />
-      </div>
+      <ResultCapabilityPanel
+        capability={runtimeCapability}
+        manualSourceCount={groundedSocialSimulation?.realityIntake.manualSources.length ?? 0}
+        externalSourceCount={groundedSocialSimulation?.realityIntake.externalSources.length ?? 0}
+        locale={locale}
+      />
 
       <TopFindingsSection
         findings={topFindings}
         selectedFindingId={activeFinding?.id ?? ""}
         destinyClimate={destinyClimate}
+        groundedSocialSimulation={groundedSocialSimulation}
         evidenceEvents={activeFindingEvidenceEvents}
         simulationEvents={simulationRun.events}
         locale={locale}
         onSelectFinding={selectClaim}
       />
 
-      <GroundedResultBasisInspectorPanel
+      <PathReportSection
+        branchComparison={report?.paidReport.branchComparison ?? []}
+        pathEvents={groundedSocialSimulation?.pathEvents ?? []}
+        simulationEvents={simulationRun.events}
+        selectedClaimId={activeFinding?.id ?? ""}
+        locale={locale}
+      />
+
+      <NextWatchSection
         groundedSocialSimulation={groundedSocialSimulation}
-        activeFinding={activeFinding}
         simulationEvents={simulationRun.events}
         locale={locale}
       />
 
-      <section className="space-y-3">
-        <ResultFold title={copy.sections.basis}>
+      <section className="mt-6 space-y-3">
+        <ResultFold title={copy.evidenceLayerTitle}>
           <EvidenceReplayPanel
             finding={activeFinding}
             destinyClimate={destinyClimate}
@@ -1053,18 +1174,12 @@ export default function ReportsPage() {
             branchComparison={report?.paidReport.branchComparison ?? []}
             locale={locale}
           />
-        </ResultFold>
-
-        <ResultFold title={copy.sections.paths}>
-          {report?.paidReport.branchComparison.length ? (
-            <BranchComparison
-              items={report.paidReport.branchComparison}
-              selectedClaimId={activeFinding?.id ?? ""}
-              locale={locale}
-            />
-          ) : (
-            <EmptyFoldMessage>{copy.pathComparisonEmpty}</EmptyFoldMessage>
-          )}
+          <GroundedResultBasisInspectorPanel
+            groundedSocialSimulation={groundedSocialSimulation}
+            activeFinding={activeFinding}
+            simulationEvents={simulationRun.events}
+            locale={locale}
+          />
         </ResultFold>
 
         <ResultFold title={copy.sections.map}>
@@ -1103,22 +1218,32 @@ export default function ReportsPage() {
           )}
         </ResultFold>
 
-        <ResultFold title={copy.sections.improve}>
-          <SimpleFeedbackPanel
-            target={feedbackTarget}
-            targetId={resolvedFeedbackTargetId}
-            targetOptions={feedbackTargetOptions}
-            rating={feedbackRating}
-            note={feedbackNote}
-            ledger={feedbackLedger}
-            onTargetChange={changeFeedbackTarget}
-            onTargetIdChange={setFeedbackTargetId}
-            onRatingChange={setFeedbackRating}
-            onNoteChange={setFeedbackNote}
-            onSave={saveFeedback}
-            locale={locale}
-          />
-          <details className="mt-4 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+        <SimpleFeedbackPanel
+          target={feedbackTarget}
+          targetId={resolvedFeedbackTargetId}
+          targetOptions={feedbackTargetOptions}
+          rating={feedbackRating}
+          note={feedbackNote}
+          ledger={feedbackLedger}
+          onTargetChange={changeFeedbackTarget}
+          onTargetIdChange={setFeedbackTargetId}
+          onRatingChange={setFeedbackRating}
+          onNoteChange={setFeedbackNote}
+          onSave={saveFeedback}
+          locale={locale}
+        />
+
+        <ResultFold title={copy.sections.technical}>
+          <p className="mb-4 text-sm leading-6 text-[#62695d]">
+            {copy.technicalNote}
+          </p>
+          <div className="mb-5">
+            <GroundedSimulationDebugPanel
+              groundedSocialSimulation={groundedSocialSimulation}
+              locale={locale}
+            />
+          </div>
+          <details className="mb-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
             <summary className="cursor-pointer text-sm font-semibold text-[#11150f]">
               {copy.sections.advanced}
             </summary>
@@ -1152,18 +1277,6 @@ export default function ReportsPage() {
               />
             </div>
           </details>
-        </ResultFold>
-
-        <ResultFold title={copy.sections.technical}>
-          <p className="mb-4 text-sm leading-6 text-[#62695d]">
-            {copy.technicalNote}
-          </p>
-          <div className="mb-5">
-            <GroundedSimulationDebugPanel
-              groundedSocialSimulation={groundedSocialSimulation}
-              locale={locale}
-            />
-          </div>
           <div className="grid gap-4 md:grid-cols-5">
             <Metric label={copy.counts.roles} value={agentEcology?.agents.length ?? simulationRun.agentIds.length} />
             <Metric label={copy.counts.relations} value={relationGraph?.edges.length ?? simulationRun.relationEdgeIds.length} />
@@ -1247,10 +1360,75 @@ export default function ReportsPage() {
   );
 }
 
+function ResultCapabilityPanel({
+  capability,
+  manualSourceCount,
+  externalSourceCount,
+  locale,
+}: {
+  capability: RuntimeCapabilityState;
+  manualSourceCount: number;
+  externalSourceCount: number;
+  locale: Locale;
+}) {
+  const copy = resultCopy[locale];
+
+  return (
+    <CapabilityCard className="mb-6 p-4 sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#11150f]">
+            {copy.capabilityTitle}
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-[#62695d]">
+            {capability.canClaimGroundedSimulation
+              ? locale === "zh"
+                ? "外部现实来源已参与，结果可以作为第一轮 有现实来源支撑的报告阅读。"
+                : "External reality sources participated, so this can be read as a first source-backed report."
+              : copy.notFullGrounded}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <StatusBadge variant={runtimeModeBadgeVariant[capability.currentMode]}>
+            {copy.modeLabel}: {runtimeModeLabels[capability.currentMode][locale]}
+          </StatusBadge>
+          <StatusBadge
+            variant={capability.canClaimGroundedSimulation ? "sourceBacked" : "localAssumption"}
+          >
+            {capability.canClaimGroundedSimulation
+              ? copy.sourceBacked
+              : copy.notSourceBacked}
+          </StatusBadge>
+          <StatusBadge variant={capability.llmAvailable ? "aiIntake" : "warning"}>
+            {copy.deepSeek}: {capability.llmAvailable ? copy.participated : copy.notParticipated}
+          </StatusBadge>
+          <StatusBadge variant={capability.hasExternalRealitySources ? "externalReality" : "warning"}>
+            {copy.externalSources}: {externalSourceCount}
+          </StatusBadge>
+          <StatusBadge variant={capability.hasManualRealitySources ? "sourceBacked" : "warning"}>
+            {copy.manualMaterials}: {manualSourceCount}
+          </StatusBadge>
+        </div>
+      </div>
+      {!capability.canClaimGroundedSimulation ? (
+        <WarningPanel className="mt-4 p-3">
+          <p className="text-sm font-semibold text-[#7c5524]">
+            {copy.notFullGrounded}
+          </p>
+        </WarningPanel>
+      ) : null}
+      <div className="mt-4">
+        <RuntimeCapabilityBanner capability={capability} />
+      </div>
+    </CapabilityCard>
+  );
+}
+
 function TopFindingsSection({
   findings,
   selectedFindingId,
   destinyClimate,
+  groundedSocialSimulation,
   evidenceEvents,
   simulationEvents,
   locale,
@@ -1259,6 +1437,7 @@ function TopFindingsSection({
   findings: ClaimDraft[];
   selectedFindingId: string;
   destinyClimate: DestinyClimateDraft | null;
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
   evidenceEvents: ReportEvidenceEvent[];
   simulationEvents: SimulationEventDraft[];
   locale: Locale;
@@ -1288,6 +1467,7 @@ function TopFindingsSection({
                 finding,
                 simulationEvents,
                 Boolean(destinyClimate),
+                groundedSocialSimulation,
               )}
               eventCount={
                 evidenceEvents.filter((event) =>
@@ -1357,10 +1537,10 @@ function pathEventBasisText(
     .join(", ");
 
   if (locale === "zh") {
-    return `${pathEvent.branchId}｜${pathEvent.confidence}%：用户动作：${pathEvent.userAction}。现实事件：${pathEvent.expectedRealityReaction}。命理调权：${pathEvent.destinyModifierEffect}。压力：${pathEvent.pressureChange}。信息：${pathEvent.informationChange}。机会：${pathEvent.opportunityChange}。关联 SimulationEvent：${linked || "暂无直接关联事件"}。`;
+    return `${pathEvent.branchId}｜${pathEvent.confidence}%：用户动作：${pathEvent.userAction}。现实事件：${pathEvent.expectedRealityReaction}。命理调权：${pathEvent.destinyModifierEffect}。压力：${pathEvent.pressureChange}。信息：${pathEvent.informationChange}。机会：${pathEvent.opportunityChange}。关联路径事件：${linked || "暂无直接关联事件"}。`;
   }
 
-  return `${pathEvent.branchId} | ${pathEvent.confidence}%: User action: ${pathEvent.userAction}. Reality event: ${pathEvent.expectedRealityReaction}. Destiny weighting: ${pathEvent.destinyModifierEffect}. Pressure: ${pathEvent.pressureChange}. Information: ${pathEvent.informationChange}. Opportunity: ${pathEvent.opportunityChange}. Linked SimulationEvent: ${linked || "No directly linked event"}.`;
+  return `${pathEvent.branchId} | ${pathEvent.confidence}%: User action: ${pathEvent.userAction}. Reality event: ${pathEvent.expectedRealityReaction}. Destiny weighting: ${pathEvent.destinyModifierEffect}. Pressure: ${pathEvent.pressureChange}. Information: ${pathEvent.informationChange}. Opportunity: ${pathEvent.opportunityChange}. Linked path event: ${linked || "No directly linked event"}.`;
 }
 
 // Kept during the evidence-panel transition so older local snapshots remain easy to compare.
@@ -1620,8 +1800,8 @@ function GroundedResultBasisInspectorPanel({
         <BasisColumn
           title={
             locale === "zh"
-              ? "路径演化依据：Grounded path + SimulationEvent"
-              : "Path evolution basis: grounded path + SimulationEvent"
+              ? "路径演化依据：现实路径 + 路径事件"
+              : "Path evolution basis: grounded path + path event"
           }
           items={linkedPathEvents.map((pathEvent) =>
             pathEventBasisText(
@@ -1676,7 +1856,7 @@ function FindingCard({
 }) {
   const copy = resultCopy[locale];
   return (
-    <article
+    <UiFindingCard
       className={`rounded-lg border p-5 transition ${
         selected
           ? "border-[#568262]/50 bg-[#eef5ee]"
@@ -1687,20 +1867,31 @@ function FindingCard({
         <span className="rounded border border-black/10 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
           {copy.findingLabel} {index + 1}
         </span>
+        <StatusBadge variant="confidence">
+          {finding.confidence}% {copy.confidence}
+        </StatusBadge>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <SourceTag
-          label={copy.sourceTags.destiny}
-          active={sourceTags.includes("destiny climate")}
+          label={copy.findingSources.reality}
+          active={sourceTags.includes("reality basis") || sourceTags.includes("real-world evidence")}
         />
         <SourceTag
-          label={copy.sourceTags.real}
-          active={sourceTags.includes("real situation")}
+          label={copy.findingSources.ai}
+          active={sourceTags.includes("ai reality intake")}
         />
         <SourceTag
-          label={copy.sourceTags.dynamic}
-          active={sourceTags.includes("integrated simulation")}
+          label={copy.findingSources.external}
+          active={sourceTags.includes("external reality source")}
+        />
+        <SourceTag
+          label={copy.findingSources.destiny}
+          active={sourceTags.includes("destiny climate") || sourceTags.includes("destiny weighting")}
+        />
+        <SourceTag
+          label={copy.findingSources.path}
+          active={sourceTags.includes("path evolution") || sourceTags.includes("path simulation")}
         />
       </div>
 
@@ -1739,6 +1930,14 @@ function FindingCard({
                 )}`
           }
         />
+        <FindingMeta
+          label={copy.uncertaintyLabel}
+          value={
+            locale === "zh"
+              ? "在当前信息下，这条发现仍需要结合现实反馈、外部材料和后续信号验证。"
+              : "Under current information, this finding still needs validation through real feedback, additional material, and repeated signals."
+          }
+        />
       </div>
 
       <button
@@ -1748,7 +1947,7 @@ function FindingCard({
       >
         {copy.viewBasis}
       </button>
-    </article>
+    </UiFindingCard>
   );
 }
 
@@ -1763,6 +1962,265 @@ function SourceTag({ label, active }: { label: string; active: boolean }) {
     >
       {label}
     </span>
+  );
+}
+
+const reportBranchIds: SimulationBranchId[] = [
+  "baseline",
+  "cautious_self",
+  "decisive_self",
+  "boundary_adjustment",
+];
+
+function PathReportSection({
+  branchComparison,
+  pathEvents,
+  simulationEvents,
+  selectedClaimId,
+  locale,
+}: {
+  branchComparison: ReportBranchComparison[];
+  pathEvents: GroundedSocialSimulationDraft["pathEvents"];
+  simulationEvents: SimulationEventDraft[];
+  selectedClaimId: string;
+  locale: Locale;
+}) {
+  const copy = resultCopy[locale];
+
+  return (
+    <section className="mb-6 rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <h2 className="text-2xl font-semibold text-[#11150f]">
+        {copy.pathReportTitle}
+      </h2>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+        {copy.pathReportBody}
+      </p>
+      <div className="mt-5 grid gap-4 xl:grid-cols-4">
+        {reportBranchIds.map((branchId) => {
+          const comparison = branchComparison.find((item) => item.branchId === branchId);
+          const pathEvent = pathEvents.find((event) => event.branchId === branchId);
+          const event = simulationEvents.find(
+            (item) => (item.branchId ?? "baseline") === branchId,
+          );
+          const selected = selectedClaimId
+            ? comparison?.claimIds.includes(selectedClaimId)
+            : false;
+
+          return (
+            <PathCard
+              key={branchId}
+              className={`p-4 ${selected ? "border-[#568262]/45 bg-[#eef5ee]" : ""}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-base font-semibold text-[#11150f]">
+                  {pathLabelForLocale(branchId, locale)}
+                </h3>
+                <StatusBadge variant="confidence">
+                  {pathEvent?.confidence ?? event?.confidence ?? 0}% {copy.pathFields.confidence}
+                </StatusBadge>
+              </div>
+              <div className="mt-4 space-y-3">
+                <PathReportField
+                  label={copy.pathFields.suitable}
+                  value={pathFitText(branchId, locale)}
+                />
+                <PathReportField
+                  label={copy.pathFields.benefit}
+                  value={pathEvent?.opportunityChange ?? fallbackPathBenefit(branchId, locale)}
+                />
+                <PathReportField
+                  label={copy.pathFields.cost}
+                  value={pathEvent?.pressureChange ?? fallbackPathCost(branchId, locale)}
+                />
+                <PathReportField
+                  label={copy.pathFields.signal}
+                  value={
+                    event?.groundedRealitySummary ??
+                    event?.informationGapDeltaSummary ??
+                    pathEvent?.expectedRealityReaction ??
+                    fallbackPathSignal(branchId, locale)
+                  }
+                />
+                <PathReportField
+                  label={copy.pathFields.risk}
+                  value={
+                    event?.groundedPressureSummary ??
+                    event?.pressureDeltaSummary ??
+                    pathEvent?.pressureChange ??
+                    fallbackPathRisk(branchId, locale)
+                  }
+                />
+              </div>
+            </PathCard>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PathReportField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-black/8 bg-white p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+        {label}
+      </div>
+      <p className="mt-1 text-xs leading-5 text-[#62695d]">
+        {nonDeterministicText(value)}
+      </p>
+    </div>
+  );
+}
+
+function nonDeterministicText(value: string) {
+  return value
+    .replaceAll("必然", "可能")
+    .replaceAll("注定", "在当前信息下可能")
+    .replaceAll("一定会", "更容易")
+    .replaceAll("系统知道", "当前材料提示")
+    .replaceAll("will definitely", "may")
+    .replaceAll("definitely will", "may")
+    .replaceAll("certainly", "possibly");
+}
+
+function pathFitText(branchId: SimulationBranchId, locale: Locale) {
+  const zh: Record<SimulationBranchId, string> = {
+    baseline: "适合先观察当前惯性是否继续重复，不急于改变结构。",
+    cautious_self: "适合信息不足、外部反馈还不稳定时，先验证关键事实。",
+    decisive_self: "适合已有一定现实信号，并希望测试机会窗口时。",
+    boundary_adjustment: "适合压力或等待成本上升，需要明确时间窗口和边界时。",
+  };
+  const en: Record<SimulationBranchId, string> = {
+    baseline: "Best when you need to observe whether the current pattern keeps repeating.",
+    cautious_self: "Best when information is thin and external feedback still needs verification.",
+    decisive_self: "Best when some reality signals exist and an opportunity window needs testing.",
+    boundary_adjustment: "Best when pressure or waiting cost rises and a clearer boundary is needed.",
+  };
+  return locale === "zh" ? zh[branchId] : en[branchId];
+}
+
+function fallbackPathBenefit(branchId: SimulationBranchId, locale: Locale) {
+  const zh: Record<SimulationBranchId, string> = {
+    baseline: "可能帮助你看清问题是否会自然显形。",
+    cautious_self: "更容易减少误判，给现实反馈留出空间。",
+    decisive_self: "可能更快获得外部反馈，验证机会是否真实。",
+    boundary_adjustment: "可能降低被动等待成本，让选择更清楚。",
+  };
+  const en: Record<SimulationBranchId, string> = {
+    baseline: "May reveal whether the pattern becomes clearer without extra force.",
+    cautious_self: "May reduce misreads and leave room for real feedback.",
+    decisive_self: "May produce faster external feedback and test whether the opening is real.",
+    boundary_adjustment: "May reduce passive waiting cost and clarify the choice.",
+  };
+  return locale === "zh" ? zh[branchId] : en[branchId];
+}
+
+function fallbackPathCost(branchId: SimulationBranchId, locale: Locale) {
+  const zh: Record<SimulationBranchId, string> = {
+    baseline: "也可能让拖延或信息差继续存在。",
+    cautious_self: "代价是推进速度可能变慢。",
+    decisive_self: "代价是压力可能更早暴露，需要准备边界。",
+    boundary_adjustment: "代价是可能让关系或合作压力更快浮出。",
+  };
+  const en: Record<SimulationBranchId, string> = {
+    baseline: "The cost is that delay or information gaps may continue.",
+    cautious_self: "The cost is slower movement.",
+    decisive_self: "The cost is that pressure may surface earlier and require boundaries.",
+    boundary_adjustment: "The cost is that relation or collaboration pressure may surface faster.",
+  };
+  return locale === "zh" ? zh[branchId] : en[branchId];
+}
+
+function fallbackPathSignal(branchId: SimulationBranchId, locale: Locale) {
+  const zh: Record<SimulationBranchId, string> = {
+    baseline: "观察现实反馈是否持续缺失，或同一压力是否重复。",
+    cautious_self: "验证对方、组织或市场是否给出更明确材料。",
+    decisive_self: "比较主动推进后，外部回应是否更清晰。",
+    boundary_adjustment: "观察设置边界后，资源、时间或回应是否发生变化。",
+  };
+  const en: Record<SimulationBranchId, string> = {
+    baseline: "Watch whether real feedback remains missing or the same pressure repeats.",
+    cautious_self: "Verify whether the person, organization, or market gives clearer material.",
+    decisive_self: "Compare whether external response becomes clearer after active testing.",
+    boundary_adjustment: "Watch whether resources, timing, or response changes after boundaries are set.",
+  };
+  return locale === "zh" ? zh[branchId] : en[branchId];
+}
+
+function fallbackPathRisk(branchId: SimulationBranchId, locale: Locale) {
+  const zh: Record<SimulationBranchId, string> = {
+    baseline: "风险是把惯性误认为稳定。",
+    cautious_self: "风险是错过一部分可测试窗口。",
+    decisive_self: "风险是用不足材料过早推进。",
+    boundary_adjustment: "风险是边界表达过快导致压力上升。",
+  };
+  const en: Record<SimulationBranchId, string> = {
+    baseline: "The risk is mistaking inertia for stability.",
+    cautious_self: "The risk is missing part of a testable window.",
+    decisive_self: "The risk is moving early with insufficient material.",
+    boundary_adjustment: "The risk is raising pressure if boundaries are expressed too quickly.",
+  };
+  return locale === "zh" ? zh[branchId] : en[branchId];
+}
+
+function NextWatchSection({
+  groundedSocialSimulation,
+  simulationEvents,
+  locale,
+}: {
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
+  simulationEvents: SimulationEventDraft[];
+  locale: Locale;
+}) {
+  const copy = resultCopy[locale];
+  const pressureSignals =
+    groundedSocialSimulation?.realityPressures
+      .slice(0, 3)
+      .map((pressure) => pressure.explanation) ?? [];
+  const pathSignals =
+    groundedSocialSimulation?.pathEvents
+      .slice(0, 3)
+      .map((event) => event.expectedRealityReaction) ?? [];
+  const eventSignals = simulationEvents
+    .flatMap((event) => event.generatedClues ?? [])
+    .slice(0, 3);
+  const items = uniqueStrings([
+    ...(groundedSocialSimulation?.observableSignals ?? []),
+    ...(groundedSocialSimulation?.keyUncertainties ?? []),
+    ...pathSignals,
+    ...pressureSignals,
+    ...eventSignals,
+  ]).slice(0, 8);
+
+  return (
+    <RealityCard className="mb-6 p-5 sm:p-6">
+      <h2 className="text-2xl font-semibold text-[#11150f]">
+        {copy.watchTitle}
+      </h2>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+        {copy.watchBody}
+      </p>
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        {items.length ? (
+          items.map((item, index) => (
+            <article key={`${item}-${index}`} className="rounded-md border border-black/8 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                {locale === "zh" ? "观察 / 验证" : "watch / verify"} {index + 1}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[#62695d]">
+                {nonDeterministicText(item)}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed border-black/16 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#62695d]">
+            {locale === "zh"
+              ? "暂无可观察信号。建议补充现实材料、明确时间窗口，再生成下一轮。"
+              : "No observation signals yet. Add more real material and clarify the timing window before the next run."}
+          </p>
+        )}
+      </div>
+    </RealityCard>
   );
 }
 
@@ -2457,6 +2915,8 @@ function FusionRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Kept as a technical fallback while the product path uses PathReportSection.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function BranchComparison({
   items,
   selectedClaimId,
@@ -2736,9 +3196,9 @@ function FeedbackPanel({
   const resolvedTargetId = selectedTarget?.value ?? "";
   const targetHelp =
     target === "agent"
-      ? "Use this when an Agent feels mismatched. Corrections become future-run improvement signals, not edits to the stored Agent."
+      ? "Use this when a reality node feels mismatched. Corrections become future-run improvement signals, not edits to the stored node."
       : target === "relation_edge"
-        ? "Use this when the relation reading feels off. Corrections never edit historical edge weights."
+        ? "Use this when the relation clue feels off. Corrections never edit historical relationship weights."
         : target === "strategy"
           ? "Use this to mark whether a strategy option was useful for thinking or planning."
           : target === "overall"
@@ -2858,7 +3318,7 @@ function FeedbackPanel({
 
         {target === "agent" ? (
           <CorrectionEditor
-            title="Agent correction note"
+            title="Reality-node correction note"
             field={agentCorrectionField}
             fields={agentCorrectionFields}
             value={agentCorrectionValue}
@@ -2872,7 +3332,7 @@ function FeedbackPanel({
 
         {target === "relation_edge" ? (
           <CorrectionEditor
-            title="Relation edge correction note"
+            title="Relation-clue correction note"
             field={relationCorrectionField}
             fields={relationCorrectionFields}
             value={relationCorrectionValue}
@@ -3120,9 +3580,9 @@ function CalibrationSummary({ profile }: { profile: CalibrationProfile | null })
             Historical evidence invariant
           </summary>
           <ul className="mt-3 space-y-1 text-xs leading-5 text-[#62695d]">
-            <li>Sandbox events unchanged: {String(profile.historyInvariant.doesNotModifyEventLogs)}</li>
+            <li>Path events unchanged: {String(profile.historyInvariant.doesNotModifyEventLogs)}</li>
             <li>Findings unchanged: {String(profile.historyInvariant.doesNotModifyClaims)}</li>
-            <li>Edge weights unchanged: {String(profile.historyInvariant.doesNotModifyEdgeWeights)}</li>
+            <li>Relationship weights unchanged: {String(profile.historyInvariant.doesNotModifyEdgeWeights)}</li>
             <li>Feedback is not absolute fact: {String(profile.historyInvariant.feedbackIsNotAbsoluteFact)}</li>
           </ul>
         </details>
@@ -3182,7 +3642,7 @@ function AgentGraphSummary({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[#11150f]">
-            Agent / Situation map summary
+            Reality-node structure summary
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#62695d]">
             Situation map data remains read-only. Highlighting comes from the selected
@@ -3276,7 +3736,7 @@ function EventDebugStateDisclosure({
       <div className="mt-3 space-y-3">
         <Snapshot title="before state" value={event.beforeState} />
         <Snapshot title="after state" value={event.afterState} />
-        <Snapshot title="edge weight deltas" value={event.edgeWeightDeltas} />
+        <Snapshot title="relationship weight deltas" value={event.edgeWeightDeltas} />
       </div>
     </details>
   );
@@ -3294,3 +3754,4 @@ function Snapshot({ title, value }: { title: string; value: unknown }) {
     </div>
   );
 }
+

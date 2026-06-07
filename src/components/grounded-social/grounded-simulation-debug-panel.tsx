@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { StatusPill } from "@/components/status-pill";
 import {
@@ -22,25 +22,25 @@ type GroundedSimulationDebugPanelProps = {
 
 const copy = {
   en: {
-    title: "Grounded Simulation debug panel",
-    summary: "Open accuracy debug panel",
-    unavailableTitle: "Grounded Simulation debug panel unavailable",
+    title: "Accuracy debug",
+    summary: "Accuracy debug",
+    unavailableTitle: "Accuracy debug unavailable",
     unavailableBody:
-      "No GroundedSocialSimulationDraft is saved yet. The page can still show legacy sandbox data, but the reality-first accuracy layer cannot be inspected here.",
+      "No grounded simulation snapshot is saved yet. The page may still show sandbox results, but the reality-first accuracy layer cannot be inspected here.",
     boundary:
-      "Reality nodes come from user input or grounded real-world semantic inference; destiny is only used to weight user reactions and is not used to create real-world facts.",
+      "Reality nodes come from user input, AI extraction, manual materials, or external sources. Destiny is only used to weight user reactions and timing sensitivity; it does not create real-world facts.",
     purpose:
-      "Use this panel to inspect whether the product is grounded enough to trust before treating a path as useful.",
-    realityIntake: "Reality Intake",
+      "Use this to inspect reality nodes, AI extraction, external sources, destiny weighting, and path events. Most users do not need this.",
+    realityIntake: "Reality intake",
     mode: "mode",
-    manualSources: "manualSources",
-    externalSources: "externalSources",
-    missingExternalInfo: "missingExternalInfo",
-    intakeSummary: "intakeSummary",
-    nodes: "Reality Nodes",
-    pressures: "Reality Pressures",
-    modifier: "Destiny Person Modifier",
-    paths: "Grounded Path Events",
+    manualSources: "manual sources",
+    externalSources: "external sources",
+    missingExternalInfo: "missing external info",
+    intakeSummary: "intake summary",
+    nodes: "Reality nodes",
+    pressures: "Reality pressures",
+    modifier: "Destiny weighting",
+    paths: "Path events",
     uncertainty: "Uncertainty",
     observableSignals: "Observable signals",
     keyUncertainties: "Key uncertainties",
@@ -49,67 +49,67 @@ const copy = {
     noRefs: "No evidence refs.",
     evidenceRefs: "evidence refs",
     nodeFields: {
-      type: "nodeType",
+      type: "node type",
       source: "source",
-      role: "roleInSituation",
-      resources: "resourcesControlled",
-      information: "informationHeld",
-      opportunities: "opportunitiesProvided",
-      constraints: "constraintsCreated",
+      role: "role in situation",
+      resources: "resources controlled",
+      information: "information held",
+      opportunities: "opportunities provided",
+      constraints: "constraints created",
     },
     pressureFields: {
-      type: "pressureType",
-      sourceTarget: "sourceNodeId / targetNodeId",
+      type: "pressure type",
+      sourceTarget: "source node / target node",
       explanation: "explanation",
-      evidenceCount: "evidenceRefs count",
+      evidenceCount: "evidence refs count",
     },
     modifierFields: {
-      decisionStyle: "decisionStyle",
-      stressResponse: "stressResponse",
-      opportunityResponse: "opportunityResponse",
-      resourcePressureResponse: "resourcePressureResponse",
-      relationshipPressureResponse: "relationshipPressureResponse",
-      boundaryStyle: "boundaryStyle",
-      timingSensitivity: "timingSensitivity",
-      uncertaintyNotes: "uncertaintyNotes",
+      decisionStyle: "decision style",
+      stressResponse: "stress response",
+      opportunityResponse: "opportunity response",
+      resourcePressureResponse: "resource pressure response",
+      relationshipPressureResponse: "relationship pressure response",
+      boundaryStyle: "boundary style",
+      timingSensitivity: "timing sensitivity",
+      uncertaintyNotes: "uncertainty notes",
     },
     pathFields: {
-      userAction: "userAction",
-      expectedRealityReaction: "expectedRealityReaction",
-      destinyModifierEffect: "destinyModifierEffect",
-      pressureChange: "pressureChange",
-      informationChange: "informationChange",
-      opportunityChange: "opportunityChange",
-      relatedNodes: "realityNodeIds",
+      userAction: "user action",
+      expectedRealityReaction: "expected reality reaction",
+      destinyModifierEffect: "destiny weighting effect",
+      pressureChange: "pressure change",
+      informationChange: "information change",
+      opportunityChange: "opportunity change",
+      relatedNodes: "reality node ids",
     },
   },
   zh: {
-    title: "Grounded Simulation 调试面板",
-    summary: "打开准确性调试面板",
-    unavailableTitle: "Grounded Simulation 调试面板不可用",
+    title: "准确性调试",
+    summary: "准确性调试",
+    unavailableTitle: "准确性调试不可用",
     unavailableBody:
-      "还没有保存的 GroundedSocialSimulationDraft。页面仍可展示旧沙盘数据，但无法在这里检查现实优先的准确性层。",
+      "尚未保存现实推演快照。页面仍可展示沙盘结果，但这里暂时无法检查现实优先的准确性层。",
     boundary:
-      "现实节点来自用户输入或现实语义推断；命理只用于调权用户反应，不用于创造现实事实。",
+      "现实节点来自用户输入、AI 抽取、手动材料或外部来源；命理只用于用户反应和时间敏感度调权，不会生成现实事实。",
     purpose:
-      "这个面板用于快速检查产品是否足够 grounded，避免把证据不足的路径当成可信结论。",
-    realityIntake: "Reality Intake",
-    mode: "mode",
-    manualSources: "manualSources",
-    externalSources: "externalSources",
-    missingExternalInfo: "missingExternalInfo",
-    intakeSummary: "intakeSummary",
-    nodes: "现实节点 Reality Nodes",
-    pressures: "现实压力 Reality Pressures",
-    modifier: "命理调权 Destiny Person Modifier",
-    paths: "路径事件 Grounded Path Events",
+      "用于检查现实节点、AI 抽取、外部来源、命理调权和路径事件。普通用户不需要查看。",
+    realityIntake: "现实信息摄取",
+    mode: "模式",
+    manualSources: "手动材料",
+    externalSources: "外部来源",
+    missingExternalInfo: "缺失的外部信息",
+    intakeSummary: "摄取摘要",
+    nodes: "现实节点",
+    pressures: "现实压力",
+    modifier: "命理调权",
+    paths: "路径事件",
     uncertainty: "不确定性",
     observableSignals: "可观察信号",
     keyUncertainties: "关键信息不足",
     confidence: "置信度",
     noItems: "暂无记录。",
-    noRefs: "暂无证据引用。",
-    evidenceRefs: "证据引用",
+    noRefs: "暂无依据引用。",
+    evidenceRefs: "依据引用",
     nodeFields: {
       type: "节点类型",
       source: "来源",
@@ -123,7 +123,7 @@ const copy = {
       type: "压力类型",
       sourceTarget: "来源节点 / 目标节点",
       explanation: "解释",
-      evidenceCount: "证据引用数量",
+      evidenceCount: "依据引用数量",
     },
     modifierFields: {
       decisionStyle: "决策风格",
@@ -177,7 +177,7 @@ function sourceLabel(source: GroundedRealityNode["source"], locale: Locale) {
   if (source === "manual_reality_source") return "手动现实材料";
   if (source === "inferred_from_user_context") return "现实语义推断";
   if (source === "sample_data") return "示例数据";
-  return "未来外部数据";
+  return "外部现实来源";
 }
 
 function branchGroups(
@@ -342,7 +342,7 @@ export function GroundedSimulationDebugPanel({
     return (
       <details
         open={defaultOpen}
-        className="rounded-lg border border-dashed border-black/12 bg-white p-5 shadow-[0_24px_80px_rgba(17,21,15,0.06)]"
+        className="mf-card-debug p-5"
       >
         <summary className="cursor-pointer text-base font-semibold text-[#11150f]">
           {t.unavailableTitle}
@@ -366,7 +366,7 @@ export function GroundedSimulationDebugPanel({
   return (
     <details
       open={defaultOpen}
-      className="rounded-lg border border-[#568262]/20 bg-white p-5 shadow-[0_24px_80px_rgba(17,21,15,0.06)]"
+      className="mf-card-debug p-5"
     >
       <summary className="cursor-pointer text-base font-semibold text-[#11150f]">
         {t.summary}
@@ -612,3 +612,4 @@ function ListBlock({
     </div>
   );
 }
+

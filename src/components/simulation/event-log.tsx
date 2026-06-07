@@ -99,41 +99,42 @@ function eventCardClasses(tone: EventTone, lowConfidence: boolean) {
 function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
   const sourceTags = event.sourceTags ?? [];
   const realitySourceTags = event.realitySourceTags ?? [];
-  const summaryItems = [
-    ["Grounded reality", event.groundedRealitySummary],
+  const userItems = [
+    ["What happened", event.interactionSummary ?? event.summary],
+    ["Reality basis", event.groundedRealitySummary],
+    ["Destiny weighting", event.destinyModifierEffect],
     [
-      "Grounded node ids",
+      "Path change",
+      event.groundedPressureSummary ??
+        event.pressureDeltaSummary ??
+        event.informationGapDeltaSummary ??
+        event.resourcePressureDeltaSummary,
+    ],
+  ].filter(([, value]) => Boolean(value));
+  const technicalItems = [
+    ["eventId", event.id],
+    ["traceId", event.traceId],
+    ["version", event.version],
+    ["source", event.source],
+    ["status", event.status],
+    [
+      "groundedRealityNodeIds",
       event.groundedRealityNodeIds?.length
         ? event.groundedRealityNodeIds.join(", ")
         : "",
     ],
-    ["Grounded pressure", event.groundedPressureSummary],
-    ["Destiny modifier", event.destinyModifierEffect],
     [
-      "Destiny boundary",
-      event.destinyModifierEffect
-        ? "Destiny weighting only describes user reaction and timing sensitivity. It does not create reality facts or decide this event."
-        : "",
-    ],
-    ["Destiny influence", event.destinyInfluenceSummary],
-    ["Interaction", event.interactionSummary],
-    ["Pressure delta", event.pressureDeltaSummary],
-    ["Information gap", event.informationGapDeltaSummary],
-    ["Resource pressure", event.resourcePressureDeltaSummary],
-    [
-      "Evidence refs",
-      event.evidence?.evidenceRefs
-        ? `${event.evidence.evidenceRefs.length} refs attached`
-        : "",
+      "relationEdgeIds",
+      event.relationEdgeIds?.length ? event.relationEdgeIds.join(", ") : "",
     ],
     [
-      "Rule sources",
+      "ruleIds",
       event.evidence?.ruleIds?.length ? event.evidence.ruleIds.join(", ") : "",
     ],
   ].filter(([, value]) => Boolean(value));
 
   if (
-    !summaryItems.length &&
+    !userItems.length &&
     !event.generatedClues?.length &&
     !sourceTags.length &&
     !realitySourceTags.length
@@ -169,9 +170,9 @@ function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
         </div>
       ) : null}
 
-      {summaryItems.length ? (
+      {userItems.length ? (
         <div className="grid gap-2 lg:grid-cols-2">
-          {summaryItems.map(([label, value]) => (
+          {userItems.map(([label, value]) => (
             <div key={label} className="rounded border border-black/8 bg-[#f7f8f4] p-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
                 {label}
@@ -184,11 +185,38 @@ function EventDisplaySummary({ event }: { event: SimulationEventDraft }) {
 
       {event.generatedClues?.length ? (
         <RefList
-          title="Generated clues"
+          title="Observation clues"
           values={event.generatedClues}
           empty="No generated clues."
         />
       ) : null}
+
+      <p className="rounded border border-[#568262]/15 bg-[#eef5ee] p-3 text-xs leading-5 text-[#2f5d3d]">
+        Destiny weighting only describes user reaction and timing sensitivity.
+        It does not create reality facts or decide this event.
+      </p>
+
+      <details className="rounded border border-black/8 bg-white p-3">
+        <summary className="cursor-pointer text-xs font-semibold uppercase text-[#7d8578]">
+          Technical details
+        </summary>
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+          {technicalItems.map(([label, value]) => (
+            <div key={label} className="rounded border border-black/8 bg-[#f7f8f4] p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+                {label}
+              </div>
+              <p className="mt-1 break-all text-xs leading-5 text-[#62695d]">
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <EdgeDeltaView event={event} compact />
+          <EvidenceRefsView refs={event.evidence?.evidenceRefs ?? []} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -198,12 +226,12 @@ export function ConfidenceExplanation({ value }: { value: number }) {
     value >= 80 ? "high confidence" : value >= 55 ? "moderate confidence" : value >= 25 ? "low confidence" : "weak signal";
   const detail =
     value >= 80
-      ? "Multiple evidence refs and strong agent policy signals support this event."
+      ? "Multiple evidence refs and strong reality-node signals support this path event."
       : value >= 55
-        ? "Some evidence supports this event, but agent parameters are the primary driver."
+        ? "Some evidence supports this path event, with modeled situation structure still doing part of the work."
         : value >= 25
-          ? "This event is primarily policy-generated with limited direct evidence. Treat as a possible scenario, not a likely one."
-          : "Very limited evidence. This event is almost entirely policy-generated. Treat as a weak signal only.";
+          ? "This path event has limited direct evidence. Treat it as a possible scenario, not a likely one."
+          : "Very limited evidence. Treat this path event as a weak signal only.";
   const badgeClass =
     value < 25
       ? "border-dashed border-black/20 text-[#7d8578]"
@@ -226,12 +254,12 @@ export function ConfidenceExplanation({ value }: { value: number }) {
       <p className="mt-1 text-xs leading-5 text-[#62695d]">{detail}</p>
       <details className="mt-2">
         <summary className="cursor-pointer text-xs font-semibold text-[#7d8578]">
-          What does event confidence mean?
+          What does path-event confidence mean?
         </summary>
         <p className="mt-2 text-xs leading-5 text-[#62695d]">
-          Event confidence measures how strongly the available evidence and
-          agent parameters support this specific event at this tick under this
-          branch policy. Confidence does not make the event a certain outcome.
+          Path-event confidence measures how strongly the available evidence and
+          reality-node structure support this moment under the current path.
+          Confidence does not make the event a certain outcome.
         </p>
       </details>
     </div>
@@ -272,7 +300,7 @@ export function EdgeDeltaView({
   if (!rows.length) {
     return (
       <p className="rounded border border-dashed border-black/12 bg-white p-3 text-xs leading-5 text-[#7d8578]">
-        No edge weight delta recorded for this event.
+        No relationship change recorded for this path event.
       </p>
     );
   }
@@ -316,9 +344,9 @@ export function AgentRefsView({
 }) {
   return (
     <RefList
-      title="Agents"
+      title="Reality nodes"
       values={(agentIds ?? []).map((id) => agentLabel(agents, id))}
-      empty="No agent refs."
+      empty="No reality-node refs."
     />
   );
 }
@@ -334,9 +362,9 @@ export function RelationEdgeRefsView({
 }) {
   return (
     <RefList
-      title="Relation edges"
+      title="Relation clues"
       values={(edgeIds ?? []).map((id) => edgeLabel(edges, agents, id))}
-      empty="No relation edge refs."
+      empty="No relation-clue refs."
     />
   );
 }
@@ -405,50 +433,39 @@ export function EventCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-            {displayPathLabel(event)} / Tick {event.tickIndex} / {event.timeLabel}
+            {displayPathLabel(event)} / {event.timeLabel}
           </div>
           <h3 className="mt-2 text-sm font-semibold text-[#11150f]">
             {eventLabel(event)}
           </h3>
         </div>
         <span className="rounded border border-black/8 bg-white px-2 py-1 text-xs font-semibold text-[#3f483d]">
-          {event.confidence}%
+          {event.confidence}% confidence
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-[#62695d]">{event.summary}</p>
       <EventDisplaySummary event={event} />
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      <div className="mt-4">
         <ConfidenceExplanation value={event.confidence} />
-        <div className="rounded border border-black/8 bg-white px-3 py-2">
-          <div className="text-xs font-semibold uppercase text-[#7d8578]">
-            event source
-          </div>
-          <p className="mt-1 text-xs leading-5 text-[#62695d]">
-            {event.source} / {event.status}
-          </p>
+      </div>
+
+      <details className="mt-4 rounded border border-black/8 bg-white p-3">
+        <summary className="cursor-pointer text-xs font-semibold uppercase text-[#7d8578]">
+          Reality-node and relation clues
+        </summary>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <AgentRefsView
+            agentIds={event.involvedAgentIds ?? event.agentIds}
+            agents={agents}
+          />
+          <RelationEdgeRefsView
+            edgeIds={event.relationEdgeIds}
+            edges={edges}
+            agents={agents}
+          />
         </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <AgentRefsView
-          agentIds={event.involvedAgentIds ?? event.agentIds}
-          agents={agents}
-        />
-        <RelationEdgeRefsView
-          edgeIds={event.relationEdgeIds}
-          edges={edges}
-          agents={agents}
-        />
-      </div>
-
-      <div className="mt-4">
-        <EdgeDeltaView event={event} compact />
-      </div>
-
-      <div className="mt-4">
-        <EvidenceRefsView refs={event.evidence?.evidenceRefs ?? []} />
-      </div>
+      </details>
     </Wrapper>
   );
 }
@@ -525,7 +542,7 @@ export function TimelineFeed({
   selectedEventId = "",
   onSelectEvent,
   title = "Sandbox event timeline",
-  description = "Events are grouped by tick so findings can be traced back to the local audit trail.",
+  description = "Path events are grouped by stage so findings can be traced back to their evidence trail.",
 }: {
   ticks?: SimulationTickDraft[];
   events: SimulationEventDraft[];
@@ -553,7 +570,7 @@ export function TimelineFeed({
                 id: `tick_${tickIndex}`,
                 tickIndex,
                 timeLabel: first?.timeLabel ?? `Tick ${tickIndex}`,
-                summary: `Tick ${tickIndex} sandbox event entries.`,
+                summary: `Stage ${tickIndex} path-event entries.`,
               },
               events: tickEvents,
             };
@@ -567,7 +584,7 @@ export function TimelineFeed({
           <p className="mt-2 text-sm leading-6 text-[#62695d]">{description}</p>
         </div>
         <span className="rounded border border-[#568262]/20 bg-[#eef5ee] px-2 py-1 text-xs font-semibold text-[#2f5d3d]">
-          {events.length} events
+          {events.length} path events
         </span>
       </div>
       <div className="mt-5 space-y-4">

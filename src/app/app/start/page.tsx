@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useLanguage } from "@/components/language-provider";
@@ -42,10 +42,10 @@ type Locale = "en" | "zh";
 
 const startCopy = {
   en: {
-    title: "Say what you are facing. One paragraph is enough.",
+    title: "Check it once, then start",
     intro:
-      "Astraloom reads the real situation first, then uses timing climate as a light lens to build several observable paths. You do not need to fill a long form before starting.",
-    eyebrow: "Start a real situation sandbox",
+      "You can start with just this paragraph. Add materials only if you already have them.",
+    eyebrow: "Almost ready",
     trustPill: "Only uses materials you confirm",
     capabilityTitle: "Current capability",
     deepSeek: "DeepSeek Reality Intake",
@@ -57,7 +57,7 @@ const startCopy = {
     notParticipated: "not yet",
     unavailableGrounding:
       "This run will clearly label whether it uses local assumptions, manual materials, AI intake, or external sources.",
-    questionTitle: "Your question or situation",
+    questionTitle: "What you want to understand",
     questionPlaceholder:
       "For example: I am thinking about leaving my current role. My manager has become vague, but outside opportunities are still unstable. I want to know what to observe and how to act over the next three months.",
     questionHelper:
@@ -65,7 +65,7 @@ const startCopy = {
     shortContext:
       "If the situation is too short to ground, Astraloom will ask only the minimum clarification it needs.",
     timeWindow: "Time window",
-    realityTitle: "Optional grounding materials",
+    realityTitle: "Optional materials",
     realityIntro:
       "Screenshots, chat summaries, offer terms, company notes, or market notes can improve grounding, but they are not required to start.",
     material: "Material",
@@ -92,16 +92,16 @@ const startCopy = {
     male: "Male",
     unknownTime: "I do not know the exact time",
     skipDestiny: "Start without timing lens",
-    generateTitle: "Ready to start",
-    generate: "Generate sandbox",
+    generateTitle: "Start when ready",
+    generate: "Start analysis",
     sample: "View complete sample",
     localModeNote: "The run will label assumptions instead of presenting them as facts.",
     groundedModeNote: "Ready for a source-aware first pass while preserving uncertainty.",
     missingBirth: "Add a birth date, or choose to start without the timing lens.",
     missingQuestion: "Please describe what you want to understand first.",
     saveFailed: "Saving failed. Please try again.",
-    preparationFailed: "Something went wrong while preparing your sandbox. Please try again.",
-    loadingTitle: "Preparing your path sandbox",
+    preparationFailed: "Something went wrong while preparing the analysis. Please try again.",
+    loadingTitle: "Preparing your analysis",
     fallbackTitle: "Fallbacks used in this run",
     fallbackDeepSeek:
       "DeepSeek Reality Intake did not complete. The run is falling back to local or manual structure.",
@@ -121,12 +121,12 @@ const startCopy = {
     afterUnknownsBody: "Missing facts are not filled by destiny or AI as conclusions.",
     afterPaths: "Build observable paths",
     afterPathsBody: "Each path includes next signals to watch, not a certain prediction.",
-    scopeTitle: "Sandbox range",
+    scopeTitle: "Analysis range",
     scopeBody:
       "Suitable for relationship, career, cooperation, and other real choices. High-risk, medical, legal, or financial cases are downgraded to conservative support.",
     minimumTitle: "Only necessary follow-up",
     minimumBody:
-      "If one paragraph is clear enough, the sandbox starts directly. If essentials are missing, Astraloom asks one to three questions.",
+      "If one paragraph is clear enough, the analysis starts directly. If essentials are missing, Astraloom asks one to three questions.",
     destinyNotFactTitle: "Destiny is not a fact source",
     destinyNotFactBody:
       "It can adjust stress response, boundary style, and timing sensitivity. Real-world facts still come from your materials.",
@@ -147,14 +147,14 @@ const startCopy = {
       external_reality_search: "Searching external reality information",
       build_reality_model: "Building grounded situation model",
       apply_destiny_weighting: "Applying timing lens",
-      generate_path_sandbox: "Generating path sandbox",
+      generate_path_sandbox: "Preparing path analysis",
     },
   },
   zh: {
-    title: "先说你正在面对什么。\n一段话就可以。",
+    title: "确认一下，就可以开始",
     intro:
-      "Astraloom 会先读取现实处境，再把时间气候作为轻量镜头，生成几种可观察的路径。你不需要先填一长串表格。",
-    eyebrow: "开始一个真实处境沙盘",
+      "只用这一段话也可以开始。有截图、聊天摘要或条款时再补充，没有也不影响先跑一版。",
+    eyebrow: "快准备好了",
     trustPill: "仅使用你确认的材料",
     capabilityTitle: "当前能力状态",
     deepSeek: "DeepSeek 现实信息摄取",
@@ -166,7 +166,7 @@ const startCopy = {
     notParticipated: "暂未参与",
     unavailableGrounding:
       "本次会清楚标明使用的是本地假设、手动材料、AI 摄取，还是外部来源。",
-    questionTitle: "你的问题或处境",
+    questionTitle: "你想看清的事",
     questionPlaceholder:
       "例如：我最近在考虑要不要离开现在的工作。主管态度变得模糊，但外部机会还不稳定，我想知道接下来三个月应该观察什么、怎么行动。",
     questionHelper:
@@ -174,9 +174,9 @@ const startCopy = {
     shortContext:
       "如果这段话不足以建立现实处境，Astraloom 只会追问必要信息。",
     timeWindow: "时间窗口",
-    realityTitle: "可选现实材料",
+    realityTitle: "可选材料",
     realityIntro:
-      "截图、聊天摘要、offer 条款、公司信息或市场笔记可以提高 grounding，但不是开始沙盘的前置条件。",
+      "截图、聊天摘要、offer 条款、公司信息或市场笔记可以提高依据质量，但不是开始分析的前置条件。",
     material: "材料",
     materialAdd: "添加可选材料",
     materialRemove: "删除",
@@ -202,15 +202,15 @@ const startCopy = {
     unknownTime: "不知道准确时间",
     skipDestiny: "不使用时间镜头，直接开始",
     generateTitle: "准备开始",
-    generate: "生成沙盘",
+    generate: "开始分析",
     sample: "查看完整示例",
     localModeNote: "本次会标记假设，不会把假设包装成事实。",
-    groundedModeNote: "可进行带来源意识的第一轮沙盘，并保留不确定性。",
+    groundedModeNote: "可进行带来源意识的第一轮分析，并保留不确定性。",
     missingBirth: "请填写出生日期，或选择不使用时间镜头。",
     missingQuestion: "请先描述你现在想看清的问题。",
     saveFailed: "保存失败，请再试一次。",
-    preparationFailed: "沙盘准备失败，请再试一次。",
-    loadingTitle: "正在准备路径沙盘",
+    preparationFailed: "分析准备失败，请再试一次。",
+    loadingTitle: "正在准备分析",
     fallbackTitle: "本次使用的降级",
     fallbackDeepSeek:
       "DeepSeek 现实信息摄取未完成，本次会降级为本地或手动材料结构。",
@@ -230,12 +230,12 @@ const startCopy = {
     afterUnknownsBody: "缺失事实不会被命理或 AI 自动补成结论。",
     afterPaths: "生成几条可观察路径",
     afterPathsBody: "每条路径都附带下一步观察信号，而不是确定预言。",
-    scopeTitle: "本次沙盘范围",
+    scopeTitle: "本次分析范围",
     scopeBody:
       "适合关系、职业、合作等现实选择。高风险、医疗、法律或财务决策会降级为保守支持和求助建议。",
     minimumTitle: "系统只会追问必要信息",
     minimumBody:
-      "如果一段话足够清楚，会直接进入沙盘；如果缺少关键边界，最多追问 1-3 个问题。",
+      "如果一段话足够清楚，会直接进入分析；如果缺少关键边界，最多追问 1-3 个问题。",
     destinyNotFactTitle: "命理不是事实来源",
     destinyNotFactBody:
       "它只调整压力反应、边界风格和时机敏感度；现实事实仍以你的材料为准。",
@@ -256,7 +256,7 @@ const startCopy = {
       external_reality_search: "搜索外部现实信息",
       build_reality_model: "构建现实处境模型",
       apply_destiny_weighting: "应用时间镜头",
-      generate_path_sandbox: "生成路径沙盘",
+      generate_path_sandbox: "准备路径分析",
     },
   },
 } as const;
@@ -462,8 +462,9 @@ function modeNote(mode: RuntimeCapabilityMode, locale: Locale) {
   return startCopy[locale].localModeNote;
 }
 
-export default function StartPage() {
+function StartPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { locale } = useLanguage();
   const t = startCopy[locale];
   const [repos] = useState(() => getRepositories());
@@ -476,6 +477,7 @@ export default function StartPage() {
     const result = repos.realityIntakes.load(initialSeed.id);
     return result.ok ? result.data : null;
   });
+  const initialPrompt = searchParams.get("prompt")?.trim() ?? "";
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [birthPlace, setBirthPlace] = useState("");
@@ -486,7 +488,7 @@ export default function StartPage() {
     initialSeed?.timeWindow ?? "90_days",
   );
   const [description, setDescription] = useState(
-    initialSeed?.currentQuestionDescription ?? initialSeed?.situationSummary ?? "",
+    initialPrompt || initialSeed?.currentQuestionDescription || initialSeed?.situationSummary || "",
   );
   const [manualRealityInputs, setManualRealityInputs] = useState<ManualRealityInput[]>(() =>
     initialRealityIntake?.manualSources.length
@@ -529,6 +531,33 @@ export default function StartPage() {
     description.trim().length >= 20 && (skipDestiny || birthDate.trim().length > 0);
   const showShortContextWarning =
     description.trim().length > 0 && description.trim().length < 80;
+
+  function applyScenarioChip(chip: string) {
+    const examples: Record<string, string> = {
+      [t.chipCareer]:
+        locale === "zh"
+          ? "我最近在考虑是否离开现在的岗位。现在的工作稳定但成长有限，新机会更有空间但条件还没有完全确定。我想看清未来三个月应该观察哪些现实信号，以及怎样降低误判。"
+          : "I am considering whether to leave my current role. The job is stable but growth is limited, while the new opportunity has more upside and more uncertainty. I want to see what signals to watch over the next three months and how to reduce misread risk.",
+      [t.chipRelation]:
+        locale === "zh"
+          ? "我和一个重要的人最近沟通节奏变得不稳定，有时靠近、有时回避。我想看清这段关系的现实压力、边界和下一步适合观察的信号。"
+          : "Communication with an important person has become unstable: sometimes close, sometimes avoidant. I want to understand the real pressure, boundaries, and next signals worth observing.",
+      [t.chipPartner]:
+        locale === "zh"
+          ? "我正在评估一个合作机会。对方资源不错，但责任边界、投入节奏和退出条件还不清楚。我想知道继续推进前应该先确认什么。"
+          : "I am evaluating a cooperation opportunity. The other side has useful resources, but responsibility boundaries, commitment pace, and exit terms are still unclear. I want to know what to confirm before moving forward.",
+      [t.chipFamily]:
+        locale === "zh"
+          ? "家里最近对我的选择有明显压力。我想坚持自己的节奏，但也不想让关系恶化。我想看清哪些沟通方式风险更低。"
+          : "My family is putting clear pressure on a choice I need to make. I want to keep my own pace without worsening the relationship, and understand which communication path is lower risk.",
+      [t.chipUnsorted]:
+        locale === "zh"
+          ? "我现在只觉得某件事卡住了，还没有整理清楚。它牵涉到人、时间压力和一些不确定信息。我想先把局面拆清楚，再看下一步。"
+          : "I only know that something feels stuck right now. It involves people, timing pressure, and uncertain information. I want to structure the situation first, then decide the next step.",
+    };
+    setDescription(examples[chip] ?? chip);
+    setMessage("");
+  }
 
   async function submit() {
     if (saving) return;
@@ -740,12 +769,14 @@ export default function StartPage() {
               <div className="mt-4 flex flex-wrap gap-2">
                 {[t.chipCareer, t.chipRelation, t.chipPartner, t.chipFamily, t.chipUnsorted].map(
                   (chip) => (
-                    <span
+                    <button
                       key={chip}
-                      className="rounded-full border border-black/10 bg-white/55 px-3 py-2 text-sm text-[#4f584f]"
+                      type="button"
+                      onClick={() => applyScenarioChip(chip)}
+                      className="rounded-full border border-black/10 bg-white/55 px-3 py-2 text-sm text-[#4f584f] transition hover:border-[#568262]/45 hover:bg-[#eef5ee]"
                     >
                       {chip}
-                    </span>
+                    </button>
                   ),
                 )}
               </div>
@@ -1147,6 +1178,14 @@ export default function StartPage() {
         </SurfaceCard>
       </div>
     </AppShell>
+  );
+}
+
+export default function StartPage() {
+  return (
+    <Suspense fallback={null}>
+      <StartPageContent />
+    </Suspense>
   );
 }
 

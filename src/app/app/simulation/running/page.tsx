@@ -6,16 +6,27 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { GroundedSimulationDebugPanel } from "@/components/grounded-social/grounded-simulation-debug-panel";
 import { useLanguage } from "@/components/language-provider";
-import { RealityIntakeModeBanner } from "@/components/reality-intake-mode-banner";
 import { RuntimeCapabilityBanner } from "@/components/runtime-capability-banner";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { TimelineFeed } from "@/components/simulation/event-log";
 import { StatusPill } from "@/components/status-pill";
-import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
+import {
+  Button,
+  ButtonLink,
+  CapabilityCard,
+  DestinyWeightingBadge,
+  DestinyWeightingCard,
+  PathCard,
+  RealityCard,
+  StatusBadge,
+  SurfaceCard,
+  WarningPanel,
+} from "@/components/ui-foundation";
 import { buildClaimLedgerDraft } from "@/lib/claims/build";
 import { applyFeedbackToNextRun } from "@/lib/calibration/apply-feedback-to-next-run";
 import { loadCalibrationProfile } from "@/lib/calibration/calibration-engine";
 import { getRepositories } from "@/lib/repositories/repository-provider";
+import { getRuntimeCapability } from "@/lib/runtime-capability/get-runtime-capability";
 import {
   blockSimulationRunDraft,
   buildSimulationRunDraft,
@@ -26,7 +37,16 @@ import { verifySafety } from "@/lib/safety/safety-verifier";
 import type { SafetySnapshot } from "@/lib/simulation/simulation-types";
 import type { AgentEcologyDraft } from "@/types/agent-profile";
 import type { DestinyClimateDraft, DestinyProfileDraft } from "@/types/destiny";
-import type { DestinySituationFusionDraft } from "@/types/destiny-fusion";
+import type {
+  DestinyPersonModifier,
+  GroundedSimulationPathEvent,
+  GroundedSocialSimulationDraft,
+} from "@/types/grounded-social-simulation";
+import type { RealityIntakeDraft } from "@/types/reality-intake";
+import type {
+  RuntimeCapabilityMode,
+  RuntimeCapabilityState,
+} from "@/types/runtime-capability";
 import type { SeedContextDraft } from "@/types/seed-context";
 import type {
   SimulationBranchId,
@@ -38,19 +58,22 @@ type Locale = "en" | "zh";
 
 const simulationStages = [
   {
-    id: "reading_destiny_climate",
+    id: "reading_real_situation",
   },
   {
-    id: "understanding_current_situation",
+    id: "extracting_reality_nodes",
   },
   {
-    id: "mapping_key_pressure",
+    id: "retrieving_external_sources",
   },
   {
-    id: "simulating_key_interactions",
+    id: "building_grounded_social_model",
   },
   {
-    id: "comparing_possible_paths",
+    id: "applying_destiny_weighting",
+  },
+  {
+    id: "simulating_possible_paths",
   },
   {
     id: "preparing_key_findings",
@@ -58,35 +81,43 @@ const simulationStages = [
 ] as const;
 
 type StageId = (typeof simulationStages)[number]["id"];
+type StageStatus =
+  | "completed"
+  | "running"
+  | "skipped"
+  | "unavailable"
+  | "fallback"
+  | "failed"
+  | "waiting";
 
 const runningCopy = {
   en: {
-    heroTitle: "Your sandbox is unfolding",
+    heroTitle: "Analyzing your situation",
     heroBody:
-      "Astraloom is combining your destiny climate, current situation text, and possible paths into one dynamic sandbox.",
-    startRun: "Start unfolding",
+      "Astraloom is reading what happened, separating the people and pressures involved, and comparing a few possible next paths.",
+    startRun: "Start analysis",
     rerun: "Run again",
     reset: "Clear and rebuild",
     running: "Unfolding",
     complete: "Ready",
     waiting: "Ready to unfold",
-    openingResult: "The sandbox is ready. Opening your key findings.",
+    openingResult: "The analysis is ready. Opening your key findings.",
     runMessage:
-      "Astraloom is placing your destiny climate, current situation text, and possible paths into motion.",
-    rebuildMessage: "Astraloom is rebuilding the sandbox from your latest inputs.",
-    resetMessage: "The current sandbox view has been cleared.",
-    saveFailed: "The sandbox could not be saved. Please try again.",
+      "Astraloom is turning your situation, optional timing lens, and possible choices into readable next-step signals.",
+    rebuildMessage: "Astraloom is rebuilding the analysis from your latest inputs.",
+    resetMessage: "The current analysis view has been cleared.",
+    saveFailed: "The analysis could not be saved. Please try again.",
     prepareFailed:
-      "The sandbox could not prepare enough usable movement. Please return to the start page and generate it again.",
-    noDataTitle: "The sandbox does not have enough runnable data yet.",
+      "The analysis could not prepare enough usable movement. Please return to the start page and try again.",
+    noDataTitle: "There is not enough information to analyze yet.",
     noDataBody:
-      "The sandbox does not have enough runnable data yet. Please start a new sandbox first.",
-    backToStart: "Start a new sandbox",
-    safetyTitle: "This sandbox is paused for safety",
+      "Please return to the start page and describe the situation first.",
+    backToStart: "Start a new analysis",
+    safetyTitle: "This analysis is paused for safety",
     backToSetup: "Back to start",
-    controlTitle: "Dynamic sandbox",
+    controlTitle: "Analysis controls",
     controlBody:
-      "Start the unfolding process and watch climate, pressure, interactions, and paths separate into readable signals.",
+      "Start when you are ready. The main view will show progress first, then the paths and signals worth watching.",
     climateTitle: "Destiny climate",
     climateFallback:
       "No saved destiny climate was found. Astraloom will lean more on the current situation text in this run.",
@@ -97,59 +128,100 @@ const runningCopy = {
     pressureBody:
       "Astraloom is matching symbolic climate with people, roles, and pressure points without treating any outcome as certain.",
     noPressure:
-      "No detailed pressure map is available yet. The sandbox can still unfold from your current situation.",
-    processTitle: "Sandbox unfolding",
+      "No detailed pressure map is available yet. The analysis can still start from your current situation.",
+    processTitle: "Analysis progress",
     processBody:
-      "The process moves from destiny climate and real pressure into interactions, path comparison, and key findings.",
+      "Each step stays visible so you can see what finished, what was skipped, and where a fallback was used.",
     pathTitle: "Possible paths",
     pathBody:
       "The same situation is compared through several path lenses so pressure shifts are easier to notice.",
     noMovement: "No movement yet",
-    interactionTitle: "Dynamic event cards",
+    interactionTitle: "What changed during analysis",
     interactionBody:
-      "Each card shows what happened, who was involved, how climate and real pressure moved, and what clue appeared.",
+      "Each card shows the situation shift, who is involved, and which signal became easier to observe.",
     runToGenerate: "Start unfolding to generate dynamic event cards.",
     technicalTitle: "Technical details",
     technicalBody:
-      "Internal run data is kept here for review without taking over the main sandbox experience.",
+      "Internal run data is kept here for review without taking over the main experience.",
     resultReady: "View key findings",
     resultWaiting: "Finish unfolding first",
+    viewResult: "View results",
+    modeLabel: "Current mode",
+    sourceBacked: "source-backed",
+    notSourceBacked: "not source-backed",
+    deepSeekStatus: "DeepSeek Reality Intake",
+    externalStatus: "External reality search",
+    participated: "active",
+    notParticipated: "not active",
+    incompleteGrounding: "Not a full grounded simulation yet.",
+    realityOverviewTitle: "Reality model overview",
+    realityOverviewBody:
+      "A compact view of the real-world nodes, pressures, sources, and missing information behind this analysis.",
+    realityNodes: "Reality Nodes",
+    realityPressures: "Reality Pressures",
+    externalSources: "External Sources",
+    missingInfo: "Missing Info",
+    moreDetails: "More details",
+    noItems: "No items recorded yet.",
+    destinyWeightingTitle: "Destiny weighting",
+    destinyWeightingBoundary:
+      "Destiny only weights user response tendencies. It does not create real-world facts.",
+    pathComparisonTitle: "Path comparison",
+    pathComparisonBody:
+      "Each path shows how user action, reality reaction, pressure, information, opportunity, and confidence may move.",
+    pathFields: {
+      userAction: "User action",
+      realityReaction: "Reality reaction",
+      pressure: "Pressure change",
+      information: "Information change",
+      opportunity: "Opportunity change",
+      destiny: "Destiny weighting",
+      confidence: "Confidence",
+    },
     stageStatus: {
-      blocked: "blocked",
-      done: "done",
-      active: "now",
+      completed: "completed",
+      running: "running",
+      skipped: "skipped",
+      unavailable: "unavailable",
+      fallback: "fallback",
+      failed: "failed",
       waiting: "waiting",
     },
     stages: {
-      reading_destiny_climate: {
-        label: "Reading destiny climate",
+      reading_real_situation: {
+        label: "Read the situation",
         detail:
-          "Bringing birth context and current climate into the sandbox as symbolic background.",
+          "Reading your question, materials, time window, people, limits, and options.",
       },
-      understanding_current_situation: {
-        label: "Understanding your current situation",
+      extracting_reality_nodes: {
+        label: "Find people and pressures",
         detail:
-          "Reading the question, recent context, people, and pressure you described.",
+          "Using AI intake when available to extract people, organizations, resources, opportunities, and constraints.",
       },
-      mapping_key_pressure: {
-        label: "Mapping key pressure",
+      retrieving_external_sources: {
+        label: "Check external sources",
         detail:
-          "Finding where timing, information, relationships, and resources may pull against each other.",
+          "Attaching external reality sources only when search is enabled and returns usable material.",
       },
-      simulating_key_interactions: {
-        label: "Simulating key interactions",
+      building_grounded_social_model: {
+        label: "Organize the situation map",
         detail:
-          "Letting the main interactions move forward inside the sandbox.",
+          "Turning reality nodes and pressures into a compact social model for path simulation.",
       },
-      comparing_possible_paths: {
-        label: "Comparing possible paths",
+      applying_destiny_weighting: {
+        label: "Add timing lens",
         detail:
-          "Comparing how several paths may change pressure, clarity, and available resources.",
+          "Using destiny climate only to weight user response tendencies and timing sensitivity.",
+      },
+      simulating_possible_paths: {
+        label: "Compare possible paths",
+        detail:
+          "Comparing how several paths may change pressure, clarity, boundaries, and available opportunities.",
       },
       preparing_key_findings: {
-        label: "Preparing key findings",
+        label: "Prepare key findings",
         detail:
-          "Turning the unfolding sandbox into readable findings for the result page.",
+          "Turning the analysis into readable findings for the result page.",
       },
     },
     branches: {
@@ -184,79 +256,116 @@ const runningCopy = {
     },
   },
   zh: {
-    heroTitle: "你的沙盘正在展开",
+    heroTitle: "正在分析你这件事",
     heroBody:
-      "Astraloom 正在把你的命理气候、现实局势和几种可能路径放进同一个动态沙盘中。",
-    startRun: "开始展开沙盘",
+      "Astraloom 会先读懂你描述的现实情况，再拆出相关的人、压力、选择和接下来值得观察的信号。",
+    startRun: "开始分析",
     rerun: "重新推演",
     reset: "清空并重建",
     running: "正在展开",
     complete: "已生成",
     waiting: "等待展开",
-    openingResult: "沙盘已经展开完成，正在打开关键发现。",
-    runMessage: "Astraloom 正在把命理气候、现实局势和可能路径放进沙盘中。",
-    rebuildMessage: "Astraloom 正在根据最新输入重新展开沙盘。",
-    resetMessage: "当前沙盘视图已清空。",
-    saveFailed: "沙盘保存失败，请再试一次。",
-    prepareFailed: "沙盘没有生成足够可用的变化，请回到开始页重新生成一次。",
-    noDataTitle: "沙盘还缺少可运行的数据。",
-    noDataBody: "沙盘还缺少可运行的数据。请先回到开始页生成一次沙盘。",
+    openingResult: "分析已经完成，正在打开关键发现。",
+    runMessage: "Astraloom 正在把你的情况、可选时间参考和几种可能选择整理成可读信号。",
+    rebuildMessage: "Astraloom 正在根据最新输入重新分析。",
+    resetMessage: "当前分析视图已清空。",
+    saveFailed: "分析保存失败，请再试一次。",
+    prepareFailed: "这次分析没有生成足够可用的变化，请回到开始页重新试一次。",
+    noDataTitle: "还没有足够信息可以分析。",
+    noDataBody: "请先回到开始页，简单描述你想看清的事。",
     backToStart: "回到开始页",
-    safetyTitle: "这个沙盘因安全原因暂停",
+    safetyTitle: "这次分析因安全原因暂停",
     backToSetup: "回到开始页",
-    controlTitle: "动态沙盘",
-    controlBody: "开始展开后，你会看到命理气候、现实压力、关键互动和路径分化逐步浮现。",
+    controlTitle: "分析控制",
+    controlBody: "准备好后开始。主视图会先显示进度，再显示路径和你接下来该观察的信号。",
     climateTitle: "命理气候",
-    climateFallback: "还没有保存的命理气候。本次沙盘会更多依赖现实局势来展开。",
+    climateFallback: "还没有保存的命理气候。本次分析会更多依赖现实局势来展开。",
     situationTitle: "当前局势",
     windowLabel: "观察窗口",
     focusLabel: "关注点",
     pressureTitle: "关键压力映射",
     pressureBody:
       "Astraloom 会把象征性的命理气候与人物、角色和压力点放在一起观察，但不会把任何结果说成确定。",
-    noPressure: "还没有详细压力映射。沙盘仍然可以从你描述的当前局势开始展开。",
-    processTitle: "沙盘展开过程",
-    processBody: "沙盘会从命理气候和现实压力开始，逐步进入互动、路径比较和关键发现。",
+    noPressure: "还没有详细压力映射。分析仍然可以从你描述的当前局势开始。",
+    processTitle: "分析进度",
+    processBody: "每一步都会显示真实状态：完成、跳过、降级或失败，不会假装已经完成。",
     pathTitle: "可能路径",
     pathBody: "同一个局势会从几种路径角度展开，帮助你看见压力如何变化。",
     noMovement: "还没有展开",
-    interactionTitle: "动态事件卡片",
+    interactionTitle: "分析中出现的变化",
     interactionBody:
-      "每张卡片会显示发生了什么、涉及谁、命理气候与现实压力如何变化，以及出现了什么线索。",
-    runToGenerate: "开始展开沙盘后，会生成动态事件卡片。",
+      "每张卡片会显示局势怎样变化、涉及谁，以及哪类信号变得更值得观察。",
+    runToGenerate: "开始分析后，会生成关键变化卡片。",
     technicalTitle: "技术细节",
-    technicalBody: "内部运行数据仍保留在这里，方便检查，但不会占据主沙盘体验。",
+    technicalBody: "内部运行数据仍保留在这里，方便检查，但不会占据主阅读体验。",
     resultReady: "查看关键发现",
-    resultWaiting: "请先完成沙盘展开",
+    resultWaiting: "请先完成分析",
+    viewResult: "查看结果",
+    modeLabel: "当前模式",
+    sourceBacked: "有现实来源支撑",
+    notSourceBacked: "缺少现实来源支撑",
+    deepSeekStatus: "DeepSeek 现实信息摄取",
+    externalStatus: "外部现实搜索",
+    participated: "已参与",
+    notParticipated: "未参与",
+    incompleteGrounding: "当前不是完整现实推演。",
+    realityOverviewTitle: "现实模型概览",
+    realityOverviewBody: "简洁查看本次分析背后的现实节点、现实压力、外部来源和缺失信息。",
+    realityNodes: "现实节点",
+    realityPressures: "现实压力",
+    externalSources: "外部来源",
+    missingInfo: "缺失信息",
+    moreDetails: "更多细节",
+    noItems: "暂无记录。",
+    destinyWeightingTitle: "命理调权",
+    destinyWeightingBoundary: "命理只影响用户反应倾向，不生成现实事实。",
+    pathComparisonTitle: "路径对比",
+    pathComparisonBody: "每条路径展示用户动作、现实反应、压力、信息、机会和置信度如何变化。",
+    pathFields: {
+      userAction: "用户动作",
+      realityReaction: "现实反应",
+      pressure: "压力变化",
+      information: "信息变化",
+      opportunity: "机会变化",
+      destiny: "命理调权",
+      confidence: "置信度",
+    },
     stageStatus: {
-      blocked: "暂停",
-      done: "完成",
-      active: "正在进行",
+      completed: "完成",
+      running: "进行中",
+      skipped: "跳过",
+      unavailable: "不可用",
+      fallback: "降级",
+      failed: "失败",
       waiting: "等待",
     },
     stages: {
-      reading_destiny_climate: {
-        label: "读取命理气候",
-        detail: "把出生背景和当前气候放入沙盘，作为象征性的背景信息。",
+      reading_real_situation: {
+        label: "读懂现在发生了什么",
+        detail: "读取你的问题、材料、时间窗口、相关人物、限制和选择项。",
       },
-      understanding_current_situation: {
-        label: "理解当前局势",
-        detail: "读取你描述的问题、近期背景、相关人物和现实压力。",
+      extracting_reality_nodes: {
+        label: "找出相关人和压力",
+        detail: "在可用时用 AI Intake 抽取人物、组织、资源、机会和限制。",
       },
-      mapping_key_pressure: {
-        label: "映射关键压力",
-        detail: "观察时机、信息、关系和资源可能在哪里互相拉扯。",
+      retrieving_external_sources: {
+        label: "尝试补充外部来源",
+        detail: "只有在外部搜索启用并返回可用材料时，才会附加外部现实来源。",
       },
-      simulating_key_interactions: {
-        label: "模拟关键互动",
-        detail: "让主要互动在沙盘中向前推进。",
+      building_grounded_social_model: {
+        label: "整理局势关系",
+        detail: "把现实节点和压力转成可用于路径推演的简洁社会模型。",
       },
-      comparing_possible_paths: {
-        label: "比较可能路径",
-        detail: "比较几种路径可能如何改变压力、清晰度和可用资源。",
+      applying_destiny_weighting: {
+        label: "加入时间节奏参考",
+        detail: "命理只用于调节用户反应倾向和时间敏感度。",
+      },
+      simulating_possible_paths: {
+        label: "比较几种可能路径",
+        detail: "比较几条路径可能如何改变压力、清晰度、边界和机会。",
       },
       preparing_key_findings: {
-        label: "生成关键发现",
+        label: "整理重点发现",
         detail: "把展开过程整理成结果页可以阅读的关键发现。",
       },
     },
@@ -325,6 +434,25 @@ const branchMeta: Record<
       "Models setting a clearer time box, boundary, or alternative option so the situation shifts from passive waiting to controlled choice.",
     classes: "border-[#568262]/30 bg-[#eef5ee]",
   },
+};
+
+const runtimeModeLabels: Record<RuntimeCapabilityMode, Record<Locale, string>> = {
+  local_assumption: { en: "Local assumption", zh: "本地假设" },
+  manual_reality: { en: "Manual reality", zh: "手动材料" },
+  ai_reality_intake: { en: "AI intake", zh: "AI 现实抽取" },
+  external_reality: { en: "External reality", zh: "外部现实" },
+  full_grounded_reality: { en: "Full grounded reality", zh: "完整现实来源支撑" },
+};
+
+const runtimeModeBadgeVariant: Record<
+  RuntimeCapabilityMode,
+  React.ComponentProps<typeof StatusBadge>["variant"]
+> = {
+  local_assumption: "localAssumption",
+  manual_reality: "warning",
+  ai_reality_intake: "aiIntake",
+  external_reality: "externalReality",
+  full_grounded_reality: "fullGrounded",
 };
 
 function stageCopy(locale: Locale, id: StageId) {
@@ -476,6 +604,91 @@ function userFacingTimeWindow(value: SeedContextDraft["timeWindow"], locale: Loc
   } as const;
 
   return labels[locale][value];
+}
+
+function stageStatusFor({
+  stageId,
+  index,
+  activeStageIndex,
+  processState,
+  capability,
+  realityIntake,
+  groundedSocialSimulation,
+  generatedEventCount,
+  claimPreviewCount,
+}: {
+  stageId: StageId;
+  index: number;
+  activeStageIndex: number;
+  processState: "idle" | "running" | "complete" | "failed";
+  capability: RuntimeCapabilityState;
+  realityIntake?: RealityIntakeDraft | null;
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
+  generatedEventCount: number;
+  claimPreviewCount: number;
+}): StageStatus {
+  if (stageId === "extracting_reality_nodes") {
+    if (realityIntake?.llmStatus?.fallback) return "fallback";
+    if (realityIntake?.llmStatus?.succeeded) return "completed";
+    if (realityIntake?.llmStatus?.enabled === false) return "unavailable";
+    if (!capability.llmEnabled && !capability.llmAvailable) return "unavailable";
+  }
+
+  if (stageId === "retrieving_external_sources") {
+    if (realityIntake?.realitySearchStatus?.fallback) return "fallback";
+    if (capability.hasExternalRealitySources) return "completed";
+    if (realityIntake?.realitySearchStatus?.enabled === false) return "skipped";
+    if (!capability.realitySearchEnabled && !capability.realitySearchAvailable) {
+      return "unavailable";
+    }
+  }
+
+  if (stageId === "building_grounded_social_model" && groundedSocialSimulation) {
+    return "completed";
+  }
+
+  if (stageId === "applying_destiny_weighting" && groundedSocialSimulation?.destinyPersonModifier) {
+    return "completed";
+  }
+
+  if (stageId === "simulating_possible_paths" && generatedEventCount > 0) {
+    return "completed";
+  }
+
+  if (stageId === "preparing_key_findings" && claimPreviewCount > 0) {
+    return "completed";
+  }
+
+  if (processState === "failed" && index >= activeStageIndex) return "failed";
+  if (processState === "complete") return "completed";
+  if (processState === "running" && index === activeStageIndex) return "running";
+  if (processState === "running" && index < activeStageIndex) return "completed";
+  return "waiting";
+}
+
+function stageTone(status: StageStatus) {
+  if (status === "completed") return "ready";
+  if (status === "failed" || status === "unavailable") return "blocked";
+  return "planned";
+}
+
+function stageCardClass(status: StageStatus) {
+  if (status === "completed") return "border-[#568262]/25 bg-[#eef5ee]";
+  if (status === "running") return "border-[#d49b4a]/35 bg-[#fff8ed]";
+  if (status === "fallback") return "border-[#d49b4a]/30 bg-[#fff8ed]";
+  if (status === "failed" || status === "unavailable") return "border-red-200 bg-red-50";
+  if (status === "skipped") return "border-black/8 bg-[#f7f8f4] opacity-75";
+  return "border-black/8 bg-[#f7f8f4]";
+}
+
+function stageIndicator(status: StageStatus) {
+  if (status === "completed") return "ok";
+  if (status === "running") return "now";
+  if (status === "fallback") return "fb";
+  if (status === "skipped") return "skip";
+  if (status === "unavailable") return "off";
+  if (status === "failed") return "x";
+  return "idle";
 }
 
 
@@ -686,6 +899,11 @@ export default function RunsPage() {
     });
     return counts;
   }, [visibleEvents]);
+  const realityIntake = groundedSocialSimulation?.realityIntake ?? null;
+  const runtimeCapability = useMemo(
+    () => getRuntimeCapability({ realityIntake }),
+    [realityIntake],
+  );
 
   useEffect(() => {
     if (processState !== "complete") return;
@@ -702,7 +920,7 @@ export default function RunsPage() {
     const timer = window.setTimeout(() => {
       const stage = simulationStages[activeStageIndex];
 
-      if (stage.id === "simulating_key_interactions") {
+      if (stage.id === "simulating_possible_paths") {
         const result = repos.simulations.save(processRun);
         if (!result.ok) {
           setProcessState("failed");
@@ -945,9 +1163,80 @@ export default function RunsPage() {
             ? t.running
             : processState === "complete"
               ? t.complete
-              : t.waiting}
+            : t.waiting}
         </StatusPill>
       </div>
+
+      <CapabilityCard className="mb-6 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-[#11150f]">
+              {locale === "zh" ? "本次现实推演能力" : "Grounding status for this run"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#62695d]">
+              {runtimeCapability.canClaimGroundedSimulation
+                ? locale === "zh"
+                  ? "外部现实来源已参与，可以查看第一轮有现实来源支撑的沙盘。"
+                  : "External reality sources participated, so this sandbox can be read as source-backed."
+                : t.incompleteGrounding}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge variant={runtimeModeBadgeVariant[runtimeCapability.currentMode]}>
+              {t.modeLabel}: {runtimeModeLabels[runtimeCapability.currentMode][locale]}
+            </StatusBadge>
+            <StatusBadge
+              variant={
+                runtimeCapability.canClaimGroundedSimulation
+                  ? "sourceBacked"
+                  : "localAssumption"
+              }
+            >
+              {runtimeCapability.canClaimGroundedSimulation
+                ? t.sourceBacked
+                : t.notSourceBacked}
+            </StatusBadge>
+            <StatusBadge variant={runtimeCapability.llmAvailable ? "aiIntake" : "warning"}>
+              {t.deepSeekStatus}:{" "}
+              {runtimeCapability.llmAvailable ? t.participated : t.notParticipated}
+            </StatusBadge>
+            <StatusBadge
+              variant={
+                runtimeCapability.hasExternalRealitySources
+                  ? "externalReality"
+                  : "warning"
+              }
+            >
+              {t.externalStatus}:{" "}
+              {runtimeCapability.hasExternalRealitySources
+                ? t.participated
+                : t.notParticipated}
+            </StatusBadge>
+          </div>
+        </div>
+        {!runtimeCapability.canClaimGroundedSimulation ? (
+          <WarningPanel className="mt-4 p-3">
+            <p className="text-sm font-semibold text-[#7c5524]">
+              {t.incompleteGrounding}
+            </p>
+          </WarningPanel>
+        ) : null}
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <RuntimeCapabilityBanner capability={runtimeCapability} />
+          <ButtonLink
+            href="/app/simulation/result"
+            variant="primary"
+            onClick={(event) => {
+              if (!canOpenResult) event.preventDefault();
+            }}
+            className={`justify-center px-5 py-3 ${
+              canOpenResult ? "" : "cursor-not-allowed opacity-45"
+            }`}
+          >
+            {t.viewResult}
+          </ButtonLink>
+        </div>
+      </CapabilityCard>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <main className="space-y-6">
@@ -1013,19 +1302,13 @@ export default function RunsPage() {
             <RealSituationPanel seedContext={seedContext} locale={locale} />
           </section>
 
-          <RealityIntakeModeBanner
-            realityIntake={groundedSocialSimulation?.realityIntake}
+          <RealityModelOverviewPanel
+            groundedSocialSimulation={groundedSocialSimulation}
             locale={locale}
           />
 
-          <RuntimeCapabilityBanner
-            realityIntake={groundedSocialSimulation?.realityIntake}
-          />
-
-          <FusionMappingPanel fusion={destinyFusion} locale={locale} />
-
-          <GroundedSimulationDebugPanel
-            groundedSocialSimulation={groundedSocialSimulation}
+          <DestinyWeightingPanel
+            modifier={groundedSocialSimulation?.destinyPersonModifier ?? null}
             locale={locale}
           />
 
@@ -1045,26 +1328,24 @@ export default function RunsPage() {
             </div>
             <div className="mt-5 space-y-3">
               {simulationStages.map((stage, index) => {
-                const completed =
-                  processState === "complete" ||
-                  (processState === "running" && index < activeStageIndex);
-                const active =
-                  processState === "running" && index === activeStageIndex;
-                const blocked = processState === "failed" && index >= activeStageIndex;
-                const indicator = blocked ? "x" : completed ? "ok" : active ? "now" : "idle";
+                const status = stageStatusFor({
+                  stageId: stage.id,
+                  index,
+                  activeStageIndex,
+                  processState,
+                  capability: runtimeCapability,
+                  realityIntake,
+                  groundedSocialSimulation,
+                  generatedEventCount,
+                  claimPreviewCount,
+                });
+                const active = status === "running";
+                const indicator = stageIndicator(status);
                 const text = stageCopy(locale, stage.id);
                 return (
                   <div
                     key={stage.id}
-                    className={`overflow-hidden rounded-md border ${
-                      completed
-                        ? "border-[#568262]/25 bg-[#eef5ee]"
-                        : active
-                          ? "border-[#d49b4a]/35 bg-[#fff8ed]"
-                          : blocked
-                            ? "border-red-200 bg-red-50"
-                            : "border-black/8 bg-[#f7f8f4]"
-                    }`}
+                    className={`overflow-hidden rounded-md border ${stageCardClass(status)}`}
                   >
                     <div className="p-4">
                       <div className="flex items-center justify-between gap-3">
@@ -1073,11 +1354,13 @@ export default function RunsPage() {
                             className={`grid h-8 w-10 place-items-center rounded-full border text-[10px] font-semibold ${
                               active
                                 ? "animate-pulse border-[#d49b4a]/45 bg-white text-[#7c5524]"
-                                : completed
+                                : status === "completed"
                                   ? "border-[#568262]/25 bg-white text-[#2f5d3d]"
-                                  : blocked
+                                  : status === "failed" || status === "unavailable"
                                     ? "border-red-200 bg-white text-red-900"
-                                    : "border-black/10 bg-white text-[#7d8578]"
+                                    : status === "fallback"
+                                      ? "border-[#d49b4a]/35 bg-white text-[#7c5524]"
+                                      : "border-black/10 bg-white text-[#7d8578]"
                             }`}
                           >
                             {indicator}
@@ -1087,17 +1370,9 @@ export default function RunsPage() {
                           </p>
                         </div>
                         <StatusPill
-                          tone={
-                            blocked ? "blocked" : completed ? "ready" : "planned"
-                          }
+                          tone={stageTone(status)}
                         >
-                          {blocked
-                            ? t.stageStatus.blocked
-                            : completed
-                              ? t.stageStatus.done
-                              : active
-                                ? t.stageStatus.active
-                                : t.stageStatus.waiting}
+                          {t.stageStatus[status]}
                         </StatusPill>
                       </div>
                       <p className="mt-2 text-sm leading-6 text-[#62695d]">
@@ -1116,7 +1391,7 @@ export default function RunsPage() {
                           }
                         />
                       </div>
-                    ) : completed ? (
+                    ) : status === "completed" ? (
                       <div className="h-1 bg-[#568262]" />
                     ) : null}
                   </div>
@@ -1125,72 +1400,28 @@ export default function RunsPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-            <h2 className="text-base font-semibold text-[#11150f]">
-              {t.pathTitle}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-[#62695d]">
-              {t.pathBody}
-            </p>
-            <div className="mt-4 grid gap-4 lg:grid-cols-4">
-              {branchNames.map((branchId) => {
-                const branchEvents =
-                  visibleEvents.filter(
-                    (event) => (event.branchId ?? "baseline") === branchId,
-                  ) ?? [];
-                const meta = branchMeta[branchId];
-                const branchText = branchCopy(locale, branchId);
-                return (
-                  <article
-                    key={branchId}
-                    className={`rounded-md border p-4 ${meta.classes}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold text-[#11150f]">
-                        {branchText.title}
-                      </h3>
-                      <StatusPill tone="planned">
-                        {branchEventCounts.get(branchId) ?? 0}
-                      </StatusPill>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[#62695d]">
-                      {branchText.detail}
-                    </p>
-                    <div className="mt-3 space-y-2">
-                      {branchEvents.slice(0, 3).map((event) => (
-                        <div
-                          key={event.id}
-                          className="rounded border border-black/8 bg-white p-3"
-                        >
-                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-                            {event.timeLabel}
-                          </div>
-                          <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#62695d]">
-                            {event.interactionSummary ?? event.summary}
-                          </p>
-                          <p className="mt-2 text-xs leading-5 text-[#7d8578]">
-                            {event.informationGapDeltaSummary ??
-                              t.noMovement}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
+          <PathComparisonPanel
+            pathEvents={groundedSocialSimulation?.pathEvents ?? []}
+            fallbackEvents={visibleEvents}
+            branchEventCounts={branchEventCounts}
+            locale={locale}
+          />
 
           <InteractionPreviewPanel
             events={visibleEvents}
             agents={agentEcology.agents}
             locale={locale}
           />
+
+          <GroundedSimulationDebugPanel
+            groundedSocialSimulation={groundedSocialSimulation}
+            locale={locale}
+          />
         </main>
 
         <aside className="mf-panel-dark h-fit p-6">
           <h2 className="text-sm font-semibold text-[#b7e6c6]">
-            {locale === "zh" ? "本次沙盘" : "This sandbox"}
+            {locale === "zh" ? "本次分析" : "This analysis"}
           </h2>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <Metric label={locale === "zh" ? "角色" : "People"} value={frozenAgentProfileIds.length} />
@@ -1217,7 +1448,10 @@ export default function RunsPage() {
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <Metric label="Ticks" value={visibleRun?.tickCount ?? 0} />
-              <Metric label="Claims" value={claimPreviewCount} />
+              <Metric
+                label={locale === "zh" ? "发现" : "Findings"}
+                value={claimPreviewCount}
+              />
             </div>
             <dl className="mt-4 space-y-3 text-xs">
               <div>
@@ -1270,8 +1504,12 @@ export default function RunsPage() {
                 events={visibleEvents}
                 agents={agentEcology.agents}
                 edges={relationGraph.edges}
-                title="Event Log evidence"
-                description="Saved Event Logs stay available for audit. Findings are prepared only after these events exist and preserve evidence_event_ids."
+                title={locale === "zh" ? "依据事件回放" : "Evidence event replay"}
+                description={
+                  locale === "zh"
+                    ? "保存的路径事件会保留给准确性调试查看。关键发现只会在依据关系存在后准备。"
+                    : "Saved path events remain available for accuracy review. Findings are prepared only after evidence links exist."
+                }
               />
             </div>
           </details>
@@ -1455,74 +1693,6 @@ function SituationRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function FusionMappingPanel({
-  fusion,
-  locale,
-}: {
-  fusion: DestinySituationFusionDraft | null;
-  locale: Locale;
-}) {
-  const t = runningCopy[locale];
-  return (
-    <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-[#11150f]">
-            {t.pressureTitle}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-[#62695d]">
-            {t.pressureBody}
-          </p>
-        </div>
-        <StatusPill tone={fusion?.mappings.length ? "ready" : "planned"}>
-          {fusion?.mappings.length ?? 0}
-        </StatusPill>
-      </div>
-      {fusion?.localWarnings?.length ? (
-        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-          {userFacingRunningText(fusion.localWarnings[0], locale)}
-        </p>
-      ) : null}
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {(fusion?.mappings ?? []).slice(0, 6).map((mapping) => (
-          <article
-            key={mapping.id}
-            className="rounded-md border border-black/8 bg-[#f7f8f4] p-4"
-          >
-            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
-              {userFacingRunningText(mapping.themeLabel, locale)}
-            </div>
-            <h3 className="mt-2 text-sm font-semibold text-[#11150f]">
-              {userFacingRunningText(mapping.personLabel, locale)}
-            </h3>
-            <p className="mt-1 text-xs font-semibold text-[#3f483d]">
-              {userFacingRunningText(mapping.pressureRole, locale)}
-            </p>
-            <p className="mt-3 text-xs leading-5 text-[#62695d]">
-              {userFacingRunningText(mapping.userFacingSummary, locale)}
-            </p>
-            {mapping.mappingExplanation ? (
-              <p className="mt-2 text-xs leading-5 text-[#7d8578]">
-                {userFacingRunningText(mapping.mappingExplanation.whyLinked, locale)}
-              </p>
-            ) : null}
-            {mapping.interpretationNotes?.[0] ? (
-              <p className="mt-2 rounded border border-black/8 bg-white px-2 py-1 text-xs leading-5 text-[#62695d]">
-                {userFacingRunningText(mapping.interpretationNotes[0], locale)}
-              </p>
-            ) : null}
-          </article>
-        ))}
-        {!fusion?.mappings.length ? (
-          <p className="rounded-md border border-dashed border-black/12 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#7d8578]">
-            {t.noPressure}
-          </p>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
 function InteractionPreviewPanel({
   events,
   agents,
@@ -1657,6 +1827,338 @@ function NotReadyPanel({ title, items }: { title: string; items: string[] }) {
           <li key={item}>- {item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function RealityModelOverviewPanel({
+  groundedSocialSimulation,
+  locale,
+}: {
+  groundedSocialSimulation: GroundedSocialSimulationDraft | null;
+  locale: Locale;
+}) {
+  const t = runningCopy[locale];
+  const realityIntake = groundedSocialSimulation?.realityIntake;
+  const nodes = groundedSocialSimulation?.realityNodes ?? [];
+  const pressures = groundedSocialSimulation?.realityPressures ?? [];
+  const externalSources = realityIntake?.externalSources ?? [];
+  const missingInfo = [
+    ...(realityIntake?.missingExternalInfo ?? []),
+    ...(groundedSocialSimulation?.keyUncertainties ?? []),
+  ];
+
+  return (
+    <RealityCard className="p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-[#11150f]">
+            {t.realityOverviewTitle}
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+            {t.realityOverviewBody}
+          </p>
+        </div>
+        <StatusBadge variant={externalSources.length ? "sourceBacked" : "localAssumption"}>
+          {externalSources.length ? t.sourceBacked : t.notSourceBacked}
+        </StatusBadge>
+      </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-4">
+        <OverviewListCard
+          title={t.realityNodes}
+          count={nodes.length}
+          items={nodes.slice(0, 5).map((node) => `${node.label} / ${node.nodeType}`)}
+          empty={t.noItems}
+          details={
+            nodes.length > 5
+              ? nodes.slice(5).map((node) => `${node.label} / ${node.roleInSituation}`)
+              : []
+          }
+          detailsLabel={t.moreDetails}
+        />
+        <OverviewListCard
+          title={t.realityPressures}
+          count={pressures.length}
+          items={pressures.slice(0, 5).map((pressure) => pressure.explanation)}
+          empty={t.noItems}
+          details={pressures.slice(5).map((pressure) => pressure.explanation)}
+          detailsLabel={t.moreDetails}
+        />
+        <OverviewListCard
+          title={t.externalSources}
+          count={externalSources.length}
+          items={externalSources.slice(0, 5).map((source) => source.title)}
+          empty={t.noItems}
+          details={externalSources.slice(5).map((source) => source.summary)}
+          detailsLabel={t.moreDetails}
+        />
+        <OverviewListCard
+          title={t.missingInfo}
+          count={missingInfo.length}
+          items={missingInfo.slice(0, 5)}
+          empty={t.noItems}
+          details={missingInfo.slice(5)}
+          detailsLabel={t.moreDetails}
+        />
+      </div>
+    </RealityCard>
+  );
+}
+
+function OverviewListCard({
+  title,
+  count,
+  items,
+  empty,
+  details,
+  detailsLabel,
+}: {
+  title: string;
+  count: number;
+  items: string[];
+  empty: string;
+  details: string[];
+  detailsLabel: string;
+}) {
+  return (
+    <article className="rounded-md border border-black/8 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-[#11150f]">{title}</h3>
+        <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs font-semibold text-[#3f483d]">
+          {count}
+        </span>
+      </div>
+      <div className="mt-3 space-y-2">
+        {items.length ? (
+          items.map((item) => (
+            <p key={item} className="line-clamp-3 text-xs leading-5 text-[#62695d]">
+              {item}
+            </p>
+          ))
+        ) : (
+          <p className="text-xs leading-5 text-[#7d8578]">{empty}</p>
+        )}
+      </div>
+      {details.length ? (
+        <details className="mt-3 rounded border border-black/8 bg-[#f7f8f4] p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-[#7d8578]">
+            {detailsLabel}
+          </summary>
+          <div className="mt-2 space-y-2">
+            {details.map((item) => (
+              <p key={item} className="text-xs leading-5 text-[#62695d]">
+                {item}
+              </p>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </article>
+  );
+}
+
+function DestinyWeightingPanel({
+  modifier,
+  locale,
+}: {
+  modifier: DestinyPersonModifier | null;
+  locale: Locale;
+}) {
+  const t = runningCopy[locale];
+  const rows = modifier
+    ? [
+        ["decisionStyle", modifier.decisionStyle],
+        ["stressResponse", modifier.stressResponse],
+        ["opportunityResponse", modifier.opportunityResponse],
+        ["boundaryStyle", modifier.boundaryStyle],
+        ["timingSensitivity", modifier.timingSensitivity],
+      ]
+    : [];
+
+  return (
+    <DestinyWeightingCard className="p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-[#11150f]">
+              {t.destinyWeightingTitle}
+            </h2>
+            <DestinyWeightingBadge>
+              {locale === "zh" ? "调权层" : "weighting layer"}
+            </DestinyWeightingBadge>
+          </div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#62695d]">
+            {t.destinyWeightingBoundary}
+          </p>
+        </div>
+        {modifier ? (
+          <StatusBadge variant="destiny">
+            {modifier.confidence}% {locale === "zh" ? "置信度" : "confidence"}
+          </StatusBadge>
+        ) : null}
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {rows.length ? (
+          rows.map(([label, value]) => (
+            <article key={label} className="rounded-md border border-[#568262]/15 bg-white p-4">
+              <div className="text-[11px] font-semibold text-[#7d8578]">
+                {label}
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[#62695d]">
+                {userFacingRunningText(value, locale)}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed border-black/12 bg-white p-4 text-sm leading-6 text-[#7d8578]">
+            {t.noItems}
+          </p>
+        )}
+      </div>
+    </DestinyWeightingCard>
+  );
+}
+
+function PathComparisonPanel({
+  pathEvents,
+  fallbackEvents,
+  branchEventCounts,
+  locale,
+}: {
+  pathEvents: GroundedSimulationPathEvent[];
+  fallbackEvents: SimulationEventDraft[];
+  branchEventCounts: Map<SimulationBranchId, number>;
+  locale: Locale;
+}) {
+  const t = runningCopy[locale];
+  const fields = t.pathFields;
+
+  return (
+    <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
+      <h2 className="text-base font-semibold text-[#11150f]">
+        {t.pathComparisonTitle}
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-[#62695d]">
+        {t.pathComparisonBody}
+      </p>
+      <div className="mt-4 grid gap-4 lg:grid-cols-4">
+        {branchNames.map((branchId) => {
+          const branchText = branchCopy(locale, branchId);
+          const meta = branchMeta[branchId];
+          const pathEvent = pathEvents.find((event) => event.branchId === branchId);
+          const fallbackEvent = fallbackEvents.find(
+            (event) => (event.branchId ?? "baseline") === branchId,
+          );
+          return (
+            <PathCard key={branchId} className={`p-4 ${meta.classes}`}>
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-sm font-semibold text-[#11150f]">
+                  {branchText.title}
+                </h3>
+                <StatusBadge variant="confidence">
+                  {pathEvent?.confidence ?? fallbackEvent?.confidence ?? 0}%{" "}
+                  {fields.confidence}
+                </StatusBadge>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[#62695d]">
+                {branchText.detail}
+              </p>
+              <div className="mt-4 space-y-2">
+                {pathEvent ? (
+                  <>
+                    <PathField label={fields.userAction} value={pathEvent.userAction} locale={locale} />
+                    <PathField
+                      label={fields.realityReaction}
+                      value={pathEvent.expectedRealityReaction}
+                      locale={locale}
+                    />
+                    <PathField label={fields.pressure} value={pathEvent.pressureChange} locale={locale} />
+                    <PathField
+                      label={fields.information}
+                      value={pathEvent.informationChange}
+                      locale={locale}
+                    />
+                    <PathField
+                      label={fields.opportunity}
+                      value={pathEvent.opportunityChange}
+                      locale={locale}
+                    />
+                    <PathField
+                      label={fields.destiny}
+                      value={pathEvent.destinyModifierEffect}
+                      locale={locale}
+                    />
+                  </>
+                ) : fallbackEvent ? (
+                  <>
+                    <PathField
+                      label={fields.userAction}
+                      value={fallbackEvent.action ?? fallbackEvent.summary}
+                      locale={locale}
+                    />
+                    <PathField
+                      label={fields.realityReaction}
+                      value={fallbackEvent.groundedRealitySummary ?? fallbackEvent.interactionSummary}
+                      locale={locale}
+                    />
+                    <PathField
+                      label={fields.pressure}
+                      value={fallbackEvent.groundedPressureSummary ?? fallbackEvent.pressureDeltaSummary}
+                      locale={locale}
+                    />
+                    <PathField
+                      label={fields.information}
+                      value={fallbackEvent.informationGapDeltaSummary}
+                      locale={locale}
+                    />
+                    <PathField
+                      label={fields.opportunity}
+                      value={firstClue(fallbackEvent)}
+                      locale={locale}
+                    />
+                    <PathField
+                      label={fields.destiny}
+                      value={fallbackEvent.destinyModifierEffect}
+                      locale={locale}
+                    />
+                  </>
+                ) : (
+                  <p className="rounded border border-dashed border-black/12 bg-white p-3 text-xs leading-5 text-[#7d8578]">
+                    {t.noMovement}
+                  </p>
+                )}
+              </div>
+              <p className="mt-3 text-xs leading-5 text-[#7d8578]">
+                {branchEventCounts.get(branchId) ?? 0}{" "}
+                {locale === "zh" ? "个分析事件" : "analysis events"}
+              </p>
+            </PathCard>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PathField({
+  label,
+  value,
+  locale,
+}: {
+  label: string;
+  value?: string;
+  locale: Locale;
+}) {
+  if (!value) return null;
+
+  return (
+    <div className="rounded border border-black/8 bg-white p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8578]">
+        {label}
+      </div>
+      <p className="mt-1 text-xs leading-5 text-[#62695d]">
+        {userFacingRunningText(value, locale)}
+      </p>
     </div>
   );
 }

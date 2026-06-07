@@ -28,7 +28,7 @@ const copy = {
       "Start with one real scenario, or open the sample to see the full sandbox.",
     productEmptyTitle: "You have not started a sandbox yet",
     productEmptyDescription:
-      "Start your own destiny sandbox, or view the complete sample first.",
+      "Start a real case, or view the complete sample first.",
     lastSandbox: "Your last sandbox",
     productLastSandbox: "Continue last sandbox",
     untitled: "Untitled situation",
@@ -57,7 +57,7 @@ const copy = {
     emptyTitle: "还没有本地沙盘",
     emptyDescription: "从一个真实处境开始，或打开示例查看完整沙盘。",
     productEmptyTitle: "你还没有开始过沙盘",
-    productEmptyDescription: "可以先开始自己的命运沙盘，也可以先查看完整示例。",
+    productEmptyDescription: "可以先开始一个真实案例，也可以先查看完整示例。",
     lastSandbox: "上一次沙盘",
     productLastSandbox: "继续上次沙盘",
     untitled: "未命名处境",
@@ -190,14 +190,14 @@ export function LocalSandboxSnapshot({
 
   if (variant === "product") {
     return (
-      <section className="mf-card p-5">
+      <section className="mf-card min-w-0 p-5">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
           {t.productLastSandbox}
         </p>
-        <h2 className="mt-2 text-base font-semibold leading-6 text-[#11150f]">
+        <h2 className="mt-2 break-words text-base font-semibold leading-6 text-[#11150f]">
           {productQuestion(snapshot.seedContext, locale)}
         </h2>
-        <p className="mt-3 line-clamp-3 text-sm leading-6 text-[#62695d]">
+        <p className="mt-3 line-clamp-3 break-words text-sm leading-6 text-[#62695d]">
           {productSummary(snapshot.seedContext, locale)}
         </p>
         {updatedAtLabel ? (
@@ -213,13 +213,13 @@ export function LocalSandboxSnapshot({
   }
 
   return (
-    <section className="mf-card p-5">
+    <section className="mf-card min-w-0 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8578]">
             {t.lastSandbox}
           </p>
-          <h2 className="mt-2 text-base font-semibold leading-6 text-[#11150f]">
+          <h2 className="mt-2 break-words text-base font-semibold leading-6 text-[#11150f]">
             {productQuestion(snapshot.seedContext, locale)}
           </h2>
         </div>
@@ -228,7 +228,7 @@ export function LocalSandboxSnapshot({
         </StatusPill>
       </div>
 
-      <p className="mt-3 line-clamp-3 text-sm leading-6 text-[#62695d]">
+      <p className="mt-3 line-clamp-3 break-words text-sm leading-6 text-[#62695d]">
         {productSummary(snapshot.seedContext, locale)}
       </p>
 
