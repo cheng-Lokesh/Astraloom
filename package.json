@@ -8,15 +8,20 @@
     "start": "next start",
     "lint": "eslint src",
     "type-check": "next typegen && tsc --noEmit",
+    "test:hero-render-budget": "node scripts/check-hero-render-budget.mjs",
+    "test:interactive-hero": "node scripts/check-interactive-observatory-hero.mjs",
     "check": "npm run lint && npm run type-check && npm run build"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
     "@xyflow/react": "^12.10.2",
+    "gsap": "^3.15.0",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "three": "^0.184.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -24,6 +29,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.184.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",

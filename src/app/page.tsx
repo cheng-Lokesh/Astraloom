@@ -1,3 +1,5 @@
-import DashboardPage from "./app/dashboard/page";
+import { InteractiveObservatoryHero } from "@/components/hero/interactive-observatory-hero";
 
-export default DashboardPage;
+export default function HomePage() {
+  return <InteractiveObservatoryHero />;
+}

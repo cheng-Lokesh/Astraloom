@@ -1,0 +1,1061 @@
+/* Loaded after globals.css. This file is the complete reality-first hero specification. */
+.fidelity-home {
+  --reality-void: oklch(4% 0.008 175);
+  --reality-ink: oklch(95% 0.012 182);
+  --reality-body: oklch(79% 0.028 180);
+  --reality-muted: oklch(63% 0.034 180);
+  --reality-teal: oklch(82% 0.09 178);
+  --reality-amber: oklch(77% 0.13 76);
+  --reality-line: oklch(82% 0.06 178 / 0.22);
+  --motion-micro: 0.18s;
+  --motion-fast: 0.35s;
+  --motion-normal: 0.8s;
+  --motion-slow: 2.4s;
+  --motion-ambient: 8s;
+  --motion-orbit: 18s;
+  --motion-climate: 26s;
+  --motion-precision: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-signal: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-pulse: cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  min-height: max(100svh, 44rem);
+  overflow: hidden;
+  background: var(--reality-void);
+  color: var(--reality-ink);
+  isolation: isolate;
+}
+
+.motion-scene-root {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.fidelity-home::before {
+  height: 7rem;
+  background: linear-gradient(180deg, rgb(0 5 5 / 0.78), transparent);
+}
+
+.fidelity-home::after {
+  z-index: 5;
+  background:
+    radial-gradient(ellipse 46% 54% at 49% 48%, transparent 36%, rgb(0 4 4 / 0.15) 74%, rgb(0 3 3 / 0.58) 100%),
+    linear-gradient(180deg, transparent 62%, rgb(0 4 4 / 0.28) 82%, rgb(0 3 3 / 0.7) 100%);
+  mix-blend-mode: normal;
+}
+
+.fidelity-visual-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.reality-environment {
+  position: absolute;
+  inset: -2.5%;
+  z-index: 0;
+  background-image: url("/images/astraloom-reality-field-v1.webp");
+  background-position: center center;
+  background-size: cover;
+  transform: scale(1.025);
+  transform-origin: 54% 48%;
+  animation: reality-environment-breathe 18s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  transition: opacity 650ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reality-environment-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background:
+    linear-gradient(104deg, transparent 38%, rgb(122 230 213 / 0.055) 49%, transparent 59%),
+    radial-gradient(ellipse 28% 46% at 49% 48%, rgb(118 231 214 / 0.08), transparent 68%);
+  mix-blend-mode: screen;
+  opacity: 0.72;
+  animation: reality-environment-scan 9s ease-in-out infinite alternate;
+}
+
+.is-animated-environment-ready .reality-environment {
+  opacity: 0;
+  animation: none;
+}
+
+.is-animated-environment-ready .reality-environment-scan {
+  opacity: 0.18;
+  animation: none;
+}
+.reality-depth-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background:
+    linear-gradient(90deg, rgb(0 6 6 / 0.92) 0%, rgb(0 6 6 / 0.66) 26%, rgb(0 6 6 / 0.08) 42%, transparent 67%),
+    linear-gradient(180deg, rgb(0 4 4 / 0.25) 0%, transparent 18%, transparent 78%, rgb(0 4 4 / 0.42) 100%);
+  pointer-events: none;
+}
+
+.fidelity-scene,
+.grand-palace,
+.fidelity-star-veil,
+.fidelity-shade,
+.living-glass,
+.fidelity-telemetry {
+  display: none;
+}
+
+.living-field {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  filter: saturate(0.84) brightness(1.1);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transition: opacity 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.is-webgl-ready .living-field {
+  opacity: 0.3;
+}
+
+.observatory-webgl-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: translateZ(0);
+}
+
+.fidelity-nav {
+  position: relative;
+  z-index: 30;
+  width: calc(100% - clamp(2.5rem, 6vw, 7rem));
+  height: 5.6rem;
+  border-bottom: 0;
+}
+
+.fidelity-brand-word {
+  font-size: 1.12rem;
+}
+
+.fidelity-nav-links {
+  right: 7rem;
+  gap: clamp(1.6rem, 3vw, 3.5rem);
+}
+
+.fidelity-nav-links a {
+  color: oklch(83% 0.02 180);
+  font-size: 0.76rem;
+}
+
+.fidelity-hero {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: block;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.fidelity-copy {
+  position: absolute;
+  top: clamp(9.2rem, 17vh, 12.5rem);
+  left: clamp(2.5rem, 5vw, 6rem);
+  width: min(34vw, 34rem);
+  max-width: 34rem;
+  margin: 0;
+  padding: 0;
+  transform: none;
+  pointer-events: auto;
+  animation: motion-panel-reveal var(--motion-normal) var(--motion-precision) both;
+}
+
+.fidelity-copy h1 {
+  max-width: 8.2ch;
+  margin: 0;
+  color: var(--reality-ink);
+  font-size: clamp(3.85rem, 5.1vw, 6rem);
+  letter-spacing: -0.028em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.fidelity-copy h1 span,
+.fidelity-copy h1 i {
+  display: block;
+  overflow: visible;
+  font-style: normal;
+}
+
+.fidelity-copy > p {
+  width: auto;
+  max-width: 31rem;
+  margin: clamp(1.45rem, 2.8vh, 2.1rem) 0 0;
+  color: var(--reality-body);
+  font-size: clamp(0.98rem, 1.06vw, 1.12rem);
+  line-height: 1.68;
+  text-wrap: pretty;
+  animation: none;
+}
+
+.fidelity-actions {
+  display: grid;
+  width: min(100%, 27rem);
+  gap: 0;
+  margin-top: 2rem;
+  animation: none;
+}
+
+.fidelity-primary,
+.fidelity-secondary {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 3.45rem;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0.1rem;
+  background: transparent;
+  color: var(--reality-ink);
+  box-shadow: none;
+  font-size: 0.91rem;
+  transition:
+    color 180ms ease,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fidelity-primary {
+  border-top: 1px solid oklch(77% 0.13 76 / 0.62);
+  border-bottom: 1px solid oklch(77% 0.13 76 / 0.24);
+  color: oklch(88% 0.075 78);
+}
+
+.fidelity-secondary {
+  min-height: 2.8rem;
+  border-bottom: 1px solid oklch(82% 0.06 178 / 0.17);
+  color: oklch(75% 0.03 180);
+  font-size: 0.76rem;
+}
+
+.fidelity-primary .fidelity-action-mark,
+.fidelity-secondary .fidelity-action-mark {
+  border-color: currentColor;
+  background: transparent;
+}
+
+.fidelity-primary:hover,
+.fidelity-secondary:hover {
+  color: var(--reality-teal);
+  transform: translateX(0.3rem);
+}
+
+.reality-evidence-cluster {
+  position: absolute;
+  left: 37.5%;
+  top: 13%;
+  z-index: 8;
+  width: 28%;
+  height: 39%;
+  pointer-events: none;
+}
+
+.reality-input-label {
+  position: absolute;
+  left: 29%;
+  top: 0;
+  display: grid;
+  gap: 0.18rem;
+  color: var(--reality-muted);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+}
+
+.reality-input-label::before {
+  content: "";
+  width: 4rem;
+  border-top: 1px solid oklch(82% 0.09 178 / 0.5);
+}
+
+.reality-input-label strong {
+  color: oklch(89% 0.025 180);
+  font-size: 0.68rem;
+  font-weight: 680;
+}
+
+.reality-input-label span {
+  font-size: 0.59rem;
+}
+
+.reality-evidence-card {
+  position: absolute;
+  display: grid;
+  width: clamp(7.5rem, 9vw, 9.4rem);
+  min-height: 5.2rem;
+  grid-template-columns: 1.65rem 1fr;
+  column-gap: 0.45rem;
+  align-content: center;
+  border: 1px solid oklch(82% 0.06 178 / 0.18);
+  border-radius: 3px;
+  background: rgb(3 12 12 / 0.8);
+  padding: 0.55rem;
+  color: var(--reality-body);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  animation:
+    motion-panel-reveal var(--motion-normal) var(--motion-precision) both,
+    reality-evidence-float 6.5s ease-in-out infinite alternate;
+  animation-delay:
+    calc(var(--evidence-index) * 0.08s),
+    calc(var(--evidence-index) * -1.15s);
+}
+
+.reality-evidence-card::after {
+  content: "";
+  position: absolute;
+  right: -2.2rem;
+  top: 50%;
+  width: 2.2rem;
+  border-top: 1px solid oklch(82% 0.09 178 / 0.22);
+}
+
+.reality-evidence-thumb {
+  grid-row: 1 / 4;
+  width: 1.65rem;
+  height: 1.25rem;
+  border: 1px solid oklch(82% 0.06 178 / 0.22);
+  background:
+    linear-gradient(135deg, rgb(116 216 202 / 0.28), transparent),
+    rgb(255 255 255 / 0.04);
+}
+
+.reality-evidence-card strong {
+  color: oklch(88% 0.03 180);
+  font-size: 0.57rem;
+  font-weight: 650;
+}
+
+.reality-evidence-card > span:not(.reality-evidence-thumb) {
+  font-size: 0.52rem;
+  line-height: 1.3;
+}
+
+.reality-evidence-card small {
+  color: oklch(56% 0.03 180);
+  font-size: 0.46rem;
+}
+
+.reality-evidence-card[data-motion-state="source-backed"] {
+  border-color: oklch(77% 0.13 76 / 0.32);
+}
+
+.reality-evidence-card[data-motion-state="source-backed"] .reality-evidence-thumb {
+  background:
+    radial-gradient(circle, rgb(237 185 93 / 0.48), transparent 62%),
+    rgb(255 255 255 / 0.04);
+}
+
+.reality-evidence-card-1 {
+  left: 0;
+  top: 20%;
+}
+
+.reality-evidence-card-2 {
+  left: 8%;
+  top: 59%;
+}
+
+.reality-evidence-card-3 {
+  right: 0;
+  top: 29%;
+}
+
+.reality-evidence-card-4 {
+  right: -3%;
+  top: 68%;
+}
+
+.reality-timing-callout {
+  position: absolute;
+  top: 29%;
+  right: 13.5%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--reality-muted);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  pointer-events: none;
+}
+
+.reality-timing-callout > span:last-child {
+  display: grid;
+  width: 9rem;
+  gap: 0.22rem;
+}
+
+.reality-timing-callout strong {
+  color: oklch(89% 0.045 77);
+  font-size: 0.68rem;
+  font-weight: 680;
+}
+
+.reality-timing-callout small {
+  font-size: 0.59rem;
+  line-height: 1.4;
+}
+
+.reality-timing-reticle {
+  position: relative;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid oklch(77% 0.13 76 / 0.62);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.45rem oklch(77% 0.13 76 / 0.07);
+  animation: reality-reticle-pulse 3.6s ease-in-out infinite;
+}
+
+.reality-timing-reticle::before,
+.reality-timing-reticle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: oklch(77% 0.13 76 / 0.72);
+  transform: translate(-50%, -50%);
+}
+
+.reality-timing-reticle::before {
+  width: 2.85rem;
+  height: 1px;
+}
+
+.reality-timing-reticle::after {
+  width: 1px;
+  height: 2.85rem;
+}
+
+.reality-signal-stack {
+  position: absolute;
+  right: 3.2%;
+  bottom: 19%;
+  z-index: 12;
+  display: grid;
+  width: 12rem;
+  gap: 0.38rem;
+  color: var(--reality-body);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  pointer-events: none;
+}
+
+.reality-runtime-state {
+  display: grid;
+  grid-template-columns: 1rem 1fr;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid oklch(82% 0.06 178 / 0.13);
+  padding-bottom: 0.55rem;
+  animation: motion-panel-reveal var(--motion-normal) var(--motion-precision) both;
+  animation-delay: 0.32s;
+}
+
+.reality-runtime-state > i {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: oklch(75% 0.14 151);
+  box-shadow: 0 0 0.7rem oklch(75% 0.14 151 / 0.65);
+  animation: reality-signal-pulse 3.8s var(--motion-pulse) infinite;
+}
+
+.reality-runtime-state > span {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.reality-runtime-state strong {
+  color: oklch(86% 0.07 151);
+  font-size: 0.62rem;
+}
+
+.reality-runtime-state small {
+  font-size: 0.52rem;
+}
+
+.reality-signal-stack header {
+  display: grid;
+  grid-template-columns: 1.8rem 1fr;
+  gap: 0.65rem;
+  margin-bottom: 0.25rem;
+}
+
+.reality-signal-stack header > span:last-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.reality-signal-stack strong {
+  color: oklch(89% 0.025 180);
+  font-size: 0.68rem;
+}
+
+.reality-signal-stack small {
+  color: var(--reality-muted);
+  font-size: 0.55rem;
+  line-height: 1.35;
+}
+
+.reality-signal-glyph {
+  position: relative;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 1px solid oklch(82% 0.09 178 / 0.5);
+  border-radius: 50%;
+}
+
+.reality-signal-glyph::after {
+  content: "";
+  position: absolute;
+  inset: 0.38rem;
+  border-radius: 50%;
+  background: var(--reality-teal);
+  box-shadow: 0 0 0.8rem oklch(82% 0.09 178 / 0.72);
+  animation: reality-signal-pulse 2.6s ease-in-out infinite;
+}
+
+.reality-signal-row {
+  display: grid;
+  min-height: 1.55rem;
+  grid-template-columns: 1rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px solid oklch(82% 0.06 178 / 0.1);
+  font-size: 0.56rem;
+  animation: motion-panel-reveal var(--motion-normal) var(--motion-precision) both;
+  animation-delay: calc(0.4s + var(--signal-index) * 0.08s);
+}
+
+.reality-signal-row i {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1px solid oklch(77% 0.13 76 / 0.68);
+  border-radius: 50%;
+  animation: reality-signal-pulse 3.2s ease-in-out infinite;
+  animation-delay: calc(var(--signal-index) * -0.55s);
+}
+
+.reality-path-deck {
+  position: absolute;
+  right: 16%;
+  bottom: max(12.8%, 7.4rem);
+  z-index: 11;
+  display: grid;
+  width: 55%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  transform: perspective(65rem) rotateX(5deg);
+  transform-origin: center bottom;
+  pointer-events: auto;
+}
+
+.reality-path-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 6.7rem;
+  align-content: end;
+  gap: 0.3rem;
+  border-top: 1px solid oklch(82% 0.06 178 / 0.18);
+  background: linear-gradient(180deg, transparent, rgb(2 10 10 / 0.62));
+  padding: 1.2rem 0.85rem 0.75rem;
+  color: var(--reality-body);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  animation: reality-path-breathe 5.8s ease-in-out infinite alternate;
+  animation-delay: calc(var(--path-index) * -0.9s);
+  transition:
+    opacity var(--motion-fast) var(--motion-signal),
+    transform var(--motion-fast) var(--motion-signal);
+}
+
+.reality-path-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgb(120 227 210 / 0.08), transparent);
+  transform: translateX(-180%);
+  animation: reality-path-flow 5.5s linear infinite;
+  animation-delay: calc(var(--path-index) * -1.05s);
+}
+
+.reality-path-card-amber::before {
+  background: linear-gradient(90deg, transparent, rgb(229 173 82 / 0.1), transparent);
+}
+
+.reality-path-number {
+  color: oklch(72% 0.05 178);
+  font-family: var(--font-marcellus), serif;
+  font-size: 0.9rem;
+}
+
+.reality-path-card strong {
+  overflow-wrap: anywhere;
+  color: oklch(90% 0.025 180);
+  font-family: var(--font-marcellus), serif;
+  font-size: clamp(0.72rem, 0.9vw, 0.96rem);
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.reality-path-title-short {
+  display: none;
+}
+
+.reality-confidence {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--reality-muted);
+  font-size: 0.5rem;
+}
+
+.reality-confidence b {
+  color: oklch(89% 0.025 180);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.reality-confidence-track {
+  position: relative;
+  display: block;
+  height: 1px;
+  overflow: hidden;
+  background: oklch(82% 0.06 178 / 0.16);
+}
+
+.reality-confidence-track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--confidence);
+  background: var(--reality-teal);
+  box-shadow: 0 0 0.45rem oklch(82% 0.09 178 / 0.55);
+}
+
+.reality-path-card-amber .reality-confidence-track i {
+  background: var(--reality-amber);
+  box-shadow: 0 0 0.45rem oklch(77% 0.13 76 / 0.55);
+}
+
+.reality-path-card[data-motion-state="source-backed"] {
+  border-top-color: oklch(77% 0.13 76 / 0.46);
+}
+
+.reality-path-card[data-motion-state="risk"] {
+  border-top-color: oklch(64% 0.17 28 / 0.52);
+}
+
+.reality-path-card[data-motion-state="risk"] .reality-confidence-track i {
+  background: oklch(64% 0.17 28);
+  animation: motion-risk-pulse 3.8s var(--motion-pulse) infinite;
+}
+
+.reality-path-card[data-motion-state="low-confidence"] {
+  opacity: 0.68;
+  background-image:
+    linear-gradient(90deg, oklch(68% 0.015 180 / 0.22) 50%, transparent 50%),
+    linear-gradient(180deg, transparent, rgb(2 10 10 / 0.62));
+  background-size: 0.45rem 1px, auto;
+  background-repeat: repeat-x, no-repeat;
+}
+
+.reality-path-deck:hover .reality-path-card:not(:hover) {
+  opacity: 0.42;
+}
+
+.reality-path-card:hover {
+  opacity: 1;
+  transform: translateY(-0.3rem) scale(1.035);
+}
+
+.fidelity-field-annotations {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.field-note {
+  position: absolute;
+  display: grid;
+  width: 9.8rem;
+  gap: 0.22rem;
+  color: var(--reality-muted);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+}
+
+.field-note::before {
+  content: "";
+  width: 3rem;
+  border-top: 1px solid oklch(82% 0.09 178 / 0.5);
+}
+
+.field-note strong {
+  color: oklch(88% 0.025 180);
+  font-size: 0.66rem;
+}
+
+.field-note small {
+  font-size: 0.56rem;
+  line-height: 1.38;
+}
+
+.field-note-evidence {
+  right: 3.2%;
+  top: 38%;
+}
+
+.fidelity-console {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  height: 6.8rem;
+  min-height: 0;
+  grid-template-columns: minmax(13rem, 0.42fr) 6rem minmax(42rem, 1.58fr);
+  border-top: 1px solid oklch(77% 0.13 76 / 0.42);
+  background:
+    linear-gradient(180deg, rgb(4 13 13 / 0.96), rgb(1 7 7 / 0.99));
+}
+
+.fidelity-console-spectrum {
+  left: 3.2%;
+  width: 13rem;
+}
+
+.fidelity-console-core {
+  left: 45%;
+  opacity: 0.75;
+}
+
+.fidelity-instruments {
+  position: relative;
+  right: 2.5%;
+  width: auto;
+  align-items: stretch;
+}
+
+.fidelity-instrument {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+  border-left: 1px solid oklch(82% 0.06 178 / 0.13);
+  padding: 0.7rem 1rem;
+}
+
+.fidelity-instrument-label {
+  display: grid;
+  gap: 0.18rem;
+  color: oklch(82% 0.025 180);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  line-height: 1.25;
+}
+
+.fidelity-instrument-label strong {
+  color: oklch(89% 0.025 180);
+  font-size: 0.68rem;
+  font-weight: 620;
+}
+
+.fidelity-instrument-label small {
+  max-width: 13rem;
+  color: oklch(66% 0.03 180);
+  font-size: 0.56rem;
+  line-height: 1.35;
+}
+
+.fidelity-instrument-orbit {
+  position: relative;
+  inset: auto;
+  width: 2.6rem;
+  height: 2.6rem;
+  transform: none;
+}
+
+.fidelity-instrument-trace {
+  display: none;
+}
+
+@keyframes reality-environment-breathe {
+  from {
+    transform: scale(1.025) translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: scale(1.045) translate3d(-0.4%, -0.25%, 0);
+  }
+}
+
+@keyframes reality-environment-scan {
+  from {
+    opacity: 0.42;
+    transform: translate3d(-1.5%, 0, 0);
+  }
+
+  to {
+    opacity: 0.86;
+    transform: translate3d(1.5%, 0, 0);
+  }
+}
+
+@keyframes reality-evidence-float {
+  from {
+    transform: translate3d(0, -2px, 0);
+  }
+
+  to {
+    transform: translate3d(0, 5px, 0);
+  }
+}
+
+@keyframes reality-reticle-pulse {
+  50% {
+    opacity: 0.68;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes reality-signal-pulse {
+  50% {
+    opacity: 0.48;
+    transform: scale(0.78);
+  }
+}
+
+@keyframes reality-path-breathe {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes reality-path-flow {
+  to {
+    transform: translateX(430%);
+  }
+}
+
+@keyframes motion-panel-reveal {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.7rem, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes motion-risk-pulse {
+  50% {
+    opacity: 0.46;
+  }
+}
+
+.fidelity-home[data-motion-visible="false"] *,
+.fidelity-home[data-motion-visible="false"] *::before,
+.fidelity-home[data-motion-visible="false"] *::after {
+  animation-play-state: paused !important;
+}
+
+@media (max-width: 1100px) {
+  .reality-evidence-cluster {
+    left: 42%;
+    width: 30%;
+  }
+
+  .reality-evidence-card {
+    transform: scale(0.88);
+  }
+
+  .reality-signal-stack,
+  .field-note-evidence {
+    display: none;
+  }
+
+  .reality-path-deck {
+    right: 5%;
+    width: 61%;
+  }
+}
+
+@media (max-width: 760px) {
+  .fidelity-home {
+    min-height: max(100svh, 43rem);
+  }
+
+  .reality-environment {
+    inset: -2%;
+    background-position: 53% center;
+    transform-origin: 53% 56%;
+  }
+
+
+.reality-depth-shade {
+    background:
+      linear-gradient(180deg, rgb(0 6 6 / 0.88) 0%, rgb(0 6 6 / 0.64) 43%, transparent 65%, rgb(0 4 4 / 0.52) 100%),
+      linear-gradient(90deg, rgb(0 6 6 / 0.48), transparent 78%);
+  }
+
+  .fidelity-nav {
+    width: calc(100% - 1.5rem);
+    height: 4.7rem;
+  }
+
+  .fidelity-hero {
+    inset: 0;
+    width: auto;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .fidelity-copy {
+    top: 7.2rem;
+    left: 0.75rem;
+    width: calc(100% - 1.5rem);
+    max-width: none;
+  }
+
+  .fidelity-copy h1 {
+    max-width: 8ch;
+    font-size: clamp(2.75rem, 12vw, 3.4rem);
+    line-height: 0.95;
+  }
+
+  .fidelity-copy > p {
+    max-width: 24rem;
+    margin-top: 1.15rem;
+    font-size: 0.88rem;
+    line-height: 1.58;
+  }
+
+  .fidelity-actions {
+    width: min(100%, 14rem);
+    margin-top: 1.15rem;
+  }
+
+  .fidelity-primary,
+  .fidelity-secondary {
+    width: 100%;
+  }
+
+  .reality-evidence-cluster,
+  .reality-timing-callout,
+  .reality-signal-stack,
+  .fidelity-field-annotations {
+    display: none;
+  }
+
+  .reality-path-deck {
+    right: 3%;
+    bottom: 10.4%;
+    width: 94%;
+    gap: 0.15rem;
+  }
+
+  .reality-path-card {
+    min-height: 4.6rem;
+    gap: 0.18rem;
+    padding: 0.65rem 0.35rem 0.45rem;
+  }
+
+  .reality-path-card strong {
+    font-size: 0.53rem;
+    line-height: 1.08;
+  }
+
+  .reality-path-title-full {
+    display: none;
+  }
+
+  .reality-path-title-short {
+    display: inline;
+  }
+
+  .reality-path-number,
+  .reality-confidence span {
+    display: none;
+  }
+
+  .reality-confidence {
+    justify-content: flex-start;
+  }
+
+  .reality-confidence b {
+    font-size: 0.57rem;
+  }
+
+  .fidelity-console {
+    display: block;
+    height: 5.1rem;
+  }
+
+  .fidelity-console-spectrum {
+    display: none;
+  }
+
+  .fidelity-console-core {
+    display: none;
+  }
+
+  .fidelity-instruments {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+  }
+
+  .fidelity-instrument {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0.45rem;
+  }
+
+  .fidelity-instrument-label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reality-environment,
+  .reality-environment-scan,
+  .reality-evidence-card,
+  .reality-timing-reticle,
+  .reality-signal-glyph::after,
+  .reality-signal-row i,
+  .reality-path-card,
+  .reality-path-card::before {
+    animation: none !important;
+  }
+
+  .fidelity-copy,
+  .reality-runtime-state,
+  .reality-signal-row {
+    animation: none !important;
+  }
+
+  .reality-path-deck:hover .reality-path-card:not(:hover) {
+    opacity: inherit;
+  }
+}

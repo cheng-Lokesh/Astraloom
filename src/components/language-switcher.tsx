@@ -14,13 +14,13 @@ export function LanguageSwitcher() {
     <details className="group relative">
       <summary
         aria-label="Language selector"
-        className="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-md border border-[rgba(84,230,255,0.18)] bg-[rgba(255,255,255,0.06)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-primary)] shadow-[0_10px_32px_rgba(0,0,0,0.16)] transition hover:border-[rgba(84,230,255,0.34)] hover:bg-[rgba(84,230,255,0.08)] [&::-webkit-details-marker]:hidden"
+        className="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-md border border-[rgba(84,230,255,0.18)] bg-[rgba(255,255,255,0.055)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-primary)] shadow-[0_10px_32px_rgba(0,0,0,0.16)] transition hover:border-[rgba(84,230,255,0.34)] hover:bg-[rgba(84,230,255,0.08)] [&::-webkit-details-marker]:hidden"
       >
         <span className="grid h-5 w-5 place-items-center rounded border border-[rgba(84,230,255,0.2)] text-[10px] text-[var(--signal-cyan)]">
-          文
+          Ln
         </span>
         <span className="hidden sm:inline">{current.nativeLabel}</span>
-        <span className="text-[var(--text-muted)]">▾</span>
+        <span className="text-[var(--text-muted)]">v</span>
       </summary>
       <div className="absolute right-0 z-50 mt-2 grid w-44 gap-1 rounded-md border border-[rgba(84,230,255,0.16)] bg-[rgba(5,11,22,0.98)] p-1.5 shadow-[0_18px_54px_rgba(0,0,0,0.38)]">
         {languageOptions.map((option) => {
@@ -38,7 +38,7 @@ export function LanguageSwitcher() {
               }`}
             >
               <span>{option.nativeLabel}</span>
-              {active ? <span>✓</span> : null}
+              {active ? <span aria-hidden="true">ok</span> : null}
             </button>
           );
         })}

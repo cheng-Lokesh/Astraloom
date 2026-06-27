@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh";
 export type AppLocale = Locale | "ja" | "ko" | "es" | "fr" | "de";
 
-export const defaultLocale: AppLocale = "zh";
+export const defaultLocale: AppLocale = "en";
 export const localeStorageKey = "mirofish.locale";
 
 export const languageOptions: Array<{
@@ -9,13 +9,13 @@ export const languageOptions: Array<{
   nativeLabel: string;
   locale: AppLocale;
 }> = [
-  { label: "中文", nativeLabel: "中文", locale: "zh" },
   { label: "English", nativeLabel: "English", locale: "en" },
-  { label: "日本語", nativeLabel: "日本語", locale: "ja" },
-  { label: "한국어", nativeLabel: "한국어", locale: "ko" },
-  { label: "Español", nativeLabel: "Español", locale: "es" },
-  { label: "Français", nativeLabel: "Français", locale: "fr" },
-  { label: "Deutsch", nativeLabel: "Deutsch", locale: "de" },
+  { label: "Chinese", nativeLabel: "Chinese", locale: "zh" },
+  { label: "Japanese", nativeLabel: "Japanese", locale: "ja" },
+  { label: "Korean", nativeLabel: "Korean", locale: "ko" },
+  { label: "Spanish", nativeLabel: "Spanish", locale: "es" },
+  { label: "French", nativeLabel: "French", locale: "fr" },
+  { label: "German", nativeLabel: "Deutsch", locale: "de" },
 ];
 
 export function isAppLocale(value: string | null): value is AppLocale {

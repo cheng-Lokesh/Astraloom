@@ -723,8 +723,8 @@ function StartPageContent() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="max-w-4xl">
+      <div className="start-cinematic-page mx-auto max-w-7xl space-y-6">
+        <header className="start-cinematic-hero max-w-4xl">
           <StatusBadge variant="sourceBacked">
             {t.eyebrow}
           </StatusBadge>

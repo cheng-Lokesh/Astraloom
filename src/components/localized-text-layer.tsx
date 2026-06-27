@@ -1027,6 +1027,9 @@ const patternZh: Array<[RegExp, (...groups: string[]) => string]> = [
   [/^Locking freezes (\d+) agents and (\d+) relation edges as the local simulation input\. The graph remains inspectable, but edge weights stay read-only\.$/, (agents, edges) => `锁定会将 ${agents} 个 Agent 和 ${edges} 条关系边冻结为本地推演输入。关系图仍可检查，但边权重保持只读。`],
 ];
 
+const disabledZhTables = [commonZh, phraseZh, patternZh];
+void disabledZhTables;
+
 function destinyTermZh(value: string) {
   const normalized = value.trim();
   const terms: Record<string, string> = {
@@ -1782,33 +1785,12 @@ function translateNonEnglishString(
 }
 
 function translateString(value: string, locale: AppLocale) {
-  if (locale === "en") return value;
+  if (locale === "en" || locale === "zh") return value;
 
   const trimmed = value.trim();
   if (!trimmed) return value;
 
-  if (locale !== "zh") {
-    return translateNonEnglishString(value, locale);
-  }
-
-  const exact = commonZh[trimmed];
-  if (exact) return value.replace(trimmed, exact);
-
-  if (shouldPreserveValue(trimmed)) return value;
-
-  for (const [pattern, build] of patternZh) {
-    const match = trimmed.match(pattern);
-    if (match) {
-      return value.replace(trimmed, build(...match.slice(1)));
-    }
-  }
-
-  let next = trimmed;
-  for (const [from, to] of phraseZh) {
-    next = next.replaceAll(from, to);
-  }
-
-  return next === trimmed ? value : value.replace(trimmed, next);
+  return translateNonEnglishString(value, locale);
 }
 
 function shouldPreserveValue(value: string) {
