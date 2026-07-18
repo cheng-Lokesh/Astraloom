@@ -8,9 +8,14 @@
     "start": "next start",
     "lint": "eslint src",
     "type-check": "next typegen && tsc --noEmit",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run --exclude src/lib/golden-cases/**/*.test.ts",
+    "test:golden": "vitest run src/lib/golden-cases/full-product-cases.test.ts --reporter=verbose",
+    "test:coverage": "vitest run --coverage",
     "test:hero-render-budget": "node scripts/check-hero-render-budget.mjs",
     "test:interactive-hero": "node scripts/check-interactive-observatory-hero.mjs",
-    "check": "npm run lint && npm run type-check && npm run build"
+    "check": "npm run test:unit && npm run test:golden && npm run lint && npm run type-check && npm run build",
+    "check:ci": "npm run check"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -30,9 +35,11 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.184.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

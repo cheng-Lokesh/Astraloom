@@ -8,6 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Before implementing any feature code, read these documents:
 
+- `docs/FUTURE_SIMULATOR_V2.md`
 - `docs/PRODUCT_CONSTITUTION.md`
 - `docs/MVP_SCOPE.md`
 - `docs/DATA_CONTRACTS.md`
@@ -15,6 +16,11 @@ Before implementing any feature code, read these documents:
 - `docs/UI_ACCEPTANCE.md`
 - `docs/SAFETY_RULES.md`
 - `docs/CODEX_TASK_TEMPLATE.md`
+
+`docs/FUTURE_SIMULATOR_V2.md` is the authoritative source for Astraloom V2
+product direction and implementation order. When older planning, stage, MVP,
+whitepaper-status, or acceptance documents conflict with its confirmed V2
+decisions, follow `docs/FUTURE_SIMULATOR_V2.md` while preserving V1 compatibility.
 
 Treat Codex as the implementation crew, not the product owner. The founder is the product director and architecture approver.
 
