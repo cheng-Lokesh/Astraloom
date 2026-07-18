@@ -1,16 +1,16 @@
 const metrics = [
-  ["Grounding", "94"],
-  ["Evidence", "87"],
-  ["Consensus", "71"],
-  ["Risk", "18"],
-  ["Engine", "NOMINAL"],
+  ["Source-backed", "94"],
+  ["Reality Signals", "87"],
+  ["Agent Graph", "36"],
+  ["Event Ledger", "LIVE"],
+  ["Path Branches", "04"],
 ];
 
 export function HeroHudPanels() {
   return (
     <div className="command-hud" aria-hidden="true">
       <aside className="command-hud-left">
-        {["Reality Signals", "Agent Graph", "Event Ledger", "Path Streams"].map((label, index) => (
+        {["Reality Signals", "Agent Graph", "Event Ledger", "Path Branches"].map((label, index) => (
           <div key={label} className="command-hud-module" style={{ "--hud-index": index } as React.CSSProperties}>
             <span className="command-hud-icon"><i /></span>
             <span>{label}</span>
@@ -28,9 +28,9 @@ export function HeroHudPanels() {
       </aside>
       <div className="command-status-strip">
         <span><i /> SOURCE-BACKED</span>
-        <span>AGENTS 026</span>
+        <span>AGENTS 036</span>
         <span>EVENT LEDGER LIVE</span>
-        <span>PATH STREAMS 04</span>
+        <span>PATH BRANCHES 04</span>
         <span>SYSTEM NOMINAL</span>
       </div>
       <div className="command-core-readout">

@@ -8,7 +8,7 @@ export function HeroBackplate() {
           src="/hero/astraloom-command-center-base.png"
           alt=""
           fill
-          priority
+          preload
           sizes="100vw"
           quality={75}
           className="observatory-backplate-image"

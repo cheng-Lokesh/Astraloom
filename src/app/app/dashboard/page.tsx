@@ -232,9 +232,9 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="dashboard-observatory mx-auto grid w-full max-w-[104rem] gap-3 overflow-hidden xl:h-[calc(100vh-7.25rem)] xl:grid-cols-[250px_minmax(0,1fr)_300px] 2xl:grid-cols-[290px_minmax(0,1fr)_330px]">
-        <aside className="min-h-0 space-y-3 xl:grid xl:h-full xl:grid-rows-[minmax(0,1fr)_145px] xl:gap-3 xl:space-y-0">
-          <GlassPanel className="min-h-0 overflow-hidden">
+      <div className="dashboard-observatory dashboard-cinema-deck mx-auto grid w-full max-w-[112rem] gap-3 overflow-hidden xl:h-[calc(100vh-10.75rem)] xl:grid-cols-[270px_minmax(0,1fr)_330px] 2xl:grid-cols-[310px_minmax(0,1fr)_370px]">
+        <aside className="observatory-side min-h-0 space-y-3 xl:grid xl:h-full xl:grid-rows-[minmax(0,1fr)_155px] xl:gap-3 xl:space-y-0">
+          <GlassPanel className="observatory-readiness-panel min-h-0 overflow-hidden">
             <PanelHeader title={t.system} sub={t.systemSub} />
             <ReadinessDial value={readiness} label={t.dialReady} />
             <div className="mt-4 space-y-2">
@@ -246,11 +246,11 @@ export default function DashboardPage() {
             </div>
           </GlassPanel>
 
-          <GlassPanel className="hidden overflow-hidden xl:block">
+          <GlassPanel className="observatory-mini-panel hidden overflow-hidden xl:block">
             <PanelHeader title={t.recent} sub={t.recentCases} />
             <div className="mt-3 grid grid-cols-2 gap-2">
               {[72, 58].map((value, index) => (
-                <div key={value} className="rounded-md border border-[rgba(84,230,255,0.12)] bg-black/20 p-2">
+                <div key={value} className="observatory-mini-case rounded-md border border-[rgba(84,230,255,0.12)] bg-black/20 p-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                     {t.caseLabel} 0{index + 1}
                   </p>
@@ -264,11 +264,11 @@ export default function DashboardPage() {
           </GlassPanel>
         </aside>
 
-        <main className="min-h-0">
-          <GlassPanel className="relative h-[680px] overflow-hidden xl:h-full">
-            <div className="relative z-20 flex items-start justify-between gap-3">
+        <main className="observatory-main-stage min-h-0">
+          <GlassPanel className="observatory-stage-panel relative h-[760px] overflow-hidden xl:h-full">
+            <div className="observatory-stage-topbar relative z-30 flex items-start justify-between gap-3">
               <PanelHeader title={t.mapTitle} sub={t.mapSub} />
-              <div className="flex items-center gap-2">
+              <div className="observatory-status-strip flex items-center gap-2">
                 <StatusChip tone={capability.canClaimGroundedSimulation ? "good" : "warn"}>
                   {capability.canClaimGroundedSimulation ? t.sourceBacked : t.notSourceBacked}
                 </StatusChip>
@@ -276,11 +276,42 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="home-command-layout relative z-10">
-              <div className="home-command-focus">
+            <div className="observatory-stage-world relative z-10">
+              <div className="stage-starfield" aria-hidden="true" />
+              <div className="stage-gantry stage-gantry-top" aria-hidden="true" />
+              <div className="stage-gantry stage-gantry-bottom" aria-hidden="true" />
+              <div className="stage-core-column" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="stage-telemetry stage-telemetry-a" aria-hidden="true">
+                <span>Reality signals</span>
+                <strong>{capability.realitySearchAvailable ? "1.27M" : "local"}</strong>
+              </div>
+              <div className="stage-telemetry stage-telemetry-b" aria-hidden="true">
+                <span>Path clarity</span>
+                <strong>{readiness}%</strong>
+              </div>
+              <div className="stage-telemetry stage-telemetry-c" aria-hidden="true">
+                <span>Evidence chain</span>
+                <strong>{capability.canClaimGroundedSimulation ? "online" : "limited"}</strong>
+              </div>
+
+              <div className="observatory-relation-field">
+                <RelationMap
+                  title={t.central}
+                  climate={t.climate}
+                  nodeLabels={t.nodeLabels}
+                  centralNodeLabel={t.centralNode}
+                  evidenceLabel={t.evidenceLabel}
+                />
+              </div>
+
+              <div className="observatory-console-wrap">
                 <div
                   data-testid="home-ai-composer"
-                  className={`ai-composer w-full max-w-[780px] ${focused ? "ai-composer-focused" : ""}`}
+                  className={`ai-composer observatory-console w-full ${focused ? "ai-composer-focused" : ""}`}
                 >
                   <div className="ai-composer-hero">
                     <div className="min-w-0">
@@ -378,36 +409,20 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="home-intelligence-strip">
-                <div className="relative min-h-0 overflow-hidden rounded-lg border border-[rgba(84,230,255,0.14)] bg-black/20">
-                  <RelationMap
-                    title={t.central}
-                    climate={t.climate}
-                    nodeLabels={t.nodeLabels}
-                    centralNodeLabel={t.centralNode}
-                    evidenceLabel={t.evidenceLabel}
-                    compact
+              <div className="observatory-path-ribbon" aria-hidden="true">
+                {[42, 68, 52, 81, 61, 74, 46].map((height, index) => (
+                  <span
+                    key={`${height}-${index}`}
+                    style={{ height: `${height}px`, opacity: 0.48 + index * 0.045 }}
                   />
-                </div>
-                <div className="home-path-card">
-                  <PanelHeader title={t.pathTitle} sub={t.pathSub} />
-                  <div className="mt-4 flex items-end gap-2">
-                    {[42, 68, 52, 81, 61].map((height, index) => (
-                      <span
-                        key={height}
-                        className="block w-full rounded-t border border-[rgba(84,230,255,0.12)] bg-gradient-to-t from-[rgba(84,230,255,0.06)] to-[rgba(84,230,255,0.45)]"
-                        style={{ height: `${height}px`, opacity: 0.62 + index * 0.06 }}
-                      />
-                    ))}
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </GlassPanel>
         </main>
 
-        <aside className="min-h-0 space-y-3 xl:grid xl:h-full xl:grid-rows-[300px_minmax(0,1fr)] xl:gap-3 xl:space-y-0">
-          <GlassPanel className="overflow-hidden">
+        <aside className="observatory-side min-h-0 space-y-3 xl:grid xl:h-full xl:grid-rows-[318px_minmax(0,1fr)] xl:gap-3 xl:space-y-0">
+          <GlassPanel className="observatory-module-panel overflow-hidden">
             <PanelHeader title={t.activeModules} sub={`${t.modules.length}/${t.modules.length}`} />
             <div className="mt-3 space-y-2">
               {t.modules.map(([title, body], index) => (
@@ -423,7 +438,7 @@ export default function DashboardPage() {
             </div>
           </GlassPanel>
 
-          <GlassPanel className="overflow-hidden">
+          <GlassPanel className="observatory-ledger-panel overflow-hidden">
             <PanelHeader title={t.eventLedger} sub={t.realtime} />
             <div className="mt-3 space-y-2">
               {t.events.map(([title, state], index) => (
@@ -455,7 +470,7 @@ function readinessScore(capability: RuntimeCapabilityState) {
 
 function GlassPanel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-lg border border-[rgba(84,230,255,0.18)] bg-[rgba(5,11,22,0.78)] p-3 shadow-[0_24px_90px_rgba(0,0,0,0.36)] backdrop-blur-xl ${className}`}>
+    <section className={`observatory-glass-panel relative rounded-lg border border-[rgba(84,230,255,0.18)] bg-[rgba(5,11,22,0.78)] p-3 shadow-[0_24px_90px_rgba(0,0,0,0.36)] backdrop-blur-xl ${className}`}>
       {children}
     </section>
   );

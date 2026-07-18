@@ -18,6 +18,12 @@ Before implementing any feature code, read these documents:
 
 Treat Codex as the implementation crew, not the product owner. The founder is the product director and architecture approver.
 
+# Default Delivery Platform
+
+- Unless the founder explicitly mentions another platform or client, all requests default to the website only.
+- Do not automatically extend website work to WeChat Mini Programs, native mobile apps, desktop apps, browser extensions, or other clients.
+- If another platform is explicitly requested, limit the additional work to the platform(s) named in that request.
+
 Non-negotiables:
 
 - Astraloom is an AI Life Simulator and relationship/decision sandbox, not astrology, fortune-telling, therapy, mind-reading, CRM, or a generic chatbot.

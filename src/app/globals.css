@@ -5623,7 +5623,327 @@ html[lang="zh-CN"] [data-brand-wordmark] {
   }
 
   .dashboard-observatory {
+    --deck-canvas: #02050a;
+    --deck-panel: rgba(5, 12, 24, 0.86);
+    --deck-panel-strong: rgba(3, 7, 14, 0.94);
+    --deck-line: rgba(176, 224, 230, 0.16);
+    --deck-line-strong: rgba(176, 224, 230, 0.34);
+    --deck-gold: #d7b46a;
+    --deck-cyan: #91dfff;
+    --deck-violet: #a885ff;
+    --deck-green: #78f2b0;
     letter-spacing: 0;
+  }
+
+  .dashboard-cinema-deck {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .dashboard-cinema-deck::before {
+    content: "";
+    position: absolute;
+    inset: -8rem -10vw -8rem;
+    z-index: -2;
+    background:
+      radial-gradient(ellipse at 50% 8%, rgba(145, 223, 255, 0.16), transparent 34rem),
+      radial-gradient(ellipse at 84% 38%, rgba(168, 133, 255, 0.1), transparent 28rem),
+      radial-gradient(ellipse at 18% 64%, rgba(215, 180, 106, 0.08), transparent 24rem),
+      linear-gradient(180deg, #030814 0%, #02050a 52%, #020305 100%);
+    pointer-events: none;
+  }
+
+  .dashboard-cinema-deck::after {
+    content: "";
+    position: absolute;
+    inset: -4rem -6vw;
+    z-index: -1;
+    background-image:
+      linear-gradient(rgba(145, 223, 255, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(215, 180, 106, 0.036) 1px, transparent 1px);
+    background-size: 72px 72px;
+    mask-image: radial-gradient(ellipse at center, black 0 38%, transparent 72%);
+    opacity: 0.65;
+    transform: perspective(900px) rotateX(60deg) translateY(28vh) scale(1.18);
+    pointer-events: none;
+  }
+
+  .dashboard-cinema-deck > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .observatory-glass-panel,
+  .dashboard-observatory > aside > section,
+  .observatory-stage-panel {
+    border-color: var(--deck-line) !important;
+    border-radius: 0.45rem !important;
+    background:
+      linear-gradient(180deg, rgba(176, 224, 230, 0.07), rgba(255, 255, 255, 0.018)),
+      radial-gradient(circle at 90% 10%, rgba(145, 223, 255, 0.055), transparent 15rem),
+      var(--deck-panel) !important;
+    box-shadow:
+      0 30px 95px rgba(0, 0, 0, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(22px);
+  }
+
+  .observatory-glass-panel::before,
+  .observatory-stage-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0.55rem;
+    border: 1px solid rgba(215, 180, 106, 0.075);
+    border-radius: 0.28rem;
+    pointer-events: none;
+  }
+
+  .observatory-side {
+    min-width: 0;
+  }
+
+  .observatory-main-stage {
+    min-width: 0;
+  }
+
+  .observatory-stage-panel {
+    padding: 0 !important;
+  }
+
+  .observatory-stage-topbar {
+    min-height: 4.6rem;
+    align-items: center;
+    border-bottom: 1px solid rgba(176, 224, 230, 0.1);
+    background:
+      linear-gradient(90deg, rgba(145, 223, 255, 0.06), transparent 38%, rgba(215, 180, 106, 0.045)),
+      rgba(2, 5, 10, 0.52);
+    padding: 0.95rem 1.05rem;
+  }
+
+  .observatory-stage-topbar h2,
+  .observatory-glass-panel h2 {
+    font-family: var(--font-jetbrains-mono), monospace;
+    font-size: 0.74rem !important;
+    letter-spacing: 0.14em !important;
+  }
+
+  .observatory-stage-world {
+    height: calc(100% - 4.6rem);
+    min-height: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 38%, rgba(145, 223, 255, 0.16), transparent 18rem),
+      radial-gradient(circle at 50% 42%, rgba(168, 133, 255, 0.1), transparent 26rem),
+      linear-gradient(180deg, rgba(2, 5, 10, 0.12), rgba(0, 0, 0, 0.34));
+  }
+
+  .stage-starfield {
+    position: absolute;
+    inset: 0;
+    opacity: 0.38;
+    background-image:
+      radial-gradient(circle, rgba(255, 255, 255, 0.72) 0 0.7px, transparent 1px),
+      radial-gradient(circle, rgba(145, 223, 255, 0.55) 0 0.8px, transparent 1.1px),
+      radial-gradient(circle, rgba(215, 180, 106, 0.45) 0 0.7px, transparent 1px);
+    background-size: 97px 97px, 151px 151px, 211px 211px;
+    animation: observatory-star-drift 42s linear infinite;
+  }
+
+  .stage-gantry {
+    position: absolute;
+    left: 50%;
+    width: min(56rem, 92%);
+    height: 12rem;
+    border: 1px solid rgba(145, 223, 255, 0.16);
+    border-radius: 50%;
+    transform: translateX(-50%) perspective(900px) rotateX(68deg);
+    pointer-events: none;
+  }
+
+  .stage-gantry-top {
+    top: -5.2rem;
+    box-shadow:
+      inset 0 -1rem 3rem rgba(145, 223, 255, 0.08),
+      0 0 46px rgba(145, 223, 255, 0.08);
+  }
+
+  .stage-gantry-bottom {
+    bottom: -4.6rem;
+    border-color: rgba(215, 180, 106, 0.22);
+    box-shadow:
+      inset 0 1rem 3rem rgba(215, 180, 106, 0.08),
+      0 0 50px rgba(215, 180, 106, 0.08);
+  }
+
+  .stage-core-column {
+    position: absolute;
+    left: 50%;
+    top: -3%;
+    bottom: 18%;
+    z-index: 6;
+    width: 8rem;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .stage-core-column::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, transparent, rgba(145, 223, 255, 0.92), rgba(215, 180, 106, 0.7), transparent);
+    box-shadow:
+      0 0 18px rgba(145, 223, 255, 0.8),
+      0 0 60px rgba(145, 223, 255, 0.32);
+    animation: observatory-beam-breathe 4.8s ease-in-out infinite;
+  }
+
+  .stage-core-column span {
+    position: absolute;
+    left: 50%;
+    width: 8rem;
+    height: 2.2rem;
+    border: 1px solid rgba(145, 223, 255, 0.32);
+    border-radius: 50%;
+    transform: translateX(-50%) perspective(420px) rotateX(68deg);
+    background: radial-gradient(ellipse at center, rgba(145, 223, 255, 0.16), transparent 56%);
+    box-shadow: 0 0 28px rgba(145, 223, 255, 0.14);
+  }
+
+  .stage-core-column span:nth-child(1) {
+    top: 18%;
+  }
+
+  .stage-core-column span:nth-child(2) {
+    top: 43%;
+    width: 11rem;
+    border-color: rgba(168, 133, 255, 0.35);
+  }
+
+  .stage-core-column span:nth-child(3) {
+    top: 68%;
+    width: 14rem;
+    border-color: rgba(215, 180, 106, 0.28);
+  }
+
+  .stage-telemetry {
+    position: absolute;
+    z-index: 18;
+    min-width: 9.5rem;
+    border-left: 1px solid rgba(145, 223, 255, 0.36);
+    background: linear-gradient(90deg, rgba(2, 5, 10, 0.72), transparent);
+    padding: 0.58rem 0.74rem;
+    font-family: var(--font-jetbrains-mono), monospace;
+    text-transform: uppercase;
+  }
+
+  .stage-telemetry span {
+    display: block;
+    color: rgba(217, 232, 244, 0.48);
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+  }
+
+  .stage-telemetry strong {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--deck-gold);
+    font-size: 0.86rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+  }
+
+  .stage-telemetry-a {
+    left: 3%;
+    top: 12%;
+  }
+
+  .stage-telemetry-b {
+    right: 4%;
+    top: 16%;
+  }
+
+  .stage-telemetry-c {
+    right: 5%;
+    bottom: 27%;
+  }
+
+  .observatory-relation-field {
+    position: absolute;
+    inset: 2.6rem 2rem 10.5rem;
+    z-index: 8;
+  }
+
+  .observatory-relation-field > div {
+    min-height: 100% !important;
+  }
+
+  .observatory-console-wrap {
+    position: absolute;
+    right: 1.1rem;
+    bottom: 1rem;
+    left: 1.1rem;
+    z-index: 24;
+  }
+
+  .observatory-console {
+    max-width: none !important;
+    border-radius: 0.45rem !important;
+    border-color: rgba(176, 224, 230, 0.18) !important;
+    background:
+      linear-gradient(90deg, rgba(145, 223, 255, 0.075), transparent 28%, rgba(215, 180, 106, 0.055)),
+      rgba(2, 5, 10, 0.86) !important;
+    box-shadow:
+      0 28px 84px rgba(0, 0, 0, 0.52),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    padding: 0.78rem !important;
+  }
+
+  .observatory-console .ai-composer-hero {
+    margin-bottom: 0.48rem;
+  }
+
+  .observatory-console .ai-composer-title {
+    font-size: clamp(1.15rem, 1.32vw, 1.55rem);
+    font-weight: 650;
+  }
+
+  .observatory-console .ai-composer-subtitle {
+    max-width: 54rem;
+    font-size: 0.78rem;
+    line-height: 1.46;
+  }
+
+  .observatory-console .ai-composer-input {
+    min-height: 4.5rem;
+    font-size: 0.92rem;
+  }
+
+  .observatory-path-ribbon {
+    position: absolute;
+    left: 50%;
+    bottom: 9.8rem;
+    z-index: 14;
+    display: flex;
+    width: min(18rem, 44%);
+    height: 5.8rem;
+    align-items: flex-end;
+    gap: 0.34rem;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .observatory-path-ribbon span {
+    flex: 1;
+    min-width: 0.34rem;
+    border: 1px solid rgba(145, 223, 255, 0.12);
+    border-bottom: 0;
+    border-radius: 0.35rem 0.35rem 0 0;
+    background: linear-gradient(180deg, rgba(145, 223, 255, 0.62), rgba(145, 223, 255, 0.08));
+    box-shadow: 0 0 22px rgba(145, 223, 255, 0.12);
   }
 
   .home-command-layout {
@@ -5668,18 +5988,18 @@ html[lang="zh-CN"] [data-brand-wordmark] {
 
   .map-node {
     display: grid;
-    width: 2rem;
-    height: 2rem;
+    width: 2.35rem;
+    height: 2.35rem;
     place-items: center;
-    border-radius: 0.45rem;
+    border-radius: 50%;
     background: rgba(5, 11, 22, 0.88);
     border: 1px solid rgba(84, 230, 255, 0.18);
     box-shadow: 0 0 24px rgba(84, 230, 255, 0.12);
   }
 
   .map-node span {
-    width: 0.55rem;
-    height: 0.55rem;
+    width: 0.62rem;
+    height: 0.62rem;
     border-radius: 999px;
     animation: dashboard-node-pulse 2.8s ease-in-out infinite;
   }
@@ -5702,6 +6022,27 @@ html[lang="zh-CN"] [data-brand-wordmark] {
   .map-node-red span {
     background: var(--risk-red);
     box-shadow: 0 0 18px rgba(255, 110, 127, 0.62);
+  }
+
+  @keyframes observatory-star-drift {
+    from {
+      background-position: 0 0, 0 0, 0 0;
+    }
+    to {
+      background-position: 97px 97px, -151px 151px, 211px -211px;
+    }
+  }
+
+  @keyframes observatory-beam-breathe {
+    0%,
+    100% {
+      opacity: 0.62;
+      transform: translateX(-50%) scaleY(0.96);
+    }
+    50% {
+      opacity: 1;
+      transform: translateX(-50%) scaleY(1.02);
+    }
   }
 
   .ai-composer {
@@ -5923,6 +6264,41 @@ html[lang="zh-CN"] [data-brand-wordmark] {
   }
 
   @media (max-width: 1024px) {
+    .dashboard-cinema-deck {
+      overflow: visible;
+    }
+
+    .observatory-main-stage {
+      order: -1;
+    }
+
+    .observatory-stage-panel {
+      height: auto !important;
+      min-height: 740px;
+    }
+
+    .observatory-stage-world {
+      height: 680px;
+    }
+
+    .observatory-relation-field {
+      inset: 2rem 0.75rem 16.2rem;
+    }
+
+    .observatory-console-wrap {
+      right: 0.75rem;
+      left: 0.75rem;
+    }
+
+    .stage-telemetry {
+      min-width: 8rem;
+      padding: 0.45rem 0.58rem;
+    }
+
+    .stage-telemetry-c {
+      display: none;
+    }
+
     .home-command-layout {
       height: auto;
       grid-template-rows: auto;
@@ -5958,6 +6334,90 @@ html[lang="zh-CN"] [data-brand-wordmark] {
     .ai-toolbar-right {
       justify-content: space-between;
       width: 100%;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .dashboard-cinema-deck {
+      gap: 0.75rem;
+    }
+
+    .observatory-stage-topbar {
+      align-items: flex-start;
+      flex-direction: column;
+      min-height: auto;
+      padding: 0.85rem;
+    }
+
+    .observatory-status-strip {
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .observatory-stage-world {
+      height: 720px;
+    }
+
+    .stage-gantry {
+      width: 122%;
+    }
+
+    .stage-core-column {
+      bottom: 30%;
+    }
+
+    .stage-telemetry-a {
+      left: 0.8rem;
+      top: 1rem;
+    }
+
+    .stage-telemetry-b {
+      right: 0.8rem;
+      top: 5.1rem;
+    }
+
+    .observatory-relation-field {
+      inset: 5.8rem 0.35rem 18.4rem;
+    }
+
+    .observatory-console {
+      padding: 0.62rem !important;
+    }
+
+    .observatory-console .ai-composer-hero {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .observatory-console .ai-composer-title {
+      font-size: 1.08rem;
+    }
+
+    .observatory-console .ai-composer-subtitle {
+      display: none;
+    }
+
+    .observatory-console .ai-composer-input {
+      min-height: 5.4rem;
+      font-size: 0.86rem;
+    }
+
+    .observatory-path-ribbon {
+      bottom: 16.5rem;
+      width: 54%;
+      height: 4rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stage-starfield,
+    .stage-core-column::before,
+    .stage-core-column span,
+    .dashboard-orbit,
+    .map-node span,
+    .observatory-path-ribbon span {
+      animation: none !important;
     }
   }
 

@@ -1,5 +1,5 @@
-import { InteractiveObservatoryHero } from "@/components/hero/interactive-observatory-hero";
+import { CinematicCommandHero } from "@/components/hero/cinematic-command-hero";
 
 export default function HomePage() {
-  return <InteractiveObservatoryHero />;
+  return <CinematicCommandHero />;
 }

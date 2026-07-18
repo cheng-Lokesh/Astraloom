@@ -6,6 +6,7 @@ import "@xyflow/react/dist/style.css";
 import "./globals.css";
 import "./reality-hero.css";
 import "./interactive-observatory-hero.css";
+import "./cinematic-command-hero.css";
 import "./portfolio-inspired-landing.css";
 import "./portfolio-app-theme.css";
 
@@ -40,15 +41,6 @@ export default function RootLayout({
       lang="en"
       className={`${hankenGrotesk.variable} ${marcellus.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
-      <head>
-        <link
-          rel="preload"
-          as="image"
-          href="/hero/astraloom-command-center-base.png"
-          type="image/png"
-          fetchPriority="high"
-        />
-      </head>
       <body className="min-h-full flex flex-col">
         <LanguageProvider>{children}</LanguageProvider>
       </body>
