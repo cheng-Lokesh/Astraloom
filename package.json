@@ -2,20 +2,23 @@
   "name": "astraloom-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint src",
     "type-check": "next typegen && tsc --noEmit",
-    "test": "npm run test:unit",
+    "test": "vitest run",
     "test:unit": "vitest run --exclude src/lib/golden-cases/**/*.test.ts",
     "test:golden": "vitest run src/lib/golden-cases/full-product-cases.test.ts --reporter=verbose",
     "test:coverage": "vitest run --coverage",
     "test:hero-render-budget": "node scripts/check-hero-render-budget.mjs",
     "test:interactive-hero": "node scripts/check-interactive-observatory-hero.mjs",
-    "check": "npm run test:unit && npm run test:golden && npm run lint && npm run type-check && npm run build",
-    "check:ci": "npm run check"
+    "check": "npm test && npm run lint && npm run type-check && npm run build",
+    "check:ci": "npm run test:coverage && npm run lint && npm run type-check && npm run build"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
