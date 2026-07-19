@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createLocalRealityBoundaryRepositoryV2 } from "./local-repository";
 import { realityBoundaryStorageKeyV2 } from "./repository";
 import type { StorageLikeV2 } from "./repository";
+import type { RealEvidenceIdV2 } from "./types";
 import { adaptV1RealityBoundary } from "./v1-adapter";
 import {
   createFixedRuntimeV2,
@@ -115,6 +116,48 @@ describe("Local Reality Boundary repository V2", () => {
     expect(stale).toMatchObject({ ok: false, errorCode: "stale_revision" });
   });
 
+  it.each([
+    { label: "omitted", expectedRevision: undefined },
+    { label: "negative", expectedRevision: -1 },
+    { label: "fractional", expectedRevision: 0.5 },
+  ])(
+    "rejects a $label expectedRevision before writing storage",
+    async ({ expectedRevision }) => {
+      const memory = memoryStorage();
+      const repository = createLocalRealityBoundaryRepositoryV2({
+        storage: memory.storage,
+        clock: () => fixedNowV2,
+      });
+
+      const result = await repository.save({
+        draft: draft(),
+        expectedRevision,
+      } as never);
+
+      expect(result).toMatchObject({
+        ok: false,
+        errorCode: "invalid_expected_revision",
+      });
+      expect(memory.values.size).toBe(0);
+    },
+  );
+
+  it("requires revision zero for the first save", async () => {
+    const memory = memoryStorage();
+    const repository = createLocalRealityBoundaryRepositoryV2({
+      storage: memory.storage,
+      clock: () => fixedNowV2,
+    });
+
+    const result = await repository.save({
+      draft: draft(),
+      expectedRevision: 1,
+    });
+
+    expect(result).toMatchObject({ ok: false, errorCode: "stale_revision" });
+    expect(memory.values.size).toBe(0);
+  });
+
   it("returns a stable failure for corrupted JSON", async () => {
     const memory = memoryStorage();
     memory.values.set(realityBoundaryStorageKeyV2("seed_stage_2_adapter"), "{");
@@ -185,7 +228,8 @@ describe("Local Reality Boundary repository V2", () => {
       clock: () => fixedNowV2,
     });
     const invalid = draft();
-    invalid.evidenceLedger.items[0]!.id = "event_v1_internal";
+    invalid.evidenceLedger.items[0]!.id =
+      "event_v1_internal" as RealEvidenceIdV2;
 
     const result = await repository.save({
       draft: invalid,
@@ -220,5 +264,74 @@ describe("Local Reality Boundary repository V2", () => {
       errorCode: "invalid_reality_boundary",
     });
     expect(memory.values.size).toBe(0);
+  });
+
+  it.each(["evidence", "assumption"] as const)(
+    "rejects a %s entity assigned to another Seed before saving",
+    async (entityKind) => {
+      const memory = memoryStorage();
+      const repository = createLocalRealityBoundaryRepositoryV2({
+        storage: memory.storage,
+        clock: () => fixedNowV2,
+      });
+      const invalid = draft();
+      if (entityKind === "evidence") {
+        invalid.evidenceLedger.items[0]!.seedContextId = "seed_other";
+      } else {
+        invalid.assumptionLedger.assumptions[0]!.seedContextId = "seed_other";
+      }
+
+      const result = await repository.save({
+        draft: invalid,
+        expectedRevision: 0,
+      });
+
+      expect(result).toMatchObject({
+        ok: false,
+        errorCode: "invalid_reality_boundary",
+      });
+      expect(memory.values.size).toBe(0);
+    },
+  );
+
+  it("rejects an inconsistent assumption state before saving", async () => {
+    const memory = memoryStorage();
+    const repository = createLocalRealityBoundaryRepositoryV2({
+      storage: memory.storage,
+      clock: () => fixedNowV2,
+    });
+    const invalid = draft();
+    invalid.assumptionLedger.assumptions[0]!.epistemicStatus = "rejected";
+    invalid.assumptionLedger.assumptions[0]!.confirmationStatus = "confirmed";
+
+    const result = await repository.save({
+      draft: invalid,
+      expectedRevision: 0,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: "invalid_reality_boundary",
+    });
+    expect(memory.values.size).toBe(0);
+  });
+
+  it("validates stored data with the same full validator used before save", async () => {
+    const memory = memoryStorage();
+    const invalid = draft();
+    invalid.evidenceLedger.items[0]!.createdAt = "not-an-iso-time";
+    memory.values.set(
+      realityBoundaryStorageKeyV2(invalid.seedContextId),
+      JSON.stringify(invalid),
+    );
+    const repository = createLocalRealityBoundaryRepositoryV2({
+      storage: memory.storage,
+      clock: () => fixedNowV2,
+    });
+
+    await expect(repository.load(invalid.seedContextId)).resolves.toMatchObject({
+      ok: false,
+      errorCode: "corrupt_storage",
+    });
   });
 });

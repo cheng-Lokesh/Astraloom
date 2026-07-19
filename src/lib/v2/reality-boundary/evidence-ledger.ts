@@ -6,6 +6,7 @@ import type {
   EvidenceProvenanceV2,
   RealityBoundaryRuntimeV2,
 } from "./types";
+import { parseRealEvidenceIdV2 } from "./ids";
 import { REALITY_BOUNDARY_SCHEMA_VERSION_V2 } from "./types";
 import { assertEvidenceLedgerV2 } from "./validation";
 
@@ -76,7 +77,7 @@ function normalizeInput(item: EvidenceItemInputV2): EvidenceItemInputV2 {
   return {
     id: item.id,
     statement: normalizeRealityBoundaryTextV2(item.statement),
-    claimKey: optionalText(item.claimKey),
+    claimKey: optionalText(item.claimKey)?.toLowerCase(),
     sourceKind: item.sourceKind,
     sourceTier: searchSummary ? "unrated" : item.sourceTier,
     verificationStatus: searchSummary
@@ -170,9 +171,17 @@ export function buildEvidenceLedgerV2({
     const firstProvenance = item.provenance[0];
     const evidence: EvidenceItemV2 = {
       ...item,
-      id:
-        item.id ??
-        runtime.idFactory("evidence", itemFingerprint(seedContextId, item)),
+      id: item.id ?? (() => {
+        const generatedId = runtime.idFactory(
+          "evidence",
+          itemFingerprint(seedContextId, item),
+        );
+        return (
+          parseRealEvidenceIdV2(generatedId) ??
+          (generatedId as EvidenceItemV2["id"])
+        );
+      })(),
+      seedContextId: normalizeRealityBoundaryTextV2(seedContextId),
       capturedAt: firstProvenance?.capturedAt ?? "",
       occurredAt: firstProvenance?.occurredAt,
       createdAt: now,

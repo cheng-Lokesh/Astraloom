@@ -1,7 +1,7 @@
 export const REALITY_BOUNDARY_SCHEMA_VERSION_V2 = "2.0" as const;
 
-export type RealEvidenceIdV2 = string;
-export type AssumptionIdV2 = string;
+export type RealEvidenceIdV2 = `real_evidence_v2_${string}`;
+export type AssumptionIdV2 = `assumption_v2_${string}`;
 
 export type EvidenceSourceKindV2 =
   | "user_statement"
@@ -52,6 +52,7 @@ export type EvidenceItemInputV2 = {
 
 export type EvidenceItemV2 = Omit<EvidenceItemInputV2, "id"> & {
   id: RealEvidenceIdV2;
+  seedContextId: string;
   capturedAt: string;
   occurredAt?: string;
   createdAt: string;
@@ -124,10 +125,12 @@ export type AssumptionInputV2 = {
   confirmationStatus: AssumptionConfirmationStatusV2;
   parameterRange?: AssumptionParameterRangeV2;
   legacyHeuristic?: LegacyHeuristicAuditV2;
+  legacyHeuristicHistory?: LegacyHeuristicAuditV2[];
 };
 
 export type AssumptionV2 = Omit<AssumptionInputV2, "id"> & {
   id: AssumptionIdV2;
+  seedContextId: string;
   factStatus: "not_real_world_fact";
   createdAt: string;
   updatedAt: string;

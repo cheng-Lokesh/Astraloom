@@ -1,4 +1,7 @@
-import type { RealityIntakeDraft } from "@/types/reality-intake";
+import type {
+  RealityIntakeDraft,
+  RealityIntakeExtractionPressure,
+} from "@/types/reality-intake";
 import type { SeedContextDraft } from "@/types/seed-context";
 
 import { buildAssumptionLedgerV2 } from "./assumption-ledger";
@@ -8,10 +11,15 @@ import type {
   AssumptionInputV2,
   AssumptionSubjectTypeV2,
   EvidenceItemInputV2,
+  EvidenceLedgerV2,
+  RealEvidenceIdV2,
   RealityBoundaryDraftV2,
   RealityBoundaryRuntimeV2,
 } from "./types";
 import { REALITY_BOUNDARY_SCHEMA_VERSION_V2 } from "./types";
+import { RealityBoundaryDomainErrorV2 } from "./validation";
+
+const MAX_EVIDENCE_EXCERPT_LENGTH_V2 = 2000;
 
 function atomicStatements(value: string | undefined) {
   if (!value?.trim()) return [];
@@ -66,6 +74,7 @@ function assumptionFromText({
   impactLevel = "medium",
   limitation,
   legacyConfidence,
+  supportingRealEvidenceIds = [],
 }: {
   value: string | undefined;
   category: string;
@@ -74,6 +83,7 @@ function assumptionFromText({
   impactLevel?: "low" | "medium" | "high";
   limitation: string;
   legacyConfidence?: number;
+  supportingRealEvidenceIds?: RealEvidenceIdV2[];
 }): AssumptionInputV2[] {
   return atomicStatements(value).map((statement) => ({
     statement,
@@ -81,7 +91,7 @@ function assumptionFromText({
     category,
     epistemicStatus,
     impactLevel,
-    supportingRealEvidenceIds: [],
+    supportingRealEvidenceIds,
     contradictingRealEvidenceIds: [],
     limitations: [limitation],
     confirmationRequirement:
@@ -94,6 +104,112 @@ function assumptionFromText({
         : "not_required",
     legacyHeuristic: legacyHeuristic(legacyConfidence),
   }));
+}
+
+function thirdPartyPressure(
+  pressure: RealityIntakeExtractionPressure,
+  thirdPartyLabels: Set<string>,
+) {
+  const source = pressure.sourceLabel.trim().toLowerCase();
+  const target = pressure.targetLabel.trim().toLowerCase();
+  if (thirdPartyLabels.has(source) || thirdPartyLabels.has(target)) return true;
+  return /\b(manager|supervisor|boss|third party|private|intent|approval|approve|control|constraint|permission)\b/i.test(
+    [
+      pressure.sourceLabel,
+      pressure.targetLabel,
+      pressure.pressureType,
+      pressure.explanation,
+    ].join(" "),
+  );
+}
+
+function addEvidenceRefAliases(
+  map: Map<string, RealEvidenceIdV2[]>,
+  sourceRef: string,
+  evidenceId: RealEvidenceIdV2,
+) {
+  const aliases = new Set([sourceRef]);
+  if (sourceRef.startsWith("v1-seed:")) {
+    const field = sourceRef.slice("v1-seed:".length);
+    aliases.add(`seed:${field}`);
+    if (field === "recentEvents") aliases.add("seed:recentEventsText");
+  } else if (sourceRef.startsWith("v1-manual:")) {
+    const id = sourceRef.slice("v1-manual:".length);
+    aliases.add(id);
+    aliases.add(`manual:${id}`);
+  } else if (sourceRef.startsWith("v1-external:")) {
+    const id = sourceRef.slice("v1-external:".length);
+    aliases.add(id);
+    aliases.add(`external:${id}`);
+  }
+  for (const alias of aliases) {
+    map.set(alias, Array.from(new Set([...(map.get(alias) ?? []), evidenceId])));
+  }
+}
+
+function buildV1EvidenceRefMap(evidenceLedger: EvidenceLedgerV2) {
+  const map = new Map<string, RealEvidenceIdV2[]>();
+  for (const item of evidenceLedger.items) {
+    for (const provenance of item.provenance) {
+      addEvidenceRefAliases(map, provenance.sourceRef, item.id);
+    }
+  }
+  return map;
+}
+
+function resolveV1EvidenceRefs({
+  refs,
+  field,
+  refMap,
+  warnings,
+  warningKeys,
+}: {
+  refs: string[];
+  field: string;
+  refMap: Map<string, RealEvidenceIdV2[]>;
+  warnings: AdaptationWarningV2[];
+  warningKeys: Set<string>;
+}) {
+  const resolved = new Set<RealEvidenceIdV2>();
+  for (const ref of refs) {
+    const evidenceIds = refMap.get(ref.trim());
+    if (evidenceIds) {
+      evidenceIds.forEach((id) => resolved.add(id));
+      continue;
+    }
+    const warningKey = `${field}:${ref}`;
+    if (warningKeys.has(warningKey)) continue;
+    warningKeys.add(warningKey);
+    warnings.push({
+      code: "v1_evidence_ref_unresolved",
+      field,
+      message: `V1 evidenceRef could not be resolved and was not fabricated: ${ref}`,
+    });
+  }
+  return Array.from(resolved);
+}
+
+function excerptForAdapter({
+  value,
+  field,
+  limitations,
+  warnings,
+}: {
+  value: string;
+  field: string;
+  limitations: string[];
+  warnings: AdaptationWarningV2[];
+}) {
+  if (value.length <= MAX_EVIDENCE_EXCERPT_LENGTH_V2) return value;
+  limitations.push(
+    "Excerpt was deterministically truncated to 2000 characters during V1 adaptation.",
+  );
+  warnings.push({
+    code: "v1_evidence_excerpt_truncated",
+    field,
+    message: `V1 evidence excerpt exceeded 2000 characters and was truncated: ${field}`,
+  });
+  return value.slice(0, MAX_EVIDENCE_EXCERPT_LENGTH_V2);
 }
 
 function subjectTypeFromV1Node(nodeType: string): AssumptionSubjectTypeV2 {
@@ -174,6 +290,15 @@ export function adaptV1RealityBoundary({
   realityIntake?: RealityIntakeDraft;
   runtime: RealityBoundaryRuntimeV2;
 }): RealityBoundaryDraftV2 {
+  if (
+    realityIntake &&
+    realityIntake.seedContextId !== seedContext.id
+  ) {
+    throw new RealityBoundaryDomainErrorV2(
+      "v1_reality_intake_seed_mismatch",
+      "V1 Reality Intake seedContextId must match the Seed Context being adapted.",
+    );
+  }
   const now = runtime.clock();
   const fixedRuntime: RealityBoundaryRuntimeV2 = {
     clock: () => now,
@@ -196,55 +321,89 @@ export function adaptV1RealityBoundary({
       capturedAt: seedContext.updatedAt,
     }),
   ];
+  const warnings = buildWarnings(seedContext, realityIntake);
 
   for (const source of realityIntake?.manualSources ?? []) {
     evidenceInputs.push(
-      ...atomicStatements(source.content).map((statement, index) => ({
-        statement,
-        sourceKind: "user_material" as const,
-        sourceTier: "unrated" as const,
-        verificationStatus: "unverified" as const,
-        provenance: [
-          {
-            sourceRef: `v1-manual:${source.id}`,
-            locator: `content:${index}`,
-            title: source.title,
-            excerpt: statement,
-            capturedAt: source.userProvidedAt,
-          },
-        ],
-        limitations: [
+      ...atomicStatements(source.content).map((statement, index) => {
+        const limitations = [
           "User-provided material was not explicitly user-confirmed or independently verified in V1.",
-        ],
-        legacyHeuristic: legacyHeuristic(source.confidence),
-      })),
+        ];
+        return {
+          statement,
+          sourceKind: "user_material" as const,
+          sourceTier: "unrated" as const,
+          verificationStatus: "unverified" as const,
+          provenance: [
+            {
+              sourceRef: `v1-manual:${source.id}`,
+              locator: `content:${index}`,
+              title: source.title,
+              excerpt: excerptForAdapter({
+                value: statement,
+                field: `manualSources.${source.id}.content`,
+                limitations,
+                warnings,
+              }),
+              capturedAt: source.userProvidedAt,
+            },
+          ],
+          limitations,
+          legacyHeuristic: legacyHeuristic(source.confidence),
+        };
+      }),
     );
   }
 
   for (const source of realityIntake?.externalSources ?? []) {
     const content = source.summary || source.contentSummary;
     evidenceInputs.push(
-      ...atomicStatements(content).map((statement, index) => ({
-        statement,
-        sourceKind: "search_summary" as const,
-        sourceTier: "unrated" as const,
-        verificationStatus: "unverified" as const,
-        provenance: [
-          {
-            sourceRef: `v1-external:${source.id}`,
-            locator: `${source.questionId}:${index}`,
-            url: source.url,
-            title: source.title,
-            excerpt: statement,
-            capturedAt: source.retrievedAt,
-          },
-        ],
-        limitations: [
+      ...atomicStatements(content).map((statement, index) => {
+        const limitations = [
           ...source.limitations,
           "A V1 URL or search result does not establish source verification or tier.",
-        ],
-        legacyHeuristic: legacyHeuristic(source.confidence),
-      })),
+        ];
+        let url = source.url;
+        if (url) {
+          try {
+            const parsed = new URL(url);
+            if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+              throw new Error("unsupported_protocol");
+            }
+          } catch {
+            warnings.push({
+              code: "v1_evidence_url_invalid",
+              field: `externalSources.${source.id}.url`,
+              message: `Invalid V1 external URL was omitted: ${source.id}`,
+            });
+            limitations.push("An invalid V1 URL was omitted during adaptation.");
+            url = undefined;
+          }
+        }
+        return {
+          statement,
+          sourceKind: "search_summary" as const,
+          sourceTier: "unrated" as const,
+          verificationStatus: "unverified" as const,
+          provenance: [
+            {
+              sourceRef: `v1-external:${source.id}`,
+              locator: `${source.questionId}:${index}`,
+              url,
+              title: source.title,
+              excerpt: excerptForAdapter({
+                value: statement,
+                field: `externalSources.${source.id}.summary`,
+                limitations,
+                warnings,
+              }),
+              capturedAt: source.retrievedAt,
+            },
+          ],
+          limitations,
+          legacyHeuristic: legacyHeuristic(source.confidence),
+        };
+      }),
     );
   }
 
@@ -253,6 +412,8 @@ export function adaptV1RealityBoundary({
     items: evidenceInputs,
     runtime: fixedRuntime,
   });
+  const evidenceRefMap = buildV1EvidenceRefMap(evidenceLedger);
+  const unresolvedWarningKeys = new Set<string>();
 
   const assumptions: AssumptionInputV2[] = [
     ...assumptionFromText({
@@ -278,6 +439,13 @@ export function adaptV1RealityBoundary({
   ];
 
   for (const source of realityIntake?.manualSources ?? []) {
+    const supportingRealEvidenceIds = resolveV1EvidenceRefs({
+      refs: [source.id],
+      field: `manualSources.${source.id}`,
+      refMap: evidenceRefMap,
+      warnings,
+      warningKeys: unresolvedWarningKeys,
+    });
     for (const hint of [
       ...source.extractedNodeHints,
       ...source.extractedPressureHints,
@@ -290,14 +458,27 @@ export function adaptV1RealityBoundary({
           impactLevel: "low",
           limitation: "This was a V1 deterministic extraction hint, not a verified fact.",
           legacyConfidence: source.confidence,
+          supportingRealEvidenceIds,
         }),
       );
     }
   }
 
   const extraction = realityIntake?.llmExtraction;
+  const thirdPartyLabels = new Set(
+    (extraction?.groundedRealityNodes ?? [])
+      .filter((node) => subjectTypeFromV1Node(node.nodeType) === "third_party")
+      .map((node) => node.label.trim().toLowerCase()),
+  );
   for (const node of extraction?.groundedRealityNodes ?? []) {
     const subjectType = subjectTypeFromV1Node(node.nodeType);
+    const supportingRealEvidenceIds = resolveV1EvidenceRefs({
+      refs: node.evidenceRefs,
+      field: `llmExtraction.groundedRealityNodes.${node.label}.evidenceRefs`,
+      refMap: evidenceRefMap,
+      warnings,
+      warningKeys: unresolvedWarningKeys,
+    });
     const statements = [
       node.roleInSituation,
       ...node.resourcesControlled,
@@ -312,20 +493,33 @@ export function adaptV1RealityBoundary({
           category: "llm_inference",
           subjectType,
           epistemicStatus: "inferred",
+          impactLevel: subjectType === "third_party" ? "high" : "medium",
           limitation: "Generated by V1 LLM extraction and not accepted as real-world evidence.",
           legacyConfidence: node.confidence,
+          supportingRealEvidenceIds,
         }),
       );
     }
   }
   for (const pressure of extraction?.groundedRealityPressures ?? []) {
+    const isThirdParty = thirdPartyPressure(pressure, thirdPartyLabels);
+    const supportingRealEvidenceIds = resolveV1EvidenceRefs({
+      refs: pressure.evidenceRefs,
+      field: `llmExtraction.groundedRealityPressures.${pressure.sourceLabel}.${pressure.targetLabel}.evidenceRefs`,
+      refMap: evidenceRefMap,
+      warnings,
+      warningKeys: unresolvedWarningKeys,
+    });
     assumptions.push(
       ...assumptionFromText({
         value: pressure.explanation,
         category: "llm_inference",
+        subjectType: isThirdParty ? "third_party" : "unknown",
         epistemicStatus: "inferred",
+        impactLevel: isThirdParty ? "high" : "medium",
         limitation: "Generated by V1 LLM pressure extraction and not accepted as fact.",
         legacyConfidence: pressure.confidence,
+        supportingRealEvidenceIds,
       }),
     );
   }
@@ -371,7 +565,7 @@ export function adaptV1RealityBoundary({
     revision: 0,
     evidenceLedger,
     assumptionLedger,
-    warnings: buildWarnings(seedContext, realityIntake),
+    warnings,
     createdAt: now,
     updatedAt: now,
   };

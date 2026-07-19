@@ -60,6 +60,9 @@ export function createLocalRealityBoundaryRepositoryV2({
     },
 
     async save({ draft, expectedRevision }) {
+      if (!Number.isInteger(expectedRevision) || expectedRevision < 0) {
+        return failure("invalid_expected_revision");
+      }
       const candidate = clone(draft);
       const inputValidation = validateRealityBoundaryDraftV2(candidate);
       if (!inputValidation.ok) {
@@ -77,10 +80,7 @@ export function createLocalRealityBoundaryRepositoryV2({
         }
 
         const currentRevision = existing?.revision ?? 0;
-        if (
-          expectedRevision !== undefined &&
-          expectedRevision !== currentRevision
-        ) {
+        if (expectedRevision !== currentRevision) {
           return failure("stale_revision");
         }
 

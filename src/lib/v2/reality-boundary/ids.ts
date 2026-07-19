@@ -1,4 +1,6 @@
 import type {
+  AssumptionIdV2,
+  RealEvidenceIdV2,
   RealityBoundaryIdFactoryV2,
   RealityBoundaryIdKindV2,
 } from "./types";
@@ -31,10 +33,20 @@ export function createStableRealityBoundaryIdFactoryV2(
     `${prefixes[kind]}${stableHash(`${namespace}:${kind}:${fingerprint}`)}`;
 }
 
-export function isRealEvidenceIdV2(value: string) {
+export function isRealEvidenceIdV2(value: string): value is RealEvidenceIdV2 {
   return /^real_evidence_v2_[a-z0-9]+$/i.test(value);
 }
 
-export function isAssumptionIdV2(value: string) {
+export function isAssumptionIdV2(value: string): value is AssumptionIdV2 {
   return /^assumption_v2_[a-z0-9]+$/i.test(value);
+}
+
+export function parseRealEvidenceIdV2(
+  value: unknown,
+): RealEvidenceIdV2 | null {
+  return typeof value === "string" && isRealEvidenceIdV2(value) ? value : null;
+}
+
+export function parseAssumptionIdV2(value: unknown): AssumptionIdV2 | null {
+  return typeof value === "string" && isAssumptionIdV2(value) ? value : null;
 }

@@ -15,6 +15,7 @@ export type StorageLikeV2 = {
 
 export type RealityBoundaryRepositoryErrorCodeV2 =
   | "invalid_reality_boundary"
+  | "invalid_expected_revision"
   | "stale_revision"
   | "corrupt_storage"
   | "storage_failure";
@@ -30,7 +31,7 @@ export type RealityBoundaryRepositoryResultV2<T> =
 
 export type SaveRealityBoundaryInputV2 = {
   draft: RealityBoundaryDraftV2;
-  expectedRevision?: number;
+  expectedRevision: number;
 };
 
 export type RealityBoundaryRepositoryV2 = {

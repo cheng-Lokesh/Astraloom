@@ -8,7 +8,60 @@ import type {
 } from "./types";
 
 const nonEmpty = z.string().trim().min(1);
-const timestamp = nonEmpty;
+function isValidIsoTimestamp(value: string) {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|([+-])(\d{2}):(\d{2}))$/.exec(
+      value,
+    );
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = Number(match[9] ?? 0);
+  const offsetMinute = Number(match[10] ?? 0);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysByMonth = [
+    31,
+    leapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysByMonth[month - 1]! &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59 &&
+    !Number.isNaN(Date.parse(value))
+  );
+}
+
+const timestamp = nonEmpty.refine(isValidIsoTimestamp, {
+  message: "Must be a valid ISO timestamp.",
+});
+const httpUrl = nonEmpty.refine((value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "Must be a valid http/https URL.");
 const realEvidenceId = nonEmpty.refine(isRealEvidenceIdV2, {
   message: "Real evidence id must use the real_evidence_v2_ namespace.",
 });
@@ -29,15 +82,16 @@ const provenanceSchema = z
     capturedAt: timestamp,
     occurredAt: timestamp.optional(),
     locator: nonEmpty.optional(),
-    url: nonEmpty.optional(),
+    url: httpUrl.optional(),
     title: nonEmpty.optional(),
-    excerpt: nonEmpty.optional(),
+    excerpt: nonEmpty.max(2000).optional(),
   })
   .strict();
 
 const evidenceItemSchema = z
   .object({
     id: realEvidenceId,
+    seedContextId: nonEmpty,
     statement: nonEmpty,
     claimKey: nonEmpty.optional(),
     sourceKind: z.enum([
@@ -80,7 +134,16 @@ const evidenceConflictSchema = z
     createdAt: timestamp,
     updatedAt: timestamp,
   })
-  .strict();
+  .strict()
+  .superRefine((conflict, context) => {
+    if (conflict.status === "resolved" && !conflict.resolutionNote?.trim()) {
+      context.addIssue({
+        code: "custom",
+        path: ["resolutionNote"],
+        message: "Resolved evidence conflict requires a resolutionNote.",
+      });
+    }
+  });
 
 export const evidenceLedgerSchemaV2 = z
   .object({
@@ -121,6 +184,7 @@ const parameterRangeSchema = z
 const assumptionSchema = z
   .object({
     id: assumptionId,
+    seedContextId: nonEmpty,
     statement: nonEmpty,
     subjectType: z.enum([
       "self",
@@ -150,6 +214,7 @@ const assumptionSchema = z
     ]),
     parameterRange: parameterRangeSchema.optional(),
     legacyHeuristic: legacyHeuristicSchema.optional(),
+    legacyHeuristicHistory: z.array(legacyHeuristicSchema).optional(),
     factStatus: z.literal("not_real_world_fact"),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -203,6 +268,20 @@ export class RealityBoundaryValidationErrorV2 extends Error {
   }
 }
 
+export type RealityBoundaryDomainErrorCodeV2 =
+  | "v1_reality_intake_seed_mismatch"
+  | "invalid_assumption_confirmation_transition";
+
+export class RealityBoundaryDomainErrorV2 extends Error {
+  readonly code: RealityBoundaryDomainErrorCodeV2;
+
+  constructor(code: RealityBoundaryDomainErrorCodeV2, message: string) {
+    super(message);
+    this.name = "RealityBoundaryDomainErrorV2";
+    this.code = code;
+  }
+}
+
 function zodIssues(result: z.ZodSafeParseResult<unknown>) {
   return result.success
     ? []
@@ -221,6 +300,51 @@ export function validateEvidenceLedgerV2(
   const ids = new Set(parsed.data.items.map((item) => item.id));
   const issues: string[] = [];
   if (ids.size !== parsed.data.items.length) issues.push("Evidence ids must be unique.");
+  if (
+    parsed.data.items.some(
+      (item) => item.seedContextId !== parsed.data.seedContextId,
+    )
+  ) {
+    issues.push("Every Evidence item must share its Ledger seedContextId.");
+  }
+  for (const item of parsed.data.items) {
+    if (
+      item.sourceKind === "search_summary" &&
+      !["unrated", "tier_3_contextual_public"].includes(item.sourceTier)
+    ) {
+      issues.push("Search summaries may only use unrated or tier_3_contextual_public.");
+    }
+    if (
+      item.sourceKind === "search_summary" &&
+      item.verificationStatus === "source_verified"
+    ) {
+      issues.push("Search summaries cannot be source_verified.");
+    }
+    if (
+      item.sourceTier === "tier_1_user_confirmed" &&
+      item.verificationStatus !== "user_confirmed"
+    ) {
+      issues.push("tier_1_user_confirmed requires user_confirmed verification.");
+    }
+    if (
+      item.sourceTier === "tier_1_primary_official" &&
+      (item.sourceKind !== "official_record" ||
+        item.verificationStatus !== "source_verified")
+    ) {
+      issues.push(
+        "tier_1_primary_official requires an official_record with source_verified status.",
+      );
+    }
+    if (
+      item.sourceTier === "tier_2_reputable_secondary" &&
+      (item.sourceKind !== "external_source" ||
+        item.verificationStatus !== "source_verified")
+    ) {
+      issues.push(
+        "tier_2_reputable_secondary requires a verified external_source.",
+      );
+    }
+  }
   const itemsById = new Map(parsed.data.items.map((item) => [item.id, item]));
   const conflictIds = new Set(parsed.data.conflicts.map((conflict) => conflict.id));
   if (conflictIds.size !== parsed.data.conflicts.length) {
@@ -244,17 +368,19 @@ export function validateEvidenceLedgerV2(
     ) {
       issues.push("Evidence conflict must retain different normalized values.");
     }
-    if (conflictClaimKeys.has(conflict.claimKey)) {
+    const normalizedClaimKey = conflict.claimKey.trim().toLowerCase();
+    if (conflictClaimKeys.has(normalizedClaimKey)) {
       issues.push("Evidence Ledger must contain at most one conflict per claimKey.");
     }
-    conflictClaimKeys.add(conflict.claimKey);
+    conflictClaimKeys.add(normalizedClaimKey);
   }
   const claimGroups = new Map<string, Set<string>>();
   for (const item of parsed.data.items) {
     if (!item.claimKey) continue;
-    const values = claimGroups.get(item.claimKey) ?? new Set<string>();
+    const normalizedClaimKey = item.claimKey.trim().toLowerCase();
+    const values = claimGroups.get(normalizedClaimKey) ?? new Set<string>();
     values.add(item.statement.toLowerCase());
-    claimGroups.set(item.claimKey, values);
+    claimGroups.set(normalizedClaimKey, values);
   }
   for (const [claimKey, values] of claimGroups) {
     if (values.size > 1 && !conflictClaimKeys.has(claimKey)) {
@@ -277,7 +403,13 @@ export function validateAssumptionLedgerV2(
   if (assumptionIds.size !== parsed.data.assumptions.length) {
     issues.push("Assumption ids must be unique.");
   }
+  if (parsed.data.seedContextId !== evidenceLedger.seedContextId) {
+    issues.push("Assumption and Evidence Ledgers must share the same seedContextId.");
+  }
   for (const assumption of parsed.data.assumptions) {
+    if (assumption.seedContextId !== parsed.data.seedContextId) {
+      issues.push("Every Assumption must share its Ledger seedContextId.");
+    }
     const referenced = [
       ...assumption.supportingRealEvidenceIds,
       ...assumption.contradictingRealEvidenceIds,
@@ -297,6 +429,18 @@ export function validateAssumptionLedgerV2(
       issues.push("High-impact third-party assumptions require confirmation.");
     }
     if (
+      assumption.confirmationRequirement === "required" &&
+      assumption.confirmationStatus === "not_required"
+    ) {
+      issues.push("Required confirmation cannot have not_required status.");
+    }
+    if (
+      assumption.confirmationRequirement === "not_required" &&
+      assumption.confirmationStatus === "pending"
+    ) {
+      issues.push("Pending confirmation requires confirmationRequirement required.");
+    }
+    if (
       assumption.epistemicStatus === "confirmed_for_simulation" &&
       assumption.confirmationStatus !== "confirmed"
     ) {
@@ -307,6 +451,24 @@ export function validateAssumptionLedgerV2(
       assumption.epistemicStatus !== "confirmed_for_simulation"
     ) {
       issues.push("Confirmed status is simulation confirmation, not a fact promotion.");
+    }
+    if (
+      assumption.confirmationStatus === "rejected" &&
+      assumption.epistemicStatus !== "rejected"
+    ) {
+      issues.push("Rejected confirmation requires rejected epistemic status.");
+    }
+    if (
+      assumption.epistemicStatus === "rejected" &&
+      assumption.confirmationStatus !== "rejected"
+    ) {
+      issues.push("Rejected epistemic status requires rejected confirmation status.");
+    }
+    if (
+      assumption.epistemicStatus === "disputed" &&
+      assumption.confirmationStatus === "confirmed"
+    ) {
+      issues.push("Disputed assumptions cannot be confirmed.");
     }
   }
   return issues.length ? { ok: false, issues } : { ok: true, issues: [] };
