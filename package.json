@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --exclude src/lib/golden-cases/**/*.test.ts",
     "test:golden": "vitest run src/lib/golden-cases/full-product-cases.test.ts --reporter=verbose",
+    "test:v2:evidence": "vitest run src/lib/v2/reality-boundary",
     "test:coverage": "vitest run --coverage",
     "test:hero-render-budget": "node scripts/check-hero-render-budget.mjs",
     "test:interactive-hero": "node scripts/check-interactive-observatory-hero.mjs",
