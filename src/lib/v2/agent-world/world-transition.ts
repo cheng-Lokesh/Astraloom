@@ -14,7 +14,11 @@ import type {
   WorldTransitionErrorCodeV2,
   WorldTransitionResultV2,
 } from "./types";
-import { transitionCommandSchemaV2, validateWorldV2 } from "./validation";
+import {
+  executableAssumptionErrorV2,
+  transitionCommandSchemaV2,
+  validateWorldV2,
+} from "./validation";
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -24,7 +28,10 @@ function failure(errorCode: WorldTransitionErrorCodeV2): WorldTransitionResultV2
   return { ok: false, errorCode };
 }
 
-function validateCausalReferences(world: WorldStateV2, command: TransitionCommandV2) {
+function causalReferenceError(
+  world: WorldStateV2,
+  command: TransitionCommandV2,
+): WorldTransitionErrorCodeV2 | null {
   const evidenceIds = new Set(
     world.realityBoundarySnapshot.evidenceLedger.items.map((item) => item.id),
   );
@@ -32,11 +39,20 @@ function validateCausalReferences(world: WorldStateV2, command: TransitionComman
     world.realityBoundarySnapshot.assumptionLedger.assumptions.map((item) => item.id),
   );
   const eventIds = new Set(world.worldEventIds);
-  return (
-    command.causalRealEvidenceIds.every((id) => evidenceIds.has(id)) &&
-    command.causalAssumptionIds.every((id) => assumptionIds.has(id)) &&
-    command.priorWorldEventIds.every((id) => eventIds.has(id))
+  if (
+    command.causalRealEvidenceIds.some((id) => !evidenceIds.has(id)) ||
+    command.causalAssumptionIds.some((id) => !assumptionIds.has(id)) ||
+    command.priorWorldEventIds.some((id) => !eventIds.has(id))
+  ) {
+    return "broken_causal_reference";
+  }
+  const assumptionError = executableAssumptionErrorV2(
+    world.realityBoundarySnapshot,
+    command.causalAssumptionIds,
   );
+  return assumptionError === "unknown_assumption"
+    ? "broken_causal_reference"
+    : assumptionError;
 }
 
 function updateAgentState(
@@ -75,9 +91,8 @@ export function applyWorldTransitionV2(
   if (!currentWorld.agentDefinitions.some((item) => item.id === command.actorId)) {
     return failure("unknown_actor");
   }
-  if (!validateCausalReferences(currentWorld, command)) {
-    return failure("broken_causal_reference");
-  }
+  const causalError = causalReferenceError(currentWorld, command);
+  if (causalError) return failure(causalError);
   const operation = command.operation;
   if (
     operation.actionType === "allocate_resource" &&
@@ -122,6 +137,18 @@ export function applyWorldTransitionV2(
   }
 
   const now = runtime.clock();
+  const nowTime = Date.parse(now);
+  if (
+    !Number.isFinite(nowTime) ||
+    nowTime < Date.parse(currentWorld.updatedAt) ||
+    nowTime < Date.parse(command.createdAt) ||
+    command.priorWorldEventIds.some((id) => {
+      const prior = currentWorld.worldEvents.find((event) => event.id === id);
+      return !prior || Date.parse(prior.createdAt) > nowTime;
+    })
+  ) {
+    return failure("invalid_transition_command");
+  }
   if (
     violatesWorldConstraintsV2(currentWorld, {
       actorId: command.actorId,
@@ -253,6 +280,7 @@ export function applyWorldTransitionV2(
     priorWorldEventIds: clone(command.priorWorldEventIds),
     validationRuleIds: clone(command.validationRuleIds),
     engineVersion: next.engineVersion,
+    commandCreatedAt: command.createdAt,
     createdAt: now,
   };
   next.revision += 1;

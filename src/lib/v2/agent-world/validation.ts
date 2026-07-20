@@ -26,9 +26,11 @@ import {
 } from "./ids";
 import type {
   ActionProposalInputV2,
+  AgentStateV2,
   AgentWorldIssueV2,
   ProvenanceRefSetV2,
   TransitionCommandV2,
+  WorldEventV2,
   WorldInitializationSpecV2,
   WorldStateV2,
 } from "./types";
@@ -477,19 +479,40 @@ const realityBoundarySnapshotSchema = z
   })
   .strict();
 
-const eventDeltaSchema = z
-  .object({
-    path: nonEmpty,
-    valueType: z.enum(["agent_state", "resource", "relation", "variable"]),
-    before: z.unknown(),
-    after: z.unknown(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (!Object.hasOwn(value, "before") || !Object.hasOwn(value, "after")) {
-      context.addIssue({ code: "custom", message: "Delta requires before and after." });
-    }
-  });
+const eventDeltaSchema = z.discriminatedUnion("valueType", [
+  z
+    .object({
+      path: nonEmpty,
+      valueType: z.literal("agent_state"),
+      before: agentStateSchema,
+      after: agentStateSchema,
+    })
+    .strict(),
+  z
+    .object({
+      path: nonEmpty,
+      valueType: z.literal("resource"),
+      before: finiteNumber,
+      after: finiteNumber,
+    })
+    .strict(),
+  z
+    .object({
+      path: nonEmpty,
+      valueType: z.literal("variable"),
+      before: z.union([finiteNumber, z.string()]),
+      after: z.union([finiteNumber, z.string()]),
+    })
+    .strict(),
+  z
+    .object({
+      path: nonEmpty,
+      valueType: z.literal("relation"),
+      before: z.enum(["positive", "neutral", "negative", "unknown"]),
+      after: z.enum(["positive", "neutral", "negative", "unknown"]),
+    })
+    .strict(),
+]);
 
 const worldEventSchema = z
   .object({
@@ -511,12 +534,13 @@ const worldEventSchema = z
     evidenceClass: z.literal("world_transition_simulation_evidence"),
     beforeRevision: revision,
     afterRevision: revision,
-    deltas: z.array(eventDeltaSchema).min(1),
+    deltas: z.array(eventDeltaSchema).length(1),
     causalRealEvidenceIds: z.array(realEvidenceId),
     causalAssumptionIds: z.array(assumptionId),
     priorWorldEventIds: z.array(worldEventId),
     validationRuleIds: z.array(nonEmpty).min(1),
     engineVersion: z.literal(AGENT_WORLD_ENGINE_VERSION_V2),
+    commandCreatedAt: isoTimestamp,
     createdAt: isoTimestamp,
   })
   .strict();
@@ -848,6 +872,202 @@ export function validateInitializationSpecV2(
   return issues;
 }
 
+function sameValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function expectedAgentStateAfterEvent(
+  event: WorldEventV2,
+  before: AgentStateV2,
+) {
+  const expected = structuredClone(before);
+  const operation = event.operation;
+  if (operation.actionType === "record_observation") {
+    expected.observations.push({
+      id: `observation_${event.id}`,
+      content: operation.observation,
+      source: structuredClone(operation.source),
+      observedAt: event.createdAt,
+    });
+    expected.memory.push({
+      id: `memory_${event.id}`,
+      source: structuredClone(operation.source),
+      content: operation.observation,
+      recordedAt: event.createdAt,
+    });
+  } else if (operation.actionType === "request_information") {
+    expected.observableStatus = "awaiting_information";
+    expected.commitments.push({
+      id: `request_${event.id}`,
+      label: operation.question,
+      status: "active",
+    });
+  } else if (operation.actionType === "update_commitment") {
+    const existing = expected.commitments.find(
+      (item) => item.id === operation.commitmentId,
+    );
+    if (existing) {
+      existing.label = operation.label;
+      existing.status = operation.status;
+    } else {
+      expected.commitments.push({
+        id: operation.commitmentId,
+        label: operation.label,
+        status: operation.status,
+      });
+    }
+    expected.observableStatus =
+      operation.status === "active" ? "committed" : expected.observableStatus;
+  }
+  expected.revision += 1;
+  expected.lastActionReference = {
+    referenceType: "world_event",
+    worldEventId: event.id,
+  };
+  expected.updatedAt = event.createdAt;
+  return expected;
+}
+
+function eventDeltaIssues(
+  value: WorldStateV2,
+  event: WorldEventV2,
+  index: number,
+) {
+  const issues: AgentWorldIssueV2[] = [];
+  const delta = event.deltas[0];
+  const path = `worldEvents.${index}.deltas.0`;
+  if (!delta) return issues;
+  const operation = event.operation;
+  let valid = false;
+  if (
+    operation.actionType === "allocate_resource" &&
+    delta.valueType === "resource"
+  ) {
+    valid =
+      delta.path === `resources.${operation.resourceId}.available` &&
+      delta.after === delta.before - operation.amount;
+  } else if (
+    operation.actionType === "update_external_variable" &&
+    delta.valueType === "variable"
+  ) {
+    const variable = value.externalVariables.find(
+      (item) => item.id === operation.variableId,
+    );
+    valid =
+      delta.path === `externalVariables.${operation.variableId}.value` &&
+      Boolean(variable) &&
+      (variable!.variableType === "number"
+        ? typeof delta.before === "number" && typeof delta.after === "number"
+        : typeof delta.before === "string" && typeof delta.after === "string") &&
+      delta.after === operation.value;
+  } else if (
+    operation.actionType === "update_relation_signal" &&
+    delta.valueType === "relation"
+  ) {
+    valid =
+      delta.path === `relations.${operation.relationId}.signal` &&
+      delta.after === operation.signal;
+  } else if (
+    (operation.actionType === "record_observation" ||
+      operation.actionType === "request_information" ||
+      operation.actionType === "update_commitment") &&
+    delta.valueType === "agent_state"
+  ) {
+    const suffix =
+      operation.actionType === "record_observation"
+        ? "observations"
+        : operation.actionType === "request_information"
+          ? "observableStatus"
+          : "commitments";
+    valid =
+      delta.path === `agentStates.${event.actorId}.${suffix}` &&
+      delta.before.agentDefinitionId === event.actorId &&
+      delta.after.agentDefinitionId === event.actorId &&
+      delta.before.seedContextId === event.seedContextId &&
+      delta.after.seedContextId === event.seedContextId &&
+      sameValue(delta.after, expectedAgentStateAfterEvent(event, delta.before));
+  }
+  if (!valid) {
+    issues.push(
+      issue(
+        "invalid_world",
+        path,
+        "Event delta must be typed and exactly replay its declared operation.",
+      ),
+    );
+  }
+  return issues;
+}
+
+function eventDeltaReplayIssues(value: WorldStateV2) {
+  const issues: AgentWorldIssueV2[] = [];
+  const lastAfter = new Map<string, unknown>();
+  const currentValue = new Map<string, unknown>();
+  for (const [index, event] of value.worldEvents.entries()) {
+    const delta = event.deltas[0];
+    if (!delta) continue;
+    let key: string | null = null;
+    let current: unknown;
+    if (delta.valueType === "agent_state") {
+      key = `agent_state:${event.actorId}`;
+      current = value.agentStates.find(
+        (state) => state.agentDefinitionId === event.actorId,
+      );
+    } else if (
+      delta.valueType === "resource" &&
+      event.operation.actionType === "allocate_resource"
+    ) {
+      const resourceId = event.operation.resourceId;
+      key = `resource:${resourceId}`;
+      current = value.resources.find(
+        (resource) => resource.id === resourceId,
+      )?.available;
+    } else if (
+      delta.valueType === "variable" &&
+      event.operation.actionType === "update_external_variable"
+    ) {
+      const variableId = event.operation.variableId;
+      key = `variable:${variableId}`;
+      current = value.externalVariables.find(
+        (variable) => variable.id === variableId,
+      )?.value;
+    } else if (
+      delta.valueType === "relation" &&
+      event.operation.actionType === "update_relation_signal"
+    ) {
+      const relationId = event.operation.relationId;
+      key = `relation:${relationId}`;
+      current = value.relations.find(
+        (relation) => relation.id === relationId,
+      )?.signal;
+    }
+    if (!key) continue;
+    if (lastAfter.has(key) && !sameValue(lastAfter.get(key), delta.before)) {
+      issues.push(
+        issue(
+          "invalid_world",
+          `worldEvents.${index}.deltas.0.before`,
+          "Event delta history must replay continuously.",
+        ),
+      );
+    }
+    lastAfter.set(key, delta.after);
+    currentValue.set(key, current);
+  }
+  for (const [key, after] of lastAfter) {
+    if (!sameValue(after, currentValue.get(key))) {
+      issues.push(
+        issue(
+          "invalid_world",
+          "worldEvents.deltas",
+          `Final Event delta for ${key} must match the current World state.`,
+        ),
+      );
+    }
+  }
+  return issues;
+}
+
 function semanticWorldIssues(value: WorldStateV2) {
   const issues: AgentWorldIssueV2[] = [];
   const snapshot = value.realityBoundarySnapshot;
@@ -881,6 +1101,15 @@ function semanticWorldIssues(value: WorldStateV2) {
         "cross_seed_reference",
         "realityBoundarySnapshot",
         "World and Reality Boundary snapshot seed/revisions must match.",
+      ),
+    );
+  }
+  if (Date.parse(value.createdAt) > Date.parse(value.updatedAt)) {
+    issues.push(
+      issue(
+        "invalid_timestamp",
+        "updatedAt",
+        "World updatedAt cannot precede World createdAt.",
       ),
     );
   }
@@ -1249,21 +1478,69 @@ function semanticWorldIssues(value: WorldStateV2) {
         issue("missing_reference", `worldEvents.${index}.actorId`, "Event actor must exist."),
       );
     }
-    if (
+    const missingCausalReference =
       event.causalRealEvidenceIds.some((id) => !evidenceIds.has(id)) ||
       event.causalAssumptionIds.some((id) => !assumptionIds.has(id)) ||
-      event.priorWorldEventIds.some((id) => {
-        const priorIndex = eventIds.indexOf(id);
-        return priorIndex < 0 || priorIndex >= index;
-      })
+      event.priorWorldEventIds.some((id) => !eventIds.includes(id));
+    if (missingCausalReference) {
+      issues.push(
+        issue(
+          "broken_causal_reference",
+          `worldEvents.${index}.causalReferences`,
+          "Event causal references must exist.",
+        ),
+      );
+    }
+    const eventAssumptionError = executableAssumptionErrorV2(
+      snapshot,
+      event.causalAssumptionIds,
+    );
+    if (eventAssumptionError && eventAssumptionError !== "unknown_assumption") {
+      issues.push(
+        issue(
+          eventAssumptionError,
+          `worldEvents.${index}.causalAssumptionIds`,
+          "Event references a non-executable Assumption.",
+        ),
+      );
+    }
+    const eventTime = Date.parse(event.createdAt);
+    if (
+      Date.parse(event.commandCreatedAt) > eventTime ||
+      eventTime > Date.parse(value.updatedAt) ||
+      (index > 0 &&
+        Date.parse(value.worldEvents[index - 1]!.createdAt) > eventTime)
     ) {
       issues.push(
         issue(
-          "missing_reference",
-          `worldEvents.${index}.causalReferences`,
-          "Event causal references must exist and precede the current Event.",
+          "invalid_timestamp",
+          `worldEvents.${index}.createdAt`,
+          "Command, Event, and World audit timestamps must be non-decreasing.",
         ),
       );
+    }
+    for (const priorId of event.priorWorldEventIds) {
+      const priorIndex = eventIds.indexOf(priorId);
+      if (priorIndex >= index) {
+        issues.push(
+          issue(
+            "missing_reference",
+            `worldEvents.${index}.priorWorldEventIds`,
+            "A prior World Event must appear earlier in history.",
+          ),
+        );
+      } else if (
+        priorIndex >= 0 &&
+        Date.parse(value.worldEvents[priorIndex]!.createdAt) > eventTime
+      ) {
+        issues.push(
+          issue(
+            "invalid_timestamp",
+            `worldEvents.${index}.priorWorldEventIds`,
+            "A causal prior World Event cannot occur after the current Event.",
+          ),
+        );
+      }
     }
     if (
       event.targetEntityIds.some((id) => !entityIds.includes(id)) ||
@@ -1295,7 +1572,9 @@ function semanticWorldIssues(value: WorldStateV2) {
         ),
       );
     }
+    issues.push(...eventDeltaIssues(value, event, index));
   }
+  issues.push(...eventDeltaReplayIssues(value));
   return issues;
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { AssumptionV2 } from "../reality-boundary/types";
 import { approveActionProposalV2, buildActionProposalV2 } from "./action-proposal";
 import {
   actionProposalInputV2,
@@ -42,6 +43,36 @@ function command(world: WorldStateV2, input: ActionProposalInputV2) {
 
 function runtimeAt(now: string): AgentWorldRuntimeV2 {
   return { ...createFixedAgentWorldRuntimeV2(), clock: () => now };
+}
+
+function addCausalAssumption(
+  world: WorldStateV2,
+  id: AssumptionV2["id"],
+  overrides: Partial<AssumptionV2>,
+) {
+  const base = structuredClone(
+    world.realityBoundarySnapshot.assumptionLedger.assumptions[1]!,
+  );
+  const assumption: AssumptionV2 = {
+    ...base,
+    id,
+    statement: `Event-only assumption ${id}`,
+    category: `event_${id}`,
+    ...overrides,
+  };
+  world.realityBoundarySnapshot.assumptionLedger.assumptions.push(assumption);
+  return assumption.id;
+}
+
+function appliedWorld(input: (world: WorldStateV2) => ActionProposalInputV2) {
+  const world = initialWorld();
+  const result = applyWorldTransitionV2(
+    world,
+    command(world, input(world)),
+    createFixedAgentWorldRuntimeV2(),
+  );
+  if (!result.ok) throw new Error(result.errorCode);
+  return result.world;
 }
 
 function expectInvalidWorldWithoutThrow(input: unknown) {
@@ -298,6 +329,101 @@ describe("Stage 3.1 reference and provenance integrity", () => {
     futureReference.worldEvents[0]!.priorWorldEventIds = [futureReference.worldEvents[1]!.id];
     expectIssue(futureReference, "missing_reference");
   });
+
+  it.each([
+    {
+      id: "assumption_v2_eventrejected" as const,
+      overrides: {
+        epistemicStatus: "rejected" as const,
+        confirmationStatus: "rejected" as const,
+      },
+      code: "assumption_not_executable",
+    },
+    {
+      id: "assumption_v2_eventdisputed" as const,
+      overrides: {
+        epistemicStatus: "disputed" as const,
+        confirmationStatus: "not_required" as const,
+      },
+      code: "assumption_not_executable",
+    },
+    {
+      id: "assumption_v2_eventthirdparty" as const,
+      overrides: {
+        subjectType: "third_party" as const,
+        impactLevel: "high" as const,
+        epistemicStatus: "inferred" as const,
+        confirmationRequirement: "required" as const,
+        confirmationStatus: "pending" as const,
+      },
+      code: "third_party_confirmation_required",
+    },
+  ])(
+    "revalidates Event causal Assumption readiness: $code",
+    ({ id, overrides, code }) => {
+      const invalid = appliedWorld((world) => actionProposalInputV2(world));
+      const assumptionId = addCausalAssumption(invalid, id, overrides);
+      invalid.worldEvents[0]!.causalAssumptionIds = [assumptionId];
+
+      expectIssue(invalid, code);
+    },
+  );
+
+  it("uses broken_causal_reference only for a missing Event causal Assumption", () => {
+    const invalid = appliedWorld((world) => actionProposalInputV2(world));
+    invalid.worldEvents[0]!.causalAssumptionIds = [
+      "assumption_v2_missingeventcause",
+    ];
+
+    expectIssue(invalid, "broken_causal_reference");
+  });
+
+  it("rejects causal Event history whose timestamps run backward", () => {
+    const world = initialWorld();
+    const first = applyWorldTransitionV2(
+      world,
+      command(world, actionProposalInputV2(world)),
+      createFixedAgentWorldRuntimeV2(),
+    );
+    if (!first.ok) throw new Error(first.errorCode);
+    const observation = actionProposalInputV2(first.world, {
+      id: "action_proposal_v2_time_order",
+      actionType: "record_observation",
+      targetEntityIds: [],
+      targetResourceIds: [],
+      priorWorldEventIds: [first.event.id],
+      parameters: {
+        actionType: "record_observation",
+        observation: "The first event remains an auditable cause.",
+        source: { sourceType: "world_event", worldEventId: first.event.id },
+      },
+    });
+    const second = applyWorldTransitionV2(
+      first.world,
+      command(first.world, observation),
+      createFixedAgentWorldRuntimeV2(),
+    );
+    if (!second.ok) throw new Error(second.errorCode);
+    expect(validateWorldV2(second.world)).toEqual({ ok: true, issues: [] });
+
+    const invalid = structuredClone(second.world);
+    invalid.worldEvents[0]!.createdAt = "2026-07-19T10:01:00.000Z";
+    invalid.updatedAt = "2026-07-19T10:01:00.000Z";
+    expectIssue(invalid, "invalid_timestamp");
+  });
+
+  it.each([
+    ["World updatedAt", (world: WorldStateV2) => {
+      world.updatedAt = "2026-07-19T09:59:59.000Z";
+    }],
+    ["Command createdAt", (world: WorldStateV2) => {
+      world.worldEvents[0]!.commandCreatedAt = "2026-07-19T10:01:00.000Z";
+    }],
+  ] as const)("rejects a backward %s audit time", (_label, mutate) => {
+    const invalid = appliedWorld((world) => actionProposalInputV2(world));
+    mutate(invalid);
+    expectIssue(invalid, "invalid_timestamp");
+  });
 });
 
 describe("Stage 3.1 Proposal, Command, and Event causal closure", () => {
@@ -446,6 +572,121 @@ describe("Stage 3.1 Proposal, Command, and Event causal closure", () => {
       targetRelationIds: input.targetRelationIds,
       targetVariableIds: input.targetVariableIds,
     });
+  });
+});
+
+describe("Stage 3.1 typed operation-bound Event delta", () => {
+  it.each([
+    ["wrong path", (delta: Record<string, unknown>) => {
+      delta.path = `resources.${idsV2.budget}.available`;
+    }],
+    ["wrong valueType", (delta: Record<string, unknown>) => {
+      delta.valueType = "variable";
+    }],
+    ["arbitrary before object", (delta: Record<string, unknown>) => {
+      delta.before = { available: 6 };
+    }],
+    ["array after value", (delta: Record<string, unknown>) => {
+      delta.after = [5];
+    }],
+    ["operation-inconsistent result", (delta: Record<string, unknown>) => {
+      delta.after = 4;
+    }],
+    ["unknown delta field", (delta: Record<string, unknown>) => {
+      delta.hiddenPatch = { arbitrary: true };
+    }],
+  ] as const)("rejects resource delta with %s", (_label, mutate) => {
+    const invalid = appliedWorld((world) => actionProposalInputV2(world));
+    mutate(invalid.worldEvents[0]!.deltas[0] as unknown as Record<string, unknown>);
+    expectInvalidWorldWithoutThrow(invalid);
+  });
+
+  it("rejects an operation-consistent delta that does not replay to the current World", () => {
+    const invalid = appliedWorld((world) => actionProposalInputV2(world));
+    const delta = invalid.worldEvents[0]!.deltas[0]!;
+    delta.before = 7 as never;
+    delta.after = 6 as never;
+    expectInvalidWorldWithoutThrow(invalid);
+  });
+
+  it("rejects a numeric Variable delta with the wrong type or operation value", () => {
+    const buildVariable = (world: WorldStateV2) =>
+      actionProposalInputV2(world, {
+        id: "action_proposal_v2_typed_variable",
+        actionType: "update_external_variable",
+        targetEntityIds: [],
+        targetResourceIds: [],
+        targetVariableIds: [idsV2.promotionBudget],
+        parameters: {
+          actionType: "update_external_variable",
+          variableId: idsV2.promotionBudget,
+          value: 60,
+        },
+      });
+    const wrongType = appliedWorld(buildVariable);
+    wrongType.worldEvents[0]!.deltas[0]!.after = "60" as never;
+    expectInvalidWorldWithoutThrow(wrongType);
+
+    const wrongValue = appliedWorld(buildVariable);
+    wrongValue.worldEvents[0]!.deltas[0]!.after = 59;
+    expectInvalidWorldWithoutThrow(wrongValue);
+  });
+
+  it("rejects a Relation delta that disagrees with the operation", () => {
+    const invalid = appliedWorld((world) =>
+      actionProposalInputV2(world, {
+        id: "action_proposal_v2_typed_relation",
+        actionType: "update_relation_signal",
+        targetEntityIds: [],
+        targetResourceIds: [],
+        targetRelationIds: [idsV2.recruits],
+        parameters: {
+          actionType: "update_relation_signal",
+          relationId: idsV2.recruits,
+          signal: "neutral",
+        },
+      }),
+    );
+    invalid.worldEvents[0]!.deltas[0]!.after = "positive";
+    expectInvalidWorldWithoutThrow(invalid);
+  });
+
+  it.each([
+    ["wrong path", (delta: Record<string, unknown>) => {
+      delta.path = `agentStates.${idsV2.manager}.observations`;
+    }],
+    ["wrong actor", (delta: Record<string, unknown>) => {
+      (delta.after as Record<string, unknown>).agentDefinitionId = idsV2.manager;
+    }],
+    ["invalid revision", (delta: Record<string, unknown>) => {
+      (delta.after as Record<string, unknown>).revision = 0;
+    }],
+    ["unrelated state mutation", (delta: Record<string, unknown>) => {
+      (delta.after as Record<string, unknown>).observableStatus = "unavailable";
+    }],
+    ["unknown nested field", (delta: Record<string, unknown>) => {
+      (delta.before as Record<string, unknown>).hidden = true;
+    }],
+  ] as const)("rejects Agent State delta with %s", (_label, mutate) => {
+    const invalid = appliedWorld((world) =>
+      actionProposalInputV2(world, {
+        id: "action_proposal_v2_typed_observation",
+        actionType: "record_observation",
+        targetEntityIds: [],
+        targetResourceIds: [],
+        parameters: {
+          actionType: "record_observation",
+          observation: "The offer remains open.",
+          source: {
+            sourceType: "real_evidence",
+            realEvidenceId:
+              world.realityBoundarySnapshot.evidenceLedger.items[0]!.id,
+          },
+        },
+      }),
+    );
+    mutate(invalid.worldEvents[0]!.deltas[0] as unknown as Record<string, unknown>);
+    expectInvalidWorldWithoutThrow(invalid);
   });
 });
 

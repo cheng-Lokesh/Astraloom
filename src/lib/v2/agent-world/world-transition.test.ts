@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { approveActionProposalV2, buildActionProposalV2 } from "./action-proposal";
-import type { ActionProposalInputV2, TransitionCommandV2, WorldStateV2 } from "./types";
+import type { AssumptionV2 } from "../reality-boundary/types";
+import type { ActionProposalInputV2, AgentWorldRuntimeV2, TransitionCommandV2, WorldStateV2 } from "./types";
 import { applyWorldTransitionV2 } from "./world-transition";
 import { initializeWorldV2 } from "./world-initializer";
 import {
@@ -25,6 +26,29 @@ function command(world: WorldStateV2, input: ActionProposalInputV2) {
   const approved = approveActionProposalV2(built.proposal, world, world.revision, createFixedAgentWorldRuntimeV2());
   if (!approved.ok) throw new Error(approved.errorCode);
   return approved.command;
+}
+
+function runtimeAt(now: string): AgentWorldRuntimeV2 {
+  return { ...createFixedAgentWorldRuntimeV2(), clock: () => now };
+}
+
+function addCausalAssumption(
+  world: WorldStateV2,
+  id: AssumptionV2["id"],
+  overrides: Partial<AssumptionV2>,
+) {
+  const base = structuredClone(
+    world.realityBoundarySnapshot.assumptionLedger.assumptions[1]!,
+  );
+  const assumption: AssumptionV2 = {
+    ...base,
+    id,
+    statement: `Transition-only assumption ${id}`,
+    category: `transition_${id}`,
+    ...overrides,
+  };
+  world.realityBoundarySnapshot.assumptionLedger.assumptions.push(assumption);
+  return assumption.id;
 }
 
 const operations: Array<{ name: string; input: (world: WorldStateV2) => ActionProposalInputV2; path: string }> = [
@@ -88,6 +112,73 @@ describe("Validated World transition V2", () => {
     expect(applyWorldTransitionV2(world, { ...valid, causalRealEvidenceIds: ["real_evidence_v2_missing"] }, createFixedAgentWorldRuntimeV2())).toEqual({ ok: false, errorCode: "broken_causal_reference" });
   });
 
+  it.each([
+    {
+      label: "rejected",
+      id: "assumption_v2_transitionrejected" as const,
+      overrides: {
+        epistemicStatus: "rejected" as const,
+        confirmationStatus: "rejected" as const,
+      },
+      errorCode: "assumption_not_executable",
+    },
+    {
+      label: "disputed",
+      id: "assumption_v2_transitiondisputed" as const,
+      overrides: {
+        epistemicStatus: "disputed" as const,
+        confirmationStatus: "not_required" as const,
+      },
+      errorCode: "assumption_not_executable",
+    },
+    {
+      label: "unconfirmed high-impact third party",
+      id: "assumption_v2_transitionthirdparty" as const,
+      overrides: {
+        subjectType: "third_party" as const,
+        impactLevel: "high" as const,
+        epistemicStatus: "inferred" as const,
+        confirmationRequirement: "required" as const,
+        confirmationStatus: "pending" as const,
+      },
+      errorCode: "third_party_confirmation_required",
+    },
+  ])(
+    "revalidates a tampered Command with a present but $label Assumption",
+    ({ id, overrides, errorCode }) => {
+      const world = initialWorld();
+      const approved = command(world, actionProposalInputV2(world));
+      const assumptionId = addCausalAssumption(world, id, overrides);
+      const before = structuredClone(world);
+
+      expect(
+        applyWorldTransitionV2(
+          world,
+          { ...approved, causalAssumptionIds: [assumptionId] },
+          createFixedAgentWorldRuntimeV2(),
+        ),
+      ).toEqual({ ok: false, errorCode });
+      expect(world).toEqual(before);
+      expect(world.revision).toBe(0);
+      expect(world.worldEvents).toEqual([]);
+    },
+  );
+
+  it("continues to accept an executable causal Assumption", () => {
+    const world = initialWorld();
+    const approved = command(world, actionProposalInputV2(world));
+    const executable =
+      world.realityBoundarySnapshot.assumptionLedger.assumptions[1]!;
+
+    const result = applyWorldTransitionV2(
+      world,
+      { ...approved, causalAssumptionIds: [executable.id] },
+      createFixedAgentWorldRuntimeV2(),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
   it("keeps Real Evidence and World Event memory discriminated", () => {
     const world = initialWorld();
     const bad = actionProposalInputV2(world, { id: "action_proposal_v2_bad_memory", actionType: "record_observation", targetResourceIds: [], parameters: { actionType: "record_observation", observation: "Invalid mixed reference", source: { sourceType: "real_evidence", realEvidenceId: "world_event_v2_fake" as never } } });
@@ -109,6 +200,59 @@ describe("Validated World transition V2", () => {
     expect(second.world.worldEvents).toHaveLength(2);
   });
 
+  it("rejects a second causal Event when runtime time moves backward", () => {
+    const world = initialWorld();
+    const first = applyWorldTransitionV2(
+      world,
+      command(world, actionProposalInputV2(world)),
+      createFixedAgentWorldRuntimeV2(),
+    );
+    if (!first.ok) throw new Error(first.errorCode);
+    const observation = actionProposalInputV2(first.world, {
+      id: "action_proposal_v2_time_reversal",
+      actionType: "record_observation",
+      targetEntityIds: [],
+      targetResourceIds: [],
+      priorWorldEventIds: [first.event.id],
+      parameters: {
+        actionType: "record_observation",
+        observation: "This cites the first transition.",
+        source: { sourceType: "world_event", worldEventId: first.event.id },
+      },
+    });
+    const secondCommand = command(first.world, observation);
+    const before = structuredClone(first.world);
+
+    expect(
+      applyWorldTransitionV2(
+        first.world,
+        secondCommand,
+        runtimeAt("2026-07-19T09:59:59.000Z"),
+      ),
+    ).toEqual({ ok: false, errorCode: "invalid_transition_command" });
+    expect(first.world).toEqual(before);
+  });
+
+  it("rejects an Event timestamp earlier than its Command timestamp", () => {
+    const world = initialWorld();
+    const proposal = actionProposalInputV2(world);
+    const approved = approveActionProposalV2(
+      proposal,
+      world,
+      world.revision,
+      runtimeAt("2026-07-19T10:05:00.000Z"),
+    );
+    if (!approved.ok) throw new Error(approved.errorCode);
+
+    expect(
+      applyWorldTransitionV2(
+        world,
+        approved.command,
+        runtimeAt("2026-07-19T10:04:00.000Z"),
+      ),
+    ).toEqual({ ok: false, errorCode: "invalid_transition_command" });
+  });
+
   it("marks every generated Event as simulation evidence, never Real Evidence", () => {
     const world = initialWorld();
     const result = applyWorldTransitionV2(world, command(world, actionProposalInputV2(world)), createFixedAgentWorldRuntimeV2());
@@ -116,6 +260,7 @@ describe("Validated World transition V2", () => {
     if (!result.ok) return;
     expect(result.event.evidenceClass).toBe("world_transition_simulation_evidence");
     expect(result.event.createdAt).toBe(fixedWorldNowV2);
+    expect(result.event.commandCreatedAt).toBe(fixedWorldNowV2);
     expect(world.realityBoundarySnapshot.evidenceLedger.items.map((item) => item.id)).not.toContain(result.event.id);
   });
 

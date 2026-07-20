@@ -207,12 +207,31 @@ export type RealityBoundarySnapshotV2 = {
   updatedAt: string;
 };
 
-export type WorldEventDeltaV2 = {
-  path: string;
-  valueType: "agent_state" | "resource" | "relation" | "variable";
-  before: unknown;
-  after: unknown;
-};
+export type WorldEventDeltaV2 =
+  | {
+      path: `agentStates.${AgentDefinitionIdV2}.${"observations" | "observableStatus" | "commitments"}`;
+      valueType: "agent_state";
+      before: AgentStateV2;
+      after: AgentStateV2;
+    }
+  | {
+      path: `resources.${WorldResourceIdV2}.available`;
+      valueType: "resource";
+      before: number;
+      after: number;
+    }
+  | {
+      path: `externalVariables.${WorldVariableIdV2}.value`;
+      valueType: "variable";
+      before: number | string;
+      after: number | string;
+    }
+  | {
+      path: `relations.${WorldRelationIdV2}.signal`;
+      valueType: "relation";
+      before: WorldRelationV2["signal"];
+      after: WorldRelationV2["signal"];
+    };
 
 export type WorldEventV2 = {
   id: WorldEventIdV2;
@@ -235,6 +254,7 @@ export type WorldEventV2 = {
   priorWorldEventIds: WorldEventIdV2[];
   validationRuleIds: string[];
   engineVersion: typeof AGENT_WORLD_ENGINE_VERSION_V2;
+  commandCreatedAt: string;
   createdAt: string;
 };
 
@@ -373,6 +393,7 @@ export type AgentWorldIssueCodeV2 =
   | "cross_seed_reference"
   | "duplicate_id"
   | "missing_reference"
+  | "broken_causal_reference"
   | "unknown_real_evidence"
   | "unknown_assumption"
   | "assumption_not_executable"
@@ -439,6 +460,8 @@ export type WorldTransitionErrorCodeV2 =
   | "value_out_of_range"
   | "invalid_enum_value"
   | "broken_causal_reference"
+  | "assumption_not_executable"
+  | "third_party_confirmation_required"
   | "constraint_violation";
 
 export type WorldTransitionResultV2 =
