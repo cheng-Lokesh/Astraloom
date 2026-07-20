@@ -1,0 +1,99 @@
+# Stage 5 Trajectory Analysis TDD Evidence
+
+## Source and scope
+
+The journeys and guarantees in this report were derived from the Stage 5 task issued for baseline commit `59149788d1510ee939697f70e69d3586fe56e70c`. No separate plan file was used.
+
+Stage 5 covers deterministic batch trajectory execution, feature extraction, exact clustering, sampled simulation frequency, controlled sensitivity comparison, and pre-run intervention comparison. It does not add Claims, Reports, UI, API routes, persistence, network calls, outcome capture, backtesting, calibration, or Stage 6 behavior.
+
+## User journeys
+
+- As an analysis caller, I want a fixed set of uint32 seeds to execute through the existing Stage 4 runner so that the ensemble is reproducible and auditable.
+- As an auditor, I want features and clusters to trace only to actual World deltas and Simulation Events so that no narrative or fabricated aggregate can enter the result.
+- As a decision sandbox user, I want sampled frequencies to disclose exact counts and versions so that they cannot be mistaken for calibrated real-world probabilities.
+- As an analyst, I want sensitivity variants to change exactly one declared axis and intervention variants to pass through Stage 3 approval and transition so that comparisons remain controlled and evidence-safe.
+
+## RED evidence
+
+Command:
+
+```text
+npx vitest run src/lib/v2/trajectory-analysis --reporter=verbose
+```
+
+Observed result before any Stage 5 production module existed:
+
+```text
+Test Files  1 failed | 1 passed (2)
+Tests       1 passed (1)
+Error: Cannot find module './local-adapter'
+```
+
+This was a valid compile-time RED: the boundary test executed, while the behavioral suite failed specifically because the requested Stage 5 implementation was missing. The earlier `npm run test:v2:analysis` attempt reported a missing script and was not counted as RED.
+
+## GREEN evidence
+
+Command:
+
+```text
+npm run test:v2:analysis
+```
+
+Observed result after implementation and edge-path hardening:
+
+```text
+Test Files  2 passed (2)
+Tests       14 passed (14)
+Statements  90.62% (261/288)
+Branches    88.40% (183/207)
+Functions   97.43% (76/78)
+Lines       97.02% (196/202)
+```
+
+Type validation:
+
+```text
+npm run type-check
+Generating route types...
+Types generated successfully
+```
+
+## Test specification
+
+| # | What is guaranteed | Evidence | Type | Result |
+|---|---|---|---|---|
+| 1 | Malformed and extra-field batch inputs return stable failures without throwing | `trajectory-analysis.test.ts` strict batch rejection | Unit | PASS |
+| 2 | Empty, duplicate, non-uint32, and count-mismatched seed sets are rejected | strict batch rejection | Unit | PASS |
+| 3 | Cross-seed and version drift map to stable analysis errors | stable error mapping test | Unit | PASS |
+| 4 | Seed order does not change canonical child or aggregate ordering | reproducibility and canonical ordering test | Integration | PASS |
+| 5 | Repeated fixed inputs are deeply equal | reproducibility test | Integration | PASS |
+| 6 | Every child is constructed as a Stage 4 run and executed by `executeTrajectoryV2` | batch runner integration tests and direct production import | Integration | PASS |
+| 7 | A child failure returns only failure index, seed, and cause; no partial aggregate escapes | atomic child failure test | Integration | PASS |
+| 8 | `no_actions` remains a real sample with stable clustering | no-actions test | Integration | PASS |
+| 9 | Features are derived from actual World/Event references and do not mutate inputs | feature auditability test | Unit | PASS |
+| 10 | Fabricated, missing-event, or malformed feature inputs are rejected | fabricated feature rejection test | Unit | PASS |
+| 11 | Exact-signature clusters are disjoint, complete, and deterministically ordered | clustering invariant test | Unit | PASS |
+| 12 | Cluster identities use `exact_outcome_signature` version `1` without randomness | clustering invariant and constants | Unit | PASS |
+| 13 | Frequency numerators sum exactly to sample count and every denominator equals sample count | rational frequency test | Unit | PASS |
+| 14 | Frequency output discloses versions, seeds, Reality Boundary revision, assumptions, and non-probability uncertainty wording | frequency metadata test | Unit | PASS |
+| 15 | Empty samples and incomplete or duplicate cluster membership are rejected | frequency rejection tests | Unit | PASS |
+| 16 | Sensitivity accepts exactly one declared external-variable axis with identical seeds and versions | controlled sensitivity test | Integration | PASS |
+| 17 | Uncontrolled second changes, version drift, and unconfirmed high-impact third-party assumptions are rejected | sensitivity boundary tests | Integration | PASS |
+| 18 | Pre-run interventions pass through Stage 3 approval and deterministic World Transition | intervention comparison test | Integration | PASS |
+| 19 | Baseline and intervention variants use isolated World clones, paired seeds, and an unchanged Real Evidence Ledger | intervention isolation test | Integration | PASS |
+| 20 | Scope scan finds no Claims, Reports, API, database, persistence, LLM/network, Destiny, astrology, or birth implementation | `boundary.test.ts` | Boundary | PASS |
+
+## Deterministic rules
+
+- Batch child Run Spec IDs and trajectory IDs use separate namespaces and SHA-256 fingerprints of the canonical batch identity, fixed versions, and trajectory seed.
+- Features use actual Stage 4 terminal status, executed steps, revision delta, selected World Events, operations, targets, causal references, and deltas.
+- Clustering algorithm is `exact_outcome_signature`, version `1`. A cluster contains only features with the same canonical outcome signature; the lowest `(trajectorySeed, trajectoryId)` is the representative.
+- Frequency uses integer `numerator / denominator`; each denominator is the actual successful sample count, and all numerators must sum to that count.
+- Sensitivity currently supports the declared `external_variable` axis. After replacing only that target value with a sentinel, the full canonical batch specs must be identical.
+- Each intervention is approved by `approveActionProposalV2`, applied by `applyWorldTransitionV2`, and then used as the cloned initial World of an independent Stage 4 batch rerun.
+
+## Coverage and known gaps
+
+The Stage 5 coverage command enforces Statements >= 90%, Branches >= 80%, Functions >= 95%, and Lines >= 90%. All thresholds pass. This stage intentionally has no browser E2E test because it introduces no UI or API surface; its end-to-end boundary is the local Stage 3 -> Stage 4 -> Stage 5 application-logic chain.
+
+The task requires one final ordinary commit, so the RED and GREEN states are preserved in this evidence report instead of separate checkpoint commits.

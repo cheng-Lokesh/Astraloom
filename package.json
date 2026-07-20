@@ -17,6 +17,7 @@
     "test:v2:evidence": "vitest run src/lib/v2/reality-boundary",
     "test:v2:world": "vitest run src/lib/v2/agent-world",
     "test:v2:trajectory": "vitest run src/lib/v2/trajectory",
+    "test:v2:analysis": "vitest run src/lib/v2/trajectory-analysis --coverage --coverage.include=src/lib/v2/trajectory-analysis/{batch-runner,clustering,feature-extraction,ids,intervention-comparison,local-adapter,sensitivity,simulation-frequency,types,validation}.ts --coverage.reportsDirectory=coverage/v2-trajectory-analysis --coverage.thresholds.statements=90 --coverage.thresholds.branches=80 --coverage.thresholds.functions=95 --coverage.thresholds.lines=90",
     "test:coverage": "vitest run --coverage",
     "test:hero-render-budget": "node scripts/check-hero-render-budget.mjs",
     "test:interactive-hero": "node scripts/check-interactive-observatory-hero.mjs",
