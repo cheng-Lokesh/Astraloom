@@ -1,4 +1,4 @@
-import { validateRealityBoundaryDraftV2 } from "../reality-boundary/validation";
+import { realityBoundaryDraftSchemaV2 } from "../reality-boundary/validation";
 import { createAgentDefinitionV2 } from "./agent-definition";
 import { createAgentStateV2 } from "./agent-state";
 import { parseWorldIdV2 } from "./ids";
@@ -15,6 +15,7 @@ import {
 import type { RealityBoundaryDraftV2 } from "../reality-boundary/types";
 import {
   executableAssumptionErrorV2,
+  parseWorldInitializationSpecV2,
   validateInitializationSpecV2,
   validateWorldV2,
 } from "./validation";
@@ -49,16 +50,20 @@ function referencedAssumptions(spec: WorldInitializationSpecV2) {
 }
 
 export function initializeWorldV2(
-  realityBoundaryInput: RealityBoundaryDraftV2,
-  initializationSpecInput: WorldInitializationSpecV2,
+  realityBoundaryInput: unknown,
+  initializationSpecInput: unknown,
   runtime: AgentWorldRuntimeV2,
 ): WorldInitializationResultV2 {
-  const boundaryValidation = validateRealityBoundaryDraftV2(realityBoundaryInput);
-  if (!boundaryValidation.ok) {
+  const boundaryParsed = realityBoundaryDraftSchemaV2.safeParse(realityBoundaryInput);
+  if (!boundaryParsed.success) {
     return { ok: false, errorCode: "invalid_reality_boundary" };
   }
-  const boundary = clone(realityBoundaryInput);
-  const spec = clone(initializationSpecInput);
+  const specParsed = parseWorldInitializationSpecV2(initializationSpecInput);
+  if (!specParsed.ok) {
+    return initializationFailure("invalid_initialization_spec", specParsed.issues);
+  }
+  const boundary = clone(boundaryParsed.data as RealityBoundaryDraftV2);
+  const spec = clone(specParsed.value as WorldInitializationSpecV2);
   const specIssues = validateInitializationSpecV2(spec, boundary);
   const priority = [
     "cross_seed_reference",

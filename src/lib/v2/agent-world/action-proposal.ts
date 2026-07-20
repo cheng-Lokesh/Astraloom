@@ -1,4 +1,9 @@
 import { evaluateAssumptionReadinessV2 } from "../reality-boundary/assumption-ledger";
+import {
+  operationMatchesDeclaredTargetsV2,
+  operationSourceMatchesCausalReferencesV2,
+  violatesWorldConstraintsV2,
+} from "./constraint-validation";
 import { parseTransitionCommandIdV2 } from "./ids";
 import type {
   ActionProposalInputV2,
@@ -37,6 +42,9 @@ function semanticValidation(
   ) {
     return { ok: false, errorCode: "unknown_target" };
   }
+  if (!operationMatchesDeclaredTargetsV2(proposal.parameters, proposal)) {
+    return { ok: false, errorCode: "target_mismatch" };
+  }
   const evidenceIds = new Set(
     world.realityBoundarySnapshot.evidenceLedger.items.map((item) => item.id),
   );
@@ -55,6 +63,15 @@ function semanticValidation(
     ) {
       return { ok: false, errorCode: "broken_causal_reference" };
     }
+  }
+  if (
+    !operationSourceMatchesCausalReferencesV2(
+      proposal.parameters,
+      proposal.realEvidenceIds,
+      proposal.priorWorldEventIds,
+    )
+  ) {
+    return { ok: false, errorCode: "broken_causal_reference" };
   }
   const assumptions = new Map(
     world.realityBoundarySnapshot.assumptionLedger.assumptions.map((item) => [item.id, item]),
@@ -137,6 +154,20 @@ export function approveActionProposalV2(
   const proposalResult = buildActionProposalV2(proposalInput, world);
   if (!proposalResult.ok) return proposalResult;
   const proposal = clone(proposalResult.proposal);
+  const now = runtime.clock();
+  if (
+    violatesWorldConstraintsV2(world, {
+      actorId: proposal.actorAgentId,
+      operation: proposal.parameters,
+      targetEntityIds: proposal.targetEntityIds,
+      targetResourceIds: proposal.targetResourceIds,
+      targetRelationIds: proposal.targetRelationIds,
+      targetVariableIds: proposal.targetVariableIds,
+      now,
+    })
+  ) {
+    return { ok: false, errorCode: "constraint_violation" };
+  }
   const rawId = runtime.idFactory(
     "transition_command",
     JSON.stringify([proposal.id, expectedWorldRevision, proposal.parameters]),
@@ -154,6 +185,10 @@ export function approveActionProposalV2(
       expectedWorldRevision,
       actorId: proposal.actorAgentId,
       operation: clone(proposal.parameters),
+      targetEntityIds: clone(proposal.targetEntityIds),
+      targetResourceIds: clone(proposal.targetResourceIds),
+      targetRelationIds: clone(proposal.targetRelationIds),
+      targetVariableIds: clone(proposal.targetVariableIds),
       causalRealEvidenceIds: clone(proposal.realEvidenceIds),
       causalAssumptionIds: clone(proposal.assumptionIds),
       priorWorldEventIds: clone(proposal.priorWorldEventIds),
@@ -162,8 +197,9 @@ export function approveActionProposalV2(
         "stage3.seed_and_reference_integrity",
         "stage3.assumption_execution_gate",
         "stage3.operation_whitelist",
+        "stage3.world_constraints",
       ],
-      createdAt: runtime.clock(),
+      createdAt: now,
     },
   };
 }

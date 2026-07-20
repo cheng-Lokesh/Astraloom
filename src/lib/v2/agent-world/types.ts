@@ -221,6 +221,11 @@ export type WorldEventV2 = {
   proposalId: ActionProposalIdV2;
   actorId: AgentDefinitionIdV2;
   eventType: ActionTypeV2;
+  operation: ActionParametersV2;
+  targetEntityIds: WorldEntityIdV2[];
+  targetResourceIds: WorldResourceIdV2[];
+  targetRelationIds: WorldRelationIdV2[];
+  targetVariableIds: WorldVariableIdV2[];
   evidenceClass: "world_transition_simulation_evidence";
   beforeRevision: number;
   afterRevision: number;
@@ -351,6 +356,10 @@ export type TransitionCommandV2 = {
   expectedWorldRevision: number;
   actorId: AgentDefinitionIdV2;
   operation: ActionParametersV2;
+  targetEntityIds: WorldEntityIdV2[];
+  targetResourceIds: WorldResourceIdV2[];
+  targetRelationIds: WorldRelationIdV2[];
+  targetVariableIds: WorldVariableIdV2[];
   causalRealEvidenceIds: RealEvidenceIdV2[];
   causalAssumptionIds: AssumptionIdV2[];
   priorWorldEventIds: WorldEventIdV2[];
@@ -400,10 +409,12 @@ export type ActionProposalErrorCodeV2 =
   | "cross_seed_reference"
   | "unknown_actor"
   | "unknown_target"
+  | "target_mismatch"
   | "broken_causal_reference"
   | "assumption_not_executable"
   | "third_party_confirmation_required"
   | "value_out_of_range"
+  | "constraint_violation"
   | "invalid_expected_revision";
 
 export type ActionProposalResultV2 =
@@ -424,9 +435,11 @@ export type WorldTransitionErrorCodeV2 =
   | "unknown_resource"
   | "unknown_relation"
   | "unknown_variable"
+  | "target_mismatch"
   | "value_out_of_range"
   | "invalid_enum_value"
-  | "broken_causal_reference";
+  | "broken_causal_reference"
+  | "constraint_violation";
 
 export type WorldTransitionResultV2 =
   | { ok: true; world: WorldStateV2; event: WorldEventV2 }

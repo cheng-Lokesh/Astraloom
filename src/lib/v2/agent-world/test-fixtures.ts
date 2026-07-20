@@ -118,9 +118,10 @@ export function realityBoundaryV2(): RealityBoundaryDraftV2 {
 function provenance(
   boundary = realityBoundaryV2(),
   assumptionIds: AssumptionIdV2[] = [],
+  realEvidenceIds = [boundary.evidenceLedger.items[0]!.id],
 ) {
   return {
-    realEvidenceIds: [boundary.evidenceLedger.items[0]!.id],
+    realEvidenceIds,
     assumptionIds,
     provisional: assumptionIds.length > 0,
     visible: true as const,
@@ -145,8 +146,8 @@ export function worldInitializationSpecV2(
         realEvidenceIds: evidenceIds,
         assumptionIds: [],
         fieldProvenance: {
-          displayName: provenance(boundary),
-          role: provenance(boundary),
+          displayName: provenance(boundary, [], [evidenceIds[0]!]),
+          role: provenance(boundary, [], [evidenceIds[1]!]),
         },
         constraints: ["Do not infer private thoughts."],
       },
@@ -158,8 +159,8 @@ export function worldInitializationSpecV2(
         realEvidenceIds: [evidenceIds[1]!],
         assumptionIds: [highAssumption],
         fieldProvenance: {
-          displayName: provenance(boundary),
-          role: provenance(boundary, [highAssumption]),
+          displayName: provenance(boundary, [], [evidenceIds[1]!]),
+          role: provenance(boundary, [highAssumption], [evidenceIds[1]!]),
         },
         constraints: ["Private intent remains an assumption."],
       },

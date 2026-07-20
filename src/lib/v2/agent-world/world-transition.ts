@@ -1,4 +1,9 @@
 import { parseWorldEventIdV2 } from "./ids";
+import {
+  operationMatchesDeclaredTargetsV2,
+  operationSourceMatchesCausalReferencesV2,
+  violatesWorldConstraintsV2,
+} from "./constraint-validation";
 import type {
   AgentStateV2,
   AgentWorldRuntimeV2,
@@ -73,6 +78,63 @@ export function applyWorldTransitionV2(
   if (!validateCausalReferences(currentWorld, command)) {
     return failure("broken_causal_reference");
   }
+  const operation = command.operation;
+  if (
+    operation.actionType === "allocate_resource" &&
+    !currentWorld.resources.some((item) => item.id === operation.resourceId)
+  ) {
+    return failure("unknown_resource");
+  }
+  if (
+    operation.actionType === "update_relation_signal" &&
+    !currentWorld.relations.some((item) => item.id === operation.relationId)
+  ) {
+    return failure("unknown_relation");
+  }
+  if (
+    operation.actionType === "update_external_variable" &&
+    !currentWorld.externalVariables.some(
+      (item) => item.id === operation.variableId,
+    )
+  ) {
+    return failure("unknown_variable");
+  }
+  if (
+    operation.actionType === "request_information" &&
+    operation.targetEntityId &&
+    !currentWorld.entities.some(
+      (item) => item.id === operation.targetEntityId,
+    )
+  ) {
+    return failure("unknown_entity");
+  }
+  if (!operationMatchesDeclaredTargetsV2(command.operation, command)) {
+    return failure("target_mismatch");
+  }
+  if (
+    !operationSourceMatchesCausalReferencesV2(
+      command.operation,
+      command.causalRealEvidenceIds,
+      command.priorWorldEventIds,
+    )
+  ) {
+    return failure("broken_causal_reference");
+  }
+
+  const now = runtime.clock();
+  if (
+    violatesWorldConstraintsV2(currentWorld, {
+      actorId: command.actorId,
+      operation: command.operation,
+      targetEntityIds: command.targetEntityIds,
+      targetResourceIds: command.targetResourceIds,
+      targetRelationIds: command.targetRelationIds,
+      targetVariableIds: command.targetVariableIds,
+      now,
+    })
+  ) {
+    return failure("constraint_violation");
+  }
 
   const rawEventId = runtime.idFactory(
     "world_event",
@@ -80,9 +142,7 @@ export function applyWorldTransitionV2(
   );
   const eventId = parseWorldEventIdV2(rawEventId);
   if (!eventId) return failure("invalid_transition_command");
-  const now = runtime.clock();
   const next = clone(currentWorld);
-  const operation = command.operation;
   let delta: WorldEventDeltaV2;
 
   if (operation.actionType === "record_observation") {
@@ -179,6 +239,11 @@ export function applyWorldTransitionV2(
     proposalId: command.proposalId,
     actorId: command.actorId,
     eventType: command.operation.actionType,
+    operation: clone(command.operation),
+    targetEntityIds: clone(command.targetEntityIds),
+    targetResourceIds: clone(command.targetResourceIds),
+    targetRelationIds: clone(command.targetRelationIds),
+    targetVariableIds: clone(command.targetVariableIds),
     evidenceClass: "world_transition_simulation_evidence",
     beforeRevision: currentWorld.revision,
     afterRevision: currentWorld.revision + 1,
