@@ -88,7 +88,7 @@ export function executeTrajectoryV2(
       trajectory.finalWorld = structuredClone(world);
       return failed(trajectory, "policy_execution_failed", emptyStep);
     }
-    const candidates = parseTrajectoryPolicyCandidatesV2(output);
+    const candidates = parseTrajectoryPolicyCandidatesV2(output, occurredAt);
     if (!candidates.ok) {
       trajectory.finalWorld = structuredClone(world);
       return failed(trajectory, "invalid_policy_output", emptyStep, undefined, candidates.issues);
@@ -135,4 +135,3 @@ export function executeTrajectoryV2(
   }
   return { ok: true, trajectory };
 }
-

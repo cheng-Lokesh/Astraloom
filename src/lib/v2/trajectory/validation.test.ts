@@ -52,6 +52,19 @@ describe("Trajectory Run Spec V2 validation", () => {
     );
   });
 
+  it("rejects startAt before the initial World timestamp with a stable error", () => {
+    expectInvalid(
+      { ...trajectoryRunSpecFixtureV2(), startAt: "2026-07-19T09:59:59.999Z" },
+      "start_before_initial_world",
+    );
+  });
+
+  it("allows startAt at the exact initial World timestamp", () => {
+    const spec = trajectoryRunSpecFixtureV2();
+    expect(spec.startAt).toBe(spec.initialWorld.updatedAt);
+    expect(parseTrajectoryRunSpecV2(spec).ok).toBe(true);
+  });
+
   it("rejects a schedule whose final Tick exceeds the horizon", () => {
     expectInvalid(
       { ...trajectoryRunSpecFixtureV2(), tickIntervalDays: 20, maxTicks: 3 },

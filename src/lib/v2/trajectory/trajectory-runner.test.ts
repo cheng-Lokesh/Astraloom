@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ActionProposalInputV2 } from "../agent-world/types";
 import { createStableAgentWorldIdFactoryV2 } from "../agent-world/ids";
@@ -11,7 +11,109 @@ import {
 } from "./test-fixtures";
 import { executeTrajectoryV2 } from "./trajectory-runner";
 
+function policyWithCandidateTimes(createdAtValues: string[]) {
+  const spec = trajectoryRunSpecFixtureV2();
+  return createLocalTrajectoryPolicyV2({
+    policyId: spec.policyId,
+    policyVersion: spec.policyVersion,
+    candidatesForTick: (input) => {
+      const candidates = trajectoryPolicyFixtureV2({
+        candidateCount: createdAtValues.length,
+      }).proposeCandidates(input) as ActionProposalInputV2[];
+      return candidates.map((candidate, index) => ({
+        ...candidate,
+        createdAt: createdAtValues[index]!,
+      }));
+    },
+  });
+}
+
+function expectNoSelectedTickArtifacts(result: ReturnType<typeof executeTrajectoryV2>) {
+  expect(result).toMatchObject({ ok: false, errorCode: "invalid_policy_output" });
+  if (result.ok || !result.trajectory) throw new Error("missing failure trajectory");
+  const step = result.trajectory.steps[0];
+  expect(step).not.toHaveProperty("rngAudit");
+  expect(step).not.toHaveProperty("selectedCandidateIndex");
+  expect(step).not.toHaveProperty("proposalId");
+  expect(step).not.toHaveProperty("commandId");
+  expect(step).not.toHaveProperty("worldEventId");
+  expect(result.trajectory.finalWorld.revision).toBe(0);
+  expect(result.trajectory.finalWorld.worldEvents).toEqual([]);
+}
+
 describe("Trajectory Runner V2", () => {
+  it("rejects a Run Spec that starts before World without calling Policy or returning partial output", () => {
+    const spec = {
+      ...trajectoryRunSpecFixtureV2(),
+      startAt: "2026-07-19T09:59:59.999Z",
+    };
+    const proposeCandidates = vi.fn(() => []);
+    const result = executeTrajectoryV2(
+      spec,
+      {
+        policyId: spec.policyId,
+        policyVersion: spec.policyVersion,
+        proposeCandidates,
+      },
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expect(result).toEqual({ ok: false, errorCode: "start_before_initial_world" });
+    expect(proposeCandidates).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("trajectory");
+  });
+
+  it.each([
+    ["past", "2026-07-19T09:59:59.999Z"],
+    ["future", "2026-07-19T10:00:00.001Z"],
+    ["far-future", "2099-01-01T00:00:00.000Z"],
+  ])("rejects a %s Proposal timestamp before candidate selection", (_label, createdAt) => {
+    const result = executeTrajectoryV2(
+      { ...trajectoryRunSpecFixtureV2(), maxTicks: 1 },
+      policyWithCandidateTimes([createdAt]),
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expectNoSelectedTickArtifacts(result);
+    if (!result.ok) {
+      expect(result.issues).toEqual([
+        "candidates.0.createdAt: Must represent the same instant as Tick occurredAt 2026-07-19T10:00:00.000Z.",
+      ]);
+    }
+  });
+
+  it("accepts a Proposal timestamp expressed as the same instant in another timezone", () => {
+    const result = executeTrajectoryV2(
+      { ...trajectoryRunSpecFixtureV2(), maxTicks: 1 },
+      policyWithCandidateTimes(["2026-07-19T18:00:00.000+08:00"]),
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.trajectory.finalWorld.revision).toBe(1);
+      expect(result.trajectory.finalWorld.worldEvents).toHaveLength(1);
+    }
+  });
+
+  it("rejects the entire candidate set when one of multiple Proposal timestamps drifts", () => {
+    const result = executeTrajectoryV2(
+      { ...trajectoryRunSpecFixtureV2(), maxTicks: 1 },
+      policyWithCandidateTimes([
+        "2026-07-19T10:00:00.000Z",
+        "2026-07-19T10:00:00.001Z",
+      ]),
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expectNoSelectedTickArtifacts(result);
+    if (!result.ok) {
+      expect(result.issues).toEqual([
+        "candidates.1.createdAt: Must represent the same instant as Tick occurredAt 2026-07-19T10:00:00.000Z.",
+      ]);
+    }
+  });
+
   it.each([30, 90] as const)("executes a legal %i-day Run Spec", (horizonDays) => {
     const result = executeTrajectoryV2(
       { ...trajectoryRunSpecFixtureV2(), horizonDays, maxTicks: 1 },

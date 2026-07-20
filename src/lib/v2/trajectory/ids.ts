@@ -14,4 +14,3 @@ export const parseTrajectoryRunSpecIdV2 = parser<TrajectoryRunSpecIdV2>(
 export const parseTrajectoryIdV2 = parser<TrajectoryIdV2>(
   new RegExp(`^trajectory_v2_${suffix}$`, "i"),
 );
-

@@ -47,4 +47,3 @@ export function selectSeededIndexV2(
     selectedIndex: rawValue % candidateCount,
   };
 }
-

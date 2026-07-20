@@ -73,6 +73,9 @@ export function parseTrajectoryRunSpecV2(value: unknown) {
   if (spec.expectedInitialWorldRevision !== world.revision) {
     return failure("stale_initial_world_revision");
   }
+  if (Date.parse(spec.startAt) < Date.parse(world.updatedAt)) {
+    return failure("start_before_initial_world");
+  }
   if ((spec.maxTicks - 1) * spec.tickIntervalDays > spec.horizonDays) {
     return failure("schedule_exceeds_horizon");
   }
@@ -81,4 +84,3 @@ export function parseTrajectoryRunSpecV2(value: unknown) {
     value: structuredClone({ ...spec, initialWorld: world }) as TrajectoryRunSpecV2,
   };
 }
-

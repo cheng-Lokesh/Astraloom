@@ -105,6 +105,7 @@ export type TrajectoryRunSpecErrorCodeV2 =
   | "invalid_initial_world"
   | "cross_seed_reference"
   | "stale_initial_world_revision"
+  | "start_before_initial_world"
   | "schedule_exceeds_horizon";
 
 export type TrajectoryExecutionErrorCodeV2 =
@@ -124,4 +125,3 @@ export type TrajectoryExecutionResultV2 =
       causeCode?: string;
       issues?: string[];
     };
-
