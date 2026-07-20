@@ -651,6 +651,166 @@ describe("Stage 3.1 typed operation-bound Event delta", () => {
     expectInvalidWorldWithoutThrow(invalid);
   });
 
+  it("rejects Relation delta signal values outside the Relation runtime domain", () => {
+    const invalid = appliedWorld((world) =>
+      actionProposalInputV2(world, {
+        id: "action_proposal_v2_relation_domain",
+        actionType: "update_relation_signal",
+        targetEntityIds: [],
+        targetResourceIds: [],
+        targetRelationIds: [idsV2.recruits],
+        parameters: {
+          actionType: "update_relation_signal",
+          relationId: idsV2.recruits,
+          signal: "neutral",
+        },
+      }),
+    );
+    (invalid.worldEvents[0]!.deltas[0] as unknown as { before: unknown }).before =
+      "unknown";
+    expectInvalidWorldWithoutThrow(invalid);
+  });
+
+  it("rejects an Enum Variable delta whose before value is not allowed", () => {
+    const invalid = appliedWorld((world) =>
+      actionProposalInputV2(world, {
+        id: "action_proposal_v2_enum_domain",
+        actionType: "update_external_variable",
+        targetEntityIds: [],
+        targetResourceIds: [],
+        targetVariableIds: [idsV2.offerAvailability],
+        parameters: {
+          actionType: "update_external_variable",
+          variableId: idsV2.offerAvailability,
+          value: "closed",
+        },
+      }),
+    );
+    invalid.worldEvents[0]!.deltas[0]!.before = "expired" as never;
+    expectIssue(invalid, "invalid_world", "worldEvents.0.deltas.0");
+  });
+
+  it("rejects Numeric Variable delta values outside the target range", () => {
+    const buildVariable = (world: WorldStateV2) =>
+      actionProposalInputV2(world, {
+        id: "action_proposal_v2_numeric_domain",
+        actionType: "update_external_variable",
+        targetEntityIds: [],
+        targetResourceIds: [],
+        targetVariableIds: [idsV2.promotionBudget],
+        parameters: {
+          actionType: "update_external_variable",
+          variableId: idsV2.promotionBudget,
+          value: 60,
+        },
+      });
+    const invalidBefore = appliedWorld(buildVariable);
+    invalidBefore.worldEvents[0]!.deltas[0]!.before = 101;
+    expectIssue(invalidBefore, "invalid_world", "worldEvents.0.deltas.0");
+
+    const invalidAfter = appliedWorld(buildVariable);
+    const operation = invalidAfter.worldEvents[0]!.operation;
+    if (operation.actionType !== "update_external_variable") throw new Error("operation");
+    operation.value = 101;
+    invalidAfter.worldEvents[0]!.deltas[0]!.after = 101;
+    const variable = invalidAfter.externalVariables.find(
+      (item) => item.id === idsV2.promotionBudget,
+    );
+    if (!variable || variable.variableType !== "number") throw new Error("variable");
+    variable.value = 101;
+    expectIssue(invalidAfter, "invalid_world", "worldEvents.0.deltas.0");
+  });
+
+  it("rejects Resource delta values outside the target range", () => {
+    const invalidBefore = appliedWorld((world) => actionProposalInputV2(world));
+    invalidBefore.worldEvents[0]!.deltas[0]!.before = 31;
+    invalidBefore.worldEvents[0]!.deltas[0]!.after = 30;
+    invalidBefore.resources.find((item) => item.id === idsV2.time)!.available = 30;
+    expectIssue(invalidBefore, "invalid_world", "worldEvents.0.deltas.0");
+
+    const invalidAfter = appliedWorld((world) => actionProposalInputV2(world));
+    invalidAfter.worldEvents[0]!.deltas[0]!.before = 32;
+    invalidAfter.worldEvents[0]!.deltas[0]!.after = 31;
+    invalidAfter.resources.find((item) => item.id === idsV2.time)!.available = 31;
+    expectIssue(invalidAfter, "invalid_world", "worldEvents.0.deltas.0");
+  });
+
+  it("accepts legal Relation, Variable, and Resource boundary values", () => {
+    for (const signal of ["negative", "neutral", "positive"] as const) {
+      const world = appliedWorld((current) =>
+        actionProposalInputV2(current, {
+          id: `action_proposal_v2_relation_${signal}`,
+          actionType: "update_relation_signal",
+          targetEntityIds: [],
+          targetResourceIds: [],
+          targetRelationIds: [idsV2.recruits],
+          parameters: {
+            actionType: "update_relation_signal",
+            relationId: idsV2.recruits,
+            signal,
+          },
+        }),
+      );
+      expect(validateWorldV2(world)).toEqual({ ok: true, issues: [] });
+    }
+
+    for (const value of [0, 100]) {
+      const world = appliedWorld((current) =>
+        actionProposalInputV2(current, {
+          id: `action_proposal_v2_numeric_${value}`,
+          actionType: "update_external_variable",
+          targetEntityIds: [],
+          targetResourceIds: [],
+          targetVariableIds: [idsV2.promotionBudget],
+          parameters: {
+            actionType: "update_external_variable",
+            variableId: idsV2.promotionBudget,
+            value,
+          },
+        }),
+      );
+      expect(validateWorldV2(world)).toEqual({ ok: true, issues: [] });
+    }
+
+    const enumWorld = appliedWorld((current) =>
+      actionProposalInputV2(current, {
+        id: "action_proposal_v2_enum_boundary",
+        actionType: "update_external_variable",
+        targetEntityIds: [],
+        targetResourceIds: [],
+        targetVariableIds: [idsV2.offerAvailability],
+        parameters: {
+          actionType: "update_external_variable",
+          variableId: idsV2.offerAvailability,
+          value: "closed",
+        },
+      }),
+    );
+    expect(validateWorldV2(enumWorld)).toEqual({ ok: true, issues: [] });
+
+    const resourceWorld = initialWorld();
+    resourceWorld.resources.find((item) => item.id === idsV2.time)!.available = 30;
+    const resourceResult = applyWorldTransitionV2(
+      resourceWorld,
+      command(
+        resourceWorld,
+        actionProposalInputV2(resourceWorld, {
+          id: "action_proposal_v2_resource_boundaries",
+          parameters: {
+            actionType: "allocate_resource",
+            resourceId: idsV2.time,
+            amount: 30,
+          },
+        }),
+      ),
+      createFixedAgentWorldRuntimeV2(),
+    );
+    expect(resourceResult.ok).toBe(true);
+    if (!resourceResult.ok) return;
+    expect(resourceResult.event.deltas[0]).toMatchObject({ before: 30, after: 0 });
+    expect(validateWorldV2(resourceResult.world)).toEqual({ ok: true, issues: [] });
+  });
+
   it.each([
     ["wrong path", (delta: Record<string, unknown>) => {
       delta.path = `agentStates.${idsV2.manager}.observations`;

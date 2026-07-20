@@ -508,8 +508,8 @@ const eventDeltaSchema = z.discriminatedUnion("valueType", [
     .object({
       path: nonEmpty,
       valueType: z.literal("relation"),
-      before: z.enum(["positive", "neutral", "negative", "unknown"]),
-      after: z.enum(["positive", "neutral", "negative", "unknown"]),
+      before: z.enum(["positive", "neutral", "negative"]),
+      after: z.enum(["positive", "neutral", "negative"]),
     })
     .strict(),
 ]);
@@ -943,9 +943,20 @@ function eventDeltaIssues(
     operation.actionType === "allocate_resource" &&
     delta.valueType === "resource"
   ) {
+    const resource = value.resources.find(
+      (item) => item.id === operation.resourceId,
+    );
     valid =
       delta.path === `resources.${operation.resourceId}.available` &&
-      delta.after === delta.before - operation.amount;
+      Boolean(resource) &&
+      Number.isFinite(delta.before) &&
+      Number.isFinite(delta.after) &&
+      delta.before >= resource!.min &&
+      delta.before <= resource!.max &&
+      delta.after >= resource!.min &&
+      delta.after <= resource!.max &&
+      delta.after === delta.before - operation.amount &&
+      delta.after === resource!.available;
   } else if (
     operation.actionType === "update_external_variable" &&
     delta.valueType === "variable"
@@ -957,15 +968,29 @@ function eventDeltaIssues(
       delta.path === `externalVariables.${operation.variableId}.value` &&
       Boolean(variable) &&
       (variable!.variableType === "number"
-        ? typeof delta.before === "number" && typeof delta.after === "number"
-        : typeof delta.before === "string" && typeof delta.after === "string") &&
+        ? typeof delta.before === "number" &&
+          Number.isFinite(delta.before) &&
+          delta.before >= variable!.min &&
+          delta.before <= variable!.max &&
+          typeof delta.after === "number" &&
+          Number.isFinite(delta.after) &&
+          delta.after >= variable!.min &&
+          delta.after <= variable!.max
+        : typeof delta.before === "string" &&
+          variable!.allowedValues.includes(delta.before) &&
+          typeof delta.after === "string" &&
+          variable!.allowedValues.includes(delta.after)) &&
       delta.after === operation.value;
   } else if (
     operation.actionType === "update_relation_signal" &&
     delta.valueType === "relation"
   ) {
+    const relation = value.relations.find(
+      (item) => item.id === operation.relationId,
+    );
     valid =
       delta.path === `relations.${operation.relationId}.signal` &&
+      Boolean(relation) &&
       delta.after === operation.signal;
   } else if (
     (operation.actionType === "record_observation" ||
