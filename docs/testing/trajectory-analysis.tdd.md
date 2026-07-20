@@ -31,7 +31,7 @@ Error: Cannot find module './local-adapter'
 
 This was a valid compile-time RED: the boundary test executed, while the behavioral suite failed specifically because the requested Stage 5 implementation was missing. The earlier `npm run test:v2:analysis` attempt reported a missing script and was not counted as RED.
 
-## GREEN evidence
+## Initial GREEN evidence
 
 Command:
 
@@ -89,11 +89,51 @@ Types generated successfully
 - Features use actual Stage 4 terminal status, executed steps, revision delta, selected World Events, operations, targets, causal references, and deltas.
 - Clustering algorithm is `exact_outcome_signature`, version `1`. A cluster contains only features with the same canonical outcome signature; the lowest `(trajectorySeed, trajectoryId)` is the representative.
 - Frequency uses integer `numerator / denominator`; each denominator is the actual successful sample count, and all numerators must sum to that count.
-- Sensitivity currently supports the declared `external_variable` axis. After replacing only that target value with a sentinel, the full canonical batch specs must be identical.
+- Sensitivity currently supports the declared `external_variable` axis. Its value changes only through a strict provenance-backed Stage 3 Proposal, approval, and deterministic World Transition.
 - Each intervention is approved by `approveActionProposalV2`, applied by `applyWorldTransitionV2`, and then used as the cloned initial World of an independent Stage 4 batch rerun.
+
+## Hardening RED/GREEN evidence
+
+The follow-up hardening cycle added adversarial guarantees before changing production code.
+
+RED command:
+
+```text
+npm run test:v2:analysis
+```
+
+Observed RED:
+
+```text
+Test Files  1 failed | 2 passed (3)
+Tests       11 failed | 15 passed (26)
+```
+
+The failures reproduced permissive status/revision handling, mutable factory input, incomplete ID parsing, direct-World sensitivity, unbound intervention time, non-canonical cluster acceptance, and missing input Assumption disclosure.
+
+Final GREEN:
+
+```text
+Stage 4: 4 files, 63 tests passed
+Stage 5: 3 files, 29 tests passed
+Statements  90.94% (442/486)
+Branches    85.39% (304/356)
+Functions   97.02% (98/101)
+Lines       97.47% (348/357)
+```
+
+The hardening suite additionally proves:
+
+- Strict unknown-field rejection at Trajectory, Step, termination, RNG audit, comparison, variant, axis, and Action Proposal levels.
+- Status, tick, revision, time, Event, Command, World-history-prefix, ownership, and unchanged Real Evidence invariants before Feature extraction.
+- Sensitivity external-variable changes are created only by Stage 3 approval and World Transition; direct variant World specs are rejected.
+- Every adapter factory receives a separate recursively frozen clone, leaving the canonical spec and caller input unchanged.
+- Intervention time is captured once, compared by exact instant with Proposal time, and validated before approval or transition.
+- Clusters are grouped by complete canonical outcome strings; frequency recomputes clusters and rejects any changed seed, representative, ID, ordering, or provenance union.
+- Frequencies disclose all Assumptions actually modeled by the initial World, independently from cluster-specific causal Assumptions.
 
 ## Coverage and known gaps
 
-The Stage 5 coverage command enforces Statements >= 90%, Branches >= 80%, Functions >= 95%, and Lines >= 90%. All thresholds pass. This stage intentionally has no browser E2E test because it introduces no UI or API surface; its end-to-end boundary is the local Stage 3 -> Stage 4 -> Stage 5 application-logic chain.
+The Stage 5 coverage command enforces Statements >= 90%, Branches >= 80%, Functions >= 95%, and Lines >= 90%. All final hardening thresholds pass. This stage intentionally has no browser E2E test because it introduces no UI or API surface; its end-to-end boundary is the local Stage 3 -> Stage 4 -> Stage 5 application-logic chain.
 
 The task requires one final ordinary commit, so the RED and GREEN states are preserved in this evidence report instead of separate checkpoint commits.

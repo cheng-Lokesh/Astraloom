@@ -1,5 +1,33 @@
 import { createHash } from "node:crypto";
 
+const suffixPattern = "[a-z0-9][a-z0-9_-]*";
+
+function parseNamespacedId<T extends string>(value: unknown, prefix: string): T | null {
+  if (typeof value !== "string") return null;
+  const match = new RegExp(`^${prefix}${suffixPattern}$`).exec(value);
+  return match?.[0] === value ? value as T : null;
+}
+
+export function parseAnalysisRunSpecIdV2(value: unknown) {
+  return parseNamespacedId<`analysis_run_spec_v2_${string}`>(value, "analysis_run_spec_v2_");
+}
+
+export function parseSensitivityAnalysisIdV2(value: unknown) {
+  return parseNamespacedId<`sensitivity_analysis_v2_${string}`>(value, "sensitivity_analysis_v2_");
+}
+
+export function parseSensitivityVariantIdV2(value: unknown) {
+  return parseNamespacedId<`sensitivity_variant_v2_${string}`>(value, "sensitivity_variant_v2_");
+}
+
+export function parseInterventionComparisonIdV2(value: unknown) {
+  return parseNamespacedId<`intervention_comparison_v2_${string}`>(value, "intervention_comparison_v2_");
+}
+
+export function parseInterventionVariantIdV2(value: unknown) {
+  return parseNamespacedId<`intervention_variant_v2_${string}`>(value, "intervention_variant_v2_");
+}
+
 function normalized(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalized);
   if (value && typeof value === "object") {

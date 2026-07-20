@@ -1,29 +1,14 @@
 import { canonicalJsonV2 } from "./ids";
 import { analyzeTrajectoryBatchV2 } from "./batch-runner";
-import type { BatchAnalysisV2, BatchRunSpecV2, PairedSeedDifferenceV2, SensitivityAxisV2, SensitivityComparisonInputV2, TrajectoryAnalysisAdapterV2 } from "./types";
-
-function variableValue(spec: BatchRunSpecV2, targetId: string) {
-  return spec.trajectoryTemplate.initialWorld.externalVariables.find((item) => item.id === targetId)?.value;
-}
-
-function controlledOnly(baseline: BatchRunSpecV2, variant: BatchRunSpecV2, axis: SensitivityAxisV2) {
-  if (axis.kind !== "external_variable") return false;
-  if (variableValue(baseline, axis.targetId) !== axis.baselineValue || variableValue(variant, axis.targetId) !== axis.variantValue || Object.is(axis.baselineValue, axis.variantValue)) return false;
-  const left = structuredClone(baseline);
-  const right = structuredClone(variant);
-  const leftVariable = left.trajectoryTemplate.initialWorld.externalVariables.find((item) => item.id === axis.targetId);
-  const rightVariable = right.trajectoryTemplate.initialWorld.externalVariables.find((item) => item.id === axis.targetId);
-  if (!leftVariable || !rightVariable || leftVariable.variableType !== rightVariable.variableType) return false;
-  (leftVariable as { value: number | string }).value = "__controlled_axis__";
-  (rightVariable as { value: number | string }).value = "__controlled_axis__";
-  return canonicalJsonV2(left) === canonicalJsonV2(right);
-}
+import { applyPreRunActionV2 } from "./pre-run-transition";
+import type { BatchAnalysisV2, PairedSeedDifferenceV2, TrajectoryAnalysisAdapterV2 } from "./types";
+import { parseSensitivityComparisonInputV2 } from "./validation";
 
 function paired(baseline: BatchAnalysisV2, variant: BatchAnalysisV2): PairedSeedDifferenceV2[] {
   const variants = new Map(variant.features.map((item) => [item.trajectorySeed, item]));
   return baseline.features.map((item) => {
     const comparison = variants.get(item.trajectorySeed)!;
-    return { trajectorySeed: item.trajectorySeed, baselineFeatureSignature: item.featureSignature, variantFeatureSignature: comparison.featureSignature, changed: item.featureSignature !== comparison.featureSignature };
+    return { trajectorySeed: item.trajectorySeed, baselineFeatureSignature: item.featureSignature, variantFeatureSignature: comparison.featureSignature, changed: item.outcomeSignature !== comparison.outcomeSignature };
   });
 }
 
@@ -34,23 +19,44 @@ function frequencyDifferences(baseline: BatchAnalysisV2, variant: BatchAnalysisV
 }
 
 export function compareSensitivityV2(input: unknown, adapter: TrajectoryAnalysisAdapterV2) {
-  try {
-    const value = input as SensitivityComparisonInputV2;
-    if (!value || typeof value !== "object" || !/^sensitivity_analysis_v2_/.test(value.sensitivityAnalysisId) || !Array.isArray(value.variants) || value.variants.length === 0 || value.variants.some((item) => !item || typeof item.variantId !== "string" || !item.variantId || !item.axis || !item.spec)) return { ok: false as const, errorCode: "incomparable_variant" as const };
-    for (const variant of value.variants) {
-      if (variant.spec.trajectoryEngineVersion !== value.baseline.trajectoryEngineVersion || variant.spec.analysisEngineVersion !== value.baseline.analysisEngineVersion || variant.spec.featureSchemaVersion !== value.baseline.featureSchemaVersion || variant.spec.clusteringVersion !== value.baseline.clusteringVersion || variant.spec.clusteringAlgorithm !== value.baseline.clusteringAlgorithm || variant.spec.policyId !== value.baseline.policyId || variant.spec.policyVersion !== value.baseline.policyVersion || variant.spec.horizonDays !== value.baseline.horizonDays || canonicalJsonV2([...variant.spec.trajectorySeeds].sort()) !== canonicalJsonV2([...value.baseline.trajectorySeeds].sort())) return { ok: false as const, errorCode: "incomparable_variant" as const };
-      if (!controlledOnly(value.baseline, variant.spec, variant.axis)) return { ok: false as const, errorCode: "uncontrolled_sensitivity_change" as const };
-    }
-    const baseline = analyzeTrajectoryBatchV2(value.baseline, adapter);
-    if (!baseline.ok) return baseline;
-    const variants = [];
-    for (const item of value.variants) {
-      const analyzed = analyzeTrajectoryBatchV2(item.spec, adapter);
-      if (!analyzed.ok) return analyzed;
-      variants.push({ variantId: item.variantId, axis: structuredClone(item.axis), analysis: analyzed.analysis, pairedSeedDifferences: paired(baseline.analysis, analyzed.analysis), frequencyDifferences: frequencyDifferences(baseline.analysis, analyzed.analysis) });
-    }
-    return { ok: true as const, sensitivityAnalysisId: value.sensitivityAnalysisId, baseline: baseline.analysis, variants };
-  } catch {
-    return { ok: false as const, errorCode: "incomparable_variant" as const };
+  const parsed = parseSensitivityComparisonInputV2(input);
+  if (!parsed.ok) return parsed;
+  const value = parsed.value;
+  const prepared = [];
+  for (let variantIndex = 0; variantIndex < value.variants.length; variantIndex += 1) {
+    const item = value.variants[variantIndex]!;
+    const world = structuredClone(value.baseline.trajectoryTemplate.initialWorld);
+    const variable = world.externalVariables.find((candidate) => candidate.id === item.axis.targetId);
+    const proposal = item.proposal;
+    if (
+      !variable || proposal.seedContextId !== value.baseline.seedContextId || proposal.actionType !== "update_external_variable" ||
+      proposal.parameters.actionType !== "update_external_variable" || proposal.parameters.variableId !== item.axis.targetId ||
+      !Object.is(proposal.parameters.value, item.axis.variantValue) || canonicalJsonV2(proposal.targetVariableIds) !== canonicalJsonV2([item.axis.targetId]) ||
+      proposal.targetEntityIds.length !== 0 || proposal.targetResourceIds.length !== 0 || proposal.targetRelationIds.length !== 0
+    ) return { ok: false as const, errorCode: "uncontrolled_sensitivity_change" as const, failedVariantIndex: variantIndex, issues: [`variants.${variantIndex}: axis and Proposal must describe one identical external variable change`] };
+    const transition = applyPreRunActionV2({ proposal, world, variantId: item.variantId, variantIndex, spec: value.baseline, adapter });
+    if (!transition.ok) return { ok: false as const, errorCode: transition.phase === "input" ? "uncontrolled_sensitivity_change" as const : transition.phase === "approval" ? "intervention_approval_failed" as const : "intervention_transition_failed" as const, failedVariantIndex: variantIndex, causeCode: transition.causeCode };
+    const spec = structuredClone(value.baseline);
+    spec.trajectoryTemplate.initialWorld = structuredClone(transition.transition.world);
+    spec.trajectoryTemplate.expectedInitialWorldRevision = transition.transition.world.revision;
+    spec.trajectoryTemplate.startAt = transition.transition.world.updatedAt;
+    prepared.push({ item, variable, spec, transition: transition.transition });
   }
+  const baseline = analyzeTrajectoryBatchV2(value.baseline, adapter);
+  if (!baseline.ok) return baseline;
+  const variants = [];
+  for (const preparedVariant of prepared) {
+    const analyzed = analyzeTrajectoryBatchV2(preparedVariant.spec, adapter);
+    if (!analyzed.ok) return analyzed;
+    variants.push({
+      variantId: preparedVariant.item.variantId,
+      axis: { ...preparedVariant.item.axis, baselineValue: preparedVariant.variable.value },
+      transitionEventId: preparedVariant.transition.event.id,
+      transitionWorldRevision: preparedVariant.transition.world.revision,
+      analysis: analyzed.analysis,
+      pairedSeedDifferences: paired(baseline.analysis, analyzed.analysis),
+      frequencyDifferences: frequencyDifferences(baseline.analysis, analyzed.analysis),
+    });
+  }
+  return { ok: true as const, sensitivityAnalysisId: value.sensitivityAnalysisId, baseline: baseline.analysis, variants };
 }

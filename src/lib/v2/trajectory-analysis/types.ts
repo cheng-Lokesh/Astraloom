@@ -65,6 +65,7 @@ export type TrajectoryFeatureV2 = {
   simulationEventIds: WorldEventIdV2[];
   causalRealEvidenceIds: RealEvidenceIdV2[];
   causalAssumptionIds: AssumptionIdV2[];
+  inputAssumptionIds: AssumptionIdV2[];
   trajectoryEngineVersion: TrajectoryResultV2["trajectoryEngineVersion"];
   agentWorldEngineVersion: TrajectoryResultV2["agentWorldEngineVersion"];
   policyId: string;
@@ -78,12 +79,14 @@ export type TrajectoryClusterV2 = {
   clusterId: `trajectory_cluster_v2_${string}`;
   seedContextId: string;
   featureSignature: string;
+  outcomeSignature: string;
   representativeTrajectoryId: TrajectoryResultV2["trajectoryId"];
   memberTrajectoryIds: TrajectoryResultV2["trajectoryId"][];
   memberTrajectorySeeds: number[];
   simulationEventIds: WorldEventIdV2[];
   causalRealEvidenceIds: RealEvidenceIdV2[];
   causalAssumptionIds: AssumptionIdV2[];
+  inputAssumptionIds: AssumptionIdV2[];
   clusteringAlgorithm: typeof CLUSTERING_ALGORITHM_V2;
   clusteringVersion: typeof CLUSTERING_VERSION_V2;
 };
@@ -102,6 +105,8 @@ export type SimulationFrequencyItemV2 = {
   clusteringVersion: typeof CLUSTERING_VERSION_V2;
   realityBoundaryRevision: number;
   assumptionIds: AssumptionIdV2[];
+  inputAssumptionIds: AssumptionIdV2[];
+  causalAssumptionIds: AssumptionIdV2[];
 };
 
 export type BatchAnalysisV2 = {
@@ -116,8 +121,11 @@ export type BatchAnalysisV2 = {
 export type SensitivityAxisV2 = {
   kind: "external_variable";
   targetId: string;
-  baselineValue: number | string;
   variantValue: number | string;
+};
+
+export type SensitivityAxisResultV2 = SensitivityAxisV2 & {
+  baselineValue: number | string;
 };
 
 export type PairedSeedDifferenceV2 = {
@@ -130,13 +138,20 @@ export type PairedSeedDifferenceV2 = {
 export type SensitivityComparisonInputV2 = {
   sensitivityAnalysisId: `sensitivity_analysis_v2_${string}`;
   baseline: BatchRunSpecV2;
-  variants: Array<{ variantId: string; spec: BatchRunSpecV2; axis: SensitivityAxisV2 }>;
+  variants: Array<{
+    variantId: `sensitivity_variant_v2_${string}`;
+    axis: SensitivityAxisV2;
+    proposal: ActionProposalInputV2;
+  }>;
 };
 
 export type InterventionComparisonInputV2 = {
   interventionComparisonId: `intervention_comparison_v2_${string}`;
   baseline: BatchRunSpecV2;
-  variants: Array<{ variantId: string; intervention: ActionProposalInputV2 }>;
+  variants: Array<{
+    variantId: `intervention_variant_v2_${string}`;
+    intervention: ActionProposalInputV2;
+  }>;
 };
 
 export type InterventionVariantResultV2 = {

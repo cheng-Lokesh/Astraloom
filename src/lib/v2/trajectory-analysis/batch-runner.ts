@@ -1,6 +1,7 @@
 import { executeTrajectoryV2 } from "../trajectory/trajectory-runner";
 import type { TrajectoryRunSpecV2 } from "../trajectory/types";
 import { childRunSpecIdV2, childTrajectoryIdV2 } from "./ids";
+import { deepFreezeCloneV2 } from "./immutable";
 import type { BatchAnalysisV2, TrajectoryAnalysisAdapterV2 } from "./types";
 import { parseBatchRunSpecV2 } from "./validation";
 import { extractTrajectoryFeatureV2 } from "./feature-extraction";
@@ -24,8 +25,8 @@ export function runTrajectoryBatchV2(input: unknown, adapter: TrajectoryAnalysis
     let policy;
     let runtime;
     try {
-      policy = adapter.policyFactory({ seed, childIndex, spec });
-      runtime = adapter.trajectoryRuntimeFactory({ seed, childIndex, spec });
+      policy = adapter.policyFactory(deepFreezeCloneV2({ seed, childIndex, spec }));
+      runtime = adapter.trajectoryRuntimeFactory(deepFreezeCloneV2({ seed, childIndex, spec }));
     } catch {
       return { ok: false as const, errorCode: "child_trajectory_failed" as const, failedIndex: childIndex, failedSeed: seed, causeCode: "factory_failed" };
     }
@@ -33,7 +34,7 @@ export function runTrajectoryBatchV2(input: unknown, adapter: TrajectoryAnalysis
     if (!child.ok) return { ok: false as const, errorCode: "child_trajectory_failed" as const, failedIndex: childIndex, failedSeed: seed, causeCode: child.errorCode };
     trajectories.push(child.trajectory);
   }
-  return { ok: true as const, spec, trajectories };
+  return { ok: true as const, spec: structuredClone(spec), trajectories };
 }
 
 export function analyzeTrajectoryBatchV2(input: unknown, adapter: TrajectoryAnalysisAdapterV2) {
@@ -41,7 +42,17 @@ export function analyzeTrajectoryBatchV2(input: unknown, adapter: TrajectoryAnal
   if (!batch.ok) return batch;
   const features = [];
   for (const trajectory of batch.trajectories) {
-    const extracted = extractTrajectoryFeatureV2(batch.spec.trajectoryTemplate.initialWorld, trajectory);
+    const extracted = extractTrajectoryFeatureV2(
+      batch.spec.trajectoryTemplate.initialWorld,
+      trajectory,
+      {
+        seedContextId: batch.spec.seedContextId,
+        trajectorySeed: trajectory.trajectorySeed,
+        policyId: batch.spec.policyId,
+        policyVersion: batch.spec.policyVersion,
+        trajectoryEngineVersion: batch.spec.trajectoryEngineVersion,
+      },
+    );
     if (!extracted.ok) return extracted;
     features.push(extracted.feature);
   }

@@ -44,6 +44,26 @@ function batchSpec(seeds = [7, 11, 19]) {
   } as const;
 }
 
+function featureContext(seed: number) {
+  const spec = batchSpec([seed]);
+  return { seedContextId: spec.seedContextId, trajectorySeed: seed, policyId: spec.policyId, policyVersion: spec.policyVersion, trajectoryEngineVersion: spec.trajectoryEngineVersion };
+}
+
+function sensitivityProposal(spec: ReturnType<typeof batchSpec>, value: number) {
+  const world = spec.trajectoryTemplate.initialWorld;
+  return {
+    id: "action_proposal_v2_sensitivity_fixture",
+    seedContextId: world.seedContextId,
+    actorAgentId: idsV2.self,
+    actionType: "update_external_variable",
+    targetEntityIds: [], targetResourceIds: [], targetRelationIds: [], targetVariableIds: [idsV2.promotionBudget],
+    parameters: { actionType: "update_external_variable", variableId: idsV2.promotionBudget, value },
+    realEvidenceIds: [world.realityBoundarySnapshot.evidenceLedger.items[1]!.id],
+    assumptionIds: [world.realityBoundarySnapshot.assumptionLedger.assumptions[0]!.id],
+    priorWorldEventIds: [], rationaleSummary: "Controlled sensitivity proposal.", createdAt: "2026-07-19T10:00:00.001Z",
+  } as const;
+}
+
 describe("Stage 5 strict batch execution", () => {
   it("rejects malformed, unknown, duplicate, non-uint32, empty, and count-mismatched inputs without throwing", () => {
     const inputs = [
@@ -108,7 +128,7 @@ describe("features, exact clustering, and sampled frequency", () => {
     expect(batch.ok).toBe(true);
     if (!batch.ok) return;
     const trajectoryBefore = structuredClone(batch.trajectories[0]);
-    const feature = extractTrajectoryFeatureV2(initialWorld, batch.trajectories[0]);
+    const feature = extractTrajectoryFeatureV2(initialWorld, batch.trajectories[0], featureContext(7));
     expect(feature.ok).toBe(true);
     if (!feature.ok) return;
     expect(feature.feature.simulationEventIds).toEqual(batch.trajectories[0]!.steps.flatMap((step) => step.worldEventId ? [step.worldEventId] : []));
@@ -129,7 +149,7 @@ describe("features, exact clustering, and sampled frequency", () => {
     const batch = runTrajectoryBatchV2(batchSpec([1, 2]), noActions);
     expect(batch.ok).toBe(true);
     if (!batch.ok) return;
-    const features = batch.trajectories.map((item) => extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, item));
+    const features = batch.trajectories.map((item) => extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, item, featureContext(item.trajectorySeed)));
     expect(features.every((item) => item.ok && item.feature.terminalStatus === "no_actions")).toBe(true);
     const clusters = clusterTrajectoryFeaturesV2(features.flatMap((item) => item.ok ? [item.feature] : []));
     expect(clusters).toMatchObject({ ok: true, clusters: [{ memberTrajectorySeeds: [1, 2] }] });
@@ -140,7 +160,7 @@ describe("features, exact clustering, and sampled frequency", () => {
     expect(batch.ok).toBe(true);
     if (!batch.ok) return;
     const features = batch.trajectories.map((item) => {
-      const value = extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, item);
+      const value = extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, item, featureContext(item.trajectorySeed));
       if (!value.ok) throw new Error(value.errorCode);
       return value.feature;
     });
@@ -163,19 +183,19 @@ describe("features, exact clustering, and sampled frequency", () => {
     expect(buildSimulationFrequencyV2([], [])).toMatchObject({ ok: false, errorCode: "frequency_without_samples" });
     const batch = runTrajectoryBatchV2(batchSpec([7]), adapter());
     if (!batch.ok) throw new Error(batch.errorCode);
-    const feature = extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, batch.trajectories[0]);
+    const feature = extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, batch.trajectories[0], featureContext(7));
     if (!feature.ok) throw new Error(feature.errorCode);
     expect(buildSimulationFrequencyV2([], [feature.feature])).toMatchObject({ ok: false, errorCode: "invalid_cluster_membership" });
   });
 
   it("rejects fabricated features, duplicate membership, cross-version aggregation, and malformed values", () => {
-    expect(extractTrajectoryFeatureV2(null, null)).toMatchObject({ ok: false, errorCode: "invalid_feature_input" });
+    expect(extractTrajectoryFeatureV2(null, null, null)).toMatchObject({ ok: false, errorCode: "invalid_feature_input" });
     const batch = runTrajectoryBatchV2(batchSpec([7]), adapter());
     if (!batch.ok) throw new Error(batch.errorCode);
     const tampered = structuredClone(batch.trajectories[0]);
     tampered.steps[0]!.worldEventId = "world_event_v2_missing";
-    expect(extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, tampered)).toMatchObject({ ok: false, errorCode: "invalid_feature_input" });
-    const feature = extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, batch.trajectories[0]);
+    expect(extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, tampered, featureContext(7))).toMatchObject({ ok: false, errorCode: "invalid_feature_input" });
+    const feature = extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, batch.trajectories[0], featureContext(7));
     if (!feature.ok) throw new Error(feature.errorCode);
     expect(clusterTrajectoryFeaturesV2([feature.feature, feature.feature])).toMatchObject({ ok: false, errorCode: "invalid_cluster_membership" });
     expect(clusterTrajectoryFeaturesV2(null as never)).toMatchObject({ ok: false, errorCode: "invalid_cluster_membership" });
@@ -187,8 +207,7 @@ describe("features, exact clustering, and sampled frequency", () => {
     drifted.trajectoryId = "trajectory_v2_drift";
     drifted.trajectorySeed = 8;
     const twoClusters = clusterTrajectoryFeaturesV2([feature.feature, drifted]);
-    if (!twoClusters.ok) throw new Error(twoClusters.errorCode);
-    expect(buildSimulationFrequencyV2(twoClusters.clusters, [feature.feature, drifted])).toMatchObject({ ok: false, errorCode: "version_mismatch" });
+    expect(twoClusters).toMatchObject({ ok: false, errorCode: "invalid_cluster_membership" });
     const duplicated = [{ ...clusters.clusters[0]!, memberTrajectoryIds: [feature.feature.trajectoryId, feature.feature.trajectoryId] }];
     expect(buildSimulationFrequencyV2(duplicated, [feature.feature])).toMatchObject({ ok: false, errorCode: "invalid_cluster_membership" });
   });
@@ -197,14 +216,10 @@ describe("features, exact clustering, and sampled frequency", () => {
 describe("controlled comparisons", () => {
   it("accepts one declared sensitivity axis and returns paired-seed raw differences", () => {
     const baseline = batchSpec([7, 11]);
-    const variant = structuredClone(baseline);
-    const variable = variant.trajectoryTemplate.initialWorld.externalVariables.find((item) => item.id === idsV2.promotionBudget)!;
-    if (variable.variableType !== "number") throw new Error("numeric fixture required");
-    variable.value = 60;
     const result = compareSensitivityV2({
       sensitivityAnalysisId: "sensitivity_analysis_v2_budget",
       baseline,
-      variants: [{ variantId: "budget_60", spec: variant, axis: { kind: "external_variable", targetId: idsV2.promotionBudget, baselineValue: 50, variantValue: 60 } }],
+      variants: [{ variantId: "sensitivity_variant_v2_budget_60", axis: { kind: "external_variable", targetId: idsV2.promotionBudget, variantValue: 60 }, proposal: sensitivityProposal(baseline, 60) }],
     }, adapter());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -214,12 +229,7 @@ describe("controlled comparisons", () => {
 
   it("rejects uncontrolled changes, version drift, and unconfirmed high-impact third-party assumptions", () => {
     const baseline = batchSpec([7]);
-    const changed = structuredClone(baseline);
-    const variable = changed.trajectoryTemplate.initialWorld.externalVariables.find((item) => item.id === idsV2.promotionBudget)!;
-    if (variable.variableType !== "number") throw new Error("numeric fixture required");
-    variable.value = 60;
-    changed.trajectoryTemplate.tickIntervalDays = 2;
-    expect(compareSensitivityV2({ sensitivityAnalysisId: "sensitivity_analysis_v2_bad", baseline, variants: [{ variantId: "bad", spec: changed, axis: { kind: "external_variable", targetId: idsV2.promotionBudget, baselineValue: 50, variantValue: 60 } }] }, adapter())).toMatchObject({ ok: false, errorCode: "uncontrolled_sensitivity_change" });
+    expect(compareSensitivityV2({ sensitivityAnalysisId: "sensitivity_analysis_v2_bad", baseline, variants: [{ variantId: "sensitivity_variant_v2_bad", axis: { kind: "external_variable", targetId: idsV2.offerAvailability, variantValue: "closed" }, proposal: sensitivityProposal(baseline, 60) }] }, adapter())).toMatchObject({ ok: false, errorCode: "uncontrolled_sensitivity_change" });
 
     const unconfirmed = structuredClone(baseline);
     const assumption = unconfirmed.trajectoryTemplate.initialWorld.realityBoundarySnapshot.assumptionLedger.assumptions.find((item) => item.subjectType === "third_party" && item.impactLevel === "high")!;
@@ -227,8 +237,7 @@ describe("controlled comparisons", () => {
     assumption.epistemicStatus = "inferred";
     expect(runTrajectoryBatchV2(unconfirmed, adapter())).toMatchObject({ ok: false, errorCode: "invalid_analysis_run_spec" });
 
-    const versionDrift = { ...structuredClone(baseline), policyVersion: "2" };
-    expect(compareSensitivityV2({ sensitivityAnalysisId: "sensitivity_analysis_v2_version", baseline, variants: [{ variantId: "drift", spec: versionDrift, axis: { kind: "external_variable", targetId: idsV2.promotionBudget, baselineValue: 50, variantValue: 60 } }] }, adapter())).toMatchObject({ ok: false, errorCode: "incomparable_variant" });
+    expect(compareSensitivityV2({ sensitivityAnalysisId: "sensitivity_analysis_v2_version", baseline, variants: [{ variantId: "sensitivity_variant_v2_drift", axis: { kind: "external_variable", targetId: idsV2.promotionBudget, variantValue: 60 }, proposal: sensitivityProposal(baseline, 60), spec: baseline }] }, adapter())).toMatchObject({ ok: false, errorCode: "incomparable_variant" });
     expect(compareSensitivityV2(null, adapter())).toMatchObject({ ok: false, errorCode: "incomparable_variant" });
   });
 
@@ -252,7 +261,7 @@ describe("controlled comparisons", () => {
       createdAt: "2026-07-19T10:00:00.001Z",
     } as const;
     const before = structuredClone(world);
-    const result = comparePreRunInterventionsV2({ interventionComparisonId: "intervention_comparison_v2_fixture", baseline, variants: [{ variantId: "reserve_day", intervention }] }, adapter());
+    const result = comparePreRunInterventionsV2({ interventionComparisonId: "intervention_comparison_v2_fixture", baseline, variants: [{ variantId: "intervention_variant_v2_reserve_day", intervention }] }, adapter());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const variant = result.variants[0]!;
@@ -277,7 +286,7 @@ describe("controlled comparisons", () => {
       realEvidenceIds: [world.realityBoundarySnapshot.evidenceLedger.items[0]!.id], assumptionIds: [], priorWorldEventIds: [],
       rationaleSummary: "Invalid amount.", createdAt: "2026-07-19T10:00:00.001Z",
     } as const;
-    const result = comparePreRunInterventionsV2({ interventionComparisonId: "intervention_comparison_v2_invalid", baseline, variants: [{ variantId: "invalid", intervention: invalid }] }, adapter());
+    const result = comparePreRunInterventionsV2({ interventionComparisonId: "intervention_comparison_v2_invalid", baseline, variants: [{ variantId: "intervention_variant_v2_invalid", intervention: invalid }] }, adapter());
     expect(result).toMatchObject({ ok: false, errorCode: "intervention_approval_failed" });
     expect(result).not.toHaveProperty("baseline");
     expect(result).not.toHaveProperty("variants");
@@ -287,7 +296,7 @@ describe("controlled comparisons", () => {
       ...adapter(),
       interventionRuntimeFactory: () => { throw new Error("factory failure"); },
     });
-    expect(comparePreRunInterventionsV2({ interventionComparisonId: "intervention_comparison_v2_factory", baseline, variants: [{ variantId: "factory", intervention: invalid }] }, throwingAdapter)).toMatchObject({ ok: false, errorCode: "invalid_intervention" });
+    expect(comparePreRunInterventionsV2({ interventionComparisonId: "intervention_comparison_v2_factory", baseline, variants: [{ variantId: "intervention_variant_v2_factory", intervention: invalid }] }, throwingAdapter)).toMatchObject({ ok: false, errorCode: "invalid_intervention" });
     expect(comparePreRunInterventionsV2(null, adapter())).toMatchObject({ ok: false, errorCode: "invalid_intervention" });
   });
 });

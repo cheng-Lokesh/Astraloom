@@ -1,38 +1,40 @@
-import type { WorldEventV2, WorldStateV2 } from "../agent-world/types";
-import { validateWorldV2 } from "../agent-world/validation";
-import type { TrajectoryResultV2 } from "../trajectory/types";
+import { evaluateAssumptionReadinessV2 } from "../reality-boundary/assumption-ledger";
+import type { WorldStateV2 } from "../agent-world/types";
+import type { AssumptionIdV2 } from "../reality-boundary/types";
 import { canonicalJsonV2, stableAnalysisFingerprintV2 } from "./ids";
 import { ANALYSIS_ENGINE_VERSION_V2, FEATURE_SCHEMA_VERSION_V2, type TrajectoryFeatureV2 } from "./types";
+import { parseTrajectoryResultForFeatureV2 } from "./trajectory-result-validation";
 
 const sortedUnique = <T extends string>(values: T[]) => [...new Set(values)].sort() as T[];
-const trajectoryKeys = ["agentWorldEngineVersion", "completedAt", "finalWorld", "horizonDays", "initialWorldId", "initialWorldRevision", "policyId", "policyVersion", "runSpecId", "seedContextId", "startedAt", "status", "steps", "trajectoryEngineVersion", "trajectoryId", "trajectorySeed"].sort();
 
-function exactKeys(value: object, expected: string[]) {
-  return JSON.stringify(Object.keys(value).sort()) === JSON.stringify(expected);
+function collectInputAssumptionIdsV2(initialWorld: WorldStateV2) {
+  const ids: AssumptionIdV2[] = [];
+  for (const definition of initialWorld.agentDefinitions) {
+    ids.push(...definition.assumptionIds);
+    ids.push(...definition.fieldProvenance.displayName.assumptionIds, ...definition.fieldProvenance.role.assumptionIds);
+  }
+  for (const state of initialWorld.agentStates) ids.push(...state.activeAssumptionIds);
+  for (const item of [...initialWorld.entities, ...initialWorld.relations, ...initialWorld.resources, ...initialWorld.constraints, ...initialWorld.externalVariables]) ids.push(...item.provenance.assumptionIds);
+  for (const event of initialWorld.worldEvents) ids.push(...event.causalAssumptionIds);
+  return sortedUnique(ids);
 }
 
-export function extractTrajectoryFeatureV2(initialWorldInput: unknown, trajectoryInput: unknown) {
+export function extractTrajectoryFeatureV2(initialWorldInput: unknown, trajectoryInput: unknown, contextInput: unknown) {
   try {
-    const initialWorld = initialWorldInput as WorldStateV2;
-    const trajectory = trajectoryInput as TrajectoryResultV2;
-    if (!initialWorld || !trajectory || typeof initialWorld !== "object" || typeof trajectory !== "object" || !exactKeys(trajectory, trajectoryKeys) || !validateWorldV2(initialWorld).ok || !validateWorldV2(trajectory.finalWorld).ok) return { ok: false as const, errorCode: "invalid_feature_input" as const };
-    if (trajectory.seedContextId !== initialWorld.seedContextId || trajectory.initialWorldId !== initialWorld.id || trajectory.initialWorldRevision !== initialWorld.revision || trajectory.finalWorld.seedContextId !== initialWorld.seedContextId || trajectory.trajectoryEngineVersion !== "trajectory-engine-v2-stage-4") return { ok: false as const, errorCode: "invalid_feature_input" as const };
-    const eventIds = trajectory.steps.flatMap((step) => step.worldEventId ? [step.worldEventId] : []);
-    if (new Set(eventIds).size !== eventIds.length) return { ok: false as const, errorCode: "invalid_feature_input" as const };
-    const eventsById = new Map(trajectory.finalWorld.worldEvents.map((event) => [event.id, event]));
-    const events: WorldEventV2[] = [];
-    for (const id of eventIds) {
-      const event = eventsById.get(id);
-      if (!event || event.seedContextId !== initialWorld.seedContextId || !trajectory.finalWorld.worldEventIds.includes(id)) return { ok: false as const, errorCode: "invalid_feature_input" as const };
-      events.push(event);
-    }
+    const parsed = parseTrajectoryResultForFeatureV2(initialWorldInput, trajectoryInput, contextInput);
+    if (!parsed.ok) return parsed;
+    const { initialWorld, trajectory, events } = parsed;
+    const eventIds = events.map((event) => event.id);
     const evidenceIds = new Set(initialWorld.realityBoundarySnapshot.evidenceLedger.items.map((item) => item.id));
-    const assumptionIds = new Set(initialWorld.realityBoundarySnapshot.assumptionLedger.assumptions.map((item) => item.id));
+    const assumptions = new Map(initialWorld.realityBoundarySnapshot.assumptionLedger.assumptions.map((item) => [item.id, item]));
+    const assumptionIds = new Set(assumptions.keys());
     if (events.some((event) => event.causalRealEvidenceIds.some((id) => !evidenceIds.has(id)) || event.causalAssumptionIds.some((id) => !assumptionIds.has(id)))) return { ok: false as const, errorCode: "invalid_feature_input" as const };
+    const inputAssumptionIds = collectInputAssumptionIdsV2(initialWorld);
+    if (inputAssumptionIds.some((id) => !assumptions.has(id) || !evaluateAssumptionReadinessV2(assumptions.get(id)!).downstreamReady)) return { ok: false as const, errorCode: "invalid_feature_input" as const };
     const outcome = {
       terminalStatus: trajectory.status,
       executedTickCount: trajectory.steps.length,
-      revisionDelta: trajectory.finalWorld.revision - initialWorld.revision,
+      revisionDelta: events.length,
       operations: events.map((event) => ({ eventType: event.eventType, operation: event.operation, deltas: event.deltas })),
     };
     const outcomeSignature = canonicalJsonV2(outcome);
@@ -43,7 +45,7 @@ export function extractTrajectoryFeatureV2(initialWorldInput: unknown, trajector
       trajectorySeed: trajectory.trajectorySeed,
       terminalStatus: trajectory.status,
       executedTickCount: trajectory.steps.length,
-      revisionDelta: trajectory.finalWorld.revision - initialWorld.revision,
+      revisionDelta: events.length,
       simulationEventCount: events.length,
       operationSequence: events.map((event) => `${event.eventType}:${canonicalJsonV2(event.operation)}`),
       affectedEntityIds: sortedUnique(events.flatMap((event) => event.targetEntityIds)),
@@ -55,6 +57,7 @@ export function extractTrajectoryFeatureV2(initialWorldInput: unknown, trajector
       simulationEventIds: eventIds,
       causalRealEvidenceIds: sortedUnique(events.flatMap((event) => event.causalRealEvidenceIds)),
       causalAssumptionIds: sortedUnique(events.flatMap((event) => event.causalAssumptionIds)),
+      inputAssumptionIds,
       trajectoryEngineVersion: trajectory.trajectoryEngineVersion,
       agentWorldEngineVersion: trajectory.agentWorldEngineVersion,
       policyId: trajectory.policyId,
