@@ -8,6 +8,7 @@ import {
   type TrajectoryRunSpecErrorCodeV2,
   type TrajectoryRunSpecV2,
 } from "./types";
+import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "./time";
 
 const nonEmpty = z.string().trim().min(1).max(1000);
 const uint32 = z.number().finite().int().min(0).max(0xffff_ffff);
@@ -73,14 +74,39 @@ export function parseTrajectoryRunSpecV2(value: unknown) {
   if (spec.expectedInitialWorldRevision !== world.revision) {
     return failure("stale_initial_world_revision");
   }
-  if (Date.parse(spec.startAt) < Date.parse(world.updatedAt)) {
+  const startInstant = parseTrajectoryInstantV2(spec.startAt);
+  const worldInstant = parseTrajectoryInstantV2(world.updatedAt);
+  if (
+    (!startInstant.ok && startInstant.errorCode === "unsupported_timestamp_precision") ||
+    (!worldInstant.ok && worldInstant.errorCode === "unsupported_timestamp_precision")
+  ) {
+    return failure("unsupported_timestamp_precision");
+  }
+  if (!startInstant.ok) {
+    return failure(
+      startInstant.errorCode === "timestamp_outside_four_digit_year_domain"
+        ? "schedule_exceeds_timestamp_domain"
+        : "invalid_run_spec",
+    );
+  }
+  if (!worldInstant.ok) return failure("invalid_initial_world");
+  if (startInstant.value.epochMilliseconds < worldInstant.value.epochMilliseconds) {
     return failure("start_before_initial_world");
   }
   if ((spec.maxTicks - 1) * spec.tickIntervalDays > spec.horizonDays) {
     return failure("schedule_exceeds_horizon");
   }
+  const finalTick = addTrajectoryDaysV2(
+    startInstant.value,
+    (spec.maxTicks - 1) * spec.tickIntervalDays,
+  );
+  if (!finalTick.ok) return failure("schedule_exceeds_timestamp_domain");
   return {
     ok: true as const,
-    value: structuredClone({ ...spec, initialWorld: world }) as TrajectoryRunSpecV2,
+    value: structuredClone({
+      ...spec,
+      startAt: startInstant.value.isoTimestamp,
+      initialWorld: world,
+    }) as TrajectoryRunSpecV2,
   };
 }

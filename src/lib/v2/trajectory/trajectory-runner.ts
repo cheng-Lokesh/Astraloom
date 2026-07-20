@@ -3,6 +3,7 @@ import { applyWorldTransitionV2 } from "../agent-world/world-transition";
 import type { AgentWorldRuntimeV2, WorldStateV2 } from "../agent-world/types";
 import { createSeededRngV2, selectSeededIndexV2 } from "./seeded-rng";
 import { parseTrajectoryPolicyCandidatesV2 } from "./trajectory-policy";
+import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "./time";
 import type {
   TrajectoryExecutionErrorCodeV2,
   TrajectoryExecutionResultV2,
@@ -14,10 +15,12 @@ import type {
 } from "./types";
 import { parseTrajectoryRunSpecV2 } from "./validation";
 
-const DAY_MS = 86_400_000;
-
 function tickTimestamp(startAt: string, tickIndex: number, intervalDays: number) {
-  return new Date(Date.parse(startAt) + tickIndex * intervalDays * DAY_MS).toISOString();
+  const start = parseTrajectoryInstantV2(startAt);
+  if (!start.ok) throw new Error("validated_start_timestamp_required");
+  const tick = addTrajectoryDaysV2(start.value, tickIndex * intervalDays);
+  if (!tick.ok) throw new Error("validated_tick_timestamp_required");
+  return tick.value.isoTimestamp;
 }
 
 function baseResult(spec: TrajectoryRunSpecV2): TrajectoryResultV2 {

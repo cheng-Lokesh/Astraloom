@@ -105,7 +105,9 @@ export type TrajectoryRunSpecErrorCodeV2 =
   | "invalid_initial_world"
   | "cross_seed_reference"
   | "stale_initial_world_revision"
+  | "unsupported_timestamp_precision"
   | "start_before_initial_world"
+  | "schedule_exceeds_timestamp_domain"
   | "schedule_exceeds_horizon";
 
 export type TrajectoryExecutionErrorCodeV2 =

@@ -18,6 +18,12 @@ As the server-side trajectory executor, I need one explicit Run Spec and a versi
 - GREEN: the same command passed 4 files and 52 tests after adding Run Spec monotonicity and candidate-to-Tick instant validation.
 - Coverage: `npm run test:coverage` passed 25 files and 268 tests. Stage 4 trajectory coverage was 96.99% statements, 91.02% branches, 100% functions, and 97.63% lines.
 
+### Millisecond-precision and timestamp-domain correction
+
+- RED: `npm run test:v2:trajectory` executed 61 tests and reported 5 intended failures. Sub-millisecond Run Spec and Proposal timestamps were silently truncated, and a schedule could cross beyond the four-digit-year timestamp domain after parsing.
+- GREEN: the same command passed 4 files and 63 tests after adding lossless millisecond parsing, canonical timestamp generation, and final-Tick domain validation.
+- Coverage: `npm run test:coverage` passed 25 files and 279 tests. Stage 4 trajectory coverage was 93.65% statements, 84.24% branches, 100% functions, and 96.06% lines. Global coverage was 90.26% statements, 76.93% branches, 94.08% functions, and 91.48% lines.
+
 ## Test specification
 
 | What is guaranteed | Test target | Type | Result |
@@ -30,6 +36,8 @@ As the server-side trajectory executor, I need one explicit Run Spec and a versi
 | Inputs and Agent Definitions remain unchanged, and Simulation Events never enter the Real Evidence ledger | `trajectory-runner.test.ts` | integration | PASS |
 | A Run Spec cannot start before `initialWorld.updatedAt`, equality remains valid, and rejection precedes Policy and RNG work | `validation.test.ts`, `trajectory-runner.test.ts` | unit/integration | PASS |
 | Every Proposal timestamp represents the Tick instant; timezone-equivalent input passes and any drift rejects the complete candidate set before selection | `trajectory-runner.test.ts` | integration | PASS |
+| Run Spec and Proposal timestamps accept only instants losslessly representable in milliseconds; trailing fractional zeros normalize without changing the instant | `validation.test.ts`, `trajectory-runner.test.ts` | unit/integration | PASS |
+| The complete Tick schedule remains inside the Stage 3 four-digit-year ISO domain, with overflow rejected before Policy, RNG, or Trajectory creation | `validation.test.ts`, `trajectory-runner.test.ts` | unit/integration | PASS |
 | Stage 4 production code excludes ambient randomness, wall-clock reads, later-stage analytics, Claims, and Reports | `boundary.test.ts` | boundary | PASS |
 
 ## Known gaps

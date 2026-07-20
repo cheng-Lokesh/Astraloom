@@ -65,6 +65,61 @@ describe("Trajectory Run Spec V2 validation", () => {
     expect(parseTrajectoryRunSpecV2(spec).ok).toBe(true);
   });
 
+  it("allows startAt expressed as the same instant in another timezone", () => {
+    expect(
+      parseTrajectoryRunSpecV2({
+        ...trajectoryRunSpecFixtureV2(),
+        startAt: "2026-07-19T18:00:00.000+08:00",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects unsupported fractional precision in World and startAt", () => {
+    const spec = trajectoryRunSpecFixtureV2();
+    spec.initialWorld.updatedAt = "2026-07-19T10:00:00.0009Z";
+    spec.startAt = "2026-07-19T10:00:00.0001Z";
+    expectInvalid(spec, "unsupported_timestamp_precision");
+  });
+
+  it("rejects unsupported fractional precision in the initial World alone", () => {
+    const spec = trajectoryRunSpecFixtureV2();
+    spec.initialWorld.updatedAt = "2026-07-19T10:00:00.0009Z";
+    spec.startAt = "2026-07-19T10:00:01.000Z";
+    expectInvalid(spec, "unsupported_timestamp_precision");
+  });
+
+  it("accepts losslessly normalizable trailing fractional zeros", () => {
+    expect(
+      parseTrajectoryRunSpecV2({
+        ...trajectoryRunSpecFixtureV2(),
+        startAt: "2026-07-19T10:00:00.123000Z",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects a schedule whose final Tick leaves the four-digit year domain", () => {
+    expectInvalid(
+      {
+        ...trajectoryRunSpecFixtureV2(),
+        startAt: "9999-12-31T00:00:00.000Z",
+        tickIntervalDays: 1,
+        maxTicks: 2,
+      },
+      "schedule_exceeds_timestamp_domain",
+    );
+  });
+
+  it("allows a schedule whose final Tick remains in year 9999", () => {
+    expect(
+      parseTrajectoryRunSpecV2({
+        ...trajectoryRunSpecFixtureV2(),
+        startAt: "9999-12-30T00:00:00.000Z",
+        tickIntervalDays: 1,
+        maxTicks: 2,
+      }).ok,
+    ).toBe(true);
+  });
+
   it("rejects a schedule whose final Tick exceeds the horizon", () => {
     expectInvalid(
       { ...trajectoryRunSpecFixtureV2(), tickIntervalDays: 20, maxTicks: 3 },

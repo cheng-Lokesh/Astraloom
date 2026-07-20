@@ -56,6 +56,7 @@ export default defineConfig({
         "src/lib/v2/trajectory/ids.ts",
         "src/lib/v2/trajectory/local-adapter.ts",
         "src/lib/v2/trajectory/seeded-rng.ts",
+        "src/lib/v2/trajectory/time.ts",
         "src/lib/v2/trajectory/trajectory-policy.ts",
         "src/lib/v2/trajectory/trajectory-runner.ts",
         "src/lib/v2/trajectory/types.ts",

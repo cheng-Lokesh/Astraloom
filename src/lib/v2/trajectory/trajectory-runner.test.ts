@@ -63,6 +63,50 @@ describe("Trajectory Runner V2", () => {
     expect(result).not.toHaveProperty("trajectory");
   });
 
+  it("rejects unsupported startAt precision before Policy or partial output", () => {
+    const spec = {
+      ...trajectoryRunSpecFixtureV2(),
+      startAt: "2026-07-19T10:00:00.0009Z",
+    };
+    const proposeCandidates = vi.fn(() => []);
+    const result = executeTrajectoryV2(
+      spec,
+      {
+        policyId: spec.policyId,
+        policyVersion: spec.policyVersion,
+        proposeCandidates,
+      },
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expect(result).toEqual({ ok: false, errorCode: "unsupported_timestamp_precision" });
+    expect(proposeCandidates).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("trajectory");
+  });
+
+  it("rejects an out-of-domain final Tick before Policy or partial output", () => {
+    const spec = {
+      ...trajectoryRunSpecFixtureV2(),
+      startAt: "9999-12-31T00:00:00.000Z",
+      tickIntervalDays: 1,
+      maxTicks: 2,
+    };
+    const proposeCandidates = vi.fn(() => []);
+    const result = executeTrajectoryV2(
+      spec,
+      {
+        policyId: spec.policyId,
+        policyVersion: spec.policyVersion,
+        proposeCandidates,
+      },
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expect(result).toEqual({ ok: false, errorCode: "schedule_exceeds_timestamp_domain" });
+    expect(proposeCandidates).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("trajectory");
+  });
+
   it.each([
     ["past", "2026-07-19T09:59:59.999Z"],
     ["future", "2026-07-19T10:00:00.001Z"],
@@ -93,6 +137,60 @@ describe("Trajectory Runner V2", () => {
     if (result.ok) {
       expect(result.trajectory.finalWorld.revision).toBe(1);
       expect(result.trajectory.finalWorld.worldEvents).toHaveLength(1);
+    }
+  });
+
+  it("rejects a sub-millisecond Proposal timestamp instead of truncating it to the Tick", () => {
+    const result = executeTrajectoryV2(
+      { ...trajectoryRunSpecFixtureV2(), maxTicks: 1 },
+      policyWithCandidateTimes(["2026-07-19T10:00:00.0009Z"]),
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expectNoSelectedTickArtifacts(result);
+    if (!result.ok) {
+      expect(result.issues).toEqual([
+        "candidates.0.createdAt: Unsupported timestamp precision; must be losslessly representable as milliseconds.",
+      ]);
+    }
+  });
+
+  it("accepts a Proposal timestamp with lossless trailing fractional zeros", () => {
+    const result = executeTrajectoryV2(
+      { ...trajectoryRunSpecFixtureV2(), maxTicks: 1 },
+      policyWithCandidateTimes(["2026-07-19T10:00:00.0000Z"]),
+      createTrajectoryRuntimeFixtureV2(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.trajectory.steps[0]?.occurredAt).toBe("2026-07-19T10:00:00.000Z");
+      expect(result.trajectory.finalWorld.revision).toBe(1);
+    }
+  });
+
+  it("normalizes accepted trailing zeros without losing the Tick instant", () => {
+    const spec = {
+      ...trajectoryRunSpecFixtureV2(),
+      startAt: "2026-07-19T10:00:00.123000Z",
+      maxTicks: 1,
+    };
+    const policy = createLocalTrajectoryPolicyV2({
+      policyId: spec.policyId,
+      policyVersion: spec.policyVersion,
+      candidatesForTick: (input) => {
+        expect(input.occurredAt).toBe("2026-07-19T10:00:00.123Z");
+        return trajectoryPolicyFixtureV2().proposeCandidates(input);
+      },
+    });
+    const result = executeTrajectoryV2(spec, policy, createTrajectoryRuntimeFixtureV2());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.trajectory.steps[0]?.occurredAt).toBe("2026-07-19T10:00:00.123Z");
+      expect(result.trajectory.finalWorld.worldEvents[0]?.createdAt).toBe(
+        "2026-07-19T10:00:00.123Z",
+      );
     }
   });
 
