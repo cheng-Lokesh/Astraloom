@@ -955,8 +955,7 @@ function eventDeltaIssues(
       delta.before <= resource!.max &&
       delta.after >= resource!.min &&
       delta.after <= resource!.max &&
-      delta.after === delta.before - operation.amount &&
-      delta.after === resource!.available;
+      delta.after === delta.before - operation.amount;
   } else if (
     operation.actionType === "update_external_variable" &&
     delta.valueType === "variable"

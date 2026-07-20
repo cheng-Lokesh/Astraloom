@@ -811,6 +811,55 @@ describe("Stage 3.1 typed operation-bound Event delta", () => {
     expect(validateWorldV2(resourceResult.world)).toEqual({ ok: true, issues: [] });
   });
 
+  it("preserves repeated Resource transitions and validates the final replay value", () => {
+    const world = initialWorld();
+    const first = applyWorldTransitionV2(
+      world,
+      command(
+        world,
+        actionProposalInputV2(world, {
+          id: "action_proposal_v2_repeated_resource_first",
+        }),
+      ),
+      createFixedAgentWorldRuntimeV2(),
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const firstEventSnapshot = structuredClone(first.event);
+
+    const second = applyWorldTransitionV2(
+      first.world,
+      command(
+        first.world,
+        actionProposalInputV2(first.world, {
+          id: "action_proposal_v2_repeated_resource_second",
+          priorWorldEventIds: [first.event.id],
+        }),
+      ),
+      createFixedAgentWorldRuntimeV2(),
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.world.revision).toBe(2);
+    expect(second.world.worldEvents).toHaveLength(2);
+    expect(second.world.worldEvents.map((event) => event.deltas[0])).toMatchObject([
+      { before: 6, after: 5 },
+      { before: 5, after: 4 },
+    ]);
+    expect(second.world.worldEvents[0]).toEqual(firstEventSnapshot);
+    expect(first.world.worldEvents[0]).toEqual(firstEventSnapshot);
+    expect(validateWorldV2(second.world)).toEqual({ ok: true, issues: [] });
+
+    const forged = structuredClone(second.world);
+    const lastEvent = forged.worldEvents[1]!;
+    if (lastEvent.operation.actionType !== "allocate_resource") {
+      throw new Error("operation");
+    }
+    lastEvent.operation.amount = 2;
+    lastEvent.deltas[0]!.after = 3;
+    expectIssue(forged, "invalid_world", "worldEvents.deltas");
+  });
+
   it.each([
     ["wrong path", (delta: Record<string, unknown>) => {
       delta.path = `agentStates.${idsV2.manager}.observations`;
