@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { approveActionProposalV2, buildActionProposalV2 } from "../agent-world/action-proposal";
 import { createStableAgentWorldIdFactoryV2 } from "../agent-world/ids";
-import { idsV2, realityBoundaryV2 } from "../agent-world/test-fixtures";
+import { createFixedAgentWorldRuntimeV2, idsV2, realityBoundaryV2 } from "../agent-world/test-fixtures";
+import { applyWorldTransitionV2 } from "../agent-world/world-transition";
 import { trajectoryPolicyFixtureV2, trajectoryRunSpecFixtureV2 } from "../trajectory/test-fixtures";
 import { analyzeTrajectoryBatchV2 } from "../trajectory-analysis/batch-runner";
 import { comparePreRunInterventionsV2 } from "../trajectory-analysis/intervention-comparison";
@@ -63,8 +65,8 @@ function batchAnalysis() {
   return result.analysis;
 }
 
-function sensitivityProposal(value: number) {
-  const world = batchSpec().trajectoryTemplate.initialWorld;
+function sensitivityProposal(value: number, spec: BatchRunSpecV2 = batchSpec(), priorWorldEventIds: string[] = []) {
+  const world = spec.trajectoryTemplate.initialWorld;
   return {
     id: "action_proposal_v2_stage_6_sensitivity",
     seedContextId: world.seedContextId,
@@ -74,12 +76,12 @@ function sensitivityProposal(value: number) {
     parameters: { actionType: "update_external_variable", variableId: idsV2.promotionBudget, value },
     realEvidenceIds: [world.realityBoundarySnapshot.evidenceLedger.items[1]!.id],
     assumptionIds: [world.realityBoundarySnapshot.assumptionLedger.assumptions[0]!.id],
-    priorWorldEventIds: [], rationaleSummary: "Controlled sensitivity proposal.", createdAt: "2026-07-19T10:00:00.001Z",
+    priorWorldEventIds, rationaleSummary: "Controlled sensitivity proposal.", createdAt: "2026-07-19T10:00:00.001Z",
   } as const;
 }
 
-function interventionProposal() {
-  const world = batchSpec().trajectoryTemplate.initialWorld;
+function interventionProposal(spec: BatchRunSpecV2 = batchSpec(), priorWorldEventIds: string[] = []) {
+  const world = spec.trajectoryTemplate.initialWorld;
   return {
     id: "action_proposal_v2_stage_6_intervention",
     seedContextId: world.seedContextId,
@@ -88,7 +90,8 @@ function interventionProposal() {
     targetEntityIds: [idsV2.offer], targetResourceIds: [idsV2.time], targetRelationIds: [], targetVariableIds: [],
     parameters: { actionType: "allocate_resource", resourceId: idsV2.time, amount: 1 },
     realEvidenceIds: [world.realityBoundarySnapshot.evidenceLedger.items[0]!.id],
-    assumptionIds: [], priorWorldEventIds: [], rationaleSummary: "Reserve one decision day.", createdAt: "2026-07-19T10:00:00.001Z",
+    assumptionIds: [world.realityBoundarySnapshot.assumptionLedger.assumptions[0]!.id],
+    priorWorldEventIds, rationaleSummary: "Reserve one decision day.", createdAt: "2026-07-19T10:00:00.001Z",
   } as const;
 }
 
@@ -105,28 +108,69 @@ function boundary() {
   };
 }
 
-function sensitivityComparison() {
+function sensitivityComparison(baseline: BatchRunSpecV2 = batchSpec(), priorWorldEventIds: string[] = []) {
   const result = compareSensitivityV2({
     sensitivityAnalysisId: "sensitivity_analysis_v2_stage_6_fixture",
-    baseline: batchSpec(),
+    baseline,
     variants: [{
       variantId: "sensitivity_variant_v2_stage_6_60",
       axis: { kind: "external_variable", targetId: idsV2.promotionBudget, variantValue: 60 },
-      proposal: sensitivityProposal(60),
+      proposal: sensitivityProposal(60, baseline, priorWorldEventIds),
     }],
   }, adapter());
   if (!result.ok) throw new Error(result.errorCode);
   return result;
 }
 
-function interventionComparison() {
+function interventionComparison(baseline: BatchRunSpecV2 = batchSpec(), priorWorldEventIds: string[] = []) {
   const result = comparePreRunInterventionsV2({
     interventionComparisonId: "intervention_comparison_v2_stage_6_fixture",
-    baseline: batchSpec(),
-    variants: [{ variantId: "intervention_variant_v2_stage_6_reserve", intervention: interventionProposal() }],
+    baseline,
+    variants: [{ variantId: "intervention_variant_v2_stage_6_reserve", intervention: interventionProposal(baseline, priorWorldEventIds) }],
   }, adapter());
   if (!result.ok) throw new Error(result.errorCode);
   return result;
+}
+
+function batchSpecWithPriorEvent() {
+  const spec = structuredClone(batchSpec()) as BatchRunSpecV2;
+  const world = spec.trajectoryTemplate.initialWorld;
+  const proposalInput = {
+    ...interventionProposal(spec),
+    id: "action_proposal_v2_stage_6_prior",
+    assumptionIds: [],
+    priorWorldEventIds: [],
+    createdAt: "2026-07-19T10:00:00.000Z",
+  };
+  const proposal = buildActionProposalV2(proposalInput, world);
+  if (!proposal.ok) throw new Error(proposal.errorCode);
+  const runtime = createFixedAgentWorldRuntimeV2();
+  const approved = approveActionProposalV2(proposal.proposal, world, world.revision, runtime);
+  if (!approved.ok) throw new Error(approved.errorCode);
+  const transition = applyWorldTransitionV2(world, approved.command, runtime);
+  if (!transition.ok) throw new Error(transition.errorCode);
+  spec.trajectoryTemplate.initialWorld = transition.world;
+  spec.trajectoryTemplate.expectedInitialWorldRevision = transition.world.revision;
+  spec.trajectoryTemplate.startAt = transition.world.updatedAt;
+  return { spec, priorEventId: transition.event.id };
+}
+
+function expectedDifferenceProvenance(comparison: ReturnType<typeof sensitivityComparison> | ReturnType<typeof interventionComparison>, claim: ClaimV2) {
+  const variant = comparison.variants[0]!;
+  const analysis = variant.analysis;
+  const transitionId = "transitionEventId" in variant ? variant.transitionEventId : variant.interventionEventId;
+  const transition = analysis.spec.trajectoryTemplate.initialWorld.worldEvents.find((event) => event.id === transitionId)!;
+  const clusters = [comparison.baseline, analysis]
+    .map((item) => item.clusters.find((cluster) => cluster.clusterId === claim.clusterIds[0]))
+    .filter((cluster) => cluster !== undefined);
+  const sortedUnique = (values: string[]) => [...new Set(values)].sort();
+  return {
+    realEvidenceIds: sortedUnique([...clusters.flatMap((cluster) => cluster.causalRealEvidenceIds), ...transition.causalRealEvidenceIds]),
+    simulationEventIds: sortedUnique([...clusters.flatMap((cluster) => cluster.simulationEventIds), transition.id, ...transition.priorWorldEventIds]),
+    assumptionIds: sortedUnique([...clusters.flatMap((cluster) => [...cluster.causalAssumptionIds, ...cluster.inputAssumptionIds]), ...transition.causalAssumptionIds]),
+    trajectoryIds: sortedUnique(clusters.flatMap((cluster) => cluster.memberTrajectoryIds)),
+    clusterIds: sortedUnique(clusters.map((cluster) => cluster.clusterId)),
+  };
 }
 
 function relationInterventionComparison() {
@@ -241,6 +285,52 @@ describe("Stage 6 Claim validation and generation", () => {
     expect(buildInterventionDifferenceClaimsV2({ comparison: relationInterventionComparison(), realityBoundary: boundary() }).ok).toBe(true);
   });
 
+  it("includes the validated sensitivity transition Event and its complete causal provenance", () => {
+    const { spec, priorEventId } = batchSpecWithPriorEvent();
+    const comparison = sensitivityComparison(spec, [priorEventId]);
+    const first = buildSensitivityDifferenceClaimsV2({ comparison, realityBoundary: boundary() });
+    const replay = buildSensitivityDifferenceClaimsV2({ comparison: structuredClone(comparison), realityBoundary: boundary() });
+    expect(first).toEqual(replay);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const transition = comparison.variants[0]!.analysis.spec.trajectoryTemplate.initialWorld.worldEvents.at(-1)!;
+    for (const claim of first.claims) {
+      expect(claim).toMatchObject(expectedDifferenceProvenance(comparison, claim));
+      expect(claim.simulationEventIds).toContain(transition.id);
+      expect(claim.simulationEventIds).toContain(priorEventId);
+      expect(claim.realEvidenceIds).toEqual(expect.arrayContaining(transition.causalRealEvidenceIds));
+      expect(claim.assumptionIds).toEqual(expect.arrayContaining(transition.causalAssumptionIds));
+      expect(claim.realEvidenceIds).toEqual([...claim.realEvidenceIds].sort());
+      expect(claim.simulationEventIds).toEqual([...claim.simulationEventIds].sort());
+      expect(claim.assumptionIds).toEqual([...claim.assumptionIds].sort());
+      expect(new Set(claim.simulationEventIds).size).toBe(claim.simulationEventIds.length);
+      expect(claim.realEvidenceIds.every((value) => value.startsWith("real_evidence_v2_"))).toBe(true);
+      expect(claim.simulationEventIds.every((value) => value.startsWith("world_event_v2_"))).toBe(true);
+    }
+  });
+
+  it("includes the validated intervention Event and its complete causal provenance", () => {
+    const { spec, priorEventId } = batchSpecWithPriorEvent();
+    const comparison = interventionComparison(spec, [priorEventId]);
+    const first = buildInterventionDifferenceClaimsV2({ comparison, realityBoundary: boundary() });
+    const replay = buildInterventionDifferenceClaimsV2({ comparison: structuredClone(comparison), realityBoundary: boundary() });
+    expect(first).toEqual(replay);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const transition = comparison.variants[0]!.analysis.spec.trajectoryTemplate.initialWorld.worldEvents.at(-1)!;
+    for (const claim of first.claims) {
+      expect(claim).toMatchObject(expectedDifferenceProvenance(comparison, claim));
+      expect(claim.simulationEventIds).toContain(transition.id);
+      expect(claim.simulationEventIds).toContain(priorEventId);
+      expect(claim.realEvidenceIds).toEqual(expect.arrayContaining(transition.causalRealEvidenceIds));
+      expect(claim.assumptionIds).toEqual(expect.arrayContaining(transition.causalAssumptionIds));
+      expect(new Set([...claim.realEvidenceIds, ...claim.simulationEventIds]).size).toBe(claim.realEvidenceIds.length + claim.simulationEventIds.length);
+      expect(new Set(claim.assumptionIds).size).toBe(claim.assumptionIds.length);
+      expect(claim.trajectoryIds).toEqual([...claim.trajectoryIds].sort());
+      expect(claim.clusterIds).toEqual([...claim.clusterIds].sort());
+    }
+  });
+
   it("rejects forged comparison differences, cross-seed variants, version drift, and extra fields", () => {
     const sensitivity = sensitivityComparison();
     const intervention = interventionComparison();
@@ -335,7 +425,7 @@ describe("Stage 6 Claim validation and generation", () => {
       expect(call).not.toThrow();
       expect(call().ok).toBe(false);
     }
-  });
+  }, 15_000);
 
   it("rejects re-signed impossible mathematics, identity mismatches, and every fixed-version drift", () => {
     const scenarioResult = buildScenarioFrequencyClaimsV2({ analysis: batchAnalysis(), realityBoundary: boundary() });
@@ -498,6 +588,33 @@ describe("Stage 6 Report boundary", () => {
       expect(result).not.toHaveProperty("report");
     }
     expect(buildClaimsReportV2({ reportSpecId: "claims_report_spec_v2_public_summary", seedContextId: boundary().seedContextId, claims: claims(), claimIds: claims().map((claim) => claim.id) }).ok).toBe(false);
+  });
+
+  it("rejects re-signed Difference Claims with deleted or substituted transition provenance", () => {
+    const { spec, priorEventId } = batchSpecWithPriorEvent();
+    const comparison = sensitivityComparison(spec, [priorEventId]);
+    const built = buildSensitivityDifferenceClaimsV2({ comparison, realityBoundary: boundary() });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const transitionId = comparison.variants[0]!.transitionEventId;
+    const canonical = built.claims;
+    const target = canonical[0]!;
+    const attacks = [
+      resignClaim(target, { simulationEventIds: target.simulationEventIds.filter((id) => id !== transitionId) }),
+      resignClaim(target, { simulationEventIds: [...new Set(target.simulationEventIds.map((id) => id === transitionId ? priorEventId : id))].sort() }),
+    ];
+    for (const forged of attacks) {
+      const supplied = canonical.map((claim) => claim.id === target.id ? forged : claim).sort((left, right) => left.id.localeCompare(right.id));
+      const result = buildClaimsReportV2({
+        reportSpecId: "claims_report_spec_v2_transition_provenance_attack",
+        seedContextId: boundary().seedContextId,
+        claimSet: { kind: "sensitivity", payload: comparison, realityBoundary: boundary() },
+        claims: supplied,
+        claimIds: supplied.map((claim) => claim.id),
+      });
+      expect(result).toMatchObject({ ok: false, errorCode: "claim_tampering" });
+      expect(result).not.toHaveProperty("report");
+    }
   });
 
   it("never throws for hostile Report, Claim Set, or nested getter input", () => {

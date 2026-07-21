@@ -82,7 +82,7 @@ Types generated successfully
 - Claim and Report IDs are 24-character SHA-256 fingerprints of canonical structural content under separate namespaces.
 - Stage 6 parses a strict unknown-input envelope, re-parses the Stage 5 Batch Run Spec, re-extracts every Feature from its Stage 4 Trajectory, reconstructs exact Clusters, and recomputes Frequency before generating any Claim.
 - Every Real Evidence ID must exist in the exact Reality Boundary Evidence Ledger snapshot used by the Stage 5 initial World.
-- Every Simulation Event ID carried by a Claim must come from the Stage 4 Trajectories named by that Claim. Pre-run transition Events are revalidated as comparison inputs but are not substituted for trajectory Simulation Events.
+- Scenario Simulation Event IDs come from the named Stage 4 Trajectories. Difference Claims additionally include the revalidated pre-run transition Event and its baseline-World prior Event chain; these remain Simulation Evidence and never substitute for Real Evidence.
 - High-impact third-party Assumptions must remain `required`, `confirmed`, and `confirmed_for_simulation`.
 - Scenario frequency remains integer `numerator / denominator`, and deterministic differences use a signed numerator over the paired fixed-seed sample denominator.
 - Reports regenerate only from validated Claim snapshots. They cannot accept caller-authored conclusions, rewrite Claim wording, change references, hide Assumptions, or use real-world probability labels.
@@ -171,3 +171,56 @@ npm run test:coverage            31 files, 346 tests
 ```
 
 No Stage 7 outcome capture, backtesting, calibration, database, persistence, API, UI, network, LLM, queue, payment, or asynchronous execution was added.
+
+## Difference Claim pre-run causal provenance hardening
+
+This follow-up started from commit `176a684a48ce49608c124ccdda9b132a7b98f5d5`. It changed only the Stage 6 Claim builder, its existing test file, and this existing TDD record.
+
+RED command and observed result before production changes:
+
+```text
+npm run test:v2:claims-reports
+Test Files  1 failed | 1 passed (2)
+Tests       3 failed | 20 passed (23)
+```
+
+The failures proved that canonical Sensitivity and Intervention Difference Claims omitted the validated transition Event ID, its causal Real Evidence, and its prior World Events, allowing a correspondingly re-signed public Claim set to pass Report regeneration.
+
+Final focused GREEN:
+
+```text
+Test Files  2 passed (2)
+Tests       23 passed (23)
+Statements  91.10% (379/416)
+Branches    85.26% (243/285)
+Functions   95.94% (71/74)
+Lines       96.34% (290/301)
+```
+
+New guarantees:
+
+- `buildDifferenceClaim` requires the exact `WorldEventV2` returned by successful transition replay validation.
+- Sensitivity and Intervention Claims use a sorted unique union of both clusters' Real Evidence, Assumptions, Simulation Events, member Trajectories, and Cluster IDs plus the transition's causal Real Evidence, causal Assumptions, Event ID, and prior World Event IDs.
+- Transition Real Evidence and Assumptions must exist in the supplied Reality Boundary, and every prior Event must exist in the baseline World.
+- The transition remains the variant World's unique final addition and must reconstruct that World exactly when replayed from the baseline World.
+- Report construction regenerates these canonical Difference Claims from its Claim Set and rejects re-signed Claims that delete or substitute transition provenance.
+- Real Evidence, Assumptions, Simulation Events, Trajectories, and Clusters remain separately typed, sorted, unique, deterministic provenance arrays.
+- `scenario_frequency` construction and meaning are unchanged.
+
+Follow-up full validation:
+
+```text
+npm run test:v2:trajectory        4 files, 63 tests
+npm run test:v2:analysis          4 files, 47 tests
+npm run test:v2:claims-reports    2 files, 23 tests
+npm test                         31 files, 349 tests
+npm run test:unit                30 files, 346 tests
+npm run test:golden               1 file, 3 tests
+npm run test:coverage            31 files, 349 tests
+```
+
+Both `npm run check` and `npm run check:ci` passed completely, including lint, route type generation, TypeScript, and the Next.js 16.2.6 production build of 99 static pages. Two earlier `check:ci` attempts reached and passed coverage, lint, and type-check but hit intermittent `fonts.gstatic.com` JetBrains Mono download timeouts; direct URL probes returned HTTP 200 and the unchanged command passed on retry.
+
+Global coverage was Statements 90.64% (2926/3228), Branches 79.35% (2045/2577), Functions 94.71% (717/757), and Lines 93.02% (2573/2766).
+
+Stage 7 outcome capture, backtesting, calibration, persistence, database, API, UI, network, LLM, queue, payment, and asynchronous execution remain out of scope.

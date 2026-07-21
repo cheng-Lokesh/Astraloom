@@ -111,7 +111,7 @@ function provenanceForClusters(clusters: Array<TrajectoryClusterV2 | undefined>)
 
 function buildDifferenceClaim({
   claimType, sourceAnalysisId, variantId, clusterId, baselineNumerator, variantNumerator,
-  baseline, variant, boundary,
+  baseline, variant, boundary, transition,
 }: {
   claimType: Exclude<ClaimTypeV2, "scenario_frequency">;
   sourceAnalysisId: string;
@@ -122,8 +122,16 @@ function buildDifferenceClaim({
   baseline: BatchAnalysisV2;
   variant: BatchAnalysisV2;
   boundary: RealityBoundarySnapshotV2;
+  transition: WorldEventV2;
 }) {
-  const provenance = provenanceForClusters([clusterByIdV2(baseline, clusterId), clusterByIdV2(variant, clusterId)]);
+  const clusterProvenance = provenanceForClusters([clusterByIdV2(baseline, clusterId), clusterByIdV2(variant, clusterId)]);
+  const provenance = {
+    realEvidenceIds: sortedUnique([...clusterProvenance.realEvidenceIds, ...transition.causalRealEvidenceIds]) as RealEvidenceIdV2[],
+    simulationEventIds: sortedUnique([...clusterProvenance.simulationEventIds, transition.id, ...transition.priorWorldEventIds]) as WorldEventIdV2[],
+    assumptionIds: sortedUnique([...clusterProvenance.assumptionIds, ...transition.causalAssumptionIds]) as AssumptionIdV2[],
+    trajectoryIds: clusterProvenance.trajectoryIds,
+    clusterIds: clusterProvenance.clusterIds,
+  };
   if (provenance.realEvidenceIds.length === 0) return { ok: false as const, errorCode: "missing_real_provenance" as const };
   if (provenance.simulationEventIds.length === 0) return { ok: false as const, errorCode: "missing_simulation_provenance" as const };
   const numerator = variantNumerator - baselineNumerator;
@@ -220,14 +228,21 @@ function frequencyDifferences(baseline: BatchAnalysisV2, variant: BatchAnalysisV
 function validateTransitionEvent(
   baseline: BatchAnalysisV2,
   variant: BatchAnalysisV2,
+  boundary: RealityBoundarySnapshotV2,
   eventId: string,
   transitionWorldRevision: number,
 ) {
   const baselineWorld = baseline.spec.trajectoryTemplate.initialWorld;
   const variantWorld = variant.spec.trajectoryTemplate.initialWorld;
   const event = variantWorld.worldEvents.find((item) => item.id === eventId);
+  const realEvidenceIds = new Set(boundary.evidenceLedger.items.map((item) => item.id));
+  const assumptionIds = new Set(boundary.assumptionLedger.assumptions.map((item) => item.id));
+  const baselineEventIds = new Set(baselineWorld.worldEvents.map((item) => item.id));
   if (
     !event || baselineWorld.worldEvents.some((item) => item.id === eventId) ||
+    event.causalRealEvidenceIds.some((id) => !realEvidenceIds.has(id)) ||
+    event.causalAssumptionIds.some((id) => !assumptionIds.has(id)) ||
+    event.priorWorldEventIds.some((id) => !baselineEventIds.has(id)) ||
     variantWorld.revision !== transitionWorldRevision ||
     transitionWorldRevision !== baselineWorld.revision + 1 ||
     variantWorld.worldEvents.length !== baselineWorld.worldEvents.length + 1 ||
@@ -284,7 +299,7 @@ function buildSensitivityDifferenceClaimsUnsafeV2(input: unknown) {
   for (const item of parsed.data.variants) {
     const variant = revalidateBatchAnalysisV2(item.analysis, wrapper.boundary);
     if (!variant.ok) return variant;
-    const transition = validateTransitionEvent(baseline.analysis, variant.analysis, item.transitionEventId, item.transitionWorldRevision);
+    const transition = validateTransitionEvent(baseline.analysis, variant.analysis, wrapper.boundary, item.transitionEventId, item.transitionWorldRevision);
     if (!transition.ok) return transition;
     const baselineVariable = baseline.analysis.spec.trajectoryTemplate.initialWorld.externalVariables.find((value) => value.id === item.axis.targetId);
     const variantVariable = variant.analysis.spec.trajectoryTemplate.initialWorld.externalVariables.find((value) => value.id === item.axis.targetId);
@@ -302,6 +317,7 @@ function buildSensitivityDifferenceClaimsUnsafeV2(input: unknown) {
       const built = buildDifferenceClaim({
         claimType: "sensitivity_difference", sourceAnalysisId: parsed.data.sensitivityAnalysisId,
         variantId: item.variantId, ...difference, baseline: baseline.analysis, variant: variant.analysis, boundary: wrapper.boundary,
+        transition: transition.event,
       });
       if (!built.ok) return built;
       claims.push(built.claim);
@@ -321,7 +337,7 @@ function buildInterventionDifferenceClaimsUnsafeV2(input: unknown) {
   for (const item of parsed.data.variants) {
     const variant = revalidateBatchAnalysisV2(item.analysis, wrapper.boundary);
     if (!variant.ok) return variant;
-    const transition = validateTransitionEvent(baseline.analysis, variant.analysis, item.interventionEventId, item.interventionWorldRevision);
+    const transition = validateTransitionEvent(baseline.analysis, variant.analysis, wrapper.boundary, item.interventionEventId, item.interventionWorldRevision);
     if (!transition.ok) return transition;
     if (!same(item.spec, variant.analysis.spec) || !same(item.realEvidenceLedgerAfter, wrapper.boundary.evidenceLedger)) {
       return { ok: false as const, errorCode: "cross_ledger_reference" as const };
@@ -332,6 +348,7 @@ function buildInterventionDifferenceClaimsUnsafeV2(input: unknown) {
       const built = buildDifferenceClaim({
         claimType: "intervention_difference", sourceAnalysisId: parsed.data.interventionComparisonId,
         variantId: item.variantId, ...difference, baseline: baseline.analysis, variant: variant.analysis, boundary: wrapper.boundary,
+        transition: transition.event,
       });
       if (!built.ok) return built;
       claims.push(built.claim);
