@@ -1,6 +1,7 @@
 import { createStableAgentWorldIdFactoryV2 } from "../agent-world/ids";
 import { idsV2, realityBoundaryV2 } from "../agent-world/test-fixtures";
 import { trajectoryPolicyFixtureV2, trajectoryRunSpecFixtureV2 } from "../trajectory/test-fixtures";
+import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "../trajectory/time";
 import { analyzeTrajectoryBatchV2 } from "../trajectory-analysis/batch-runner";
 import { createLocalTrajectoryAnalysisAdapterV2 } from "../trajectory-analysis/local-adapter";
 import { compareSensitivityV2 } from "../trajectory-analysis/sensitivity";
@@ -15,20 +16,36 @@ import { buildClaimsReportV2 } from "../claims-reports/report-builder";
 import type { ClaimV2 } from "../claims-reports/types";
 
 export const OUTCOME_OCCURRED_AT_FIXTURES_V2 = [
-  "2026-08-20T09:00:00.000Z",
-  "2026-08-21T09:00:00.000Z",
-  "2026-08-22T09:00:00.000Z",
-  "2026-08-23T09:00:00.000Z",
-  "2026-08-24T09:00:00.000Z",
+  "2026-07-29T09:00:00.000Z",
+  "2026-07-30T09:00:00.000Z",
+  "2026-07-31T09:00:00.000Z",
+  "2026-08-01T09:00:00.000Z",
+  "2026-08-02T09:00:00.000Z",
 ] as const;
 
 export const OUTCOME_RECORDED_AT_FIXTURES_V2 = [
-  "2026-08-20T10:00:00.000Z",
-  "2026-08-21T10:00:00.000Z",
-  "2026-08-22T10:00:00.000Z",
-  "2026-08-23T10:00:00.000Z",
-  "2026-08-24T10:00:00.000Z",
+  "2026-07-29T10:00:00.000Z",
+  "2026-07-30T10:00:00.000Z",
+  "2026-07-31T10:00:00.000Z",
+  "2026-08-01T10:00:00.000Z",
+  "2026-08-02T10:00:00.000Z",
 ] as const;
+
+export const FORECAST_START_AT_FIXTURES_V2 = [
+  "2026-07-19T10:00:00.000Z",
+  "2026-07-19T10:00:00.000Z",
+  "2026-07-19T10:00:00.000Z",
+  "2026-07-19T10:00:00.000Z",
+  "2026-07-19T10:00:00.000Z",
+] as const;
+
+function forecastWindow(startAt: string, horizonDays = 30) {
+  const parsed = parseTrajectoryInstantV2(startAt);
+  if (!parsed.ok) throw new Error(parsed.errorCode);
+  const horizonEnd = addTrajectoryDaysV2(parsed.value, horizonDays);
+  if (!horizonEnd.ok) throw new Error(horizonEnd.errorCode);
+  return { startAt: parsed.value.isoTimestamp, horizonEnd: horizonEnd.value.isoTimestamp };
+}
 
 function adapter() {
   return createLocalTrajectoryAnalysisAdapterV2({
@@ -60,10 +77,19 @@ export function forecastRealityBoundaryFixtureV2() {
   };
 }
 
-export function stage6SourceFixtureV2() {
+export function stage6SourceFixtureV2({
+  unitIndex = 0,
+  startAt,
+}: {
+  unitIndex?: number;
+  startAt?: string;
+} = {}) {
   const template = trajectoryRunSpecFixtureV2();
+  template.runSpecId = `trajectory_run_spec_v2_stage_7_unit_${unitIndex + 1}`;
+  template.trajectoryId = `trajectory_v2_stage_7_unit_${unitIndex + 1}`;
+  template.startAt = startAt ?? FORECAST_START_AT_FIXTURES_V2[unitIndex] ?? FORECAST_START_AT_FIXTURES_V2[0];
   const spec = {
-    analysisRunSpecId: "analysis_run_spec_v2_stage_7_fixture",
+    analysisRunSpecId: `analysis_run_spec_v2_stage_7_unit_${unitIndex + 1}`,
     seedContextId: template.seedContextId,
     trajectoryTemplate: template,
     trajectorySeeds: [7, 11, 19],
@@ -87,7 +113,7 @@ export function stage6SourceFixtureV2() {
   const builtClaims = buildClaimsV2(claimSet);
   if (!builtClaims.ok) throw new Error(builtClaims.errorCode);
   const reportResult = buildClaimsReportV2({
-    reportSpecId: "claims_report_spec_v2_stage_7_fixture",
+    reportSpecId: `claims_report_spec_v2_stage_7_unit_${unitIndex + 1}`,
     seedContextId: spec.seedContextId,
     claimSet,
     claims: builtClaims.claims,
@@ -168,10 +194,12 @@ export function outcomeRealityBoundaryFixtureV2({
   count = 1,
   seedContextId,
   alternateLedger = false,
+  nonOccurrenceIndices = [],
 }: {
   count?: number;
   seedContextId?: string;
   alternateLedger?: boolean;
+  nonOccurrenceIndices?: number[];
 } = {}) {
   const boundary = structuredClone(forecastRealityBoundaryFixtureV2());
   const seed = seedContextId ?? boundary.seedContextId;
@@ -192,7 +220,9 @@ export function outcomeRealityBoundaryFixtureV2({
   }
   for (let index = 0; index < count; index += 1) {
     const occurredAt = OUTCOME_OCCURRED_AT_FIXTURES_V2[index]!;
-    const recordedAt = OUTCOME_RECORDED_AT_FIXTURES_V2[index]!;
+    const window = forecastWindow(FORECAST_START_AT_FIXTURES_V2[index]!, 30);
+    const didNotOccur = nonOccurrenceIndices.includes(index);
+    const recordedAt = didNotOccur ? window.horizonEnd : OUTCOME_RECORDED_AT_FIXTURES_V2[index]!;
     boundary.evidenceLedger.items.push({
       id: `real_evidence_v2_actualobservation0${index + 1}`,
       seedContextId: seed,
@@ -204,17 +234,17 @@ export function outcomeRealityBoundaryFixtureV2({
       provenance: [{
         sourceRef: `outcome:user-confirmation:${index + 1}`,
         capturedAt: recordedAt,
-        occurredAt,
+        ...(didNotOccur ? {} : { occurredAt }),
       }],
       limitations: ["This is a user-confirmed observation with bounded recall uncertainty."],
       capturedAt: recordedAt,
-      occurredAt,
+      ...(didNotOccur ? {} : { occurredAt }),
       createdAt: recordedAt,
       updatedAt: recordedAt,
     });
   }
   const revision = boundary.revision + count;
-  const updatedAt = OUTCOME_RECORDED_AT_FIXTURES_V2[Math.max(0, count - 1)]!;
+  const updatedAt = boundary.evidenceLedger.items.at(-1)!.capturedAt;
   boundary.revision = revision;
   boundary.updatedAt = updatedAt;
   boundary.evidenceLedger.revision = revision;
@@ -228,28 +258,42 @@ export function outcomeCaptureInputFixtureV2({
   index = 0,
   observed = true,
   boundary = outcomeRealityBoundaryFixtureV2({ count: 1 }),
-  claim = stage6SourceFixtureV2().targetClaim,
+  source = stage6SourceFixtureV2({ unitIndex: index }),
+  evaluatedThrough,
+  observationWindow: suppliedObservationWindow,
 }: {
   index?: number;
   observed?: boolean;
   boundary?: ReturnType<typeof outcomeRealityBoundaryFixtureV2>;
-  claim?: ClaimV2;
+  source?: ReturnType<typeof stage6SourceFixtureV2> | ReturnType<typeof stage6SensitivitySourceFixtureV2>;
+  evaluatedThrough?: string;
+  observationWindow?: { startAt: string; horizonEnd: string };
 } = {}) {
   const evidence = boundary.evidenceLedger.items.find(
     (item) => item.id === `real_evidence_v2_actualobservation0${index + 1}`,
   );
   if (!evidence) throw new Error("Missing outcome evidence fixture.");
+  const runSpec = source.run.kind === "batch"
+    ? source.run.payload.spec.trajectoryTemplate
+    : source.run.payload.baseline.spec.trajectoryTemplate;
+  const observationWindow = suppliedObservationWindow ?? forecastWindow(runSpec.startAt, runSpec.horizonDays);
+  const occurredAt = evidence.occurredAt!;
+  const effectiveEvaluatedThrough = evaluatedThrough ?? (
+    observed ? evidence.capturedAt : observationWindow.horizonEnd
+  );
   return {
     outcomeSpecId: `outcome_spec_v2_stage_7_observation_${index + 1}`,
     seedContextId: boundary.seedContextId,
     realityBoundary: boundary,
     claimReference: {
-      claimId: claim.id,
-      clusterId: claim.clusterIds[0]!,
+      claimId: source.targetClaim.id,
+      clusterId: source.targetClaim.clusterIds[0]!,
     },
     observed: observed ? "occurred" as const : "did_not_occur" as const,
-    occurredAt: evidence.occurredAt!,
-    recordedAt: evidence.capturedAt,
+    ...(observed ? { occurredAt } : {}),
+    evaluatedThrough: effectiveEvaluatedThrough,
+    observationWindow,
+    recordedAt: observed ? evidence.capturedAt : effectiveEvaluatedThrough,
     realEvidenceIds: [evidence.id],
     source: {
       realEvidenceId: evidence.id,

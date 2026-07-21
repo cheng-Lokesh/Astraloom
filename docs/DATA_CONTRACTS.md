@@ -582,14 +582,20 @@ include:
 - `outcomeSpecId`, `seedContextId`, and a content-derived immutable `id`.
 - `status=actual_observation` and `evidenceClass=real_world`.
 - The Stage 6 `claimId` and `clusterId` whose occurrence is being observed.
-- `occurredAt` and `recordedAt`, with occurrence no later than recording.
+- An explicit `observationWindow` with `startAt` and `horizonEnd`, plus
+  `evaluatedThrough` and `recordedAt`.
+- For `observed=occurred`, a required `occurredAt` inside the inclusive
+  forecast window. For `observed=did_not_occur`, `occurredAt` is forbidden and
+  `evaluatedThrough` must be at or after the complete window end.
 - One or more Stage 2 `realEvidenceIds` from a strictly validated Evidence
   Ledger.
 - A primary source whose `sourceKind`, `sourceRef`, verification status, and
   evidence timestamps exactly match the referenced Real Evidence.
 - An explicit uncertainty level, statement, and non-empty limitations.
 - The complete validated Reality Boundary snapshot used at capture time.
-- Outcome engine/schema versions and an integrity signature.
+- Outcome engine/schema versions, an integrity signature, and an
+  `observationUnitSignature` derived from the observation semantics rather than
+  `outcomeSpecId` or Evidence ids.
 
 `world_event_v2_*` ids, Simulation Event sources, unknown fields, unverified or
 disputed primary sources, cross-Seed references, dangling Real Evidence, and
@@ -609,20 +615,28 @@ canonical Claim Set. It binds immutable snapshots and integrity signatures for:
 - The Outcome and its later Reality Boundary snapshot.
 - The forecast and Outcome Reality Boundary revisions plus their shared
   Evidence and Assumption Ledger identities.
+- A forecast evaluation window derived by revalidating the canonical Run Spec
+  and applying the Stage 4 millisecond-safe time utilities.
+- The Outcome observation-unit signature and a forecast-unit signature binding
+  Run, Claim, Cluster, and evaluation window independently of
+  `backtestSpecId`/`outcomeSpecId` aliases.
 
-The later Outcome boundary may append new Real Evidence but must keep the same
-Seed and Ledger identities and preserve every historical forecast Evidence,
-Assumption, and conflict record unchanged. A scenario-frequency Claim may
-receive a binary Brier score. Sensitivity and intervention differences require
-counterfactual evidence and therefore remain excluded from automatic
+The Outcome boundary revision must be strictly greater than the forecast
+revision. It may append new Real Evidence but must keep the same Seed and Ledger
+identities and preserve every historical forecast Evidence, Assumption, and
+conflict record byte-for-byte in canonical order. The primary Outcome Evidence
+must be absent from the forecast snapshot and captured no earlier than the
+forecast lock time. Same-revision changes are invalid. A scenario-frequency
+Claim may receive a binary Brier score. Sensitivity and intervention differences
+require counterfactual evidence and therefore remain excluded from automatic
 calibration; a single observed Outcome must not become a causal conclusion.
 
 ### CalibrationV2
 
 Stage 7 calibration is deterministic and explicitly versioned:
 
-- Method: `binary-brier-score`, version `1`.
-- Minimum eligible unique Outcome sample: `5`.
+- Method: `binary-brier-score`, version `2`.
+- Minimum eligible independent forecast-outcome sample: `5`.
 - Below the minimum, status is `insufficient_data`, `brierScore` is null, and
   the metric label remains `simulation_frequency`.
 - At or above the minimum, the result discloses the mean binary Brier score,
@@ -631,8 +645,10 @@ Stage 7 calibration is deterministic and explicitly versioned:
 - A calibrated result remains a bounded reliability measurement. It must set
   `causalConclusion=false` and `deterministicPrediction=false` and must not
   automatically become a universal real-world probability.
-- Calibration input must use unique Outcomes from one Seed, one Evidence
-  Ledger, one Assumption Ledger, and compatible artifact versions.
+- Calibration input must use unique observation-unit and forecast-unit
+  signatures from one Seed, one Evidence Ledger, one Assumption Ledger, and
+  compatible artifact versions. Aliasing Outcome, Backtest, or Evidence ids
+  cannot increase `sampleCount`; duplicate units are rejected atomically.
 
 ### OutcomeCalibrationRepositoryPortV2
 

@@ -58,6 +58,8 @@ const calibrationSchema = z.object({
   deterministicPrediction: z.literal(false),
   backtestIds: z.array(namespaced("backtest_v2_")).min(1),
   outcomeIds: z.array(namespaced("outcome_v2_")).min(1),
+  observationUnitSignatures: z.array(z.string().regex(/^[a-f0-9]{24}$/)).min(1),
+  forecastUnitSignatures: z.array(z.string().regex(/^[a-f0-9]{24}$/)).min(1),
   realityBoundaryBinding: bindingSchema,
   limitations: z.array(bounded).min(1),
   sourceBacktests: z.array(z.unknown()).min(1),
@@ -87,6 +89,10 @@ function calibrateUnsafeV2(input: unknown) {
   if (new Set(backtests.map((item) => item.id)).size !== backtests.length ||
       new Set(backtests.map((item) => item.outcomeId)).size !== backtests.length) {
     return { ok: false as const, errorCode: "duplicate_id" as const };
+  }
+  if (new Set(backtests.map((item) => item.observationUnitSignature)).size !== backtests.length ||
+      new Set(backtests.map((item) => item.forecastUnitSignature)).size !== backtests.length) {
+    return { ok: false as const, errorCode: "duplicate_calibration_unit" as const };
   }
   const first = backtests[0]!;
   if (backtests.some((item) => item.seedContextId !== first.seedContextId)) {
@@ -124,7 +130,7 @@ function calibrateUnsafeV2(input: unknown) {
     method: {
       name: CALIBRATION_METHOD_NAME_V2,
       version: CALIBRATION_METHOD_VERSION_V2,
-      description: "Mean binary Brier score over unique, calibration-eligible actual Outcomes and their pre-recorded simulation frequencies.",
+      description: "Mean binary Brier score over independent observation-unit and pre-locked forecast-unit signatures.",
     },
     brierScore,
     meanSimulationFrequency: mean,
@@ -133,6 +139,8 @@ function calibrateUnsafeV2(input: unknown) {
     deterministicPrediction: false,
     backtestIds: backtests.map((item) => item.id),
     outcomeIds: backtests.map((item) => item.outcomeId),
+    observationUnitSignatures: backtests.map((item) => item.observationUnitSignature),
+    forecastUnitSignatures: backtests.map((item) => item.forecastUnitSignature),
     realityBoundaryBinding: {
       evidenceLedgerId: first.realityBoundaryBinding.evidenceLedgerId,
       assumptionLedgerId: first.realityBoundaryBinding.assumptionLedgerId,

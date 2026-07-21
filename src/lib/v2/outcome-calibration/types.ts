@@ -8,12 +8,12 @@ import type {
 
 export const OUTCOME_CALIBRATION_ENGINE_VERSION_V2 =
   "outcome-calibration-engine-v2-stage-7" as const;
-export const OUTCOME_SCHEMA_VERSION_V2 = "outcome-v2.0" as const;
-export const BACKTEST_SCHEMA_VERSION_V2 = "backtest-v2.0" as const;
-export const CALIBRATION_SCHEMA_VERSION_V2 = "calibration-v2.0" as const;
+export const OUTCOME_SCHEMA_VERSION_V2 = "outcome-v2.1" as const;
+export const BACKTEST_SCHEMA_VERSION_V2 = "backtest-v2.1" as const;
+export const CALIBRATION_SCHEMA_VERSION_V2 = "calibration-v2.1" as const;
 export const PERSISTENCE_SCHEMA_VERSION_V2 = "outcome-calibration-persistence-v2.0" as const;
 export const CALIBRATION_METHOD_NAME_V2 = "binary-brier-score" as const;
-export const CALIBRATION_METHOD_VERSION_V2 = "1" as const;
+export const CALIBRATION_METHOD_VERSION_V2 = "2" as const;
 export const MIN_CALIBRATION_SAMPLE_SIZE_V2 = 5 as const;
 
 export type OutcomeIdV2 = `outcome_v2_${string}`;
@@ -48,7 +48,12 @@ export type OutcomeV2 = {
     clusterId: ClaimV2["clusterIds"][number];
   };
   observed: "occurred" | "did_not_occur";
-  occurredAt: string;
+  occurredAt?: string;
+  evaluatedThrough: string;
+  observationWindow: {
+    startAt: string;
+    horizonEnd: string;
+  };
   recordedAt: string;
   realEvidenceIds: RealEvidenceIdV2[];
   source: OutcomeSourceV2;
@@ -61,6 +66,7 @@ export type OutcomeV2 = {
     realityBoundaryRevision: number;
   };
   outcomeIntegritySignature: string;
+  observationUnitSignature: string;
 };
 
 export type Stage7RunSnapshotV2 = {
@@ -115,6 +121,12 @@ export type BacktestV2 = {
     evidenceLedgerId: string;
     assumptionLedgerId: string;
   };
+  evaluationWindow: {
+    startAt: string;
+    horizonEnd: string;
+  };
+  observationUnitSignature: string;
+  forecastUnitSignature: string;
   versions: {
     outcomeCalibrationEngineVersion: typeof OUTCOME_CALIBRATION_ENGINE_VERSION_V2;
     backtestSchemaVersion: typeof BACKTEST_SCHEMA_VERSION_V2;
@@ -166,6 +178,8 @@ export type CalibrationV2 = {
   deterministicPrediction: false;
   backtestIds: BacktestV2["id"][];
   outcomeIds: OutcomeV2["id"][];
+  observationUnitSignatures: string[];
+  forecastUnitSignatures: string[];
   realityBoundaryBinding: {
     evidenceLedgerId: string;
     assumptionLedgerId: string;
@@ -221,4 +235,5 @@ export type OutcomeCalibrationErrorCodeV2 =
   | "calibration_tampering"
   | "run_mismatch"
   | "unknown_claim_reference"
-  | "duplicate_id";
+  | "duplicate_id"
+  | "duplicate_calibration_unit";

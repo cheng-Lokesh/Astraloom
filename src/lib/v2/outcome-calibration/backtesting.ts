@@ -6,6 +6,8 @@ import { validateClaimsReportV2 } from "../claims-reports/report-builder";
 import type { ClaimV2, ClaimsReportV2 } from "../claims-reports/types";
 import { parseRealityBoundarySnapshotV2, parseValidatedClaimV2 } from "../claims-reports/validation";
 import type { BatchAnalysisV2 } from "../trajectory-analysis/types";
+import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "../trajectory/time";
+import { parseTrajectoryRunSpecV2 } from "../trajectory/validation";
 import { backtestIdV2, canonicalStage7JsonV2, stage7FingerprintV2 } from "./ids";
 import { parseValidatedOutcomeV2 } from "./outcome-capture";
 import type { BacktestV2, Stage7ClaimSetSnapshotV2, Stage7RunSnapshotV2 } from "./types";
@@ -70,6 +72,10 @@ const boundaryBindingSchema = z.object({
   evidenceLedgerId: bounded,
   assumptionLedgerId: bounded,
 }).strict();
+const evaluationWindowSchema = z.object({
+  startAt: bounded,
+  horizonEnd: bounded,
+}).strict();
 const versionsSchema = z.object({
   outcomeCalibrationEngineVersion: z.literal(OUTCOME_CALIBRATION_ENGINE_VERSION_V2),
   backtestSchemaVersion: z.literal(BACKTEST_SCHEMA_VERSION_V2),
@@ -109,6 +115,9 @@ const backtestSchema = z.object({
   sampleBinding: sampleBindingSchema,
   runBinding: runBindingSchema,
   realityBoundaryBinding: boundaryBindingSchema,
+  evaluationWindow: evaluationWindowSchema,
+  observationUnitSignature: z.string().regex(/^[a-f0-9]{24}$/),
+  forecastUnitSignature: z.string().regex(/^[a-f0-9]{24}$/),
   versions: versionsSchema,
   limitations: z.array(bounded).min(1),
   sourceSnapshots: sourceSnapshotsSchema,
@@ -137,7 +146,7 @@ function canonicalClaims(input: unknown[]) {
 
 function preservesHistoricalBoundary(forecast: Stage7ClaimSetSnapshotV2["realityBoundary"], outcome: Stage7ClaimSetSnapshotV2["realityBoundary"]) {
   if (
-    outcome.revision < forecast.revision ||
+    outcome.revision <= forecast.revision ||
     outcome.createdAt !== forecast.createdAt ||
     outcome.evidenceLedger.id !== forecast.evidenceLedger.id ||
     outcome.assumptionLedger.id !== forecast.assumptionLedger.id ||
@@ -145,12 +154,12 @@ function preservesHistoricalBoundary(forecast: Stage7ClaimSetSnapshotV2["reality
     outcome.assumptionLedger.createdAt !== forecast.assumptionLedger.createdAt ||
     outcome.assumptionLedger.assumptions.length !== forecast.assumptionLedger.assumptions.length
   ) return false;
-  const outcomeEvidence = new Map(outcome.evidenceLedger.items.map((item) => [item.id, item]));
-  const outcomeAssumptions = new Map(outcome.assumptionLedger.assumptions.map((item) => [item.id, item]));
-  const outcomeConflicts = new Map(outcome.evidenceLedger.conflicts.map((item) => [item.id, item]));
-  return forecast.evidenceLedger.items.every((item) => canonicalStage7JsonV2(outcomeEvidence.get(item.id)) === canonicalStage7JsonV2(item)) &&
-    forecast.assumptionLedger.assumptions.every((item) => canonicalStage7JsonV2(outcomeAssumptions.get(item.id)) === canonicalStage7JsonV2(item)) &&
-    forecast.evidenceLedger.conflicts.every((item) => canonicalStage7JsonV2(outcomeConflicts.get(item.id)) === canonicalStage7JsonV2(item));
+  return canonicalStage7JsonV2(outcome.evidenceLedger.items.slice(0, forecast.evidenceLedger.items.length)) ===
+      canonicalStage7JsonV2(forecast.evidenceLedger.items) &&
+    canonicalStage7JsonV2(outcome.assumptionLedger.assumptions) ===
+      canonicalStage7JsonV2(forecast.assumptionLedger.assumptions) &&
+    canonicalStage7JsonV2(outcome.evidenceLedger.conflicts.slice(0, forecast.evidenceLedger.conflicts.length)) ===
+      canonicalStage7JsonV2(forecast.evidenceLedger.conflicts);
 }
 
 function analysesForRun(run: Stage7RunSnapshotV2): BatchAnalysisV2[] {
@@ -178,6 +187,16 @@ function buildRunBinding(run: Stage7RunSnapshotV2, claim: ClaimV2): BacktestV2["
     policyVersions: sortedUnique(analyses.map((analysis) => analysis.spec.policyVersion)),
     runIntegritySignature,
   };
+}
+
+function deriveEvaluationWindow(run: Stage7RunSnapshotV2) {
+  const analyses = analysesForRun(run);
+  const parsed = parseTrajectoryRunSpecV2(analyses[0]?.spec.trajectoryTemplate);
+  if (!parsed.ok) return null;
+  const start = parseTrajectoryInstantV2(parsed.value.startAt);
+  if (!start.ok) return null;
+  const end = addTrajectoryDaysV2(start.value, parsed.value.horizonDays);
+  return end.ok ? { startAt: start.value.isoTimestamp, horizonEnd: end.value.isoTimestamp } : null;
 }
 
 function backtestUnsafeV2(input: unknown) {
@@ -230,6 +249,21 @@ function backtestUnsafeV2(input: unknown) {
   const run = structuredClone(parsed.data.run) as Stage7RunSnapshotV2;
   const runBinding = buildRunBinding(run, claim);
   if (!runBinding) return { ok: false as const, errorCode: "run_mismatch" as const };
+  const evaluationWindow = deriveEvaluationWindow(run);
+  if (!evaluationWindow) return { ok: false as const, errorCode: "run_mismatch" as const };
+  if (canonicalStage7JsonV2(evaluationWindow) !== canonicalStage7JsonV2(outcomeResult.outcome.observationWindow)) {
+    return { ok: false as const, errorCode: "invalid_observation_time" as const };
+  }
+  const forecastStart = parseTrajectoryInstantV2(evaluationWindow.startAt);
+  const primaryEvidence = outcomeBoundary.evidenceLedger.items.find(
+    (item) => item.id === outcomeResult.outcome.source.realEvidenceId,
+  );
+  const captured = parseTrajectoryInstantV2(primaryEvidence?.capturedAt);
+  if (!forecastStart.ok || !captured.ok ||
+      forecast.evidenceLedger.items.some((item) => item.id === primaryEvidence?.id) ||
+      captured.value.epochMilliseconds < forecastStart.value.epochMilliseconds) {
+    return { ok: false as const, errorCode: "invalid_observation_time" as const };
+  }
   const observedValue = outcomeResult.outcome.observed === "occurred" ? 1 : 0;
   const calibrationEligible = claim.claimType === "scenario_frequency";
   const predictedValue = calibrationEligible ? claim.numerator / claim.denominator : null;
@@ -256,6 +290,13 @@ function backtestUnsafeV2(input: unknown) {
     claimSetIntegritySignature: claimsFingerprintV2(claimSet),
     runIntegritySignature: runBinding.runIntegritySignature,
   };
+  const forecastUnitSignature = stage7FingerprintV2({
+    seedContextId: forecast.seedContextId,
+    runIntegritySignature: runBinding.runIntegritySignature,
+    claimId: claim.id,
+    clusterId: outcomeResult.outcome.claimReference.clusterId,
+    evaluationWindow,
+  });
   const unsigned: Omit<BacktestV2, "id" | "backtestIntegritySignature"> = {
     backtestSpecId: parsed.data.backtestSpecId as BacktestV2["backtestSpecId"],
     seedContextId: forecast.seedContextId,
@@ -281,6 +322,9 @@ function backtestUnsafeV2(input: unknown) {
       evidenceLedgerId: forecast.evidenceLedger.id,
       assumptionLedgerId: forecast.assumptionLedger.id,
     },
+    evaluationWindow,
+    observationUnitSignature: outcomeResult.outcome.observationUnitSignature,
+    forecastUnitSignature,
     versions: {
       outcomeCalibrationEngineVersion: OUTCOME_CALIBRATION_ENGINE_VERSION_V2,
       backtestSchemaVersion: BACKTEST_SCHEMA_VERSION_V2,

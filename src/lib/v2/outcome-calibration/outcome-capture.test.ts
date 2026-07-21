@@ -27,6 +27,8 @@ describe("Stage 7 Outcome capture", () => {
         evidenceClass: "real_world",
         observed: "occurred",
         occurredAt: input.occurredAt,
+        evaluatedThrough: input.evaluatedThrough,
+        observationWindow: input.observationWindow,
         recordedAt: input.recordedAt,
         realEvidenceIds: input.realEvidenceIds,
         versions: {
@@ -81,6 +83,55 @@ describe("Stage 7 Outcome capture", () => {
     expect(captureOutcomeV2(mismatchedSource)).toMatchObject({ ok: false, errorCode: "invalid_outcome_source" });
   });
 
+  it("rejects an occurred Outcome outside its forecast window without millisecond loss", () => {
+    const input = outcomeCaptureInputFixtureV2();
+    const evidence = input.realityBoundary.evidenceLedger.items.at(-1)!;
+    evidence.occurredAt = "2026-08-18T10:00:00.001Z";
+    evidence.capturedAt = "2026-08-18T10:00:00.002Z";
+    evidence.createdAt = evidence.capturedAt;
+    evidence.updatedAt = evidence.capturedAt;
+    evidence.provenance[0]!.occurredAt = evidence.occurredAt;
+    evidence.provenance[0]!.capturedAt = evidence.capturedAt;
+    input.realityBoundary.updatedAt = evidence.capturedAt;
+    input.realityBoundary.evidenceLedger.updatedAt = evidence.capturedAt;
+    input.realityBoundary.assumptionLedger.updatedAt = evidence.capturedAt;
+    input.occurredAt = evidence.occurredAt;
+    input.evaluatedThrough = evidence.capturedAt;
+    input.recordedAt = evidence.capturedAt;
+
+    expect(captureOutcomeV2(input)).toMatchObject({
+      ok: false,
+      errorCode: "invalid_observation_time",
+    });
+  });
+
+  it("requires did_not_occur to omit occurredAt and wait until the complete window has ended", () => {
+    const boundary = outcomeRealityBoundaryFixtureV2({ count: 1, nonOccurrenceIndices: [0] });
+    const valid = outcomeCaptureInputFixtureV2({ observed: false, boundary });
+    const conflict = { ...valid, occurredAt: "2026-07-29T09:00:00.000Z" };
+    const incomplete = {
+      ...valid,
+      evaluatedThrough: "2026-08-18T09:59:59.999Z",
+      recordedAt: "2026-08-18T09:59:59.999Z",
+    };
+
+    expect(captureOutcomeV2(conflict)).toMatchObject({ ok: false, errorCode: "invalid_outcome_input" });
+    expect(captureOutcomeV2(incomplete)).toMatchObject({
+      ok: false,
+      errorCode: "invalid_observation_time",
+    });
+    expect(captureOutcomeV2(valid)).toMatchObject({
+      ok: true,
+      outcome: {
+        observed: "did_not_occur",
+        evaluatedThrough: valid.observationWindow.horizonEnd,
+      },
+    });
+    const captured = captureOutcomeV2(valid);
+    if (!captured.ok) throw new Error(captured.errorCode);
+    expect(captured.outcome).not.toHaveProperty("occurredAt");
+  });
+
   it("rejects a Simulation Event masquerading as an Outcome source", () => {
     const input = outcomeCaptureInputFixtureV2();
     const simulationSource = {
@@ -123,7 +174,7 @@ describe("Stage 7 Outcome capture", () => {
   it("accepts a later same-ledger Reality Boundary while keeping the forecast ledger untouched", () => {
     const source = stage6SourceFixtureV2();
     const boundary = outcomeRealityBoundaryFixtureV2({ count: 2 });
-    const input = outcomeCaptureInputFixtureV2({ index: 1, boundary, claim: source.targetClaim });
+    const input = outcomeCaptureInputFixtureV2({ index: 1, boundary, source });
     const forecastBefore = structuredClone(source.claimSet.realityBoundary);
 
     expect(captureOutcomeV2(input)).toMatchObject({ ok: true });

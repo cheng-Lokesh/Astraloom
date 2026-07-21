@@ -96,6 +96,46 @@ Lines      94.09% (303/322)
 The same implementation also passed `npm run type-check` after Next.js route
 type generation and TypeScript compilation.
 
+## Stage 7 repair RED/GREEN evidence
+
+The repair started from accepted commit
+`eab22da1d9964b4214e946013f6c3fba6d0453a6`. Tests and fixtures were changed
+before any Stage 7 production implementation. The first repair run was:
+
+```text
+npm run test:v2:outcome-calibration
+Exit code: 1
+Test Files  3 failed (3)
+Tests       26 failed | 2 passed (28)
+```
+
+This executable RED showed that the old strict public schema rejected the new
+window fields and could not represent `did_not_occur` without `occurredAt`.
+The attack cases also required strict later revisions and independent
+observation/forecast unit signatures that the old Backtest and Calibration did
+not expose.
+
+The final repair GREEN is:
+
+```text
+npm run test:v2:outcome-calibration
+Exit code: 0
+Test Files  3 passed (3)
+Tests       29 passed (29)
+Statements 92.05% (394/428)
+Branches   87.34% (283/324)
+Functions  98.88% (89/90)
+Lines      94.44% (340/360)
+```
+
+The repair cases cover an occurred Outcome one millisecond outside the window,
+an incomplete-window `did_not_occur`, an `occurredAt` semantic conflict, a
+same-revision boundary increment, historical boundary rewriting, primary
+Evidence already present at forecast time, pre-lock Evidence capture, the same
+Evidence under a new id, and distinct observations aliased to one forecast
+target. The calibrated five-sample fixture now uses five separate, pre-locked
+Run/Claim/Cluster forecast units rather than five Outcomes for one Claim/Run.
+
 ## Coverage and known gaps
 
 The independent Stage 7 command enforces 90% statements, 85% branches, 95%
@@ -114,11 +154,11 @@ All requested commands passed on the final Stage 7 implementation:
 | `npm run test:v2:trajectory` | PASS: 63 tests |
 | `npm run test:v2:analysis` | PASS: 47 tests and Stage 5 coverage gates |
 | `npm run test:v2:claims-reports` | PASS: 23 tests and Stage 6 coverage gates |
-| `npm run test:v2:outcome-calibration` | PASS: 23 tests and Stage 7 coverage gates |
-| `npm test` | PASS: 372 tests in 34 files |
-| `npm run test:unit` | PASS: 369 tests in 33 files |
+| `npm run test:v2:outcome-calibration` | PASS: 29 tests and Stage 7 coverage gates |
+| `npm test` | PASS: 378 tests in 34 files |
+| `npm run test:unit` | PASS: 375 tests in 33 files |
 | `npm run test:golden` | PASS: 3 tests covering exactly eight V1 Golden Cases |
-| `npm run test:coverage` | PASS: statements 90.79%, branches 80.18%, functions 94.90%, lines 93.13% |
+| `npm run test:coverage` | PASS: statements 90.83%, branches 80.28%, functions 95.15%, lines 93.18% |
 | `npm run check` | PASS: full tests, lint, type-check, and production build |
 | `npm run check:ci` | PASS: coverage, lint, type-check, and production build |
 | `git diff --check` | PASS |

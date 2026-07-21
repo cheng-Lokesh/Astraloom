@@ -21,19 +21,23 @@ import {
 function capturedOutcome({
   index = 0,
   observed = true,
-  boundary = outcomeRealityBoundaryFixtureV2({ count: Math.max(1, index + 1) }),
+  source = stage6SourceFixtureV2({ unitIndex: index }),
+  boundary = outcomeRealityBoundaryFixtureV2({
+    count: Math.max(1, index + 1),
+    nonOccurrenceIndices: observed ? [] : [index],
+  }),
 }: {
   index?: number;
   observed?: boolean;
+  source?: ReturnType<typeof stage6SourceFixtureV2>;
   boundary?: ReturnType<typeof outcomeRealityBoundaryFixtureV2>;
 } = {}) {
-  const result = captureOutcomeV2(outcomeCaptureInputFixtureV2({ index, observed, boundary }));
+  const result = captureOutcomeV2(outcomeCaptureInputFixtureV2({ index, observed, boundary, source }));
   if (!result.ok) throw new Error(result.errorCode);
   return result.outcome;
 }
 
-function backtestInput(outcome = capturedOutcome()) {
-  const source = stage6SourceFixtureV2();
+function backtestInput(outcome = capturedOutcome(), source = stage6SourceFixtureV2()) {
   return {
     backtestSpecId: `backtest_spec_v2_${outcome.outcomeSpecId.slice("outcome_spec_v2_".length)}`,
     run: source.run,
@@ -45,8 +49,8 @@ function backtestInput(outcome = capturedOutcome()) {
   };
 }
 
-function builtBacktest(outcome = capturedOutcome()) {
-  const result = backtestClaimsReportV2(backtestInput(outcome));
+function builtBacktest(outcome = capturedOutcome(), source = stage6SourceFixtureV2()) {
+  const result = backtestClaimsReportV2(backtestInput(outcome, source));
   if (!result.ok) throw new Error(result.errorCode);
   return result.backtest;
 }
@@ -103,6 +107,12 @@ describe("Stage 7 Backtesting", () => {
           evidenceLedgerId: input.claimSet.realityBoundary.evidenceLedger.id,
           assumptionLedgerId: input.claimSet.realityBoundary.assumptionLedger.id,
         },
+        evaluationWindow: {
+          startAt: input.claimSet.payload.spec.trajectoryTemplate.startAt,
+          horizonEnd: "2026-08-18T10:00:00.000Z",
+        },
+        observationUnitSignature: expect.stringMatching(/^[a-f0-9]{24}$/),
+        forecastUnitSignature: expect.stringMatching(/^[a-f0-9]{24}$/),
         versions: { backtestSchemaVersion: BACKTEST_SCHEMA_VERSION_V2 },
       },
     });
@@ -165,6 +175,76 @@ describe("Stage 7 Backtesting", () => {
     expect(rewriteResult).not.toHaveProperty("backtest");
   });
 
+  it("rejects a same-revision boundary increment and evidence captured before the forecast was locked", () => {
+    const sameRevisionBoundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
+    sameRevisionBoundary.revision = forecastRealityRevision();
+    sameRevisionBoundary.evidenceLedger.revision = forecastRealityRevision();
+    sameRevisionBoundary.assumptionLedger.revision = forecastRealityRevision();
+    const sameRevisionOutcome = capturedOutcome({ boundary: sameRevisionBoundary });
+
+    const source = stage6SourceFixtureV2();
+    const earlyBoundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
+    const evidence = earlyBoundary.evidenceLedger.items.at(-1)!;
+    evidence.occurredAt = "2026-07-10T09:00:00.000Z";
+    evidence.capturedAt = "2026-07-19T09:59:59.999Z";
+    evidence.createdAt = evidence.capturedAt;
+    evidence.updatedAt = evidence.capturedAt;
+    evidence.provenance[0]!.capturedAt = evidence.capturedAt;
+    evidence.provenance[0]!.occurredAt = evidence.occurredAt;
+    earlyBoundary.updatedAt = evidence.capturedAt;
+    earlyBoundary.evidenceLedger.updatedAt = evidence.capturedAt;
+    earlyBoundary.assumptionLedger.updatedAt = evidence.capturedAt;
+    const earlyInput = outcomeCaptureInputFixtureV2({
+      boundary: earlyBoundary,
+      source,
+      observationWindow: {
+        startAt: "2026-07-01T10:00:00.000Z",
+        horizonEnd: "2026-07-18T10:00:00.000Z",
+      },
+    });
+    earlyInput.occurredAt = evidence.occurredAt;
+    earlyInput.recordedAt = evidence.capturedAt;
+    earlyInput.evaluatedThrough = evidence.capturedAt;
+    const earlyOutcome = captureOutcomeV2(earlyInput);
+    if (!earlyOutcome.ok) throw new Error(earlyOutcome.errorCode);
+
+    expect(backtestClaimsReportV2(backtestInput(sameRevisionOutcome))).toMatchObject({
+      ok: false,
+      errorCode: "cross_ledger_reference",
+    });
+    expect(backtestClaimsReportV2(backtestInput(earlyOutcome.outcome, source))).toMatchObject({
+      ok: false,
+      errorCode: "invalid_observation_time",
+    });
+  });
+
+  it("rejects primary Outcome Evidence that was already present in the forecast snapshot", () => {
+    const source = stage6SourceFixtureV2();
+    const outcomeBoundary = outcomeRealityBoundaryFixtureV2({ count: 1, nonOccurrenceIndices: [0] });
+    const preexistingEvidence = outcomeBoundary.evidenceLedger.items[0]!;
+    const input = outcomeCaptureInputFixtureV2({ observed: false, boundary: outcomeBoundary, source });
+    input.observationWindow = {
+      startAt: "2026-07-01T10:00:00.000Z",
+      horizonEnd: "2026-07-18T10:00:00.000Z",
+    };
+    input.evaluatedThrough = preexistingEvidence.capturedAt;
+    input.recordedAt = preexistingEvidence.capturedAt;
+    input.realEvidenceIds = [preexistingEvidence.id];
+    input.source = {
+      realEvidenceId: preexistingEvidence.id,
+      sourceKind: preexistingEvidence.sourceKind,
+      sourceRef: preexistingEvidence.provenance[0]!.sourceRef,
+      verificationStatus: preexistingEvidence.verificationStatus,
+    };
+    const captured = captureOutcomeV2(input);
+    if (!captured.ok) throw new Error(captured.errorCode);
+
+    expect(backtestClaimsReportV2(backtestInput(captured.outcome, source))).toMatchObject({
+      ok: false,
+      errorCode: "invalid_observation_time",
+    });
+  });
+
   it("rejects an independently valid Outcome boundary that rewrites the historical boundary creation time", () => {
     const boundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
     boundary.createdAt = "2026-07-19T10:00:00.001Z";
@@ -191,7 +271,7 @@ describe("Stage 7 Backtesting", () => {
     const boundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
     const captured = captureOutcomeV2(outcomeCaptureInputFixtureV2({
       boundary,
-      claim: source.targetClaim,
+      source,
     }));
     if (!captured.ok) throw new Error(captured.errorCode);
     const tested = backtestClaimsReportV2({
@@ -203,6 +283,7 @@ describe("Stage 7 Backtesting", () => {
       outcome: captured.outcome,
       outcomeRealityBoundary: boundary,
     });
+    if (!tested.ok) throw new Error(tested.errorCode);
 
     expect(tested).toMatchObject({
       ok: true,
@@ -217,7 +298,6 @@ describe("Stage 7 Backtesting", () => {
         },
       },
     });
-    if (!tested.ok) throw new Error(tested.errorCode);
     const calibrated = calibrateBacktestsV2(calibrationInput([tested.backtest]));
     expect(calibrated).toMatchObject({
       ok: true,
@@ -261,11 +341,15 @@ describe("Stage 7 Calibration", () => {
   });
 
   it("deterministically computes a disclosed Brier calibration from enough unique actual Outcomes without causal or certainty escalation", () => {
-    const boundary = outcomeRealityBoundaryFixtureV2({ count: 5 });
     const observations = [true, true, true, false, false];
-    const backtests = observations.map((observed, index) =>
-      builtBacktest(capturedOutcome({ index, observed, boundary })),
-    );
+    const backtests = observations.map((observed, index) => {
+      const source = stage6SourceFixtureV2({ unitIndex: index });
+      const boundary = outcomeRealityBoundaryFixtureV2({
+        count: index + 1,
+        nonOccurrenceIndices: observed ? [] : [index],
+      });
+      return builtBacktest(capturedOutcome({ index, observed, boundary, source }), source);
+    });
     const input = calibrationInput(backtests);
     const result = calibrateBacktestsV2(input);
     const shuffled = calibrateBacktestsV2(calibrationInput([...backtests].reverse()));
@@ -296,6 +380,83 @@ describe("Stage 7 Calibration", () => {
       calibration: result.calibration,
     });
   }, 15_000);
+
+  it("rejects aliases for the same observation or the same pre-locked forecast unit", () => {
+    const source = stage6SourceFixtureV2();
+    const boundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
+    const firstOutcome = capturedOutcome({ boundary, source });
+    const evidenceAliasBoundary = structuredClone(boundary);
+    const evidenceAlias = structuredClone(evidenceAliasBoundary.evidenceLedger.items.at(-1)!);
+    evidenceAlias.id = "real_evidence_v2_actualobservationalias";
+    evidenceAliasBoundary.evidenceLedger.items.push(evidenceAlias);
+    evidenceAliasBoundary.revision += 1;
+    evidenceAliasBoundary.evidenceLedger.revision += 1;
+    evidenceAliasBoundary.assumptionLedger.revision += 1;
+    const aliasInput = outcomeCaptureInputFixtureV2({ boundary: evidenceAliasBoundary, source });
+    aliasInput.outcomeSpecId = "outcome_spec_v2_stage_7_observation_alias";
+    aliasInput.realEvidenceIds = [evidenceAlias.id];
+    aliasInput.source.realEvidenceId = evidenceAlias.id;
+    const aliasResult = captureOutcomeV2(aliasInput);
+    if (!aliasResult.ok) throw new Error(aliasResult.errorCode);
+    const first = builtBacktest(firstOutcome, source);
+    const alias = builtBacktest(aliasResult.outcome, source);
+
+    expect(alias.observationUnitSignature).toBe(first.observationUnitSignature);
+    expect(alias.forecastUnitSignature).toBe(first.forecastUnitSignature);
+    expect(calibrateBacktestsV2(calibrationInput([first, alias]))).toMatchObject({
+      ok: false,
+      errorCode: "duplicate_calibration_unit",
+    });
+  });
+
+  it("rejects different observations aliased onto the same forecast target", () => {
+    const source = stage6SourceFixtureV2();
+    const firstBoundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
+    const secondBoundary = structuredClone(firstBoundary);
+    const secondEvidence = structuredClone(secondBoundary.evidenceLedger.items.at(-1)!);
+    secondEvidence.id = "real_evidence_v2_distinctobservation";
+    secondEvidence.statement = "A distinct later real-world observation.";
+    secondEvidence.claimKey = "actual.outcome.distinct";
+    secondEvidence.occurredAt = "2026-07-30T09:00:00.000Z";
+    secondEvidence.capturedAt = "2026-07-30T10:00:00.000Z";
+    secondEvidence.createdAt = secondEvidence.capturedAt;
+    secondEvidence.updatedAt = secondEvidence.capturedAt;
+    secondEvidence.provenance[0] = {
+      sourceRef: "outcome:user-confirmation:distinct",
+      capturedAt: secondEvidence.capturedAt,
+      occurredAt: secondEvidence.occurredAt,
+    };
+    secondBoundary.evidenceLedger.items.push(secondEvidence);
+    secondBoundary.revision += 1;
+    secondBoundary.updatedAt = secondEvidence.capturedAt;
+    secondBoundary.evidenceLedger.revision += 1;
+    secondBoundary.evidenceLedger.updatedAt = secondEvidence.capturedAt;
+    secondBoundary.assumptionLedger.revision += 1;
+    secondBoundary.assumptionLedger.updatedAt = secondEvidence.capturedAt;
+    const secondInput = outcomeCaptureInputFixtureV2({ boundary: secondBoundary, source });
+    secondInput.outcomeSpecId = "outcome_spec_v2_stage_7_distinct_observation";
+    secondInput.occurredAt = secondEvidence.occurredAt;
+    secondInput.evaluatedThrough = secondEvidence.capturedAt;
+    secondInput.recordedAt = secondEvidence.capturedAt;
+    secondInput.realEvidenceIds = [secondEvidence.id];
+    secondInput.source = {
+      realEvidenceId: secondEvidence.id,
+      sourceKind: secondEvidence.sourceKind,
+      sourceRef: secondEvidence.provenance[0]!.sourceRef,
+      verificationStatus: secondEvidence.verificationStatus,
+    };
+    const secondOutcome = captureOutcomeV2(secondInput);
+    if (!secondOutcome.ok) throw new Error(secondOutcome.errorCode);
+    const first = builtBacktest(capturedOutcome({ boundary: firstBoundary, source }), source);
+    const second = builtBacktest(secondOutcome.outcome, source);
+
+    expect(second.observationUnitSignature).not.toBe(first.observationUnitSignature);
+    expect(second.forecastUnitSignature).toBe(first.forecastUnitSignature);
+    expect(calibrateBacktestsV2(calibrationInput([first, second]))).toMatchObject({
+      ok: false,
+      errorCode: "duplicate_calibration_unit",
+    });
+  });
 
   it("rejects extra fields, duplicate Outcomes, version drift, and mixed Seed or Ledger cohorts without partial Calibration", () => {
     const backtest = builtBacktest();
@@ -329,3 +490,7 @@ describe("Stage 7 Calibration", () => {
     });
   });
 });
+
+function forecastRealityRevision() {
+  return stage6SourceFixtureV2().claimSet.realityBoundary.revision;
+}
