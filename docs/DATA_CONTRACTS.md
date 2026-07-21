@@ -567,6 +567,95 @@ Local feedback saves may generate a `calibration_snapshot` and a local
 `CalibrationProfile`, but the feedback log remains separate from EventLogs and
 Claims.
 
+## Astraloom V2 Stage 7 Local Outcome And Calibration Contracts
+
+Stage 7 adds local deterministic artifacts after Stage 6 without changing V1
+or the Stage 2-6 production contracts:
+
+`Stage 2 Real Evidence -> Outcome -> Stage 6 canonical Backtest -> Calibration -> append-only persistence version`
+
+### OutcomeV2
+
+An `OutcomeV2` is an actual observed result, not a Simulation Event. It must
+include:
+
+- `outcomeSpecId`, `seedContextId`, and a content-derived immutable `id`.
+- `status=actual_observation` and `evidenceClass=real_world`.
+- The Stage 6 `claimId` and `clusterId` whose occurrence is being observed.
+- `occurredAt` and `recordedAt`, with occurrence no later than recording.
+- One or more Stage 2 `realEvidenceIds` from a strictly validated Evidence
+  Ledger.
+- A primary source whose `sourceKind`, `sourceRef`, verification status, and
+  evidence timestamps exactly match the referenced Real Evidence.
+- An explicit uncertainty level, statement, and non-empty limitations.
+- The complete validated Reality Boundary snapshot used at capture time.
+- Outcome engine/schema versions and an integrity signature.
+
+`world_event_v2_*` ids, Simulation Event sources, unknown fields, unverified or
+disputed primary sources, cross-Seed references, dangling Real Evidence, and
+version drift are invalid Outcome input. Capturing an Outcome must not mutate a
+historical Evidence Ledger or any simulation artifact.
+
+### BacktestV2
+
+A `BacktestV2` must reconstruct and revalidate the Stage 6 Report and its full
+canonical Claim Set. It binds immutable snapshots and integrity signatures for:
+
+- The Stage 5 Run or comparison payload and its kind.
+- Every canonical Stage 6 Claim and the Report.
+- Analysis Run Spec ids, Trajectory Run Spec ids, Trajectory ids, trajectory
+  seeds, horizons, policies, and engine/schema versions.
+- Claim numerator, denominator, sample count, Trajectory ids, and Cluster ids.
+- The Outcome and its later Reality Boundary snapshot.
+- The forecast and Outcome Reality Boundary revisions plus their shared
+  Evidence and Assumption Ledger identities.
+
+The later Outcome boundary may append new Real Evidence but must keep the same
+Seed and Ledger identities and preserve every historical forecast Evidence,
+Assumption, and conflict record unchanged. A scenario-frequency Claim may
+receive a binary Brier score. Sensitivity and intervention differences require
+counterfactual evidence and therefore remain excluded from automatic
+calibration; a single observed Outcome must not become a causal conclusion.
+
+### CalibrationV2
+
+Stage 7 calibration is deterministic and explicitly versioned:
+
+- Method: `binary-brier-score`, version `1`.
+- Minimum eligible unique Outcome sample: `5`.
+- Below the minimum, status is `insufficient_data`, `brierScore` is null, and
+  the metric label remains `simulation_frequency`.
+- At or above the minimum, the result discloses the mean binary Brier score,
+  observed rate, mean simulation frequency, eligible/excluded sample counts,
+  method, versions, and limitations.
+- A calibrated result remains a bounded reliability measurement. It must set
+  `causalConclusion=false` and `deterministicPrediction=false` and must not
+  automatically become a universal real-world probability.
+- Calibration input must use unique Outcomes from one Seed, one Evidence
+  Ledger, one Assumption Ledger, and compatible artifact versions.
+
+### OutcomeCalibrationRepositoryPortV2
+
+The Stage 7 repository port exposes only append and read operations. The local
+deterministic in-memory adapter stores an immutable version for each accepted
+artifact and enforces:
+
+- Strict unknown-input validation for append and load operations.
+- A monotonically increasing version and explicit parent version id.
+- Optimistic concurrency through `expectedVersion`.
+- Content-bound idempotency: the same key and request returns the original
+  version; the same key with different content is rejected.
+- Dependency ordering: Outcome before Backtest and all referenced Backtests
+  before Calibration.
+- One Seed and one Ledger identity per stream.
+- No replacement of an existing Outcome, Backtest, or Calibration id.
+- Defensive snapshots on every read so callers cannot rewrite stored history.
+- Atomic failure with `data=null` and no partially appended version.
+
+Stage 7 does not add Supabase migrations, production API routes, UI, background
+jobs, queues, network access, or LLM calls. Those remain outside this local
+adapter stage.
+
 ### entitlements
 
 Purpose: Stores free preview, paid report, and subscription unlock state.
