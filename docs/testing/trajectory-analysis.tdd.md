@@ -177,6 +177,49 @@ Additional guarantees:
 - Clustering continues to group by the complete canonical outcome string, and Frequency first reconstructs canonical clusters from fully integrity-validated Features.
 - Sensitivity rejects numeric and enum no-op values before approval, transition, or batch execution. Across variants, only variant/proposal IDs and the axis value may differ; actor, targets, evidence, Assumptions, prior Events, time, rationale, and controlled target metadata remain identical.
 
+## Strict Feature envelope hardening RED/GREEN evidence
+
+This follow-up started from commit `2634eea01b4fff3f991b03609d4497effdbfd106`. The malformed-envelope tests were added before production changes.
+
+RED command:
+
+```text
+npm run test:v2:analysis
+```
+
+Observed RED:
+
+```text
+Test Files  1 failed | 3 passed (4)
+Tests       5 failed | 42 passed (47)
+```
+
+The five failures proved that a numeric `seedContextId`, object `policyId`, array `policyVersion`, blank `seedContextId`, and overlong `policyId` could be accepted after recalculating `featureIntegritySignature`. The same suite also preserved passing rejection coverage for a null envelope, null string field, blank `policyVersion`, and an extra envelope field.
+
+GREEN command:
+
+```text
+npm run test:v2:analysis
+```
+
+Observed GREEN:
+
+```text
+Test Files  4 passed (4)
+Tests       47 passed (47)
+Statements  91.13% (504/553)
+Branches    85.24% (335/393)
+Functions   97.22% (105/108)
+Lines       97.31% (399/410)
+```
+
+Additional guarantees:
+
+- `trajectoryFeatureEnvelopeSchemaV2` is a strict Zod schema for the complete unknown-input Feature envelope, not only the canonical outcome payload.
+- Every envelope field is parsed before integrity checks, including bounded trimmed ownership/version strings, namespaced IDs, uint32 seeds, non-negative counts, statuses, typed arrays, fixed engine/schema versions, and 24-character lowercase hexadecimal fingerprints.
+- Unknown keys and malformed primitives are rejected even when the caller recalculates the integrity digest.
+- `validateTrajectoryFeatureIntegrityV2` accepts `unknown`; Cluster and Frequency operate only on successfully parsed, normalized `TrajectoryFeatureV2` values.
+
 ## Coverage and known gaps
 
 The Stage 5 coverage command enforces Statements >= 90%, Branches >= 80%, Functions >= 95%, and Lines >= 90%. All final hardening thresholds pass. This stage intentionally has no browser E2E test because it introduces no UI or API surface; its end-to-end boundary is the local Stage 3 -> Stage 4 -> Stage 5 application-logic chain.

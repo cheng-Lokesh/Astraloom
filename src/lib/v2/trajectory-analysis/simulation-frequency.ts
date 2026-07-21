@@ -1,12 +1,15 @@
 import { ANALYSIS_ENGINE_VERSION_V2, CLUSTERING_ALGORITHM_V2, CLUSTERING_VERSION_V2, FEATURE_SCHEMA_VERSION_V2, type SimulationFrequencyItemV2, type TrajectoryClusterV2, type TrajectoryFeatureV2 } from "./types";
 import { clusterTrajectoryFeaturesV2 } from "./clustering";
+import { parseTrajectoryFeatureIntegrityV2 } from "./feature-integrity";
 import { canonicalJsonV2 } from "./ids";
 
-export function buildSimulationFrequencyV2(clustersInput: readonly TrajectoryClusterV2[], featuresInput: readonly TrajectoryFeatureV2[]) {
+export function buildSimulationFrequencyV2(clustersInput: readonly TrajectoryClusterV2[], featuresInput: unknown) {
   try {
     if (!Array.isArray(featuresInput) || featuresInput.length === 0) return { ok: false as const, errorCode: "frequency_without_samples" as const };
     if (!Array.isArray(clustersInput) || clustersInput.length === 0) return { ok: false as const, errorCode: "invalid_cluster_membership" as const };
-    const features = featuresInput.map((item) => structuredClone(item));
+    const parsedFeatures = featuresInput.map((item) => parseTrajectoryFeatureIntegrityV2(item));
+    if (parsedFeatures.some((item) => item === null)) return { ok: false as const, errorCode: "invalid_cluster_membership" as const };
+    const features = parsedFeatures as TrajectoryFeatureV2[];
     const clusters: TrajectoryClusterV2[] = clustersInput.map((item) => structuredClone(item));
     const canonicalClusters = clusterTrajectoryFeaturesV2(features);
     if (!canonicalClusters.ok || canonicalJsonV2(canonicalClusters.clusters) !== canonicalJsonV2(clusters)) return { ok: false as const, errorCode: "invalid_cluster_membership" as const };

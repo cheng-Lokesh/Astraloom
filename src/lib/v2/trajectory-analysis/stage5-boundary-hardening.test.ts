@@ -7,6 +7,7 @@ import { trajectoryPolicyFixtureV2, trajectoryRunSpecFixtureV2 } from "../trajec
 import { runTrajectoryBatchV2 } from "./batch-runner";
 import { clusterTrajectoryFeaturesV2 } from "./clustering";
 import { extractTrajectoryFeatureV2 } from "./feature-extraction";
+import { buildFeatureIntegritySignatureV2, validateTrajectoryFeatureIntegrityV2 } from "./feature-integrity";
 import { canonicalJsonV2, stableAnalysisFingerprintV2 } from "./ids";
 import { createLocalTrajectoryAnalysisAdapterV2 } from "./local-adapter";
 import { compareSensitivityV2 } from "./sensitivity";
@@ -232,6 +233,50 @@ describe("canonical Feature integrity", () => {
     const originalClusters = clusterTrajectoryFeaturesV2([value]);
     if (!originalClusters.ok) throw new Error(originalClusters.errorCode);
     expect(buildSimulationFrequencyV2(originalClusters.clusters, [forged])).toMatchObject({ ok: false, errorCode: "invalid_cluster_membership" });
+  });
+
+  it.each([
+    ["numeric seedContextId", { seedContextId: 42 }],
+    ["object policyId", { policyId: { forged: true } }],
+    ["array policyVersion", { policyVersion: ["1"] }],
+    ["blank seedContextId", { seedContextId: "   " }],
+    ["overlong policyId", { policyId: "x".repeat(1001) }],
+  ])("rejects a fully re-signed malformed Feature envelope: %s", (_label, changes) => {
+    const value = feature();
+    const unsigned = { ...value, ...changes } as unknown as Omit<typeof value, "featureIntegritySignature">;
+    delete (unsigned as Partial<typeof value>).featureIntegritySignature;
+    const forged = {
+      ...unsigned,
+      featureIntegritySignature: buildFeatureIntegritySignatureV2(unsigned),
+    };
+
+    expect(validateTrajectoryFeatureIntegrityV2(forged as never)).toBe(false);
+    const clustered = clusterTrajectoryFeaturesV2([forged] as never);
+    expect(clustered).toMatchObject({ ok: false, errorCode: "invalid_cluster_membership" });
+    const validClusters = clusterTrajectoryFeaturesV2([value]);
+    if (!validClusters.ok) throw new Error(validClusters.errorCode);
+    const matchingMalformedClusters = validClusters.clusters.map((cluster) => ({
+      ...cluster,
+      seedContextId: forged.seedContextId,
+    }));
+    expect(buildSimulationFrequencyV2(matchingMalformedClusters as never, [forged] as never)).toMatchObject({
+      ok: false,
+      errorCode: "invalid_cluster_membership",
+    });
+  });
+
+  it.each([
+    ["null envelope", null],
+    ["null seedContextId", { seedContextId: null }],
+    ["blank policyVersion", { policyVersion: "\t \n" }],
+    ["extra field", { untrustedEnvelopeField: true }],
+  ])("strictly rejects %s before canonical integrity checks", (_label, changes) => {
+    const candidate = changes === null ? null : { ...feature(), ...changes };
+    expect(validateTrajectoryFeatureIntegrityV2(candidate as never)).toBe(false);
+    expect(clusterTrajectoryFeaturesV2([candidate] as never)).toMatchObject({
+      ok: false,
+      errorCode: "invalid_cluster_membership",
+    });
   });
 });
 
