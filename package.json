@@ -18,6 +18,7 @@
     "test:v2:world": "vitest run src/lib/v2/agent-world",
     "test:v2:trajectory": "vitest run src/lib/v2/trajectory/boundary.test.ts src/lib/v2/trajectory/seeded-rng.test.ts src/lib/v2/trajectory/trajectory-runner.test.ts src/lib/v2/trajectory/validation.test.ts",
     "test:v2:analysis": "vitest run src/lib/v2/trajectory-analysis --coverage --coverage.include=src/lib/v2/trajectory-analysis/{batch-runner,child-run-spec,clustering,feature-extraction,feature-integrity,ids,immutable,intervention-comparison,local-adapter,pre-run-transition,sensitivity,simulation-frequency,trajectory-result-validation,types,validation}.ts --coverage.reportsDirectory=coverage/v2-trajectory-analysis --coverage.thresholds.statements=90 --coverage.thresholds.branches=80 --coverage.thresholds.functions=95 --coverage.thresholds.lines=90",
+    "test:v2:claims-reports": "vitest run src/lib/v2/claims-reports --coverage --coverage.include=src/lib/v2/claims-reports/**/*.ts --coverage.exclude=src/lib/v2/claims-reports/**/*.test.ts --coverage.reportsDirectory=coverage/v2-claims-reports --coverage.thresholds.statements=90 --coverage.thresholds.branches=80 --coverage.thresholds.functions=95 --coverage.thresholds.lines=90",
     "test:coverage": "vitest run --coverage",
     "test:hero-render-budget": "node scripts/check-hero-render-budget.mjs",
     "test:interactive-hero": "node scripts/check-interactive-observatory-hero.mjs",
