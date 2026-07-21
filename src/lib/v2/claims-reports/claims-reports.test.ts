@@ -12,6 +12,7 @@ import {
   CLUSTERING_ALGORITHM_V2,
   CLUSTERING_VERSION_V2,
   FEATURE_SCHEMA_VERSION_V2,
+  type BatchRunSpecV2,
 } from "../trajectory-analysis/types";
 import {
   buildClaimsV2,
@@ -20,12 +21,13 @@ import {
   buildSensitivityDifferenceClaimsV2,
 } from "./claim-builder";
 import { buildClaimsReportV2, validateClaimsReportV2 } from "./report-builder";
-import { parseValidatedClaimV2 } from "./validation";
+import { parseRealityBoundarySnapshotV2, parseValidatedClaimV2 } from "./validation";
 import { claimIdV2, claimsFingerprintV2 } from "./ids";
+import type { ClaimV2 } from "./types";
 
 function adapter() {
   return createLocalTrajectoryAnalysisAdapterV2({
-    policyFactory: () => trajectoryPolicyFixtureV2(),
+    policyFactory: ({ spec }) => ({ ...trajectoryPolicyFixtureV2(), policyId: spec.policyId, policyVersion: spec.policyVersion }),
     trajectoryRuntimeFactory: ({ seed }) => ({
       agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`stage-6-child-${seed}`),
     }),
@@ -127,6 +129,43 @@ function interventionComparison() {
   return result;
 }
 
+function relationInterventionComparison() {
+  const world = batchSpec().trajectoryTemplate.initialWorld;
+  const intervention = {
+    id: "action_proposal_v2_stage_6_relation_intervention",
+    seedContextId: world.seedContextId,
+    actorAgentId: idsV2.self,
+    actionType: "update_relation_signal",
+    targetEntityIds: [], targetResourceIds: [], targetRelationIds: [idsV2.reportsTo], targetVariableIds: [],
+    parameters: { actionType: "update_relation_signal", relationId: idsV2.reportsTo, signal: "positive" },
+    realEvidenceIds: [world.realityBoundarySnapshot.evidenceLedger.items[0]!.id],
+    assumptionIds: [], priorWorldEventIds: [], rationaleSummary: "Test a controlled relation intervention.", createdAt: "2026-07-19T10:00:00.001Z",
+  } as const;
+  const result = comparePreRunInterventionsV2({
+    interventionComparisonId: "intervention_comparison_v2_stage_6_relation",
+    baseline: batchSpec(),
+    variants: [{ variantId: "intervention_variant_v2_stage_6_relation", intervention }],
+  }, adapter());
+  if (!result.ok) throw new Error(result.errorCode);
+  return result;
+}
+
+function analyzeSpec(spec: BatchRunSpecV2) {
+  const result = analyzeTrajectoryBatchV2(spec, adapter());
+  if (!result.ok) throw new Error(result.errorCode);
+  return result.analysis;
+}
+
+function batchClaimSet() {
+  return { kind: "batch" as const, payload: batchAnalysis(), realityBoundary: boundary() };
+}
+
+function resignClaim(claim: ClaimV2, changes: Partial<ClaimV2>): ClaimV2 {
+  const changed = { ...structuredClone(claim), ...changes };
+  const unsigned = Object.fromEntries(Object.entries(changed).filter(([key]) => key !== "id" && key !== "claimIntegritySignature")) as Omit<ClaimV2, "id" | "claimIntegritySignature">;
+  return { id: claimIdV2(unsigned), ...unsigned, claimIntegritySignature: claimsFingerprintV2(unsigned) };
+}
+
 describe("Stage 6 Claim validation and generation", () => {
   it("builds deterministic scenario-frequency Claims with permanently separated provenance", () => {
     const input = { analysis: batchAnalysis(), realityBoundary: boundary() };
@@ -199,6 +238,7 @@ describe("Stage 6 Claim validation and generation", () => {
     expect(intervention.claims.every((claim) => claim.claimType === "intervention_difference")).toBe(true);
     expect(sensitivity.claims.every((claim) => claim.sampleCount === 3)).toBe(true);
     expect(intervention.claims.every((claim) => claim.sampleCount === 3)).toBe(true);
+    expect(buildInterventionDifferenceClaimsV2({ comparison: relationInterventionComparison(), realityBoundary: boundary() }).ok).toBe(true);
   });
 
   it("rejects forged comparison differences, cross-seed variants, version drift, and extra fields", () => {
@@ -255,6 +295,117 @@ describe("Stage 6 Claim validation and generation", () => {
       claimIntegritySignature: claimsFingerprintV2(strengthenedUnsigned),
     })).toMatchObject({ ok: false, errorCode: "claim_tampering" });
   });
+
+  it("never throws for arbitrary unknown Reality Boundary, Claim, builder, or nested getter input", () => {
+    const throwing = Object.defineProperty({}, "seedContextId", { enumerable: true, get: () => { throw new Error("hostile getter"); } });
+    const malformedBoundaries = [
+      null,
+      {},
+      { ...boundary(), assumptionLedger: null },
+      { ...boundary(), assumptionLedger: {} },
+      { ...boundary(), assumptionLedger: { ...boundary().assumptionLedger, assumptions: {} } },
+      { ...boundary(), assumptionLedger: Object.defineProperty({}, "assumptions", { enumerable: true, get: () => { throw new Error("nested getter"); } }) },
+      throwing,
+    ];
+    for (const realityBoundary of malformedBoundaries) {
+      const calls = [
+        () => buildScenarioFrequencyClaimsV2({ analysis: batchAnalysis(), realityBoundary }),
+        () => buildSensitivityDifferenceClaimsV2({ comparison: sensitivityComparison(), realityBoundary }),
+        () => buildInterventionDifferenceClaimsV2({ comparison: interventionComparison(), realityBoundary }),
+        () => buildClaimsV2({ kind: "batch", payload: batchAnalysis(), realityBoundary }),
+      ];
+      for (const call of calls) {
+        expect(call).not.toThrow();
+        const result = call();
+        expect(result.ok).toBe(false);
+        expect(result).not.toHaveProperty("claims");
+      }
+      expect(() => parseRealityBoundarySnapshotV2(realityBoundary)).not.toThrow();
+      expect(parseRealityBoundarySnapshotV2(realityBoundary).ok).toBe(false);
+    }
+    expect(() => parseValidatedClaimV2(throwing)).not.toThrow();
+    expect(parseValidatedClaimV2(throwing).ok).toBe(false);
+    const hostileAnalysis = Object.defineProperty({ realityBoundary: boundary() }, "analysis", { enumerable: true, get: () => { throw new Error("analysis getter"); } });
+    const hostileComparison = Object.defineProperty({ realityBoundary: boundary() }, "comparison", { enumerable: true, get: () => { throw new Error("comparison getter"); } });
+    for (const call of [
+      () => buildScenarioFrequencyClaimsV2(hostileAnalysis),
+      () => buildSensitivityDifferenceClaimsV2(hostileComparison),
+      () => buildInterventionDifferenceClaimsV2(hostileComparison),
+    ]) {
+      expect(call).not.toThrow();
+      expect(call().ok).toBe(false);
+    }
+  });
+
+  it("rejects re-signed impossible mathematics, identity mismatches, and every fixed-version drift", () => {
+    const scenarioResult = buildScenarioFrequencyClaimsV2({ analysis: batchAnalysis(), realityBoundary: boundary() });
+    const sensitivityResult = buildSensitivityDifferenceClaimsV2({ comparison: sensitivityComparison(), realityBoundary: boundary() });
+    expect(scenarioResult.ok).toBe(true);
+    expect(sensitivityResult.ok).toBe(true);
+    if (!scenarioResult.ok || !sensitivityResult.ok) return;
+    const scenario = scenarioResult.claims[0]!;
+    const difference = sensitivityResult.claims[0]!;
+    const scenarioAttacks = [
+      resignClaim(scenario, { numerator: -1, statement: `Cluster ${scenario.clusterIds[0]} appeared in -1/${scenario.denominator} sampled trajectories.` }),
+      resignClaim(scenario, { numerator: scenario.denominator + 1, statement: `Cluster ${scenario.clusterIds[0]} appeared in ${scenario.denominator + 1}/${scenario.denominator} sampled trajectories.` }),
+      resignClaim(scenario, { metric: "sampled_frequency_difference" }),
+      resignClaim(scenario, { sourceAnalysisId: "sensitivity_analysis_v2_wrong" }),
+      resignClaim(scenario, { variantId: "sensitivity_variant_v2_wrong" }),
+    ];
+    const differenceAttacks = [
+      resignClaim(difference, { numerator: difference.denominator + 1, statement: `Sensitivity variant ${difference.variantId} changed cluster ${difference.clusterIds[0]} by ${difference.denominator + 1}/${difference.denominator} sampled trajectories versus baseline.` }),
+      resignClaim(difference, { numerator: -difference.denominator - 1, statement: `Sensitivity variant ${difference.variantId} changed cluster ${difference.clusterIds[0]} by ${-difference.denominator - 1}/${difference.denominator} sampled trajectories versus baseline.` }),
+      resignClaim(difference, { sourceAnalysisId: "analysis_run_spec_v2_wrong" }),
+      resignClaim(difference, { variantId: "intervention_variant_v2_wrong" }),
+      resignClaim(difference, { metric: "simulation_frequency" }),
+    ];
+    const versionKeys = ["trajectoryEngineVersion", "agentWorldEngineVersion", "analysisEngineVersion", "featureSchemaVersion", "clusteringAlgorithm", "clusteringVersion"] as const;
+    const versionAttacks = versionKeys.map((key) => resignClaim(scenario, { versions: { ...scenario.versions, [key]: "drift" } }));
+    for (const attack of [...scenarioAttacks, ...differenceAttacks, ...versionAttacks]) {
+      expect(parseValidatedClaimV2(attack)).toMatchObject({ ok: false, errorCode: "claim_tampering" });
+    }
+  });
+
+  it("rejects complete sensitivity comparison drift and Event operation mismatch", () => {
+    const makeAttack = (mutate: (spec: BatchRunSpecV2) => void) => {
+      const comparison = sensitivityComparison();
+      const spec = structuredClone(comparison.variants[0]!.analysis.spec) as BatchRunSpecV2;
+      mutate(spec);
+      comparison.variants[0]!.analysis = analyzeSpec(spec);
+      return comparison;
+    };
+    const policy = makeAttack((spec) => { spec.policyId = "drift_policy"; spec.trajectoryTemplate.policyId = "drift_policy"; });
+    const horizon = makeAttack((spec) => { spec.horizonDays = 90; spec.trajectoryTemplate.horizonDays = 90; });
+    const unrelatedWorld = makeAttack((spec) => { spec.trajectoryTemplate.initialWorld.entities[0]!.label = "forged unrelated label"; });
+    const eventValue = structuredClone(sensitivityComparison());
+    const event = eventValue.variants[0]!.analysis.spec.trajectoryTemplate.initialWorld.worldEvents.at(-1)!;
+    if (event.operation.actionType === "update_external_variable") event.operation.value = 61;
+    const clustering = structuredClone(sensitivityComparison());
+    (clustering.variants[0]!.analysis.spec as { clusteringAlgorithm: string }).clusteringAlgorithm = "forged_clustering";
+    for (const comparison of [policy, horizon, unrelatedWorld, eventValue, clustering]) {
+      expect(buildSensitivityDifferenceClaimsV2({ comparison, realityBoundary: boundary() }).ok).toBe(false);
+    }
+  });
+
+  it("rejects complete intervention comparison drift, including unrelated World changes", () => {
+    const makeAttack = (mutate: (spec: BatchRunSpecV2) => void) => {
+      const comparison = interventionComparison();
+      const spec = structuredClone(comparison.variants[0]!.analysis.spec) as BatchRunSpecV2;
+      mutate(spec);
+      const analysis = analyzeSpec(spec);
+      comparison.variants[0]!.analysis = analysis;
+      comparison.variants[0]!.spec = analysis.spec;
+      return comparison;
+    };
+    const policy = makeAttack((spec) => { spec.policyId = "drift_policy"; spec.trajectoryTemplate.policyId = "drift_policy"; });
+    const horizon = makeAttack((spec) => { spec.horizonDays = 90; spec.trajectoryTemplate.horizonDays = 90; });
+    const unrelatedWorld = makeAttack((spec) => { spec.trajectoryTemplate.initialWorld.entities[0]!.label = "forged unrelated label"; });
+    const clustering = structuredClone(interventionComparison());
+    (clustering.variants[0]!.analysis.spec as { clusteringAlgorithm: string }).clusteringAlgorithm = "forged_clustering";
+    for (const comparison of [policy, horizon, unrelatedWorld, clustering]) {
+      expect(buildInterventionDifferenceClaimsV2({ comparison, realityBoundary: boundary() }).ok).toBe(false);
+    }
+  });
 });
 
 describe("Stage 6 Report boundary", () => {
@@ -265,7 +416,7 @@ describe("Stage 6 Report boundary", () => {
   }
 
   it("renders a deterministic Report that copies validated Claims without strengthening or changing references", () => {
-    const input = { reportSpecId: "claims_report_spec_v2_fixture", seedContextId: boundary().seedContextId, claims: claims(), claimIds: claims().map((claim) => claim.id) };
+    const input = { reportSpecId: "claims_report_spec_v2_fixture", seedContextId: boundary().seedContextId, claimSet: batchClaimSet(), claims: claims(), claimIds: claims().map((claim) => claim.id) };
     const before = structuredClone(input);
     const first = buildClaimsReportV2(input);
     const second = buildClaimsReportV2(structuredClone(input));
@@ -275,12 +426,13 @@ describe("Stage 6 Report boundary", () => {
     if (!first.ok) return;
     expect(first.report.sections.map((section) => section.claim)).toEqual(input.claims);
     expect(first.report.claimIds).toEqual(input.claimIds.slice().sort());
-    expect(validateClaimsReportV2(first.report, input.claims)).toEqual({ ok: true });
+    expect(validateClaimsReportV2(first.report, input.claimSet, input.claims)).toEqual({ ok: true });
   });
 
   it("rejects added Claims, strengthened text, changed references, probability labels, duplicates, invalid ids, wrong types, and extra fields", () => {
     const sourceClaims = claims();
-    const built = buildClaimsReportV2({ reportSpecId: "claims_report_spec_v2_attacks", seedContextId: boundary().seedContextId, claims: sourceClaims, claimIds: sourceClaims.map((claim) => claim.id) });
+    const claimSet = batchClaimSet();
+    const built = buildClaimsReportV2({ reportSpecId: "claims_report_spec_v2_attacks", seedContextId: boundary().seedContextId, claimSet, claims: sourceClaims, claimIds: sourceClaims.map((claim) => claim.id) });
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     const attacks = [
@@ -293,14 +445,15 @@ describe("Stage 6 Report boundary", () => {
       { ...structuredClone(built.report), sampleCount: "3" },
       { ...structuredClone(built.report), extra: true },
     ];
-    for (const attack of attacks) expect(validateClaimsReportV2(attack, sourceClaims).ok).toBe(false);
-    expect(buildClaimsReportV2({ reportSpecId: "claims_report_spec_v2_extra", seedContextId: boundary().seedContextId, claims: sourceClaims, claimIds: sourceClaims.map((claim) => claim.id), conclusion: "certain" }).ok).toBe(false);
+    for (const attack of attacks) expect(validateClaimsReportV2(attack, claimSet, sourceClaims).ok).toBe(false);
+    expect(buildClaimsReportV2({ reportSpecId: "claims_report_spec_v2_extra", seedContextId: boundary().seedContextId, claimSet, claims: sourceClaims, claimIds: sourceClaims.map((claim) => claim.id), conclusion: "certain" }).ok).toBe(false);
   });
 
   it("rejects malformed source sets, duplicate source Claims, cross-seed Claims, and inconsistent sample counts", () => {
     const sourceClaims = claims();
-    const base = { reportSpecId: "claims_report_spec_v2_source_attacks", seedContextId: boundary().seedContextId, claims: sourceClaims, claimIds: sourceClaims.map((claim) => claim.id) };
-    expect(validateClaimsReportV2({}, null)).toEqual({ ok: false, errorCode: "invalid_report_input" });
+    const claimSet = batchClaimSet();
+    const base = { reportSpecId: "claims_report_spec_v2_source_attacks", seedContextId: boundary().seedContextId, claimSet, claims: sourceClaims, claimIds: sourceClaims.map((claim) => claim.id) };
+    expect(validateClaimsReportV2({}, null, null)).toEqual({ ok: false, errorCode: "invalid_report_input" });
     expect(buildClaimsReportV2({ ...base, claims: [sourceClaims[0], sourceClaims[0]] })).toMatchObject({ ok: false, errorCode: "duplicate_id" });
     expect(buildClaimsReportV2({ ...base, seedContextId: "seed_other" })).toMatchObject({ ok: false, errorCode: "cross_seed_reference" });
     expect(buildClaimsReportV2({ ...base, claims: [{ ...sourceClaims[0], statement: "forged" }] })).toMatchObject({ ok: false, errorCode: "claim_tampering" });
@@ -321,6 +474,45 @@ describe("Stage 6 Report boundary", () => {
     }
     const built = buildClaimsReportV2(base);
     expect(built.ok).toBe(true);
-    if (built.ok) expect(validateClaimsReportV2(built.report, null)).toEqual({ ok: false, errorCode: "invalid_report_input" });
+    if (built.ok) expect(validateClaimsReportV2(built.report, null, null)).toEqual({ ok: false, errorCode: "invalid_report_input" });
+  });
+
+  it("regenerates canonical Claims and rejects re-signed dangling provenance, membership, and impossible counts", () => {
+    const canonical = claims()[0]!;
+    const attacks = [
+      resignClaim(canonical, { realEvidenceIds: ["real_evidence_v2_dangling"] }),
+      resignClaim(canonical, { simulationEventIds: ["world_event_v2_dangling"] }),
+      resignClaim(canonical, { trajectoryIds: ["trajectory_v2_dangling"] }),
+      resignClaim(canonical, { clusterIds: ["trajectory_cluster_v2_dangling"], statement: `Cluster trajectory_cluster_v2_dangling appeared in ${canonical.numerator}/${canonical.denominator} sampled trajectories.` }),
+      resignClaim(canonical, { numerator: canonical.denominator + 1, statement: `Cluster ${canonical.clusterIds[0]} appeared in ${canonical.denominator + 1}/${canonical.denominator} sampled trajectories.` }),
+    ];
+    for (const forged of attacks) {
+      const result = buildClaimsReportV2({
+        reportSpecId: "claims_report_spec_v2_provenance_attack",
+        seedContextId: boundary().seedContextId,
+        claimSet: batchClaimSet(),
+        claims: [forged],
+        claimIds: [forged.id],
+      });
+      expect(result.ok).toBe(false);
+      expect(result).not.toHaveProperty("report");
+    }
+    expect(buildClaimsReportV2({ reportSpecId: "claims_report_spec_v2_public_summary", seedContextId: boundary().seedContextId, claims: claims(), claimIds: claims().map((claim) => claim.id) }).ok).toBe(false);
+  });
+
+  it("never throws for hostile Report, Claim Set, or nested getter input", () => {
+    const throwing = Object.defineProperty({}, "reportSpecId", { enumerable: true, get: () => { throw new Error("hostile report getter"); } });
+    const sourceGetter = Object.defineProperty({}, "kind", { enumerable: true, get: () => { throw new Error("hostile source getter"); } });
+    const calls = [
+      () => buildClaimsReportV2(throwing),
+      () => buildClaimsReportV2({ reportSpecId: "claims_report_spec_v2_hostile", seedContextId: boundary().seedContextId, claimSet: sourceGetter, claims: claims(), claimIds: claims().map((claim) => claim.id) }),
+      () => validateClaimsReportV2(throwing, sourceGetter, [throwing]),
+    ];
+    for (const call of calls) {
+      expect(call).not.toThrow();
+      const result = call();
+      expect(result.ok).toBe(false);
+      expect(result).not.toHaveProperty("report");
+    }
   });
 });

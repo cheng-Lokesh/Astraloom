@@ -113,3 +113,61 @@ The dedicated Stage 6 command enforces Statements >= 90%, Branches >= 80%, Funct
 There is intentionally no browser E2E test because Stage 6 is synchronous application logic with no UI or API surface. Stage 7 outcome capture, backtesting, calibration, database persistence, and asynchronous server execution remain out of scope.
 
 The task requires one final ordinary commit, so RED and GREEN are preserved in this evidence file instead of separate checkpoint commits.
+
+## Unknown-input, Claim identity, Report provenance, and comparison hardening
+
+This follow-up started from commit `5e0651b2b72db3e725f8348187e6281e65534cd6` and remained entirely inside Stage 6 production code, its existing tests, and this existing TDD record.
+
+RED command:
+
+```text
+npm run test:v2:claims-reports
+```
+
+Observed RED before production changes:
+
+```text
+Test Files  1 failed | 1 passed (2)
+Tests       9 failed | 11 passed (20)
+```
+
+The nine failures reproduced malformed Assumption Ledger exceptions, hostile getter exceptions, re-signed Claim mathematics/version bypasses, incomplete sensitivity/intervention comparison control, Report construction without Stage 5 source revalidation, and acceptance of re-signed public Claim summaries.
+
+Final GREEN:
+
+```text
+Test Files  2 passed (2)
+Tests       20 passed (20)
+Statements  90.95% (372/409)
+Branches    83.68% (236/282)
+Functions   95.77% (68/71)
+Lines       96.29% (286/297)
+```
+
+Additional guarantees:
+
+- Every public Stage 6 builder/parser catches arbitrary unknown input, including nested throwing getters, and returns an atomic stable failure without partial Claims or Reports.
+- Evidence and Assumption Ledgers must both pass their validators before Stage 6 reads nested Assumptions.
+- Scenario numerators stay inside `[0, denominator]`; difference numerators stay inside `[-denominator, denominator]`, even after an attacker recalculates Claim ID and integrity digest.
+- Claim type, metric, source-analysis namespace, and variant namespace form one strict identity contract.
+- Stage 3 Agent World, Stage 4 Trajectory, Stage 5 Analysis/Feature/Clustering versions are exact literals rather than caller-controlled strings.
+- Report construction requires a Stage 5-backed Claim Set plus Reality Boundary, regenerates canonical Claims through the Stage 6 builder, and compares every supplied Claim field before selecting `claimIds`.
+- Re-signed Claims with dangling Real Evidence, Simulation Events, Trajectories, Clusters, or impossible counts cannot enter a Report.
+- Baseline and variant Batch Specs are compared across the complete normalized structure. Only the validated pre-run transition World, expected revision, and start instant may differ.
+- The pre-run Event is replayed from its one deterministic delta and must reconstruct the exact variant initial World. Sensitivity additionally binds different baseline/variant values to the Event operation `variableId` and `value`.
+
+Follow-up full validation:
+
+```text
+npm run test:v2:evidence          5 files, 83 tests
+npm run test:v2:world             6 files, 116 tests
+npm run test:v2:trajectory        4 files, 63 tests
+npm run test:v2:analysis          4 files, 47 tests
+npm run test:v2:claims-reports    2 files, 20 tests
+npm test                         31 files, 346 tests
+npm run test:unit                30 files, 343 tests
+npm run test:golden               1 file, 3 tests
+npm run test:coverage            31 files, 346 tests
+```
+
+No Stage 7 outcome capture, backtesting, calibration, database, persistence, API, UI, network, LLM, queue, payment, or asynchronous execution was added.

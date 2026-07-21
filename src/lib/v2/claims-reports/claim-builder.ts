@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { RealityBoundarySnapshotV2, WorldEventIdV2 } from "../agent-world/types";
+import type { RealityBoundarySnapshotV2, WorldEventIdV2, WorldEventV2, WorldStateV2 } from "../agent-world/types";
 import type { AssumptionIdV2, RealEvidenceIdV2 } from "../reality-boundary/types";
 import type { TrajectoryIdV2 } from "../trajectory/types";
 import { canonicalJsonV2 } from "../trajectory-analysis/ids";
@@ -145,16 +145,11 @@ function buildDifferenceClaim({
 }
 
 function validateComparisonPair(baseline: BatchAnalysisV2, variant: BatchAnalysisV2, pairedInput: unknown) {
-  if (
-    baseline.spec.seedContextId !== variant.spec.seedContextId ||
-    !same(baseline.spec.trajectorySeeds, variant.spec.trajectorySeeds) ||
-    baseline.spec.sampleCount !== variant.spec.sampleCount ||
-    baseline.spec.trajectoryEngineVersion !== variant.spec.trajectoryEngineVersion ||
-    baseline.spec.analysisEngineVersion !== variant.spec.analysisEngineVersion ||
-    baseline.spec.featureSchemaVersion !== variant.spec.featureSchemaVersion ||
-    baseline.spec.clusteringVersion !== variant.spec.clusteringVersion ||
-    baseline.spec.policyVersion !== variant.spec.policyVersion
-  ) return { ok: false as const, errorCode: "cross_seed_reference" as const };
+  const normalizedVariantSpec = structuredClone(variant.spec);
+  normalizedVariantSpec.trajectoryTemplate.initialWorld = structuredClone(baseline.spec.trajectoryTemplate.initialWorld);
+  normalizedVariantSpec.trajectoryTemplate.expectedInitialWorldRevision = baseline.spec.trajectoryTemplate.expectedInitialWorldRevision;
+  normalizedVariantSpec.trajectoryTemplate.startAt = baseline.spec.trajectoryTemplate.startAt;
+  if (!same(normalizedVariantSpec, baseline.spec)) return { ok: false as const, errorCode: "invalid_stage5_comparison" as const };
   const bySeed = new Map(variant.features.map((item) => [item.trajectorySeed, item]));
   const paired = baseline.features.map((item) => {
     const comparison = bySeed.get(item.trajectorySeed);
@@ -168,6 +163,47 @@ function validateComparisonPair(baseline: BatchAnalysisV2, variant: BatchAnalysi
   });
   if (paired.some((item) => item === null) || !same(paired, pairedInput)) return { ok: false as const, errorCode: "invalid_stage5_comparison" as const };
   return { ok: true as const };
+}
+
+function replayTransitionEventV2(baselineWorld: WorldStateV2, event: WorldEventV2) {
+  if (
+    event.seedContextId !== baselineWorld.seedContextId || event.beforeRevision !== baselineWorld.revision ||
+    event.afterRevision !== baselineWorld.revision + 1 || event.deltas.length !== 1 ||
+    event.eventType !== event.operation.actionType || event.engineVersion !== baselineWorld.engineVersion ||
+    baselineWorld.appliedTransitionCommandIds.includes(event.commandId) || baselineWorld.worldEventIds.includes(event.id)
+  ) return null;
+  const next = structuredClone(baselineWorld);
+  const delta = event.deltas[0]!;
+  const [, targetId] = delta.path.split(".");
+  if (delta.valueType === "agent_state") {
+    let index = -1;
+    for (let candidateIndex = 0; candidateIndex < next.agentStates.length; candidateIndex += 1) {
+      if (next.agentStates[candidateIndex]!.agentDefinitionId === targetId) index = candidateIndex;
+    }
+    if (index < 0 || !same(next.agentStates[index], delta.before)) return null;
+    next.agentStates[index] = structuredClone(delta.after);
+  } else if (delta.valueType === "resource") {
+    let target = next.resources[0];
+    for (const candidate of next.resources) if (candidate.id === targetId) target = candidate;
+    if (!target || !Object.is(target.available, delta.before)) return null;
+    target.available = delta.after;
+  } else if (delta.valueType === "variable") {
+    let target = next.externalVariables[0];
+    for (const candidate of next.externalVariables) if (candidate.id === targetId) target = candidate;
+    if (!target || !Object.is(target.value, delta.before)) return null;
+    (target as { value: number | string }).value = delta.after;
+  } else {
+    let target = next.relations[0];
+    for (const candidate of next.relations) if (candidate.id === targetId) target = candidate;
+    if (!target || target.signal !== delta.before) return null;
+    target.signal = delta.after;
+  }
+  next.revision = event.afterRevision;
+  next.appliedTransitionCommandIds.push(event.commandId);
+  next.worldEventIds.push(event.id);
+  next.worldEvents.push(structuredClone(event));
+  next.updatedAt = event.createdAt;
+  return next;
 }
 
 function frequencyDifferences(baseline: BatchAnalysisV2, variant: BatchAnalysisV2) {
@@ -198,6 +234,8 @@ function validateTransitionEvent(
     !same(variantWorld.worldEvents.slice(0, -1), baselineWorld.worldEvents) ||
     variantWorld.worldEvents.at(-1)?.id !== eventId
   ) return { ok: false as const, errorCode: "invalid_stage5_comparison" as const };
+  const replayed = replayTransitionEventV2(baselineWorld, event);
+  if (!replayed || !same(replayed, variantWorld)) return { ok: false as const, errorCode: "invalid_stage5_comparison" as const };
   return { ok: true as const, event };
 }
 
@@ -209,7 +247,7 @@ function parseWrapper(input: unknown, key: "analysis" | "comparison") {
   return { ok: true as const, payload: parsed.data[key], boundary: boundary.boundary };
 }
 
-export function buildScenarioFrequencyClaimsV2(input: unknown) {
+function buildScenarioFrequencyClaimsUnsafeV2(input: unknown) {
   const wrapper = parseWrapper(input, "analysis");
   if (!wrapper.ok) return wrapper;
   const validated = revalidateBatchAnalysisV2(wrapper.payload, wrapper.boundary);
@@ -235,7 +273,7 @@ export function buildScenarioFrequencyClaimsV2(input: unknown) {
   return { ok: true as const, claims };
 }
 
-export function buildSensitivityDifferenceClaimsV2(input: unknown) {
+function buildSensitivityDifferenceClaimsUnsafeV2(input: unknown) {
   const wrapper = parseWrapper(input, "comparison");
   if (!wrapper.ok) return wrapper;
   const parsed = sensitivitySchema.safeParse(wrapper.payload);
@@ -251,9 +289,10 @@ export function buildSensitivityDifferenceClaimsV2(input: unknown) {
     const baselineVariable = baseline.analysis.spec.trajectoryTemplate.initialWorld.externalVariables.find((value) => value.id === item.axis.targetId);
     const variantVariable = variant.analysis.spec.trajectoryTemplate.initialWorld.externalVariables.find((value) => value.id === item.axis.targetId);
     if (
-      !baselineVariable || !variantVariable || !Object.is(baselineVariable.value, item.axis.baselineValue) ||
+      !baselineVariable || !variantVariable || Object.is(item.axis.baselineValue, item.axis.variantValue) || !Object.is(baselineVariable.value, item.axis.baselineValue) ||
       !Object.is(variantVariable.value, item.axis.variantValue) ||
-      !transition.event.targetVariableIds.some((id) => id === item.axis.targetId) || transition.event.operation.actionType !== "update_external_variable"
+      !transition.event.targetVariableIds.some((id) => id === item.axis.targetId) || transition.event.operation.actionType !== "update_external_variable" ||
+      transition.event.operation.variableId !== item.axis.targetId || !Object.is(transition.event.operation.value, item.axis.variantValue)
     ) return { ok: false as const, errorCode: "invalid_stage5_comparison" as const };
     const paired = validateComparisonPair(baseline.analysis, variant.analysis, item.pairedSeedDifferences);
     if (!paired.ok) return paired;
@@ -271,7 +310,7 @@ export function buildSensitivityDifferenceClaimsV2(input: unknown) {
   return { ok: true as const, claims: claims.sort((left, right) => left.id.localeCompare(right.id)) };
 }
 
-export function buildInterventionDifferenceClaimsV2(input: unknown) {
+function buildInterventionDifferenceClaimsUnsafeV2(input: unknown) {
   const wrapper = parseWrapper(input, "comparison");
   if (!wrapper.ok) return wrapper;
   const parsed = interventionSchema.safeParse(wrapper.payload);
@@ -301,11 +340,30 @@ export function buildInterventionDifferenceClaimsV2(input: unknown) {
   return { ok: true as const, claims: claims.sort((left, right) => left.id.localeCompare(right.id)) };
 }
 
+export function buildScenarioFrequencyClaimsV2(input: unknown) {
+  try { return buildScenarioFrequencyClaimsUnsafeV2(input); }
+  catch { return { ok: false as const, errorCode: "invalid_claims_input" as const }; }
+}
+
+export function buildSensitivityDifferenceClaimsV2(input: unknown) {
+  try { return buildSensitivityDifferenceClaimsUnsafeV2(input); }
+  catch { return { ok: false as const, errorCode: "invalid_claims_input" as const }; }
+}
+
+export function buildInterventionDifferenceClaimsV2(input: unknown) {
+  try { return buildInterventionDifferenceClaimsUnsafeV2(input); }
+  catch { return { ok: false as const, errorCode: "invalid_claims_input" as const }; }
+}
+
 export function buildClaimsV2(input: unknown) {
-  const schema = z.object({ kind: z.enum(["batch", "sensitivity", "intervention"]), payload: z.unknown(), realityBoundary: z.unknown() }).strict();
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, errorCode: "invalid_claims_input" as const };
-  if (parsed.data.kind === "batch") return buildScenarioFrequencyClaimsV2({ analysis: parsed.data.payload, realityBoundary: parsed.data.realityBoundary });
-  if (parsed.data.kind === "sensitivity") return buildSensitivityDifferenceClaimsV2({ comparison: parsed.data.payload, realityBoundary: parsed.data.realityBoundary });
-  return buildInterventionDifferenceClaimsV2({ comparison: parsed.data.payload, realityBoundary: parsed.data.realityBoundary });
+  try {
+    const schema = z.object({ kind: z.enum(["batch", "sensitivity", "intervention"]), payload: z.unknown(), realityBoundary: z.unknown() }).strict();
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) return { ok: false as const, errorCode: "invalid_claims_input" as const };
+    if (parsed.data.kind === "batch") return buildScenarioFrequencyClaimsUnsafeV2({ analysis: parsed.data.payload, realityBoundary: parsed.data.realityBoundary });
+    if (parsed.data.kind === "sensitivity") return buildSensitivityDifferenceClaimsUnsafeV2({ comparison: parsed.data.payload, realityBoundary: parsed.data.realityBoundary });
+    return buildInterventionDifferenceClaimsUnsafeV2({ comparison: parsed.data.payload, realityBoundary: parsed.data.realityBoundary });
+  } catch {
+    return { ok: false as const, errorCode: "invalid_claims_input" as const };
+  }
 }

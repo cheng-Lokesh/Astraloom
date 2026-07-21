@@ -1,7 +1,14 @@
 import { z } from "zod";
 
 import { validateAssumptionLedgerV2, validateEvidenceLedgerV2 } from "../reality-boundary/validation";
-import type { RealityBoundarySnapshotV2 } from "../agent-world/types";
+import { AGENT_WORLD_ENGINE_VERSION_V2, type RealityBoundarySnapshotV2 } from "../agent-world/types";
+import { TRAJECTORY_ENGINE_VERSION_V2 } from "../trajectory/types";
+import {
+  ANALYSIS_ENGINE_VERSION_V2,
+  CLUSTERING_ALGORITHM_V2,
+  CLUSTERING_VERSION_V2,
+  FEATURE_SCHEMA_VERSION_V2,
+} from "../trajectory-analysis/types";
 import type { ClaimV2 } from "./types";
 import {
   CLAIM_POLICY_VERSION_V2,
@@ -28,12 +35,12 @@ const versionsSchema = z.object({
   claimsReportsEngineVersion: z.literal(CLAIMS_REPORTS_ENGINE_VERSION_V2),
   claimSchemaVersion: z.literal(CLAIM_SCHEMA_VERSION_V2),
   claimPolicyVersion: z.literal(CLAIM_POLICY_VERSION_V2),
-  trajectoryEngineVersion: bounded,
-  agentWorldEngineVersion: bounded,
-  analysisEngineVersion: bounded,
-  featureSchemaVersion: bounded,
-  clusteringAlgorithm: bounded,
-  clusteringVersion: bounded,
+  trajectoryEngineVersion: z.literal(TRAJECTORY_ENGINE_VERSION_V2),
+  agentWorldEngineVersion: z.literal(AGENT_WORLD_ENGINE_VERSION_V2),
+  analysisEngineVersion: z.literal(ANALYSIS_ENGINE_VERSION_V2),
+  featureSchemaVersion: z.literal(FEATURE_SCHEMA_VERSION_V2),
+  clusteringAlgorithm: z.literal(CLUSTERING_ALGORITHM_V2),
+  clusteringVersion: z.literal(CLUSTERING_VERSION_V2),
   policyVersion: bounded,
   realityBoundarySchemaVersion: z.literal("2.0"),
   realityBoundaryRevision: z.number().int().nonnegative(),
@@ -61,55 +68,63 @@ export const claimSchemaV2 = z.object({
 }).strict();
 
 export function parseRealityBoundarySnapshotV2(input: unknown) {
-  const parsed = realityBoundarySnapshotSchemaV2.safeParse(input);
-  if (!parsed.success) return { ok: false as const, errorCode: "invalid_claims_input" as const };
-  const boundary = parsed.data as RealityBoundarySnapshotV2;
-  const evidence = validateEvidenceLedgerV2(boundary.evidenceLedger);
-  if (!evidence.ok) return { ok: false as const, errorCode: "cross_ledger_reference" as const };
-  const assumptions = validateAssumptionLedgerV2(boundary.assumptionLedger, boundary.evidenceLedger);
-  const unconfirmed = boundary.assumptionLedger.assumptions.some((item) =>
-    item.subjectType === "third_party" && item.impactLevel === "high" &&
-    (item.confirmationRequirement !== "required" || item.confirmationStatus !== "confirmed" || item.epistemicStatus !== "confirmed_for_simulation"));
-  if (unconfirmed) return { ok: false as const, errorCode: "unconfirmed_high_impact_assumption" as const };
-  if (!assumptions.ok) return { ok: false as const, errorCode: "cross_ledger_reference" as const };
-  if (
-    boundary.evidenceLedger.seedContextId !== boundary.seedContextId ||
-    boundary.assumptionLedger.seedContextId !== boundary.seedContextId ||
-    boundary.evidenceLedger.revision !== boundary.revision ||
-    boundary.assumptionLedger.revision !== boundary.revision
-  ) return { ok: false as const, errorCode: "cross_ledger_reference" as const };
-  return { ok: true as const, boundary: structuredClone(boundary) };
+  try {
+    const parsed = realityBoundarySnapshotSchemaV2.safeParse(input);
+    if (!parsed.success) return { ok: false as const, errorCode: "invalid_claims_input" as const };
+    const boundary = parsed.data as RealityBoundarySnapshotV2;
+    const evidence = validateEvidenceLedgerV2(boundary.evidenceLedger);
+    if (!evidence.ok) return { ok: false as const, errorCode: "cross_ledger_reference" as const };
+    const assumptions = validateAssumptionLedgerV2(boundary.assumptionLedger, boundary.evidenceLedger);
+    if (!assumptions.ok) return { ok: false as const, errorCode: "cross_ledger_reference" as const };
+    const unconfirmed = boundary.assumptionLedger.assumptions.some((item) =>
+      item.subjectType === "third_party" && item.impactLevel === "high" &&
+      (item.confirmationRequirement !== "required" || item.confirmationStatus !== "confirmed" || item.epistemicStatus !== "confirmed_for_simulation"));
+    if (unconfirmed) return { ok: false as const, errorCode: "unconfirmed_high_impact_assumption" as const };
+    if (
+      boundary.evidenceLedger.seedContextId !== boundary.seedContextId ||
+      boundary.assumptionLedger.seedContextId !== boundary.seedContextId ||
+      boundary.evidenceLedger.revision !== boundary.revision ||
+      boundary.assumptionLedger.revision !== boundary.revision
+    ) return { ok: false as const, errorCode: "cross_ledger_reference" as const };
+    return { ok: true as const, boundary: structuredClone(boundary) };
+  } catch {
+    return { ok: false as const, errorCode: "invalid_claims_input" as const };
+  }
 }
 
 export function parseValidatedClaimV2(input: unknown) {
-  const parsed = claimSchemaV2.safeParse(input);
-  if (!parsed.success) return { ok: false as const, errorCode: "claim_tampering" as const };
-  const claim = parsed.data as ClaimV2;
-  if (
-    !unique(claim.realEvidenceIds) || !unique(claim.simulationEventIds) ||
-    !unique(claim.assumptionIds) || !unique(claim.trajectoryIds) || !unique(claim.clusterIds)
-  ) return { ok: false as const, errorCode: "duplicate_id" as const };
-  if (claim.denominator !== claim.sampleCount) return { ok: false as const, errorCode: "claim_tampering" as const };
-  if (claim.claimType === "scenario_frequency" && (claim.numerator < 0 || claim.numerator > claim.denominator)) {
+  try {
+    const parsed = claimSchemaV2.safeParse(input);
+    if (!parsed.success) return { ok: false as const, errorCode: "claim_tampering" as const };
+    const claim = parsed.data as ClaimV2;
+    if (
+      !unique(claim.realEvidenceIds) || !unique(claim.simulationEventIds) ||
+      !unique(claim.assumptionIds) || !unique(claim.trajectoryIds) || !unique(claim.clusterIds)
+    ) return { ok: false as const, errorCode: "duplicate_id" as const };
+    if (claim.denominator !== claim.sampleCount) return { ok: false as const, errorCode: "claim_tampering" as const };
+    if (claim.numerator < (claim.claimType === "scenario_frequency" ? 0 : -claim.denominator) || claim.numerator > claim.denominator) {
+      return { ok: false as const, errorCode: "claim_tampering" as const };
+    }
+    const scenarioIdentity = claim.claimType === "scenario_frequency" && claim.metric === "simulation_frequency" && claim.variantId === null && /^analysis_run_spec_v2_[a-z0-9][a-z0-9_-]*$/.test(claim.sourceAnalysisId);
+    const sensitivityIdentity = claim.claimType === "sensitivity_difference" && claim.metric === "sampled_frequency_difference" && /^sensitivity_analysis_v2_[a-z0-9][a-z0-9_-]*$/.test(claim.sourceAnalysisId) && typeof claim.variantId === "string" && /^sensitivity_variant_v2_[a-z0-9][a-z0-9_-]*$/.test(claim.variantId);
+    const interventionIdentity = claim.claimType === "intervention_difference" && claim.metric === "sampled_frequency_difference" && /^intervention_comparison_v2_[a-z0-9][a-z0-9_-]*$/.test(claim.sourceAnalysisId) && typeof claim.variantId === "string" && /^intervention_variant_v2_[a-z0-9][a-z0-9_-]*$/.test(claim.variantId);
+    if (!scenarioIdentity && !sensitivityIdentity && !interventionIdentity) return { ok: false as const, errorCode: "claim_tampering" as const };
+    const clusterId = claim.clusterIds.length === 1 ? claim.clusterIds[0] : null;
+    const expectedStatement = scenarioIdentity
+      ? clusterId ? `Cluster ${clusterId} appeared in ${claim.numerator}/${claim.denominator} sampled trajectories.` : null
+      : clusterId ? `${sensitivityIdentity ? "Sensitivity" : "Intervention"} variant ${claim.variantId} changed cluster ${clusterId} by ${claim.numerator}/${claim.denominator} sampled trajectories versus baseline.` : null;
+    const expectedUncertainty = claim.claimType === "scenario_frequency"
+      ? "This is sampled simulation frequency from fixed trajectory seeds, not a backtested real-world probability."
+      : "This deterministic difference compares fixed seeded simulation samples; it is not a calibrated real-world probability or causal effect estimate.";
+    if (claim.statement !== expectedStatement || claim.uncertaintyStatement !== expectedUncertainty) {
+      return { ok: false as const, errorCode: "claim_tampering" as const };
+    }
+    const { id, claimIntegritySignature, ...unsigned } = claim;
+    if (claimIdV2(unsigned) !== id || claimsFingerprintV2(unsigned) !== claimIntegritySignature) {
+      return { ok: false as const, errorCode: "claim_tampering" as const };
+    }
+    return { ok: true as const, claim: structuredClone(claim) };
+  } catch {
     return { ok: false as const, errorCode: "claim_tampering" as const };
   }
-  const clusterId = claim.clusterIds.length === 1 ? claim.clusterIds[0] : null;
-  const expectedStatement = claim.claimType === "scenario_frequency"
-    ? clusterId && claim.variantId === null && claim.metric === "simulation_frequency" && /^analysis_run_spec_v2_[a-z0-9][a-z0-9_-]*$/.test(claim.sourceAnalysisId)
-      ? `Cluster ${clusterId} appeared in ${claim.numerator}/${claim.denominator} sampled trajectories.`
-      : null
-    : clusterId && claim.variantId !== null && claim.metric === "sampled_frequency_difference"
-      ? `${claim.claimType === "sensitivity_difference" ? "Sensitivity" : "Intervention"} variant ${claim.variantId} changed cluster ${clusterId} by ${claim.numerator}/${claim.denominator} sampled trajectories versus baseline.`
-      : null;
-  const expectedUncertainty = claim.claimType === "scenario_frequency"
-    ? "This is sampled simulation frequency from fixed trajectory seeds, not a backtested real-world probability."
-    : "This deterministic difference compares fixed seeded simulation samples; it is not a calibrated real-world probability or causal effect estimate.";
-  if (claim.statement !== expectedStatement || claim.uncertaintyStatement !== expectedUncertainty) {
-    return { ok: false as const, errorCode: "claim_tampering" as const };
-  }
-  const { id, claimIntegritySignature, ...unsigned } = claim;
-  if (claimIdV2(unsigned) !== id || claimsFingerprintV2(unsigned) !== claimIntegritySignature) {
-    return { ok: false as const, errorCode: "claim_tampering" as const };
-  }
-  return { ok: true as const, claim: structuredClone(claim) };
 }
