@@ -3,7 +3,7 @@ import type { AssumptionIdV2, EvidenceLedgerV2, RealEvidenceIdV2 } from "../real
 import type { TrajectoryPolicyV2, TrajectoryResultV2, TrajectoryRuntimeV2, TrajectoryRunSpecV2 } from "../trajectory/types";
 
 export const ANALYSIS_ENGINE_VERSION_V2 = "trajectory-analysis-engine-v2-stage-5" as const;
-export const FEATURE_SCHEMA_VERSION_V2 = "trajectory-feature-v2.1" as const;
+export const FEATURE_SCHEMA_VERSION_V2 = "trajectory-feature-v2.2" as const;
 export const CLUSTERING_ALGORITHM_V2 = "exact_outcome_signature" as const;
 export const CLUSTERING_VERSION_V2 = "1" as const;
 export const MAX_TRAJECTORY_SAMPLES_V2 = 100 as const;
@@ -62,6 +62,7 @@ export type TrajectoryFeatureV2 = {
   affectedVariableIds: string[];
   outcomeSignature: string;
   featureSignature: string;
+  featureIntegritySignature: string;
   simulationEventIds: WorldEventIdV2[];
   causalRealEvidenceIds: RealEvidenceIdV2[];
   causalAssumptionIds: AssumptionIdV2[];

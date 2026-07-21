@@ -132,8 +132,53 @@ The hardening suite additionally proves:
 - Clusters are grouped by complete canonical outcome strings; frequency recomputes clusters and rejects any changed seed, representative, ID, ordering, or provenance union.
 - Frequencies disclose all Assumptions actually modeled by the initial World, independently from cluster-specific causal Assumptions.
 
+## Child-spec and canonical-integrity hardening RED/GREEN evidence
+
+This follow-up started from commit `15085258ac131ec505d978a4afd1f0f958cf0d30`. Tests were added before any production change.
+
+RED command:
+
+```text
+npm run test:v2:analysis
+```
+
+Observed RED:
+
+```text
+Test Files  1 failed | 3 passed (4)
+Tests       9 failed | 29 passed (38)
+```
+
+The nine failures reproduced unbound child Trajectory IDs/Run Spec/schedule fields, drifted Tick schedules, incomplete completed runs, permissive canonical outcome payloads, independently mutable derived Feature fields, Frequency acceptance of rewritten Feature disclosure, numeric and enum no-op Sensitivity transitions, and cross-variant actor/provenance drift.
+
+GREEN command:
+
+```text
+npm run test:v2:analysis
+```
+
+Observed GREEN:
+
+```text
+Test Files  4 passed (4)
+Tests       38 passed (38)
+Statements  90.44% (492/544)
+Branches    85.06% (353/415)
+Functions   97.16% (103/106)
+Lines       97.26% (391/402)
+```
+
+Additional guarantees:
+
+- Batch execution and Feature validation share `buildChildTrajectoryRunSpecV2`; Feature extraction verifies the exact child trajectory ID, Run Spec ID, seed, horizon, start instant, policy and engine versions, initial World, Tick interval, and maximum Tick count.
+- Tick zero equals `startAt`; every later Tick equals `startAt + tickIndex * tickIntervalDays`; `completed` consumes the complete schedule and `no_actions` terminates only inside it.
+- Feature schema `trajectory-feature-v2.2` uses a strict canonical outcome payload. Visible terminal metrics, operation sequence, affected IDs, and evidence/Assumption provenance must exactly match that payload.
+- A separate canonical Feature integrity signature binds the trajectory identity, Simulation Event IDs, engine/policy versions, and Reality Boundary revision to the canonical outcome.
+- Clustering continues to group by the complete canonical outcome string, and Frequency first reconstructs canonical clusters from fully integrity-validated Features.
+- Sensitivity rejects numeric and enum no-op values before approval, transition, or batch execution. Across variants, only variant/proposal IDs and the axis value may differ; actor, targets, evidence, Assumptions, prior Events, time, rationale, and controlled target metadata remain identical.
+
 ## Coverage and known gaps
 
 The Stage 5 coverage command enforces Statements >= 90%, Branches >= 80%, Functions >= 95%, and Lines >= 90%. All final hardening thresholds pass. This stage intentionally has no browser E2E test because it introduces no UI or API surface; its end-to-end boundary is the local Stage 3 -> Stage 4 -> Stage 5 application-logic chain.
 
-The task requires one final ordinary commit, so the RED and GREEN states are preserved in this evidence report instead of separate checkpoint commits.
+Each hardening task requires one final ordinary commit, so its RED and GREEN states are preserved in this evidence report instead of separate checkpoint commits.

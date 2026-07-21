@@ -1,6 +1,5 @@
 import { executeTrajectoryV2 } from "../trajectory/trajectory-runner";
-import type { TrajectoryRunSpecV2 } from "../trajectory/types";
-import { childRunSpecIdV2, childTrajectoryIdV2 } from "./ids";
+import { buildChildTrajectoryRunSpecV2 } from "./child-run-spec";
 import { deepFreezeCloneV2 } from "./immutable";
 import type { BatchAnalysisV2, TrajectoryAnalysisAdapterV2 } from "./types";
 import { parseBatchRunSpecV2 } from "./validation";
@@ -12,16 +11,10 @@ export function runTrajectoryBatchV2(input: unknown, adapter: TrajectoryAnalysis
   const parsed = parseBatchRunSpecV2(input);
   if (!parsed.ok) return parsed;
   const spec = parsed.value;
-  const identity = { ...spec, trajectoryTemplate: { ...spec.trajectoryTemplate, runSpecId: undefined, trajectoryId: undefined }, trajectorySeeds: spec.trajectorySeeds };
   const trajectories = [];
   for (let childIndex = 0; childIndex < spec.trajectorySeeds.length; childIndex += 1) {
     const seed = spec.trajectorySeeds[childIndex]!;
-    const childSpec: TrajectoryRunSpecV2 = {
-      ...structuredClone(spec.trajectoryTemplate),
-      runSpecId: childRunSpecIdV2(identity, seed),
-      trajectoryId: childTrajectoryIdV2(identity, seed),
-      trajectorySeed: seed,
-    };
+    const childSpec = buildChildTrajectoryRunSpecV2(spec, seed);
     let policy;
     let runtime;
     try {
@@ -51,6 +44,7 @@ export function analyzeTrajectoryBatchV2(input: unknown, adapter: TrajectoryAnal
         policyId: batch.spec.policyId,
         policyVersion: batch.spec.policyVersion,
         trajectoryEngineVersion: batch.spec.trajectoryEngineVersion,
+        batchRunSpec: batch.spec,
       },
     );
     if (!extracted.ok) return extracted;

@@ -22,7 +22,8 @@ export function compareSensitivityV2(input: unknown, adapter: TrajectoryAnalysis
   const parsed = parseSensitivityComparisonInputV2(input);
   if (!parsed.ok) return parsed;
   const value = parsed.value;
-  const prepared = [];
+  const controlled = [];
+  let canonicalControlMetadata: string | undefined;
   for (let variantIndex = 0; variantIndex < value.variants.length; variantIndex += 1) {
     const item = value.variants[variantIndex]!;
     const world = structuredClone(value.baseline.trajectoryTemplate.initialWorld);
@@ -34,6 +35,39 @@ export function compareSensitivityV2(input: unknown, adapter: TrajectoryAnalysis
       !Object.is(proposal.parameters.value, item.axis.variantValue) || canonicalJsonV2(proposal.targetVariableIds) !== canonicalJsonV2([item.axis.targetId]) ||
       proposal.targetEntityIds.length !== 0 || proposal.targetResourceIds.length !== 0 || proposal.targetRelationIds.length !== 0
     ) return { ok: false as const, errorCode: "uncontrolled_sensitivity_change" as const, failedVariantIndex: variantIndex, issues: [`variants.${variantIndex}: axis and Proposal must describe one identical external variable change`] };
+    if (canonicalJsonV2(variable.value) === canonicalJsonV2(item.axis.variantValue)) {
+      return { ok: false as const, errorCode: "uncontrolled_sensitivity_change" as const, failedVariantIndex: variantIndex, issues: [`variants.${variantIndex}: sensitivity value must differ from the baseline World`] };
+    }
+    const controlMetadata = canonicalJsonV2({
+      axis: { kind: item.axis.kind, targetId: item.axis.targetId },
+      proposal: {
+        seedContextId: proposal.seedContextId,
+        actorAgentId: proposal.actorAgentId,
+        actionType: proposal.actionType,
+        targetEntityIds: proposal.targetEntityIds,
+        targetResourceIds: proposal.targetResourceIds,
+        targetRelationIds: proposal.targetRelationIds,
+        targetVariableIds: proposal.targetVariableIds,
+        parameters: {
+          actionType: proposal.parameters.actionType,
+          variableId: proposal.parameters.variableId,
+        },
+        realEvidenceIds: proposal.realEvidenceIds,
+        assumptionIds: proposal.assumptionIds,
+        priorWorldEventIds: proposal.priorWorldEventIds,
+        rationaleSummary: proposal.rationaleSummary,
+        createdAt: proposal.createdAt,
+      },
+    });
+    if (canonicalControlMetadata === undefined) canonicalControlMetadata = controlMetadata;
+    else if (controlMetadata !== canonicalControlMetadata) {
+      return { ok: false as const, errorCode: "uncontrolled_sensitivity_change" as const, failedVariantIndex: variantIndex, issues: [`variants.${variantIndex}: Proposal metadata must match the controlled sensitivity axis`] };
+    }
+    controlled.push({ item, variable, world, proposal, variantIndex });
+  }
+  const prepared = [];
+  for (const controlledVariant of controlled) {
+    const { item, variable, world, proposal, variantIndex } = controlledVariant;
     const transition = applyPreRunActionV2({ proposal, world, variantId: item.variantId, variantIndex, spec: value.baseline, adapter });
     if (!transition.ok) return { ok: false as const, errorCode: transition.phase === "input" ? "uncontrolled_sensitivity_change" as const : transition.phase === "approval" ? "intervention_approval_failed" as const : "intervention_transition_failed" as const, failedVariantIndex: variantIndex, causeCode: transition.causeCode };
     const spec = structuredClone(value.baseline);

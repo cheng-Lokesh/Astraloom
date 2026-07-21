@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { validateWorldV2 } from "../agent-world/validation";
 import type { WorldEventV2, WorldStateV2 } from "../agent-world/types";
-import { parseTrajectoryInstantV2 } from "../trajectory/time";
+import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "../trajectory/time";
 import {
   SEEDED_RNG_ALGORITHM_V2,
   SEEDED_RNG_VERSION_V2,
@@ -10,6 +10,8 @@ import {
   type TrajectoryResultV2,
 } from "../trajectory/types";
 import { canonicalJsonV2 } from "./ids";
+import { buildChildTrajectoryRunSpecV2 } from "./child-run-spec";
+import { parseBatchRunSpecV2 } from "./validation";
 
 const uint32 = z.number().finite().int().min(0).max(0xffff_ffff);
 const nonNegativeInteger = z.number().finite().int().nonnegative();
@@ -63,6 +65,7 @@ const contextSchema = z.object({
   policyId: z.string().min(1),
   policyVersion: z.string().min(1),
   trajectoryEngineVersion: z.literal(TRAJECTORY_ENGINE_VERSION_V2),
+  batchRunSpec: z.unknown(),
 }).strict();
 
 function failure(path: string, message: string) {
@@ -88,6 +91,10 @@ export function parseTrajectoryResultForFeatureV2(
   if (!parsed.success) return failure(parsed.error.issues[0]?.path.join(".") ?? "trajectory", parsed.error.issues[0]?.message ?? "invalid trajectory");
   const context = contextSchema.safeParse(contextInput);
   if (!context.success) return failure(context.error.issues[0]?.path.join(".") ?? "context", context.error.issues[0]?.message ?? "invalid context");
+  const batch = parseBatchRunSpecV2(context.data.batchRunSpec);
+  if (!batch.ok) return failure("context.batchRunSpec", "invalid Batch Run Spec");
+  if (!batch.value.trajectorySeeds.includes(context.data.trajectorySeed)) return failure("context.trajectorySeed", "seed is not part of Batch Run Spec");
+  const childSpec = buildChildTrajectoryRunSpecV2(batch.value, context.data.trajectorySeed);
   const initialWorld = structuredClone(initialWorldInput as WorldStateV2);
   const trajectory = structuredClone(parsed.data as TrajectoryResultV2);
   const finalValidation = validateWorldV2(trajectory.finalWorld);
@@ -95,12 +102,35 @@ export function parseTrajectoryResultForFeatureV2(
   const finalWorld = trajectory.finalWorld;
 
   if (
+    trajectory.trajectoryId !== childSpec.trajectoryId
+  ) return failure("trajectory.trajectoryId", "does not match child Run Spec");
+  if (
+    trajectory.runSpecId !== childSpec.runSpecId
+  ) return failure("trajectory.runSpecId", "does not match child Run Spec");
+  if (
+    trajectory.horizonDays !== childSpec.horizonDays
+  ) return failure("trajectory.horizonDays", "does not match child Run Spec");
+  if (
+    trajectory.startedAt !== childSpec.startAt
+  ) return failure("trajectory.startedAt", "does not match child Run Spec");
+  if (
     trajectory.seedContextId !== context.data.seedContextId ||
     trajectory.trajectorySeed !== context.data.trajectorySeed ||
     trajectory.policyId !== context.data.policyId ||
     trajectory.policyVersion !== context.data.policyVersion ||
     trajectory.trajectoryEngineVersion !== context.data.trajectoryEngineVersion
   ) return failure("trajectory", "ownership or version mismatch");
+  if (
+    context.data.seedContextId !== batch.value.seedContextId ||
+    context.data.policyId !== batch.value.policyId ||
+    context.data.policyVersion !== batch.value.policyVersion ||
+    context.data.trajectoryEngineVersion !== batch.value.trajectoryEngineVersion ||
+    trajectory.trajectorySeed !== childSpec.trajectorySeed ||
+    trajectory.policyId !== childSpec.policyId ||
+    trajectory.policyVersion !== childSpec.policyVersion ||
+    trajectory.trajectoryEngineVersion !== childSpec.trajectoryEngineVersion
+  ) return failure("trajectory", "does not match child Run Spec ownership or versions");
+  if (!same(initialWorld, childSpec.initialWorld)) return failure("initialWorld", "does not match child Run Spec initial World");
   if (
     trajectory.initialWorldId !== initialWorld.id ||
     trajectory.initialWorldRevision !== initialWorld.revision ||
@@ -129,6 +159,10 @@ export function parseTrajectoryResultForFeatureV2(
   for (let index = 0; index < trajectory.steps.length; index += 1) {
     const step = trajectory.steps[index]!;
     const occurred = parseTrajectoryInstantV2(step.occurredAt);
+    const expectedTick = started.ok
+      ? addTrajectoryDaysV2(started.value, index * childSpec.tickIntervalDays)
+      : null;
+    if (!expectedTick?.ok || step.occurredAt !== expectedTick.value.isoTimestamp) return failure(`trajectory.steps.${index}.occurredAt`, "does not match child Run Spec Tick schedule");
     if (!occurred.ok || occurred.value.epochMilliseconds < previousTime || occurred.value.epochMilliseconds > completed.value.epochMilliseconds) return failure(`trajectory.steps.${index}.occurredAt`, "invalid or non-monotonic time");
     if (index > 0 && occurred.value.epochMilliseconds <= previousTime) return failure(`trajectory.steps.${index}.occurredAt`, "step times must increase");
     previousTime = occurred.value.epochMilliseconds;
@@ -150,6 +184,8 @@ export function parseTrajectoryResultForFeatureV2(
       expectedRevision = step.afterRevision;
     }
   }
+  if (trajectory.status === "completed" && trajectory.steps.length !== childSpec.maxTicks) return failure("trajectory.steps", "completed trajectory must execute the complete child Run Spec schedule");
+  if (trajectory.status === "no_actions" && (trajectory.steps.length < 1 || trajectory.steps.length > childSpec.maxTicks)) return failure("trajectory.steps", "no_actions termination is outside the child Run Spec schedule");
   if (trajectory.status === "completed" && trajectory.steps.some((step) => step.termination || step.error)) return failure("trajectory.status", "completed trajectory contains termination or error");
   if (trajectory.status === "no_actions" && trajectory.steps.filter((step) => step.termination).length !== 1) return failure("trajectory.status", "no_actions requires one final termination");
   if (completed.value.epochMilliseconds !== previousTime) return failure("trajectory.completedAt", "must equal final step time");

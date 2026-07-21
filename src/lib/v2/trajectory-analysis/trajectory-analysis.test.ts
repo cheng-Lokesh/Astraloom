@@ -44,9 +44,8 @@ function batchSpec(seeds = [7, 11, 19]) {
   } as const;
 }
 
-function featureContext(seed: number) {
-  const spec = batchSpec([seed]);
-  return { seedContextId: spec.seedContextId, trajectorySeed: seed, policyId: spec.policyId, policyVersion: spec.policyVersion, trajectoryEngineVersion: spec.trajectoryEngineVersion };
+function featureContext(seed: number, spec = batchSpec([seed])) {
+  return { seedContextId: spec.seedContextId, trajectorySeed: seed, policyId: spec.policyId, policyVersion: spec.policyVersion, trajectoryEngineVersion: spec.trajectoryEngineVersion, batchRunSpec: spec };
 }
 
 function sensitivityProposal(spec: ReturnType<typeof batchSpec>, value: number) {
@@ -146,21 +145,23 @@ describe("features, exact clustering, and sampled frequency", () => {
       trajectoryRuntimeFactory: ({ seed }) => ({ agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`none-${seed}`) }),
       interventionRuntimeFactory: ({ interventionId }) => ({ clock: () => "2026-07-19T10:00:00.001Z", idFactory: createStableAgentWorldIdFactoryV2(interventionId) }),
     });
-    const batch = runTrajectoryBatchV2(batchSpec([1, 2]), noActions);
+    const spec = batchSpec([1, 2]);
+    const batch = runTrajectoryBatchV2(spec, noActions);
     expect(batch.ok).toBe(true);
     if (!batch.ok) return;
-    const features = batch.trajectories.map((item) => extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, item, featureContext(item.trajectorySeed)));
+    const features = batch.trajectories.map((item) => extractTrajectoryFeatureV2(spec.trajectoryTemplate.initialWorld, item, featureContext(item.trajectorySeed, spec)));
     expect(features.every((item) => item.ok && item.feature.terminalStatus === "no_actions")).toBe(true);
     const clusters = clusterTrajectoryFeaturesV2(features.flatMap((item) => item.ok ? [item.feature] : []));
     expect(clusters).toMatchObject({ ok: true, clusters: [{ memberTrajectorySeeds: [1, 2] }] });
   });
 
   it("creates complete disjoint stable clusters and exact rational frequencies", () => {
-    const batch = runTrajectoryBatchV2(batchSpec(), adapter());
+    const spec = batchSpec();
+    const batch = runTrajectoryBatchV2(spec, adapter());
     expect(batch.ok).toBe(true);
     if (!batch.ok) return;
     const features = batch.trajectories.map((item) => {
-      const value = extractTrajectoryFeatureV2(batchSpec().trajectoryTemplate.initialWorld, item, featureContext(item.trajectorySeed));
+      const value = extractTrajectoryFeatureV2(spec.trajectoryTemplate.initialWorld, item, featureContext(item.trajectorySeed, spec));
       if (!value.ok) throw new Error(value.errorCode);
       return value.feature;
     });

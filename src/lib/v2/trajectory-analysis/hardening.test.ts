@@ -56,6 +56,7 @@ function featureContext(spec: ReturnType<typeof batchSpec>, seed: number) {
     policyId: spec.policyId,
     policyVersion: spec.policyVersion,
     trajectoryEngineVersion: spec.trajectoryEngineVersion,
+    batchRunSpec: spec,
   };
 }
 
