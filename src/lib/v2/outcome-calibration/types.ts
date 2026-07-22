@@ -9,14 +9,16 @@ import type {
 export const OUTCOME_CALIBRATION_ENGINE_VERSION_V2 =
   "outcome-calibration-engine-v2-stage-7" as const;
 export const OUTCOME_SCHEMA_VERSION_V2 = "outcome-v2.1" as const;
-export const BACKTEST_SCHEMA_VERSION_V2 = "backtest-v2.1" as const;
-export const CALIBRATION_SCHEMA_VERSION_V2 = "calibration-v2.1" as const;
-export const PERSISTENCE_SCHEMA_VERSION_V2 = "outcome-calibration-persistence-v2.0" as const;
+export const FORECAST_LOCK_SCHEMA_VERSION_V2 = "forecast-lock-v2.0" as const;
+export const BACKTEST_SCHEMA_VERSION_V2 = "backtest-v2.2" as const;
+export const CALIBRATION_SCHEMA_VERSION_V2 = "calibration-v2.2" as const;
+export const PERSISTENCE_SCHEMA_VERSION_V2 = "outcome-calibration-persistence-v2.1" as const;
 export const CALIBRATION_METHOD_NAME_V2 = "binary-brier-score" as const;
-export const CALIBRATION_METHOD_VERSION_V2 = "2" as const;
+export const CALIBRATION_METHOD_VERSION_V2 = "3" as const;
 export const MIN_CALIBRATION_SAMPLE_SIZE_V2 = 5 as const;
 
 export type OutcomeIdV2 = `outcome_v2_${string}`;
+export type ForecastLockIdV2 = `forecast_lock_v2_${string}`;
 export type BacktestIdV2 = `backtest_v2_${string}`;
 export type CalibrationIdV2 = `calibration_v2_${string}`;
 export type OutcomeCalibrationPersistenceVersionIdV2 = `outcome_calibration_version_v2_${string}`;
@@ -78,6 +80,68 @@ export type Stage7ClaimSetSnapshotV2 = Stage7RunSnapshotV2 & {
   realityBoundary: RealityBoundarySnapshotV2;
 };
 
+export type ForecastUnitSemanticsV2 = {
+  normalizedRunSpec: unknown;
+  evaluationWindow: { startAt: string; horizonEnd: string };
+  seedContextId: string;
+  trajectorySeeds: number[];
+  policyAndEngineVersions: {
+    policyVersion: string;
+    trajectoryEngineVersion: string;
+    analysisEngineVersion: string;
+    featureSchemaVersion: string;
+    clusteringAlgorithm: string;
+    clusteringVersion: string;
+  };
+  claim: {
+    metric: ClaimV2["metric"];
+    numerator: number;
+    denominator: number;
+  };
+  clusterOutcome: {
+    outcomeSignature: string;
+    featureSignature: string;
+    memberTrajectorySeeds: number[];
+  };
+  forecastRealityBoundary: {
+    fingerprint: string;
+    revision: number;
+  };
+  lockedAt: string;
+};
+
+export type ForecastLockV2 = {
+  id: ForecastLockIdV2;
+  forecastLockSpecId: `forecast_lock_spec_v2_${string}`;
+  seedContextId: string;
+  status: "locked";
+  lockedAt: string;
+  canonicalContentSignature: string;
+  realityBoundaryBinding: {
+    revision: number;
+    fingerprint: string;
+    evidenceLedgerId: string;
+    assumptionLedgerId: string;
+  };
+  forecastUnits: Array<{
+    claimId: ClaimV2["id"];
+    clusterId: ClaimV2["clusterIds"][number];
+    semantics: ForecastUnitSemanticsV2;
+    forecastUnitSignature: string;
+  }>;
+  sourceSnapshots: {
+    run: Stage7RunSnapshotV2;
+    claimSet: Stage7ClaimSetSnapshotV2;
+    claims: ClaimV2[];
+    report: ClaimsReportV2;
+  };
+  versions: {
+    outcomeCalibrationEngineVersion: typeof OUTCOME_CALIBRATION_ENGINE_VERSION_V2;
+    forecastLockSchemaVersion: typeof FORECAST_LOCK_SCHEMA_VERSION_V2;
+  };
+  forecastLockIntegritySignature: string;
+};
+
 export type BacktestV2 = {
   id: BacktestIdV2;
   backtestSpecId: `backtest_spec_v2_${string}`;
@@ -127,6 +191,14 @@ export type BacktestV2 = {
   };
   observationUnitSignature: string;
   forecastUnitSignature: string;
+  forecastLockBinding: {
+    forecastLockId: ForecastLockV2["id"];
+    persistenceVersionId: OutcomeCalibrationPersistenceVersionIdV2;
+    persistenceVersion: number;
+    lockedAt: string;
+    persistedAt: string;
+    canonicalContentSignature: string;
+  };
   versions: {
     outcomeCalibrationEngineVersion: typeof OUTCOME_CALIBRATION_ENGINE_VERSION_V2;
     backtestSchemaVersion: typeof BACKTEST_SCHEMA_VERSION_V2;
@@ -151,6 +223,7 @@ export type BacktestV2 = {
     report: ClaimsReportV2;
     outcome: OutcomeV2;
     outcomeRealityBoundary: RealityBoundarySnapshotV2;
+    forecastLockPersistenceVersion: OutcomeCalibrationPersistenceVersionV2;
     claimSetIntegritySignature: string;
     runIntegritySignature: string;
   };
@@ -198,6 +271,7 @@ export type CalibrationV2 = {
 };
 
 export type OutcomeCalibrationArtifactV2 =
+  | { kind: "forecast_lock"; value: ForecastLockV2 }
   | { kind: "outcome"; value: OutcomeV2 }
   | { kind: "backtest"; value: BacktestV2 }
   | { kind: "calibration"; value: CalibrationV2 };
@@ -235,5 +309,6 @@ export type OutcomeCalibrationErrorCodeV2 =
   | "calibration_tampering"
   | "run_mismatch"
   | "unknown_claim_reference"
+  | "invalid_forecast_lock"
   | "duplicate_id"
   | "duplicate_calibration_unit";

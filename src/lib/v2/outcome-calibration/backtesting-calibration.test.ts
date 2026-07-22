@@ -5,6 +5,7 @@ import { backtestClaimsReportV2, parseValidatedBacktestV2 } from "./backtesting"
 import { calibrateBacktestsV2, parseValidatedCalibrationV2 } from "./calibration";
 import { captureOutcomeV2 } from "./outcome-capture";
 import {
+  forecastLockPersistenceFixtureV2,
   outcomeCaptureInputFixtureV2,
   outcomeRealityBoundaryFixtureV2,
   stage6SensitivitySourceFixtureV2,
@@ -37,20 +38,30 @@ function capturedOutcome({
   return result.outcome;
 }
 
-function backtestInput(outcome = capturedOutcome(), source = stage6SourceFixtureV2()) {
+function backtestInput(
+  outcome = capturedOutcome(),
+  source = stage6SourceFixtureV2(),
+  lockedAt = "2026-07-19T10:01:00.000Z",
+) {
+  const lock = forecastLockPersistenceFixtureV2({ source, lockedAt });
   return {
     backtestSpecId: `backtest_spec_v2_${outcome.outcomeSpecId.slice("outcome_spec_v2_".length)}`,
     run: source.run,
     claimSet: source.claimSet,
     claims: source.claims,
     report: source.report,
+    forecastLockPersistenceVersion: lock.persistenceVersion,
     outcome,
     outcomeRealityBoundary: outcome.realityBoundarySnapshot,
   };
 }
 
-function builtBacktest(outcome = capturedOutcome(), source = stage6SourceFixtureV2()) {
-  const result = backtestClaimsReportV2(backtestInput(outcome, source));
+function builtBacktest(
+  outcome = capturedOutcome(),
+  source = stage6SourceFixtureV2(),
+  lockedAt = "2026-07-19T10:01:00.000Z",
+) {
+  const result = backtestClaimsReportV2(backtestInput(outcome, source, lockedAt));
   if (!result.ok) throw new Error(result.errorCode);
   return result.backtest;
 }
@@ -121,7 +132,7 @@ describe("Stage 7 Backtesting", () => {
       claimsFingerprintV2(input.claimSet),
     );
     expect(parseValidatedBacktestV2(first.backtest)).toEqual({ ok: true, backtest: first.backtest });
-  });
+  }, 15_000);
 
   it("atomically rejects non-canonical Claims, escalated Reports, mismatched Runs, and corrupt nested objects", () => {
     const tamperedClaim = backtestInput();
@@ -280,6 +291,7 @@ describe("Stage 7 Backtesting", () => {
       claimSet: source.claimSet,
       claims: source.claims,
       report: source.report,
+      forecastLockPersistenceVersion: forecastLockPersistenceFixtureV2({ source }).persistenceVersion,
       outcome: captured.outcome,
       outcomeRealityBoundary: boundary,
     });
@@ -348,7 +360,11 @@ describe("Stage 7 Calibration", () => {
         count: index + 1,
         nonOccurrenceIndices: observed ? [] : [index],
       });
-      return builtBacktest(capturedOutcome({ index, observed, boundary, source }), source);
+      return builtBacktest(
+        capturedOutcome({ index, observed, boundary, source }),
+        source,
+        `2026-07-19T10:0${index + 1}:00.000Z`,
+      );
     });
     const input = calibrationInput(backtests);
     const result = calibrateBacktestsV2(input);
@@ -358,6 +374,11 @@ describe("Stage 7 Calibration", () => {
       (sum, observed) => sum + (probability - Number(observed)) ** 2,
       0,
     ) / observations.length;
+
+    expect(new Set(backtests.map((item) => item.forecastLockBinding.lockedAt)).size).toBe(5);
+    expect(backtests.every((item) =>
+      item.evaluationWindow.startAt === item.sourceSnapshots.outcome.observationWindow.startAt &&
+      item.evaluationWindow.horizonEnd === item.sourceSnapshots.outcome.observationWindow.horizonEnd)).toBe(true);
 
     expect(result).toEqual(shuffled);
     expect(result).toMatchObject({

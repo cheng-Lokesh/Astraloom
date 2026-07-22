@@ -14,6 +14,7 @@ export function stage7FingerprintV2(value: unknown): string {
 }
 
 export const outcomeIdV2 = (value: unknown) => `outcome_v2_${stage7FingerprintV2(value)}` as const;
+export const forecastLockIdV2 = (value: unknown) => `forecast_lock_v2_${stage7FingerprintV2(value)}` as const;
 export const backtestIdV2 = (value: unknown) => `backtest_v2_${stage7FingerprintV2(value)}` as const;
 export const calibrationIdV2 = (value: unknown) => `calibration_v2_${stage7FingerprintV2(value)}` as const;
 export const persistenceVersionIdV2 = (value: unknown) =>

@@ -572,7 +572,29 @@ Claims.
 Stage 7 adds local deterministic artifacts after Stage 6 without changing V1
 or the Stage 2-6 production contracts:
 
-`Stage 2 Real Evidence -> Outcome -> Stage 6 canonical Backtest -> Calibration -> append-only persistence version`
+`Stage 6 canonical Forecast Lock -> Stage 2 Real Evidence Outcome -> Backtest -> Calibration -> append-only persistence version`
+
+### ForecastLockV2
+
+A `ForecastLockV2` freezes a complete, revalidated Stage 5/6 forecast before
+the primary Outcome Evidence exists. It includes:
+
+- Immutable snapshots of the Run, canonical Claim Set, all canonical Claims,
+  and the validated Report.
+- `lockedAt`, the forecast Reality Boundary revision and fingerprint, Ledger
+  identities, a canonical content signature, explicit schema version, and an
+  artifact integrity signature.
+- One semantic forecast unit per Claim/Cluster. Its signature excludes identity
+  fields such as Analysis Run Spec, Trajectory Run Spec, Trajectory, Claim,
+  source analysis, Report Spec, Backtest Spec, and Outcome Spec ids.
+- Semantic signature inputs comprising the normalized Run Spec, evaluation
+  window, Seed, trajectory seeds, policy/engine versions, Claim metric and
+  numerator/denominator, canonical Cluster outcome semantics, forecast Reality
+  Boundary fingerprint/revision, and lock time.
+
+Changing namespace ids alone must not change a forecast-unit signature. A lock
+must be persisted before its primary Outcome Evidence `capturedAt`; a lock or
+persistence receipt created at or after capture is invalid for Backtesting.
 
 ### OutcomeV2
 
@@ -618,8 +640,12 @@ canonical Claim Set. It binds immutable snapshots and integrity signatures for:
 - A forecast evaluation window derived by revalidating the canonical Run Spec
   and applying the Stage 4 millisecond-safe time utilities.
 - The Outcome observation-unit signature and a forecast-unit signature binding
-  Run, Claim, Cluster, and evaluation window independently of
-  `backtestSpecId`/`outcomeSpecId` aliases.
+  the semantic Run, Claim metric/frequency, Cluster outcome, Reality Boundary,
+  evaluation window, versions, seeds, and lock time independently of identity
+  aliases.
+- The exact persisted Forecast Lock version id, stream version, `lockedAt`,
+  `persistedAt`, and canonical content signature. A missing, late, mismatched,
+  or tampered persistence version invalidates the Backtest atomically.
 
 The Outcome boundary revision must be strictly greater than the forecast
 revision. It may append new Real Evidence but must keep the same Seed and Ledger
@@ -635,7 +661,7 @@ calibration; a single observed Outcome must not become a causal conclusion.
 
 Stage 7 calibration is deterministic and explicitly versioned:
 
-- Method: `binary-brier-score`, version `2`.
+- Method: `binary-brier-score`, version `3`.
 - Minimum eligible independent forecast-outcome sample: `5`.
 - Below the minimum, status is `insufficient_data`, `brierScore` is null, and
   the metric label remains `simulation_frequency`.
@@ -661,8 +687,8 @@ artifact and enforces:
 - Optimistic concurrency through `expectedVersion`.
 - Content-bound idempotency: the same key and request returns the original
   version; the same key with different content is rejected.
-- Dependency ordering: Outcome before Backtest and all referenced Backtests
-  before Calibration.
+- Dependency ordering: persisted Forecast Lock before its Outcome, Outcome
+  before its Backtest, and all referenced Backtests before Calibration.
 - One Seed and one Ledger identity per stream.
 - No replacement of an existing Outcome, Backtest, or Calibration id.
 - Defensive snapshots on every read so callers cannot rewrite stored history.

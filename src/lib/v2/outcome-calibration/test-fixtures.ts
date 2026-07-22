@@ -14,6 +14,10 @@ import {
 import { buildClaimsV2 } from "../claims-reports/claim-builder";
 import { buildClaimsReportV2 } from "../claims-reports/report-builder";
 import type { ClaimV2 } from "../claims-reports/types";
+import { buildForecastLockV2 } from "./forecast-lock";
+import { persistenceVersionIdV2, stage7FingerprintV2 } from "./ids";
+import type { OutcomeCalibrationPersistenceVersionV2 } from "./types";
+import { PERSISTENCE_SCHEMA_VERSION_V2 } from "./types";
 
 export const OUTCOME_OCCURRED_AT_FIXTURES_V2 = [
   "2026-07-29T09:00:00.000Z",
@@ -307,4 +311,56 @@ export function outcomeCaptureInputFixtureV2({
       limitations: ["Recall and cluster-classification uncertainty remain."],
     },
   };
+}
+
+export function forecastLockPersistenceFixtureV2({
+  source = stage6SourceFixtureV2(),
+  lockedAt = "2026-07-19T10:01:00.000Z",
+  persistedAt = lockedAt,
+  streamId = "outcome_calibration_stream_v2_career_fixture" as const,
+  version = 1,
+}: {
+  source?: ReturnType<typeof stage6SourceFixtureV2> | ReturnType<typeof stage6SensitivitySourceFixtureV2>;
+  lockedAt?: string;
+  persistedAt?: string;
+  streamId?: `outcome_calibration_stream_v2_${string}`;
+  version?: number;
+} = {}) {
+  const built = buildForecastLockV2({
+    forecastLockSpecId: `forecast_lock_spec_v2_stage_7_fixture_${version}`,
+    lockedAt,
+    run: source.run,
+    claimSet: source.claimSet,
+    claims: source.claims,
+    report: source.report,
+  });
+  if (!built.ok) throw new Error(built.errorCode);
+  const idempotencyKey = `stage7_idempotency_v2_forecast_lock_${version}` as const;
+  const requestFingerprint = stage7FingerprintV2({
+    streamId,
+    expectedVersion: version - 1,
+    idempotencyKey,
+    persistedAt,
+    artifact: { kind: "forecast_lock", value: built.forecastLock },
+  });
+  const unsigned: Omit<OutcomeCalibrationPersistenceVersionV2, "id" | "persistenceIntegritySignature"> = {
+    streamId,
+    seedContextId: built.forecastLock.seedContextId,
+    evidenceLedgerId: built.forecastLock.realityBoundaryBinding.evidenceLedgerId,
+    assumptionLedgerId: built.forecastLock.realityBoundaryBinding.assumptionLedgerId,
+    realityBoundaryRevision: built.forecastLock.realityBoundaryBinding.revision,
+    version,
+    parentVersionId: version === 1 ? null : `outcome_calibration_version_v2_parent${version - 1}`,
+    idempotencyKey,
+    requestFingerprint,
+    persistedAt,
+    persistenceSchemaVersion: PERSISTENCE_SCHEMA_VERSION_V2,
+    artifact: { kind: "forecast_lock", value: built.forecastLock },
+  };
+  const persistenceVersion: OutcomeCalibrationPersistenceVersionV2 = {
+    id: persistenceVersionIdV2(unsigned),
+    ...unsigned,
+    persistenceIntegritySignature: stage7FingerprintV2(unsigned),
+  };
+  return { forecastLock: built.forecastLock, persistenceVersion };
 }

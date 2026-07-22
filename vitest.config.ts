@@ -85,6 +85,7 @@ export default defineConfig({
         "src/lib/v2/claims-reports/validation.ts",
         "src/lib/v2/outcome-calibration/backtesting.ts",
         "src/lib/v2/outcome-calibration/calibration.ts",
+        "src/lib/v2/outcome-calibration/forecast-lock.ts",
         "src/lib/v2/outcome-calibration/ids.ts",
         "src/lib/v2/outcome-calibration/in-memory-repository.ts",
         "src/lib/v2/outcome-calibration/outcome-capture.ts",

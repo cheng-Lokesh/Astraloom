@@ -136,6 +136,48 @@ Evidence under a new id, and distinct observations aliased to one forecast
 target. The calibrated five-sample fixture now uses five separate, pre-locked
 Run/Claim/Cluster forecast units rather than five Outcomes for one Claim/Run.
 
+## Forecast Lock and semantic-unit repair RED/GREEN evidence
+
+The next repair started from
+`c2272c5ff294ca000f647306fc9448152e99eee9`. Forecast Lock, namespace-alias,
+late-lock, tampering, and repository-order tests were added before production
+code.
+
+Initial RED command and result:
+
+```text
+npm run test:v2:outcome-calibration
+Exit code: 1
+Test Files  4 failed (4)
+Tests       no tests
+Error: Cannot find module './forecast-lock'
+```
+
+This is the intended compile-time RED: the new tests referenced the missing
+Forecast Lock artifact and builder. It was not an unrelated dependency or
+environment failure.
+
+GREEN after implementation:
+
+```text
+npm run test:v2:outcome-calibration
+Exit code: 0
+Test Files  4 passed (4)
+Tests       33 passed (33)
+Statements 90.87% (538/592)
+Branches   86.71% (385/444)
+Functions  97.52% (118/121)
+Lines      94.35% (468/496)
+```
+
+The tests prove that namespace-only Run/Claim/Report aliases share one semantic
+forecast-unit signature; five such aliases cannot reach calibration minimum.
+They also prove full Run/Claim Set/Claims/Report lock replay, strict lock
+schemas, lock and persistence time before Evidence capture, tamper detection,
+and repository ordering of Forecast Lock -> Outcome -> Backtest -> Calibration.
+The sufficient five-sample fixture uses five distinct lock times, each before
+its paired Outcome Evidence, and verifies exact forecast-window pairing.
+
 ## Coverage and known gaps
 
 The independent Stage 7 command enforces 90% statements, 85% branches, 95%
@@ -154,11 +196,11 @@ All requested commands passed on the final Stage 7 implementation:
 | `npm run test:v2:trajectory` | PASS: 63 tests |
 | `npm run test:v2:analysis` | PASS: 47 tests and Stage 5 coverage gates |
 | `npm run test:v2:claims-reports` | PASS: 23 tests and Stage 6 coverage gates |
-| `npm run test:v2:outcome-calibration` | PASS: 29 tests and Stage 7 coverage gates |
-| `npm test` | PASS: 378 tests in 34 files |
-| `npm run test:unit` | PASS: 375 tests in 33 files |
+| `npm run test:v2:outcome-calibration` | PASS: 33 tests in 4 files and Stage 7 coverage gates |
+| `npm test` | PASS: 382 tests in 35 files |
+| `npm run test:unit` | PASS: 379 tests in 34 files |
 | `npm run test:golden` | PASS: 3 tests covering exactly eight V1 Golden Cases |
-| `npm run test:coverage` | PASS: statements 90.83%, branches 80.28%, functions 95.15%, lines 93.18% |
+| `npm run test:coverage` | PASS: statements 90.70%, branches 80.47%, functions 95.10%, lines 93.22% |
 | `npm run check` | PASS: full tests, lint, type-check, and production build |
 | `npm run check:ci` | PASS: coverage, lint, type-check, and production build |
 | `git diff --check` | PASS |

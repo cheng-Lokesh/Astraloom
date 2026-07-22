@@ -2,8 +2,10 @@ import { z } from "zod";
 
 import { parseValidatedBacktestV2 } from "./backtesting";
 import { parseValidatedCalibrationV2 } from "./calibration";
+import { parseValidatedForecastLockV2 } from "./forecast-lock";
 import { persistenceVersionIdV2, stage7FingerprintV2 } from "./ids";
 import { parseValidatedOutcomeV2 } from "./outcome-capture";
+import { parseTrajectoryInstantV2 } from "../trajectory/time";
 import type {
   OutcomeCalibrationAppendResultV2,
   OutcomeCalibrationRepositoryErrorCodeV2,
@@ -37,6 +39,7 @@ function isValidIsoTimestamp(value: string) {
 const strictTimestamp = bounded.refine(isValidIsoTimestamp);
 const streamIdSchema = z.string().regex(/^outcome_calibration_stream_v2_[a-z0-9][a-z0-9_-]*$/);
 const artifactSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("forecast_lock"), value: z.unknown() }).strict(),
   z.object({ kind: z.literal("outcome"), value: z.unknown() }).strict(),
   z.object({ kind: z.literal("backtest"), value: z.unknown() }).strict(),
   z.object({ kind: z.literal("calibration"), value: z.unknown() }).strict(),
@@ -72,6 +75,10 @@ function artifactIdentity(artifact: OutcomeCalibrationArtifactV2) {
 }
 
 function validateArtifact(artifact: z.infer<typeof artifactSchema>) {
+  if (artifact.kind === "forecast_lock") {
+    const result = parseValidatedForecastLockV2(artifact.value);
+    return result.ok ? { ok: true as const, artifact: { kind: "forecast_lock" as const, value: result.forecastLock } } : null;
+  }
   if (artifact.kind === "outcome") {
     const result = parseValidatedOutcomeV2(artifact.value);
     return result.ok ? { ok: true as const, artifact: { kind: "outcome" as const, value: result.outcome } } : null;
@@ -85,6 +92,12 @@ function validateArtifact(artifact: z.infer<typeof artifactSchema>) {
 }
 
 function artifactBoundary(artifact: OutcomeCalibrationArtifactV2) {
+  if (artifact.kind === "forecast_lock") return {
+    seedContextId: artifact.value.seedContextId,
+    evidenceLedgerId: artifact.value.realityBoundaryBinding.evidenceLedgerId,
+    assumptionLedgerId: artifact.value.realityBoundaryBinding.assumptionLedgerId,
+    revision: artifact.value.realityBoundaryBinding.revision,
+  };
   if (artifact.kind === "outcome") return {
     seedContextId: artifact.value.seedContextId,
     evidenceLedgerId: artifact.value.realityBoundarySnapshot.evidenceLedger.id,
@@ -106,13 +119,41 @@ function artifactBoundary(artifact: OutcomeCalibrationArtifactV2) {
 }
 
 function dependenciesPresent(artifact: OutcomeCalibrationArtifactV2, history: OutcomeCalibrationPersistenceVersionV2[]) {
-  if (artifact.kind === "outcome") return true;
+  if (artifact.kind === "forecast_lock") return true;
+  if (artifact.kind === "outcome") {
+    const primary = artifact.value.realityBoundarySnapshot.evidenceLedger.items.find(
+      (item) => item.id === artifact.value.source.realEvidenceId,
+    );
+    const captured = parseTrajectoryInstantV2(primary?.capturedAt);
+    return captured.ok && history.some((record) => {
+      if (record.artifact.kind !== "forecast_lock") return false;
+      const locked = parseTrajectoryInstantV2(record.artifact.value.lockedAt);
+      const persisted = parseTrajectoryInstantV2(record.persistedAt);
+      return locked.ok && persisted.ok &&
+        locked.value.epochMilliseconds < captured.value.epochMilliseconds &&
+        persisted.value.epochMilliseconds < captured.value.epochMilliseconds &&
+        record.artifact.value.forecastUnits.some((unit) =>
+          unit.claimId === artifact.value.claimReference.claimId &&
+          unit.clusterId === artifact.value.claimReference.clusterId);
+    });
+  }
   if (artifact.kind === "backtest") {
-    return history.some((record) => record.artifact.kind === "outcome" && record.artifact.value.id === artifact.value.outcomeId);
+    const lockPresent = history.some((record) =>
+      record.id === artifact.value.forecastLockBinding.persistenceVersionId &&
+      record.artifact.kind === "forecast_lock" &&
+      record.artifact.value.id === artifact.value.forecastLockBinding.forecastLockId &&
+      canonicalArtifact(record) === canonicalArtifact(artifact.value.sourceSnapshots.forecastLockPersistenceVersion));
+    const outcomePresent = history.some((record) =>
+      record.artifact.kind === "outcome" && record.artifact.value.id === artifact.value.outcomeId);
+    return lockPresent && outcomePresent;
   }
   const persistedBacktests = new Set(history.flatMap((record) =>
     record.artifact.kind === "backtest" ? [record.artifact.value.id] : []));
   return artifact.value.backtestIds.every((id) => persistedBacktests.has(id));
+}
+
+function canonicalArtifact(value: unknown) {
+  return stage7FingerprintV2(value);
 }
 
 function invalidIdInput(input: unknown) {

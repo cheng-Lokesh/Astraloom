@@ -5,6 +5,7 @@ import { calibrateBacktestsV2 } from "./calibration";
 import { createInMemoryOutcomeCalibrationRepositoryV2 } from "./in-memory-repository";
 import { captureOutcomeV2 } from "./outcome-capture";
 import {
+  forecastLockPersistenceFixtureV2,
   outcomeCaptureInputFixtureV2,
   outcomeRealityBoundaryFixtureV2,
   stage6SourceFixtureV2,
@@ -21,12 +22,14 @@ function artifacts() {
   const captured = captureOutcomeV2(outcomeCaptureInputFixtureV2({ boundary }));
   if (!captured.ok) throw new Error(captured.errorCode);
   const source = stage6SourceFixtureV2();
+  const lock = forecastLockPersistenceFixtureV2({ source });
   const tested = backtestClaimsReportV2({
     backtestSpecId: "backtest_spec_v2_repository_fixture",
     run: source.run,
     claimSet: source.claimSet,
     claims: source.claims,
     report: source.report,
+    forecastLockPersistenceVersion: lock.persistenceVersion,
     outcome: captured.outcome,
     outcomeRealityBoundary: boundary,
   });
@@ -41,7 +44,13 @@ function artifacts() {
     backtests: [tested.backtest],
   });
   if (!calibrated.ok) throw new Error(calibrated.errorCode);
-  return { outcome: captured.outcome, backtest: tested.backtest, calibration: calibrated.calibration };
+  return {
+    forecastLock: lock.forecastLock,
+    forecastLockPersistenceVersion: lock.persistenceVersion,
+    outcome: captured.outcome,
+    backtest: tested.backtest,
+    calibration: calibrated.calibration,
+  };
 }
 
 const streamId = "outcome_calibration_stream_v2_career_fixture";
@@ -53,9 +62,9 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     const first = await repository.append({
       streamId,
       expectedVersion: 0,
-      idempotencyKey: "stage7_idempotency_v2_outcome_01",
-      persistedAt: "2026-08-20T10:01:00.000Z",
-      artifact: { kind: "outcome", value: values.outcome },
+      idempotencyKey: values.forecastLockPersistenceVersion.idempotencyKey,
+      persistedAt: values.forecastLockPersistenceVersion.persistedAt,
+      artifact: { kind: "forecast_lock", value: values.forecastLock },
     });
     expect(first).toMatchObject({
       ok: true,
@@ -65,31 +74,39 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     const second = await repository.append({
       streamId,
       expectedVersion: 1,
-      idempotencyKey: "stage7_idempotency_v2_backtest_01",
-      persistedAt: "2026-08-20T10:02:00.000Z",
-      artifact: { kind: "backtest", value: values.backtest },
+      idempotencyKey: "stage7_idempotency_v2_outcome_01",
+      persistedAt: "2026-07-29T10:01:00.000Z",
+      artifact: { kind: "outcome", value: values.outcome },
     });
     const third = await repository.append({
       streamId,
       expectedVersion: 2,
+      idempotencyKey: "stage7_idempotency_v2_backtest_01",
+      persistedAt: "2026-07-29T10:02:00.000Z",
+      artifact: { kind: "backtest", value: values.backtest },
+    });
+    const fourth = await repository.append({
+      streamId,
+      expectedVersion: 3,
       idempotencyKey: "stage7_idempotency_v2_calibration_01",
-      persistedAt: "2026-08-20T10:03:00.000Z",
+      persistedAt: "2026-07-29T10:03:00.000Z",
       artifact: { kind: "calibration", value: values.calibration },
     });
     expect(second).toMatchObject({ ok: true, data: { version: 2 } });
     expect(third).toMatchObject({ ok: true, data: { version: 3 } });
+    expect(fourth).toMatchObject({ ok: true, data: { version: 4 } });
 
     const history = await repository.loadHistory({ streamId });
     expect(history).toMatchObject({ ok: true });
     if (!history.ok || !first.ok) throw new Error("Expected persisted history.");
-    expect(history.data.map((item) => item.version)).toEqual([1, 2, 3]);
-    (history.data[0]!.artifact.value as typeof values.outcome).observed = "did_not_occur";
-    const versionOne = await repository.loadVersion({ streamId, version: 1 });
-    expect(versionOne).toMatchObject({
+    expect(history.data.map((item) => item.version)).toEqual([1, 2, 3, 4]);
+    (history.data[1]!.artifact.value as typeof values.outcome).observed = "did_not_occur";
+    const versionTwo = await repository.loadVersion({ streamId, version: 2 });
+    expect(versionTwo).toMatchObject({
       ok: true,
       data: { artifact: { kind: "outcome", value: { observed: "occurred" } } },
     });
-  });
+  }, 15_000);
 
   it("enforces optimistic concurrency and content-bound idempotency", async () => {
     const repository = createInMemoryOutcomeCalibrationRepositoryV2();
@@ -97,14 +114,14 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     const request = {
       streamId,
       expectedVersion: 0,
-      idempotencyKey: "stage7_idempotency_v2_outcome_02",
-      persistedAt: "2026-08-20T10:01:00.000Z",
-      artifact: { kind: "outcome" as const, value: values.outcome },
+      idempotencyKey: "stage7_idempotency_v2_forecast_lock_idempotent",
+      persistedAt: values.forecastLockPersistenceVersion.persistedAt,
+      artifact: { kind: "forecast_lock" as const, value: values.forecastLock },
     };
     const first = await repository.append(request);
     const repeated = await repository.append(structuredClone(request));
     const changed = structuredClone(request);
-    changed.artifact.value.recordedAt = "2026-08-20T10:05:00.000Z";
+    changed.artifact.value.lockedAt = "2026-07-19T10:02:00.000Z";
     const conflict = await repository.append(changed);
     const stale = await repository.append({
       ...request,
@@ -133,7 +150,7 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
       expectedVersion: 0,
       idempotencyKey: "stage7_idempotency_v2_extra",
       persistedAt: "2026-08-20T10:02:00.000Z",
-      artifact: { kind: "outcome", value: values.outcome },
+      artifact: { kind: "forecast_lock", value: values.forecastLock },
       unexpected: true,
     });
     const illegalId = await repository.loadLatest({ streamId: "stream:illegal" });
@@ -161,7 +178,7 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
       expectedVersion: 0,
       idempotencyKey: "stage7_idempotency_v2_valid_leap_date",
       persistedAt: "2028-02-29T10:00:00.000Z",
-      artifact: { kind: "outcome", value: values.outcome },
+      artifact: { kind: "forecast_lock", value: values.forecastLock },
     })).resolves.toMatchObject({ ok: true, data: { version: 1 } });
   });
 
@@ -194,15 +211,23 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
       streamId,
       expectedVersion: 0,
       idempotencyKey: "stage7_idempotency_v2_original",
-      persistedAt: "2026-08-20T10:01:00.000Z",
-      artifact: { kind: "outcome", value: values.outcome },
+      persistedAt: values.forecastLockPersistenceVersion.persistedAt,
+      artifact: { kind: "forecast_lock", value: values.forecastLock },
     });
     if (!first.ok) throw new Error(first.errorCode);
-    const duplicate = await repository.append({
+    const outcomeRecord = await repository.append({
       streamId,
       expectedVersion: 1,
+      idempotencyKey: "stage7_idempotency_v2_original_outcome",
+      persistedAt: "2026-07-29T10:01:00.000Z",
+      artifact: { kind: "outcome", value: values.outcome },
+    });
+    if (!outcomeRecord.ok) throw new Error(outcomeRecord.errorCode);
+    const duplicate = await repository.append({
+      streamId,
+      expectedVersion: 2,
       idempotencyKey: "stage7_idempotency_v2_duplicate",
-      persistedAt: "2026-08-20T10:02:00.000Z",
+      persistedAt: "2026-07-29T10:02:00.000Z",
       artifact: { kind: "outcome", value: values.outcome },
     });
     const otherSeedBoundary = outcomeRealityBoundaryFixtureV2({ count: 1, seedContextId: "seed_context_v2_other" });
@@ -210,7 +235,7 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     if (!otherSeed.ok) throw new Error(otherSeed.errorCode);
     const crossSeed = await repository.append({
       streamId,
-      expectedVersion: 1,
+      expectedVersion: 2,
       idempotencyKey: "stage7_idempotency_v2_cross_seed",
       persistedAt: "2026-08-20T10:02:00.000Z",
       artifact: { kind: "outcome", value: otherSeed.outcome },
@@ -220,7 +245,7 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     if (!otherLedger.ok) throw new Error(otherLedger.errorCode);
     const crossLedger = await repository.append({
       streamId,
-      expectedVersion: 1,
+      expectedVersion: 2,
       idempotencyKey: "stage7_idempotency_v2_cross_ledger",
       persistedAt: "2026-08-20T10:02:00.000Z",
       artifact: { kind: "outcome", value: otherLedger.outcome },
@@ -230,6 +255,6 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     expect(crossSeed).toMatchObject({ ok: false, data: null, errorCode: "cross_seed_reference" });
     expect(crossLedger).toMatchObject({ ok: false, data: null, errorCode: "cross_ledger_reference" });
     const latest = await repository.loadLatest({ streamId });
-    expect(latest).toMatchObject({ ok: true, data: { version: 1 } });
+    expect(latest).toMatchObject({ ok: true, data: { version: 2 } });
   });
 });

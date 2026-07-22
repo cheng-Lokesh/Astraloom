@@ -9,6 +9,7 @@ import type { BatchAnalysisV2 } from "../trajectory-analysis/types";
 import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "../trajectory/time";
 import { parseTrajectoryRunSpecV2 } from "../trajectory/validation";
 import { backtestIdV2, canonicalStage7JsonV2, stage7FingerprintV2 } from "./ids";
+import { parseValidatedForecastLockPersistenceVersionV2 } from "./forecast-lock";
 import { parseValidatedOutcomeV2 } from "./outcome-capture";
 import type { BacktestV2, Stage7ClaimSetSnapshotV2, Stage7RunSnapshotV2 } from "./types";
 import {
@@ -34,6 +35,7 @@ const inputSchema = z.object({
   claimSet: claimSetSchema,
   claims: z.array(z.unknown()).min(1).max(1000),
   report: z.unknown(),
+  forecastLockPersistenceVersion: z.unknown(),
   outcome: z.unknown(),
   outcomeRealityBoundary: z.unknown(),
 }).strict();
@@ -99,6 +101,7 @@ const sourceSnapshotsSchema = z.object({
   report: z.unknown(),
   outcome: z.unknown(),
   outcomeRealityBoundary: z.unknown(),
+  forecastLockPersistenceVersion: z.unknown(),
   claimSetIntegritySignature: z.string().regex(/^[a-f0-9]{24}$/),
   runIntegritySignature: z.string().regex(/^[a-f0-9]{24}$/),
 }).strict();
@@ -118,6 +121,14 @@ const backtestSchema = z.object({
   evaluationWindow: evaluationWindowSchema,
   observationUnitSignature: z.string().regex(/^[a-f0-9]{24}$/),
   forecastUnitSignature: z.string().regex(/^[a-f0-9]{24}$/),
+  forecastLockBinding: z.object({
+    forecastLockId: namespaced("forecast_lock_v2_"),
+    persistenceVersionId: namespaced("outcome_calibration_version_v2_"),
+    persistenceVersion: z.number().int().positive(),
+    lockedAt: bounded,
+    persistedAt: bounded,
+    canonicalContentSignature: z.string().regex(/^[a-f0-9]{24}$/),
+  }).strict(),
   versions: versionsSchema,
   limitations: z.array(bounded).min(1),
   sourceSnapshots: sourceSnapshotsSchema,
@@ -259,11 +270,39 @@ function backtestUnsafeV2(input: unknown) {
     (item) => item.id === outcomeResult.outcome.source.realEvidenceId,
   );
   const captured = parseTrajectoryInstantV2(primaryEvidence?.capturedAt);
-  if (!forecastStart.ok || !captured.ok ||
+  if (!primaryEvidence || !forecastStart.ok || !captured.ok ||
       forecast.evidenceLedger.items.some((item) => item.id === primaryEvidence?.id) ||
       captured.value.epochMilliseconds < forecastStart.value.epochMilliseconds) {
     return { ok: false as const, errorCode: "invalid_observation_time" as const };
   }
+  const persistedLockResult = parseValidatedForecastLockPersistenceVersionV2(
+    parsed.data.forecastLockPersistenceVersion,
+  );
+  if (!persistedLockResult.ok) return persistedLockResult;
+  const persistedLock = persistedLockResult.persistenceVersion;
+  const forecastLock = persistedLockResult.forecastLock;
+  const capturedAt = parseTrajectoryInstantV2(primaryEvidence.capturedAt);
+  const lockedAt = parseTrajectoryInstantV2(forecastLock.lockedAt);
+  const persistedAt = parseTrajectoryInstantV2(persistedLock.persistedAt);
+  if (!capturedAt.ok || !lockedAt.ok || !persistedAt.ok ||
+      lockedAt.value.epochMilliseconds >= capturedAt.value.epochMilliseconds ||
+      persistedAt.value.epochMilliseconds >= capturedAt.value.epochMilliseconds ||
+      forecastLock.seedContextId !== forecast.seedContextId ||
+      forecastLock.realityBoundaryBinding.revision !== forecast.revision ||
+      forecastLock.realityBoundaryBinding.fingerprint !== stage7FingerprintV2(forecast) ||
+      canonicalStage7JsonV2(forecastLock.sourceSnapshots.run) !== canonicalStage7JsonV2(run) ||
+      canonicalStage7JsonV2(forecastLock.sourceSnapshots.claimSet) !== canonicalStage7JsonV2({
+        kind: parsed.data.claimSet.kind,
+        payload: parsed.data.claimSet.payload,
+        realityBoundary: forecast,
+      }) ||
+      canonicalStage7JsonV2(forecastLock.sourceSnapshots.claims) !== canonicalStage7JsonV2(suppliedClaims.claims) ||
+      canonicalStage7JsonV2(forecastLock.sourceSnapshots.report) !== canonicalStage7JsonV2(report)) {
+    return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
+  }
+  const forecastUnit = forecastLock.forecastUnits.find((item) =>
+    item.claimId === claim.id && item.clusterId === outcomeResult.outcome.claimReference.clusterId);
+  if (!forecastUnit) return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
   const observedValue = outcomeResult.outcome.observed === "occurred" ? 1 : 0;
   const calibrationEligible = claim.claimType === "scenario_frequency";
   const predictedValue = calibrationEligible ? claim.numerator / claim.denominator : null;
@@ -287,16 +326,10 @@ function backtestUnsafeV2(input: unknown) {
     report,
     outcome: structuredClone(outcomeResult.outcome),
     outcomeRealityBoundary: structuredClone(outcomeBoundary),
+    forecastLockPersistenceVersion: structuredClone(persistedLock),
     claimSetIntegritySignature: claimsFingerprintV2(claimSet),
     runIntegritySignature: runBinding.runIntegritySignature,
   };
-  const forecastUnitSignature = stage7FingerprintV2({
-    seedContextId: forecast.seedContextId,
-    runIntegritySignature: runBinding.runIntegritySignature,
-    claimId: claim.id,
-    clusterId: outcomeResult.outcome.claimReference.clusterId,
-    evaluationWindow,
-  });
   const unsigned: Omit<BacktestV2, "id" | "backtestIntegritySignature"> = {
     backtestSpecId: parsed.data.backtestSpecId as BacktestV2["backtestSpecId"],
     seedContextId: forecast.seedContextId,
@@ -324,7 +357,15 @@ function backtestUnsafeV2(input: unknown) {
     },
     evaluationWindow,
     observationUnitSignature: outcomeResult.outcome.observationUnitSignature,
-    forecastUnitSignature,
+    forecastUnitSignature: forecastUnit.forecastUnitSignature,
+    forecastLockBinding: {
+      forecastLockId: forecastLock.id,
+      persistenceVersionId: persistedLock.id,
+      persistenceVersion: persistedLock.version,
+      lockedAt: forecastLock.lockedAt,
+      persistedAt: persistedLock.persistedAt,
+      canonicalContentSignature: forecastLock.canonicalContentSignature,
+    },
     versions: {
       outcomeCalibrationEngineVersion: OUTCOME_CALIBRATION_ENGINE_VERSION_V2,
       backtestSchemaVersion: BACKTEST_SCHEMA_VERSION_V2,
@@ -384,6 +425,7 @@ export function parseValidatedBacktestV2(input: unknown) {
       claimSet: snapshots.claimSet,
       claims: snapshots.claims,
       report: snapshots.report,
+      forecastLockPersistenceVersion: snapshots.forecastLockPersistenceVersion,
       outcome: snapshots.outcome,
       outcomeRealityBoundary: snapshots.outcomeRealityBoundary,
     });
