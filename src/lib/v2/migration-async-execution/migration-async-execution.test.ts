@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { normalizeSeedContextDraft } from "@/lib/seed-context/storage";
@@ -21,8 +23,29 @@ async function validJob() {
   return {
     request: { idempotencyKey: "stage8_job_key_valid_bundle", seedContext: { id: analysis.spec.seedContextId, summary: "Career context" }, runSpec: analysis.spec, schemaVersion: "2.0" as const },
     outcomeRepository: lock.repository,
+    persistenceVersion: lock.persistenceVersion,
+    forecastLockId: lock.forecastLock.id,
     bundle: { stage2RealityBoundary: source.claimSet.realityBoundary, stage3World: analysis.spec.trajectoryTemplate.initialWorld, stage4: { runSpec: analysis.spec, trajectories: analysis.trajectories }, stage5Analysis: analysis, stage6: { claimSet: source.claimSet, claims: source.claims, report: source.report }, stage7: { forecastLockReference: lock.forecastLockReference } },
   };
+}
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(",")}}`;
+}
+const fingerprint = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex").slice(0, 24);
+function validCompletionSignature(job: import("./index").AsyncSimulationJobV2, fixture: Awaited<ReturnType<typeof validJob>>) {
+  const ids = {
+    evidenceLedgerId: (fixture.bundle.stage2RealityBoundary as { evidenceLedger: { id: string } }).evidenceLedger.id,
+    worldId: (fixture.bundle.stage3World as { id: string }).id,
+    analysisRunSpecId: fixture.bundle.stage5Analysis.spec.analysisRunSpecId,
+    reportId: (fixture.bundle.stage6.report as { id: string }).id,
+    forecastLockPersistenceVersionId: fixture.persistenceVersion.id,
+    forecastLockId: fixture.forecastLockId,
+  };
+  return fingerprint({ jobId: job.jobId, requestFingerprint: job.requestFingerprint, attempt: job.attempt, workerId: job.workerId, leaseToken: job.leaseToken, resultIds: ids, artifactFingerprints: { stage2: fingerprint(fixture.bundle.stage2RealityBoundary), stage3: fingerprint(fixture.bundle.stage3World), stage4: fingerprint(fixture.bundle.stage4), stage5: fingerprint(fixture.bundle.stage5Analysis), stage6: fingerprint(fixture.bundle.stage6), stage7: fingerprint(fixture.persistenceVersion) }, versions: { schemaVersion: job.schemaVersion, engineVersion: job.engineVersion, persistenceSchemaVersion: fixture.persistenceVersion.persistenceSchemaVersion, forecastLockSchemaVersion: (fixture.persistenceVersion.artifact.value as { versions: { forecastLockSchemaVersion: string } }).versions.forecastLockSchemaVersion } });
 }
 
 describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority", () => {
@@ -214,5 +237,66 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
       { ...fixture.bundle, stage6: { ...fixture.bundle.stage6, claims: [] } },
     ];
     for (const attempt of attempts) await expect(validator.validate(attempt, submitted.data)).resolves.toBe(false);
+  });
+
+  it("rechecks lease authority after async validation at expiry and after reclaim", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2041-01-01T00:00:00.000Z"));
+      const fixture = await validJob();
+      const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+      const submit = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_toctou_expiry" });
+      if (!submit.ok) throw new Error(submit.errorCode);
+      const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
+      await vi.advanceTimersByTimeAsync(59_999);
+      await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: validCompletionSignature(lease.data, fixture) })).resolves.toMatchObject({ ok: true, data: { status: "succeeded" } });
+
+      const secondFixture = await validJob();
+      const validationGate: { release: (() => void) | null } = { release: null };
+      let validationStarted = false;
+      const delayedOutcomeRepository = {
+        ...secondFixture.outcomeRepository,
+        loadVersion: async (input: unknown) => {
+          validationStarted = true;
+          await new Promise<void>((resolve) => { validationGate.release = resolve; });
+          return secondFixture.outcomeRepository.loadVersion(input);
+        },
+      };
+      const delayedRepository = createInMemoryAsyncSimulationJobRepositoryV2(delayedOutcomeRepository);
+      const second = await delayedRepository.submit({ ...secondFixture.request, idempotencyKey: "stage8_job_key_toctou_reclaim" });
+      if (!second.ok) throw new Error(second.errorCode);
+      const oldLease = await delayedRepository.claim({ workerId: "worker_a" }); if (!oldLease.ok || !oldLease.data) throw new Error("lease");
+      const completion = delayedRepository.complete({ jobId: oldLease.data.jobId, workerId: oldLease.data.workerId, leaseToken: oldLease.data.leaseToken, attempt: oldLease.data.attempt, resultBundle: secondFixture.bundle, resultBindingIntegritySignature: validCompletionSignature(oldLease.data, secondFixture) });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(validationStarted).toBe(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const reclaimed = await delayedRepository.claim({ workerId: "worker_b" }); if (!reclaimed.ok || !reclaimed.data) throw new Error("reclaim");
+      validationGate.release?.();
+      await expect(completion).resolves.toMatchObject({ ok: false, errorCode: "lease_mismatch" });
+      expect(await delayedRepository.get({ jobId: oldLease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", workerId: "worker_b", attempt: oldLease.data.attempt + 1, resultIds: null, resultBindingIntegritySignature: null } });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("strictly rejects extra, missing, malformed, and hostile canonical Bundle wrappers atomically", async () => {
+    const fixture = await validJob();
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    const submitted = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_bundle_schema" });
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
+    const malformed = [
+      { ...fixture.bundle, extra: true },
+      { ...fixture.bundle, stage4: { ...fixture.bundle.stage4, extra: true } },
+      { ...fixture.bundle, stage6: { ...fixture.bundle.stage6, extra: true } },
+      { ...fixture.bundle, stage7: { ...fixture.bundle.stage7, extra: true } },
+      { ...fixture.bundle, stage4: { runSpec: fixture.bundle.stage4.runSpec } },
+      { ...fixture.bundle, stage6: { claimSet: fixture.bundle.stage6.claimSet, claims: fixture.bundle.stage6.claims } },
+      { ...fixture.bundle, stage7: {} },
+      { ...fixture.bundle, stage6: null },
+      Object.defineProperty({ ...fixture.bundle }, "stage4", { enumerable: true, get: () => { throw new Error("hostile"); } }),
+    ];
+    for (const bundle of malformed) await expect(validator.validate(bundle as unknown as import("./index").CanonicalStage2To7ResultBundleV2, submitted.data)).resolves.toBe(false);
+    const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
+    await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: { ...fixture.bundle, extra: true }, resultBindingIntegritySignature: validCompletionSignature(lease.data, fixture) })).resolves.toMatchObject({ ok: false, errorCode: "invalid_canonical_artifacts" });
+    expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", resultIds: null, resultBindingIntegritySignature: null } });
   });
 });

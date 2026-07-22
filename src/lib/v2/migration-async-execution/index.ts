@@ -112,10 +112,26 @@ export function createV1DraftMigrationServiceV2() {
   };
 }
 
+const requiredUnknown = z.unknown().refine((value) => value !== undefined);
 const forecastLockReferenceSchema = z.object({ streamId: z.string().regex(/^outcome_calibration_stream_v2_[a-z0-9][a-z0-9_-]*$/), version: z.number().int().positive() }).strict();
 const stage7BundleSchema = z.object({ forecastLockReference: forecastLockReferenceSchema }).strict();
+const canonicalResultBundleSchema = z.object({
+  stage2RealityBoundary: requiredUnknown,
+  stage3World: requiredUnknown,
+  stage4: z.object({ runSpec: requiredUnknown, trajectories: z.array(z.unknown()) }).strict(),
+  stage5Analysis: requiredUnknown,
+  stage6: z.object({ claimSet: requiredUnknown, claims: z.array(z.unknown()), report: requiredUnknown }).strict(),
+  stage7: stage7BundleSchema,
+}).strict();
 export type CanonicalStage2To7ResultBundleV2 = { stage2RealityBoundary: unknown; stage3World: unknown; stage4: { runSpec: BatchRunSpecV2; trajectories: unknown[] }; stage5Analysis: BatchAnalysisV2; stage6: { claimSet: unknown; claims: unknown[]; report: unknown }; stage7: { forecastLockReference: { streamId: string; version: number } } };
 type ResolvedCanonicalBundleV2 = { persistenceVersion: OutcomeCalibrationPersistenceVersionV2; forecastLockId: string };
+
+function parseCanonicalResultBundle(input: unknown): CanonicalStage2To7ResultBundleV2 | null {
+  try {
+    const parsed = canonicalResultBundleSchema.safeParse(input);
+    return parsed.success ? clone(parsed.data as CanonicalStage2To7ResultBundleV2) : null;
+  } catch { return null; }
+}
 
 function hasExactPersistedVersionChain(history: OutcomeCalibrationPersistenceVersionV2[], reference: { streamId: string; version: number }, loaded: OutcomeCalibrationPersistenceVersionV2) {
   if (history.length < reference.version) return false;
@@ -140,24 +156,24 @@ async function resolvePersistedForecastLock(reference: unknown, repository: Outc
 
 async function validateBundle(bundle: CanonicalStage2To7ResultBundleV2, job: AsyncSimulationJobV2, outcomeRepository: OutcomeCalibrationRepositoryPortV2): Promise<ResolvedCanonicalBundleV2 | null> {
   try {
-    const stage7 = stage7BundleSchema.safeParse(bundle.stage7); if (!stage7.success) return null;
-    const boundary = parseRealityBoundarySnapshotV2(bundle.stage2RealityBoundary);
-    if (!boundary.ok || !validateWorldV2(bundle.stage3World).ok) return null;
-    const spec = parseBatchRunSpecV2(bundle.stage4.runSpec); if (!spec.ok || canonical(spec.value) !== canonical(job.runSpec) || spec.value.seedContextId !== job.seedContext.id) return null;
-    const world = bundle.stage3World as { realityBoundarySnapshot?: unknown; seedContextId?: string; realityBoundaryRevisionSnapshot?: number };
+    const parsedBundle = parseCanonicalResultBundle(bundle); if (!parsedBundle) return null;
+    const boundary = parseRealityBoundarySnapshotV2(parsedBundle.stage2RealityBoundary);
+    if (!boundary.ok || !validateWorldV2(parsedBundle.stage3World).ok) return null;
+    const spec = parseBatchRunSpecV2(parsedBundle.stage4.runSpec); if (!spec.ok || canonical(spec.value) !== canonical(job.runSpec) || spec.value.seedContextId !== job.seedContext.id) return null;
+    const world = parsedBundle.stage3World as { realityBoundarySnapshot?: unknown; seedContextId?: string; realityBoundaryRevisionSnapshot?: number };
     if (canonical(world) !== canonical(spec.value.trajectoryTemplate.initialWorld) || canonical(world.realityBoundarySnapshot) !== canonical(boundary.boundary) || world.seedContextId !== job.seedContext.id || world.realityBoundaryRevisionSnapshot !== boundary.boundary.revision) return null;
-    if (bundle.stage4.trajectories.length !== spec.value.trajectorySeeds.length || bundle.stage4.trajectories.some((trajectory, index) => !parseTrajectoryResultForFeatureV2(spec.value.trajectoryTemplate.initialWorld, trajectory, { seedContextId: spec.value.seedContextId, trajectorySeed: spec.value.trajectorySeeds[index], policyId: spec.value.policyId, policyVersion: spec.value.policyVersion, trajectoryEngineVersion: spec.value.trajectoryEngineVersion, batchRunSpec: spec.value }).ok)) return null;
-    const rebuiltAnalysis = revalidateBatchAnalysisV2({ ...bundle.stage5Analysis, spec: spec.value, trajectories: bundle.stage4.trajectories }, boundary.boundary);
-    if (!rebuiltAnalysis.ok || canonical(rebuiltAnalysis.analysis) !== canonical(bundle.stage5Analysis)) return null;
-    const claimSet = bundle.stage6.claimSet as { kind?: unknown; payload?: unknown; realityBoundary?: unknown };
+    if (parsedBundle.stage4.trajectories.length !== spec.value.trajectorySeeds.length || parsedBundle.stage4.trajectories.some((trajectory, index) => !parseTrajectoryResultForFeatureV2(spec.value.trajectoryTemplate.initialWorld, trajectory, { seedContextId: spec.value.seedContextId, trajectorySeed: spec.value.trajectorySeeds[index], policyId: spec.value.policyId, policyVersion: spec.value.policyVersion, trajectoryEngineVersion: spec.value.trajectoryEngineVersion, batchRunSpec: spec.value }).ok)) return null;
+    const rebuiltAnalysis = revalidateBatchAnalysisV2({ ...parsedBundle.stage5Analysis, spec: spec.value, trajectories: parsedBundle.stage4.trajectories }, boundary.boundary);
+    if (!rebuiltAnalysis.ok || canonical(rebuiltAnalysis.analysis) !== canonical(parsedBundle.stage5Analysis)) return null;
+    const claimSet = parsedBundle.stage6.claimSet as { kind?: unknown; payload?: unknown; realityBoundary?: unknown };
     if (claimSet.kind !== "batch" || canonical(claimSet.payload) !== canonical(rebuiltAnalysis.analysis) || canonical(claimSet.realityBoundary) !== canonical(boundary.boundary)) return null;
-    const claims = buildClaimsV2(bundle.stage6.claimSet);
-    if (!claims.ok || canonical(claims.claims) !== canonical(bundle.stage6.claims) || !validateClaimsReportV2(bundle.stage6.report, bundle.stage6.claimSet, bundle.stage6.claims).ok) return null;
-    const persisted = await resolvePersistedForecastLock(stage7.data.forecastLockReference, outcomeRepository);
+    const claims = buildClaimsV2(parsedBundle.stage6.claimSet);
+    if (!claims.ok || canonical(claims.claims) !== canonical(parsedBundle.stage6.claims) || !validateClaimsReportV2(parsedBundle.stage6.report, parsedBundle.stage6.claimSet, parsedBundle.stage6.claims).ok) return null;
+    const persisted = await resolvePersistedForecastLock(parsedBundle.stage7.forecastLockReference, outcomeRepository);
     if (!persisted || persisted.persistenceVersion.seedContextId !== job.seedContext.id) return null;
     const parsedLock = parseValidatedForecastLockPersistenceVersionV2(persisted.persistenceVersion); if (!parsedLock.ok) return null;
     const lock = parsedLock.forecastLock;
-    if (canonical(lock.sourceSnapshots.run) !== canonical({ kind: "batch", payload: rebuiltAnalysis.analysis }) || canonical(lock.sourceSnapshots.claimSet) !== canonical(bundle.stage6.claimSet) || canonical(lock.sourceSnapshots.claims) !== canonical(bundle.stage6.claims) || canonical(lock.sourceSnapshots.report) !== canonical(bundle.stage6.report) || canonical(lock.sourceSnapshots.claimSet.realityBoundary) !== canonical(boundary.boundary)) return null;
+    if (canonical(lock.sourceSnapshots.run) !== canonical({ kind: "batch", payload: rebuiltAnalysis.analysis }) || canonical(lock.sourceSnapshots.claimSet) !== canonical(parsedBundle.stage6.claimSet) || canonical(lock.sourceSnapshots.claims) !== canonical(parsedBundle.stage6.claims) || canonical(lock.sourceSnapshots.report) !== canonical(parsedBundle.stage6.report) || canonical(lock.sourceSnapshots.claimSet.realityBoundary) !== canonical(boundary.boundary)) return null;
     return persisted;
   } catch { return null; }
 }
@@ -182,7 +198,7 @@ export function createInMemoryAsyncSimulationJobRepositoryV2(outcomeRepository: 
     async submit(input) { try { const parsed = submitSchema.safeParse(input); if (!parsed.success) return fail("invalid_job_input"); const spec = parseBatchRunSpecV2(parsed.data.runSpec); if (!spec.ok || spec.value.seedContextId !== parsed.data.seedContext.id) return fail("invalid_job_input"); const requestFingerprint = fingerprint({ seedContext: parsed.data.seedContext, runSpec: spec.value, schemaVersion: parsed.data.schemaVersion }); const existing = keys.get(parsed.data.idempotencyKey); if (existing) return existing.fingerprint === requestFingerprint ? { ok: true, data: clone(jobs.get(existing.jobId)!), errorCode: null, idempotent: true } : fail("idempotency_conflict"); const now = new Date().toISOString(); const jobId = `async_simulation_job_v2_${fingerprint({ requestFingerprint, key: parsed.data.idempotencyKey })}` as const; const job = signedJob({ jobId, requestFingerprint, seedContext: clone(parsed.data.seedContext), runSpec: clone(spec.value), schemaVersion: "2.0", engineVersion: spec.value.trajectoryEngineVersion, status: "queued", attempt: 0, createdAt: now, startedAt: null, completedAt: null, workerId: null, leaseToken: null, leasedAt: null, leaseExpiresAt: null, resultIds: null, errorCode: null, resultBindingIntegritySignature: null }); jobs.set(jobId, job); keys.set(parsed.data.idempotencyKey, { fingerprint: requestFingerprint, jobId }); return { ok: true, data: clone(job), errorCode: null, idempotent: false }; } catch { return fail("invalid_job_input"); } },
     async get(input) { try { const parsed = z.object({ jobId: z.string().regex(/^async_simulation_job_v2_[a-f0-9]{24}$/) }).strict().safeParse(input); return parsed.success ? { ok: true, data: clone(jobs.get(parsed.data.jobId) ?? null), errorCode: null } : fail("invalid_job_input"); } catch { return fail("invalid_job_input"); } },
     async claim(input) { try { const parsed = workerSchema.safeParse(input); if (!parsed.success) return fail("invalid_worker_input"); const now = Date.now(); const candidate = [...jobs.values()].find((job) => job.status === "queued" || (job.status === "running" && Date.parse(job.leaseExpiresAt ?? "") <= now)); if (!candidate) return { ok: true, data: null, errorCode: null }; const attempt = candidate.attempt + 1; const leasedAt = new Date(now).toISOString(); const leaseToken = `lease_v2_${fingerprint({ jobId: candidate.jobId, workerId: parsed.data.workerId, attempt, leasedAt })}` as const; const leased = signedJob({ ...candidate, status: "running", attempt, startedAt: candidate.startedAt ?? leasedAt, workerId: parsed.data.workerId, leaseToken, leasedAt, leaseExpiresAt: new Date(now + leaseDurationMs).toISOString(), resultIds: null, errorCode: null, completedAt: null, resultBindingIntegritySignature: null }); jobs.set(leased.jobId, leased); return { ok: true, data: clone(leased), errorCode: null }; } catch { return fail("invalid_worker_input"); } },
-    async complete(input) { try { const parsed = completionSchema.safeParse(input); if (!parsed.success) return fail("invalid_completion_input"); const job = jobs.get(parsed.data.jobId); if (!hasLeaseAuthority(job, parsed.data)) return fail("lease_mismatch"); const bundle = parsed.data.resultBundle as CanonicalStage2To7ResultBundleV2; const persisted = await createStage2To7CanonicalArtifactValidatorV2(outcomeRepository).resolve(bundle, job!); if (!persisted) return fail("invalid_canonical_artifacts"); const ids = resultIds(bundle, persisted); if (Object.values(ids).some((id) => !id)) return fail("invalid_canonical_artifacts"); const binding = resultBindingSignature(job!, bundle, persisted, ids); if (binding !== parsed.data.resultBindingIntegritySignature) return fail("result_binding_tampering"); const next = signedJob({ ...job!, status: "succeeded", completedAt: new Date().toISOString(), resultIds: ids, errorCode: null, resultBindingIntegritySignature: binding }); jobs.set(job!.jobId, next); return { ok: true, data: clone(next), errorCode: null }; } catch { return fail("invalid_completion_input"); } },
+    async complete(input) { try { const parsed = completionSchema.safeParse(input); if (!parsed.success) return fail("invalid_completion_input"); const bundle = parseCanonicalResultBundle(parsed.data.resultBundle); if (!bundle) return fail("invalid_canonical_artifacts"); const initialJob = jobs.get(parsed.data.jobId); if (!initialJob || !hasLeaseAuthority(initialJob, parsed.data)) return fail("lease_mismatch"); const persisted = await createStage2To7CanonicalArtifactValidatorV2(outcomeRepository).resolve(bundle, initialJob); if (!persisted) return fail("invalid_canonical_artifacts"); const currentJob = jobs.get(parsed.data.jobId); if (!currentJob || !hasLeaseAuthority(currentJob, parsed.data)) return fail("lease_mismatch"); const ids = resultIds(bundle, persisted); if (Object.values(ids).some((id) => !id)) return fail("invalid_canonical_artifacts"); const binding = resultBindingSignature(currentJob, bundle, persisted, ids); if (binding !== parsed.data.resultBindingIntegritySignature) return fail("result_binding_tampering"); const next = signedJob({ ...currentJob, status: "succeeded", completedAt: new Date().toISOString(), resultIds: ids, errorCode: null, resultBindingIntegritySignature: binding }); jobs.set(currentJob.jobId, next); return { ok: true, data: clone(next), errorCode: null }; } catch { return fail("invalid_completion_input"); } },
     async fail(input) { try { const parsed = z.object({ jobId: z.string().regex(/^async_simulation_job_v2_[a-f0-9]{24}$/), workerId: z.string().regex(/^worker_[a-z0-9][a-z0-9_-]*$/), leaseToken: z.string().regex(/^lease_v2_[a-f0-9]{24}$/), attempt: z.number().int().positive(), errorCode: z.string().min(1).max(200) }).strict().safeParse(input); if (!parsed.success) return fail("invalid_completion_input"); const job = jobs.get(parsed.data.jobId); if (!hasLeaseAuthority(job, parsed.data)) return fail("lease_mismatch"); const next = signedJob({ ...job!, status: "failed", completedAt: new Date().toISOString(), resultIds: null, errorCode: parsed.data.errorCode, resultBindingIntegritySignature: null }); jobs.set(job!.jobId, next); return { ok: true, data: clone(next), errorCode: null }; } catch { return fail("invalid_completion_input"); } },
   };
 }

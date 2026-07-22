@@ -23,6 +23,16 @@ request, Forecast Lock, and cross-stage bindings before publication. This task
 requires one final repair commit, so the executable RED/GREEN evidence is kept
 here instead of creating interim commits.
 
+## Lease TOCTOU and bundle-schema repair from `9cefcc8`
+
+RED added a delayed Stage 7 repository read while a claimed Job reached exact
+lease expiry and was reclaimed. The old `complete()` implementation published
+the stale worker's success because it bound its write to the pre-await Job
+snapshot. The same RED also showed that public canonical bundles accepted
+extra top-level, Stage 4, and Stage 6 fields. GREEN parses a strict defensive
+bundle snapshot before validation, then reloads and reauthorizes the Job after
+all asynchronous work and immediately before the success write.
+
 ## Scope and non-goals
 
 Journeys were derived from the confirmed Stage 8 boundary in
@@ -56,6 +66,9 @@ npm run test:v2:migration-async-execution
 Observed result: 1 test file passed, 14 tests passed. Coverage was Statements
 92.94%, Branches 85.57%, Functions 100%, and Lines 99.23%.
 
+Latest GREEN result: 1 test file passed, 16 tests passed. Coverage was
+Statements 93.25%, Branches 86.23%, Functions 100%, and Lines 99.26%.
+
 | # | Guarantee | Test evidence | Result |
 |---|---|---|---|
 | 1 | Compatible V1 draft migration is deterministic, content-bound idempotent, lineaged, and destiny-isolated. | migration test 1 | PASS |
@@ -67,6 +80,8 @@ Observed result: 1 test file passed, 14 tests passed. Coverage was Statements
 | 7 | A self-consistent but unappended Forecast Lock cannot publish; only the actual Stage 7 repository record and history can satisfy the gate. | async tests 8-9 | PASS |
 | 8 | Missing/wrong references, truncated or broken persistence chains, later Boundaries, final Worlds, and unrelated Stage 5/6/7 sources reject atomically. | async tests 9, 12, 13 | PASS |
 | 9 | Lease expiry is millisecond-bounded; reclaim increments attempt and permanently invalidates the former worker/token/attempt. | async test 10 | PASS |
+| 10 | `complete()` rechecks the live lease after repository validation; exact expiry or a concurrent reclaim cannot overwrite the newer attempt. | async test 15 | PASS |
+| 11 | Canonical bundle top-level and Stage 4/6/7 wrappers reject extra, missing, malformed, or hostile values without publishing result ids. | async test 16 | PASS |
 
 The separate test command enforces the Stage 8 threshold: Statements 90%,
 Branches 85%, Functions 95%, Lines 90%.

@@ -799,6 +799,21 @@ Claim Set, Claims, and Report source snapshots. A missing append, wrong
 reference, truncated/broken history, or cross-stage binding mismatch leaves the
 Job in its prior state with `resultIds=null`.
 
+`complete()` may perform asynchronous canonical and repository validation only
+after an initial lease check. Before it writes `succeeded`, it reloads the Job
+from the store and repeats the full authority check: `status=running`, matching
+job/worker/token/attempt, and `Date.now() < leaseExpiresAt`. The result binding
+is derived from this second live snapshot, and no `await` occurs between that
+check and the Job write. A lease that expires or is reclaimed during validation
+returns `lease_mismatch` with no result ids, receipt, or terminal transition.
+
+The public Stage 2–7 result bundle has a strict runtime envelope. Its top-level
+contains exactly Stage 2 Boundary, Stage 3 World, Stage 4 `{ runSpec,
+trajectories }`, Stage 5 Analysis, Stage 6 `{ claimSet, claims, report }`, and
+Stage 7 `{ forecastLockReference }`. Extra or missing wrapper fields, malformed
+values, getters, and proxies are rejected atomically before downstream
+validators read them.
+
 ### entitlements
 
 Purpose: Stores free preview, paid report, and subscription unlock state.
