@@ -716,6 +716,75 @@ Stage 7 does not add Supabase migrations, production API routes, UI, background
 jobs, queues, network access, or LLM calls. Those remain outside this local
 adapter stage.
 
+## Astraloom V2 Stage 8 V1 Draft Migration And Async Execution Contracts
+
+Stage 8 adds a local, deterministic compatibility boundary and a controlled
+in-memory asynchronous execution boundary. It does not migrate production data,
+change V1 storage, add a production database migration, queue, privileged
+writer, API route, network access, LLM, payment capability, or UI.
+
+### V1DraftMigrationArtifactV2
+
+Only a strict `v1_local_draft` envelope with
+`artifactVersion=local-deterministic-v0` and a compatible local
+`SeedContextDraft` with `status=draft` is accepted. The source is read-only;
+V1 Run, Event, Claim, Report, feedback, entitlement, and payment data are not
+accepted as migration input and are never rewritten.
+
+Every accepted artifact stores:
+
+- Source V1 identity and source artifact version.
+- A source-content fingerprint that excludes only the V1 namespace id and
+  legacy destiny/birth compatibility text.
+- Migration schema and migration engine versions.
+- Deterministic V2 target artifact ids, parent migration artifact id, lineage,
+  and an integrity signature.
+
+The same compatible content returns the existing V2 artifact, including when
+only the V1 namespace id changes. Material source-content changes create a new
+immutable migration artifact and retain the former artifact in history. Unknown
+fields, unknown versions, damaged nested objects, cross-draft identities, and
+attempts to include historical V1 artifacts are rejected atomically with no
+stored result. `destinyBirthInfo` is readable only for compatibility: it is
+excluded from the V2 draft, source-content fingerprint, Evidence, World,
+Trajectory, Claim, simulation-frequency, and calibration inputs. Its presence
+emits `legacy_destiny_isolated` rather than silently discarding it.
+
+### AsyncSimulationJobV2
+
+`AsyncSimulationJobV2` is server-controlled and contains `jobId`, request
+fingerprint, Seed Context, Run Spec, schema/engine versions, `status`,
+`attempt`, `createdAt`, `startedAt`, `completedAt`, `resultIds`, `errorCode`,
+and a content-derived integrity signature.
+
+The only valid transition sequence is:
+
+`queued -> running -> succeeded | failed`
+
+Submit input is strict and cannot contain a caller-selected status, attempt,
+result, or receipt. The Seed Context id must equal the Run Spec Seed id. An
+idempotency key is content-bound: an identical request returns the original
+queued or terminal Job, while the same key with different content returns
+`idempotency_conflict`. Reads return defensive snapshots.
+
+### Async ports and publication gate
+
+The repository port exposes submit, get, claim, and server-only finalization.
+Claim atomically leases one queued Job to one worker; a second worker observes
+no claimable job. Finalization accepts only a currently running Job and is
+terminal, so retries and duplicate worker delivery cannot publish duplicate
+results.
+
+The executor port receives a deterministic adapter in tests. Before success it
+must use the Stage 2–7 canonical validator adapter, which invokes the accepted
+Stage 2 Reality Boundary, Stage 3 World, Stage 4 Trajectory, Stage 5 analysis,
+Stage 6 Claims/Report, and Stage 7 Forecast Lock validators rather than
+copying them. Result ids and the Job/result binding are integrity-signed. Any
+execution error, validator failure, malformed worker/repository input,
+cross-Seed input, or tampered result fails atomically: `resultIds` remains
+null, no partial artifact is published, and historical artifacts remain
+unchanged.
+
 ### entitlements
 
 Purpose: Stores free preview, paid report, and subscription unlock state.
