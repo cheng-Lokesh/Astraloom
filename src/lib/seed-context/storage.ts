@@ -1,4 +1,5 @@
 import type { SeedContextDraft } from "@/types/seed-context";
+import { z } from "zod";
 
 const seedContextDraftKey = "mirofish.seed-context.draft";
 const defaultTimeWindow = "90_days";
@@ -9,6 +10,57 @@ type LegacySeedContextDraft = Partial<SeedContextDraft> & {
   forbiddenActionsText?: string;
   desiredOutputText?: string;
 };
+
+const seedText = z.string().max(10_000);
+const seedTimestamp = seedText.refine((value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1]! && hour <= 23 && minute <= 59 && second <= 59 && !Number.isNaN(Date.parse(value));
+});
+
+/** Strict runtime contract shared by V1 normalization consumers, including V2 migration. */
+export const normalizedSeedContextDraftSchema = z.object({
+  id: z.string().trim().min(1).max(2_000),
+  questionText: seedText,
+  trackType: z.enum(["crossroad", "life_climate"]),
+  timeWindow: z.enum(["30_days", "90_days", "1_year", "3_years", "5_years"]),
+  destinyBirthInfo: seedText.optional(),
+  currentQuestionDescription: seedText.optional(),
+  situationSummary: seedText,
+  recentEvents: seedText.optional(),
+  recentEventsText: seedText.optional(),
+  keyPeopleText: seedText,
+  decisionOptions: seedText.optional(),
+  decisionOptionsText: seedText.optional(),
+  worries: seedText.optional(),
+  forbiddenActions: seedText.optional(),
+  forbiddenActionsText: seedText.optional(),
+  safetyBoundaries: seedText.optional(),
+  desiredOutput: seedText.optional(),
+  desiredOutputText: seedText.optional(),
+  contextQualityScore: z.number().finite().min(0).max(100).optional(),
+  missingContextHints: z.array(seedText).optional(),
+  privacyAck: z.boolean(),
+  privacySafetyAck: z.boolean().optional(),
+  locale: z.enum(["en", "zh"]),
+  status: z.enum(["draft", "submitted"]),
+  createdAt: seedTimestamp,
+  updatedAt: seedTimestamp,
+}).strict();
+
+export function parseNormalizedSeedContextDraft(input: unknown) {
+  try {
+    const parsed = normalizedSeedContextDraftSchema.safeParse(input);
+    return parsed.success
+      ? { ok: true as const, draft: structuredClone(parsed.data) as SeedContextDraft }
+      : { ok: false as const, errorCode: "invalid_seed_context_draft" as const };
+  } catch {
+    return { ok: false as const, errorCode: "invalid_seed_context_draft" as const };
+  }
+}
 
 function textOrDefault(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;

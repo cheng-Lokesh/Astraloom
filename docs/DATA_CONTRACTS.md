@@ -725,7 +725,8 @@ writer, API route, network access, LLM, payment capability, or UI.
 
 ### V1DraftMigrationArtifactV2
 
-Only a strict `v1_local_draft` envelope with
+Only a strict `v1_local_draft` envelope or direct strict
+`normalizeSeedContextDraft()` output with
 `artifactVersion=local-deterministic-v0` and a compatible local
 `SeedContextDraft` with `status=draft` is accepted. The source is read-only;
 V1 Run, Event, Claim, Report, feedback, entitlement, and payment data are not
@@ -769,11 +770,13 @@ queued or terminal Job, while the same key with different content returns
 
 ### Async ports and publication gate
 
-The repository port exposes submit, get, claim, and server-only finalization.
-Claim atomically leases one queued Job to one worker; a second worker observes
-no claimable job. Finalization accepts only a currently running Job and is
-terminal, so retries and duplicate worker delivery cannot publish duplicate
-results.
+The repository port exposes submit, get, claim, complete, and fail; it never
+exposes an unrestricted finalizer. Claim atomically records the worker id,
+lease token, expected attempt, lease time, and expiry. Complete/fail require
+the same job id, worker id, lease token, and attempt, so wrong workers, stale
+leases, expired attempts, and terminal replays are rejected without changing
+the Job. Result binding signatures cover the Job/request, attempt, lease,
+canonical artifact fingerprints, result ids, and versions.
 
 The executor port receives a deterministic adapter in tests. Before success it
 must use the Stage 2–7 canonical validator adapter, which invokes the accepted

@@ -1,5 +1,15 @@
 # Stage 8 V1 Migration And Async Execution TDD Evidence
 
+## Repair cycle from `57e022f`
+
+RED: the repaired suite failed against the prior implementation because it did
+not accept a real `normalizeSeedContextDraft()` result, leaked arbitrary
+finalization, and did not retain logical-source lineage. GREEN covers the
+shared V1 strict contract, alias normalization/conflict rejection,
+`A1 -> B1 -> A2` lineage, lease authority, forged binding rejection, and the
+fixed canonical publication gate. This task requires one final repair commit,
+so no intermediate Git checkpoint is created.
+
 ## Scope and non-goals
 
 Journeys were derived from the confirmed Stage 8 boundary in

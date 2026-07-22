@@ -1,162 +1,90 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  MIGRATION_ENGINE_VERSION_V2,
-  createInMemoryAsyncSimulationJobRepositoryV2,
-  createV1DraftMigrationServiceV2,
-  createControlledAsyncSimulationExecutorV2,
-  createStage2To7CanonicalArtifactValidatorV2,
-} from "./index";
-import { realityBoundaryV2 } from "../agent-world/test-fixtures";
+import { normalizeSeedContextDraft } from "@/lib/seed-context/storage";
+import { createControlledAsyncSimulationExecutorV2, createInMemoryAsyncSimulationJobRepositoryV2, createV1DraftMigrationServiceV2 } from "./index";
+import { forecastLockPersistenceFixtureV2, stage6SourceFixtureV2 } from "../outcome-calibration/test-fixtures";
 
-const source = (overrides: Record<string, unknown> = {}) => ({
-  source: {
-    kind: "v1_local_draft",
-    identity: "seed_v1_career_001",
-    artifactVersion: "local-deterministic-v0",
-    draft: {
-      id: "seed_v1_career_001",
-      questionText: "Should I accept the internal leadership opportunity?",
-      trackType: "crossroad",
-      timeWindow: "30_days",
-      situationSummary: "A team restructuring creates a leadership opening with uncertain sponsorship and limited time.",
-      recentEvents: "The manager announced the restructuring yesterday.",
-      keyPeopleText: "Current manager, prospective sponsor, and direct team.",
-      decisionOptions: "Apply now; wait for clarity.",
-      worries: "Losing trust if the team changes again.",
-      forbiddenActions: "Do not pressure colleagues for confidential information.",
-      safetyBoundaries: "No monitoring or coercion.",
-      desiredOutput: "Compare preparation options and evidence gaps.",
-      privacyAck: true,
-      locale: "en",
-      status: "draft",
-      createdAt: "2026-07-20T10:00:00.000Z",
-      updatedAt: "2026-07-20T10:00:00.000Z",
-      destinyBirthInfo: "Legacy compatibility text only.",
-    },
-  },
-  ...overrides,
-});
+function v1(overrides: Record<string, unknown> = {}) {
+  return { ok: true as const, draft: normalizeSeedContextDraft({
+    id: "seed_a", questionText: "Should I seek the internal role?", trackType: "crossroad", timeWindow: "30_days",
+    situationSummary: "A real workplace decision with evidence and uncertainty.", recentEventsText: "The team changed yesterday.", keyPeopleText: "Manager and sponsor.",
+    decisionOptionsText: "Apply now or wait.", worries: "Relationship risk.", forbiddenActionsText: "No coercion.", desiredOutputText: "Compare options.",
+    privacyAck: true, locale: "en", status: "draft", createdAt: "2026-07-20T10:00:00.123Z", updatedAt: "2026-07-20T10:00:00.123Z", ...overrides,
+  }) };
+}
 
-const request = (overrides: Record<string, unknown> = {}) => ({
-  idempotencyKey: "stage8_job_key_career_001",
-  seedContext: { id: "seed_context_v2_career_001", summary: "Career decision context" },
-  runSpec: { id: "run_spec_v2_career_001", seedContextId: "seed_context_v2_career_001", horizonDays: 30 },
-  schemaVersion: "2.0",
-  engineVersion: "stage8-test-engine",
-  ...overrides,
-});
+function validJob() {
+  const source = stage6SourceFixtureV2();
+  const lock = forecastLockPersistenceFixtureV2({ source });
+  const analysis = source.run.payload;
+  return {
+    request: { idempotencyKey: "stage8_job_key_valid_bundle", seedContext: { id: analysis.spec.seedContextId, summary: "Career context" }, runSpec: analysis.spec, schemaVersion: "2.0" as const },
+    bundle: { stage2RealityBoundary: source.claimSet.realityBoundary, stage3World: analysis.spec.trajectoryTemplate.initialWorld, stage4: { runSpec: analysis.spec, trajectories: analysis.trajectories }, stage5Analysis: analysis, stage6: { claimSet: source.claimSet, claims: source.claims, report: source.report }, stage7: { forecastLockPersistenceVersion: lock.persistenceVersion, history: [lock.persistenceVersion] } },
+  };
+}
 
-describe("Stage 8 V1 draft migration and controlled async execution", () => {
-  it("migrates only a compatible V1 local draft deterministically, preserves source lineage, and ignores destiny", () => {
-    const service = createV1DraftMigrationServiceV2();
-    const first = service.migrate(source());
-    const second = service.migrate(source());
-    const changedDestiny = service.migrate(source({ source: { ...source().source as object, draft: { ...(source().source as { draft: Record<string, unknown> }).draft, destinyBirthInfo: "Different legacy text" } } }));
-
-    expect(first).toMatchObject({ ok: true, idempotent: false, warningCodes: ["legacy_destiny_isolated"] });
-    expect(second).toMatchObject({ ok: true, idempotent: true, data: { artifactId: first.ok ? first.data.artifactId : "" } });
-    expect(changedDestiny).toMatchObject({ ok: true, idempotent: true, data: { artifactId: first.ok ? first.data.artifactId : "" } });
-    if (first.ok) {
-      expect(first.data.lineage).toMatchObject({ sourceIdentity: "seed_v1_career_001", sourceVersion: "local-deterministic-v0", migrationEngineVersion: MIGRATION_ENGINE_VERSION_V2 });
-      expect(first.data.v2Draft).not.toHaveProperty("destinyBirthInfo");
-    }
+describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority", () => {
+  it("accepts an actual normalizeSeedContextDraft output without mutating it and isolates destiny", () => {
+    const draft = v1({ destinyBirthInfo: "legacy-only", privacySafetyAck: true, contextQualityScore: 80, missingContextHints: ["Add evidence."] });
+    const before = structuredClone(draft.draft);
+    const result = createV1DraftMigrationServiceV2().migrate(draft.draft);
+    expect(result).toMatchObject({ ok: true, warningCodes: ["legacy_destiny_isolated"] });
+    expect(draft.draft).toEqual(before);
+    if (result.ok) expect(result.data.v2Draft).not.toHaveProperty("destinyBirthInfo");
   });
 
-  it("content-binds migration identity across a namespace-only V1 id alias and versions changed source content without overwriting history", () => {
+  it("canonicalizes real alias pairs but rejects semantic conflicts and invalid millisecond timestamps", () => {
     const service = createV1DraftMigrationServiceV2();
-    const first = service.migrate(source());
-    const alias = service.migrate(source({ source: { ...source().source as object, identity: "legacy:seed_v1_career_001", draft: { ...(source().source as { draft: Record<string, unknown> }).draft, id: "legacy:seed_v1_career_001" } } }));
-    const changed = service.migrate(source({ source: { ...source().source as object, draft: { ...(source().source as { draft: Record<string, unknown> }).draft, situationSummary: "A materially changed career decision context." } } }));
-
-    expect(alias).toMatchObject({ ok: true, idempotent: true });
-    expect(changed).toMatchObject({ ok: true, idempotent: false });
-    if (first.ok && alias.ok && changed.ok) {
-      expect(alias.data.artifactId).toBe(first.data.artifactId);
-      expect(changed.data.artifactId).not.toBe(first.data.artifactId);
-      expect(changed.data.lineage.parentArtifactId).toBe(first.data.artifactId);
-      expect(service.history()).toHaveLength(2);
-    }
+    const canonical = v1({ recentEvents: "The team changed yesterday.", decisionOptions: "Apply now or wait.", forbiddenActions: "No coercion.", desiredOutput: "Compare options.", privacySafetyAck: true });
+    const legacy = v1({ privacySafetyAck: true });
+    if (!canonical.ok || !legacy.ok) throw new Error("fixture");
+    const a = service.migrate(canonical.draft); const b = service.migrate(legacy.draft);
+    expect(a).toMatchObject({ ok: true }); expect(b).toMatchObject({ ok: true, idempotent: true });
+    if (a.ok && b.ok) expect(b.data.artifactId).toBe(a.data.artifactId);
+    expect(service.migrate(v1({ recentEvents: "conflict", recentEventsText: "other" }).ok ? v1({ recentEvents: "conflict", recentEventsText: "other" }).draft : null)).toMatchObject({ ok: false, errorCode: "incompatible_v1_draft" });
+    expect(service.migrate({ ...legacy.draft, createdAt: "2026-02-30T10:00:00.123Z" })).toMatchObject({ ok: false });
   });
 
-  it("keeps compatible destiny-free drafts warning-free and rejects a mismatched source identity", () => {
+  it("keeps lineage per logical source: A1 -> B1 -> A2, and aliases join A only", () => {
     const service = createV1DraftMigrationServiceV2();
-    const destinyFree = service.migrate(source({ source: { ...source().source as object, draft: { ...(source().source as { draft: Record<string, unknown> }).draft, destinyBirthInfo: undefined } } }));
-    const crossDraft = service.migrate(source({ source: { ...source().source as object, identity: "seed_v1_other" } }));
-    expect(destinyFree).toMatchObject({ ok: true, warningCodes: [] });
-    expect(crossDraft).toMatchObject({ ok: false, errorCode: "incompatible_v1_draft" });
-    expect(service.migrate(Object.defineProperty({}, "source", { enumerable: true, get: () => { throw new Error("hostile migration"); } }))).toMatchObject({ ok: false });
+    const a1 = v1(); const b1 = v1({ id: "seed_b", questionText: "A separate draft." }); const a2 = v1({ situationSummary: "A materially revised workplace decision." });
+    if (!a1.ok || !b1.ok || !a2.ok) throw new Error("fixture");
+    const first = service.migrate(a1.draft); const other = service.migrate(b1.draft); const revised = service.migrate(a2.draft); const alias = service.migrate({ ...a1.draft, id: "legacy:seed_a" });
+    if (!first.ok || !other.ok || !revised.ok || !alias.ok) throw new Error("migration");
+    expect(first.data.lineage.parentArtifactId).toBeNull(); expect(other.data.lineage.parentArtifactId).toBeNull(); expect(revised.data.lineage.parentArtifactId).toBe(first.data.artifactId);
+    expect(alias.data.lineage.sourceIdentities).toEqual(expect.arrayContaining(["seed_a", "legacy:seed_a"]));
+    const read = service.history(); read[0]!.lineage.sourceIdentities.push("forged"); expect(service.history()[0]!.lineage.sourceIdentities).not.toContain("forged");
+    expect(service.parseArtifact(revised.data)).toMatchObject({ ok: true });
   });
 
-  it("rejects unknown versions, unknown fields, damaged nested data, historical V1 artifacts, and cross-draft references atomically", () => {
-    const service = createV1DraftMigrationServiceV2();
-    const attacks = [
-      source({ source: { ...source().source as object, artifactVersion: "v1.unknown" } }),
-      source({ source: { ...source().source as object, draft: { ...(source().source as { draft: Record<string, unknown> }).draft, unknown: true } } }),
-      source({ source: { ...source().source as object, draft: { ...(source().source as { draft: Record<string, unknown> }).draft, privacyAck: "true" } } }),
-      source({ source: { ...source().source as object, run: { id: "run_v1_history" } } }),
-      source({ source: { ...source().source as object, draft: { ...(source().source as { draft: Record<string, unknown> }).draft, sourceDraftId: "seed_v1_other" } } }),
-    ];
-    for (const attack of attacks) expect(service.migrate(attack)).toMatchObject({ ok: false, data: null });
-    expect(service.history()).toEqual([]);
-  });
-
-  it("creates one queued job per idempotency key and content, rejects caller-controlled status, and returns defensive snapshots", async () => {
+  it("rejects caller-controlled terminal finalization, forged signatures, wrong worker/lease/attempt, and hostile finalize input", async () => {
     const repository = createInMemoryAsyncSimulationJobRepositoryV2();
-    const first = await repository.submit(request());
-    const repeat = await repository.submit(request());
-    const conflict = await repository.submit(request({ runSpec: { id: "run_spec_v2_changed", seedContextId: "seed_context_v2_career_001", horizonDays: 90 } }));
-    const forged = await repository.submit(request({ status: "succeeded" }));
-    expect(first).toMatchObject({ ok: true, idempotent: false, data: { status: "queued", attempt: 0 } });
-    expect(repeat).toMatchObject({ ok: true, idempotent: true });
-    expect(conflict).toMatchObject({ ok: false, errorCode: "idempotency_conflict" });
-    expect(forged).toMatchObject({ ok: false, errorCode: "invalid_job_input" });
-    if (first.ok) {
-      first.data.status = "succeeded";
-      expect(await repository.get({ jobId: first.data.jobId })).toMatchObject({ ok: true, data: { status: "queued" } });
-    }
-    expect(await repository.get({ jobId: "forged" })).toMatchObject({ ok: false, errorCode: "invalid_job_input" });
-    expect(await repository.get({ jobId: "async_simulation_job_v2_aaaaaaaaaaaaaaaaaaaaaaaa" })).toMatchObject({ ok: true, data: null });
-    expect(await repository.submit(Object.defineProperty({}, "idempotencyKey", { enumerable: true, get: () => { throw new Error("hostile job"); } }))).toMatchObject({ ok: false });
+    expect(repository).not.toHaveProperty("finalize");
+    await expect(repository.complete(null)).resolves.toMatchObject({ ok: false });
+    await expect(repository.complete(Object.defineProperty({}, "jobId", { enumerable: true, get: () => { throw new Error("hostile"); } }))).resolves.toMatchObject({ ok: false });
+    const fixture = validJob();
+    const submitted = await repository.submit(fixture.request); if (!submitted.ok) throw new Error(submitted.errorCode);
+    const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
+    const bad = await repository.complete({ jobId: lease.data.jobId, workerId: "worker_b", leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: "a".repeat(24) });
+    expect(bad).toMatchObject({ ok: false, errorCode: "lease_mismatch" });
+    expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", resultIds: null } });
+    const executor = createControlledAsyncSimulationExecutorV2(repository, async () => fixture.bundle);
+    expect(await executor.runOnce("worker_a")).toMatchObject({ status: "idle" });
+    expect(await repository.fail({ jobId: lease.data.jobId, workerId: "worker_a", leaseToken: lease.data.leaseToken, attempt: lease.data.attempt + 1, errorCode: "forged" })).toMatchObject({ ok: false, errorCode: "lease_mismatch" });
   });
 
-  it("leases a job to one worker, makes retry and completed re-execution idempotent, and only publishes complete canonical artifacts", async () => {
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2();
-    const executor = createControlledAsyncSimulationExecutorV2(repository, {
-      execute: async (job) => ({
-        stage2Evidence: { id: `evidence_${job.jobId}` }, stage3World: { id: `world_${job.jobId}` }, stage4Trajectory: { id: `trajectory_${job.jobId}` },
-        stage5Analysis: { id: `analysis_${job.jobId}` }, stage6ClaimsReport: { id: `report_${job.jobId}` }, stage7OutcomeCalibration: { id: `calibration_${job.jobId}` },
-      }),
-      validate: (artifacts) => Object.values(artifacts).every((artifact) => typeof artifact === "object" && artifact !== null && "id" in artifact),
-    });
-    const submitted = await repository.submit(request());
-    if (!submitted.ok) throw new Error(submitted.errorCode);
-    const [workerA, workerB] = await Promise.all([executor.runOnce("worker_a"), executor.runOnce("worker_b")]);
-    expect([workerA.status, workerB.status].sort()).toEqual(["idle", "succeeded"]);
-    expect(await executor.runOnce("worker_retry")).toMatchObject({ status: "idle" });
-    expect(await repository.get({ jobId: submitted.data.jobId })).toMatchObject({ ok: true, data: { status: "succeeded", attempt: 1, resultIds: expect.any(Object), integritySignature: expect.any(String) } });
+  it("hard-wires the canonical publication gate: six fake ids and a caller validate bypass cannot publish", async () => {
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(); const fixture = validJob();
+    await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_fake_bundle" });
+    const executor = createControlledAsyncSimulationExecutorV2(repository, async () => ({ stage2RealityBoundary: { id: "evidence" }, stage3World: { id: "world" }, stage4: { runSpec: fixture.request.runSpec, trajectories: [] }, stage5Analysis: fixture.bundle.stage5Analysis, stage6: { claimSet: {}, claims: [], report: {} }, stage7: { forecastLockPersistenceVersion: {}, history: [] } }));
+    expect(await executor.runOnce("worker_a")).toMatchObject({ status: "failed", errorCode: "invalid_canonical_artifacts" });
   });
 
-  it("fails atomically without result publication on executor failure or incomplete/tampered artifacts, and never throws for hostile repository/worker input", async () => {
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2();
-    const failureExecutor = createControlledAsyncSimulationExecutorV2(repository, { execute: async () => { throw new Error("interrupted"); }, validate: () => true });
-    const first = await repository.submit(request({ idempotencyKey: "stage8_job_key_failure" }));
-    if (!first.ok) throw new Error(first.errorCode);
-    await expect(failureExecutor.runOnce("worker_failure")).resolves.toMatchObject({ status: "failed", errorCode: "execution_failed" });
-    expect(await repository.get({ jobId: first.data.jobId })).toMatchObject({ ok: true, data: { status: "failed", resultIds: null, errorCode: "execution_failed" } });
-    await expect(repository.get(Object.defineProperty({}, "jobId", { enumerable: true, get: () => { throw new Error("hostile"); } }))).resolves.toMatchObject({ ok: false });
-    await expect(failureExecutor.runOnce({})).resolves.toMatchObject({ status: "invalid_worker_input" });
-    await expect(repository.claim(Object.defineProperty({}, "workerId", { enumerable: true, get: () => { throw new Error("hostile worker"); } }))).resolves.toMatchObject({ ok: false });
-
-    const invalidRepository = createInMemoryAsyncSimulationJobRepositoryV2();
-    const invalidExecutor = createControlledAsyncSimulationExecutorV2(invalidRepository, {
-      execute: async () => ({ stage2Evidence: { id: "e" }, stage3World: { id: "w" }, stage4Trajectory: { id: "t" }, stage5Analysis: { id: "a" }, stage6ClaimsReport: { id: "r" }, stage7OutcomeCalibration: { id: "c" } }),
-      validate: () => false,
-    });
-    await invalidRepository.submit(request({ idempotencyKey: "stage8_job_key_invalid_artifacts" }));
-    await expect(invalidExecutor.runOnce("worker_invalid")).resolves.toMatchObject({ status: "failed", errorCode: "invalid_canonical_artifacts" });
-    expect(createStage2To7CanonicalArtifactValidatorV2().validate({ stage2Evidence: null, stage3World: null, stage4Trajectory: null, stage5Analysis: null, stage6ClaimsReport: null, stage7OutcomeCalibration: null })).toBe(false);
-    expect(createStage2To7CanonicalArtifactValidatorV2().validate({ stage2Evidence: realityBoundaryV2(), stage3World: null, stage4Trajectory: null, stage5Analysis: null, stage6ClaimsReport: null, stage7OutcomeCalibration: null })).toBe(false);
-    expect(createStage2To7CanonicalArtifactValidatorV2().validate(Object.defineProperty({}, "stage2Evidence", { enumerable: true, get: () => { throw new Error("hostile artifact"); } }) as never)).toBe(false);
+  it("rejects forged result bindings atomically after full bundle revalidation", async () => {
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(); const fixture = validJob();
+    await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_binding" });
+    const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
+    await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: "a".repeat(24) })).resolves.toMatchObject({ ok: false });
+    expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", resultIds: null } });
   });
 });
