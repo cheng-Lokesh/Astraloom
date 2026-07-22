@@ -9,11 +9,13 @@ import { validateClaimsReportV2 } from "../claims-reports/report-builder";
 import { parseRealityBoundarySnapshotV2 } from "../claims-reports/validation";
 import { revalidateBatchAnalysisV2 } from "../claims-reports/stage5-revalidation";
 import { buildClaimsV2 } from "../claims-reports/claim-builder";
-import { buildSimulationFrequencyV2 } from "../trajectory-analysis/simulation-frequency";
 import { parseTrajectoryResultForFeatureV2 } from "../trajectory-analysis/trajectory-result-validation";
 import { parseBatchRunSpecV2 } from "../trajectory-analysis/validation";
 import type { BatchAnalysisV2, BatchRunSpecV2 } from "../trajectory-analysis/types";
 import { parseValidatedForecastLockPersistenceVersionV2 } from "../outcome-calibration/forecast-lock";
+import { persistenceVersionIdV2, stage7FingerprintV2 } from "../outcome-calibration/ids";
+import type { OutcomeCalibrationRepositoryPortV2 } from "../outcome-calibration/repository";
+import type { OutcomeCalibrationPersistenceVersionV2 } from "../outcome-calibration/types";
 
 export const MIGRATION_SCHEMA_VERSION_V2 = "v1-local-draft-to-v2-2" as const;
 export const MIGRATION_ENGINE_VERSION_V2 = "stage-8-migration-engine-v2-2" as const;
@@ -110,28 +112,56 @@ export function createV1DraftMigrationServiceV2() {
   };
 }
 
-export type CanonicalStage2To7ResultBundleV2 = { stage2RealityBoundary: unknown; stage3World: unknown; stage4: { runSpec: BatchRunSpecV2; trajectories: unknown[] }; stage5Analysis: BatchAnalysisV2; stage6: { claimSet: unknown; claims: unknown[]; report: unknown }; stage7: { forecastLockPersistenceVersion: unknown; history: unknown[] } };
-function validateBundle(bundle: CanonicalStage2To7ResultBundleV2, job: AsyncSimulationJobV2) {
-  try {
-    const boundary = parseRealityBoundarySnapshotV2(bundle.stage2RealityBoundary);
-    if (!boundary.ok || !validateWorldV2(bundle.stage3World).ok) return false;
-    const spec = parseBatchRunSpecV2(bundle.stage4.runSpec); if (!spec.ok || canonical(spec.value) !== canonical(job.runSpec) || spec.value.seedContextId !== job.seedContext.id) return false;
-    const world = bundle.stage3World as { realityBoundarySnapshot?: unknown; seedContextId?: string; realityBoundaryRevisionSnapshot?: number };
-    if (canonical(world) !== canonical(spec.value.trajectoryTemplate.initialWorld) || canonical(world.realityBoundarySnapshot) !== canonical(boundary.boundary) || world.seedContextId !== job.seedContext.id || world.realityBoundaryRevisionSnapshot !== boundary.boundary.revision) return false;
-    if (bundle.stage4.trajectories.length !== spec.value.trajectorySeeds.length || bundle.stage4.trajectories.some((trajectory, index) => !parseTrajectoryResultForFeatureV2(spec.value.trajectoryTemplate.initialWorld, trajectory, { seedContextId: spec.value.seedContextId, trajectorySeed: spec.value.trajectorySeeds[index], policyId: spec.value.policyId, policyVersion: spec.value.policyVersion, trajectoryEngineVersion: spec.value.trajectoryEngineVersion, batchRunSpec: spec.value }).ok)) return false;
-    const rebuiltAnalysis = revalidateBatchAnalysisV2({ ...bundle.stage5Analysis, spec: spec.value, trajectories: bundle.stage4.trajectories }, boundary.boundary);
-    if (!rebuiltAnalysis.ok || canonical(rebuiltAnalysis.analysis) !== canonical(bundle.stage5Analysis)) return false;
-    const claimSet = bundle.stage6.claimSet as { kind?: unknown; payload?: unknown; realityBoundary?: unknown };
-    if (claimSet.kind !== "batch" || canonical(claimSet.payload) !== canonical(rebuiltAnalysis.analysis) || canonical(claimSet.realityBoundary) !== canonical(boundary.boundary)) return false;
-    const claims = buildClaimsV2(bundle.stage6.claimSet);
-    if (!claims.ok || canonical(claims.claims) !== canonical(bundle.stage6.claims) || !validateClaimsReportV2(bundle.stage6.report, bundle.stage6.claimSet, bundle.stage6.claims).ok) return false;
-    const persisted = parseValidatedForecastLockPersistenceVersionV2(bundle.stage7.forecastLockPersistenceVersion); if (!persisted.ok || persisted.persistenceVersion.seedContextId !== job.seedContext.id || persisted.persistenceVersion.version !== 1 || persisted.persistenceVersion.parentVersionId !== null || bundle.stage7.history.length !== 1 || canonical(bundle.stage7.history[0]) !== canonical(persisted.persistenceVersion)) return false;
-    const lock = persisted.forecastLock;
-    if (canonical(lock.sourceSnapshots.run) !== canonical({ kind: "batch", payload: rebuiltAnalysis.analysis }) || canonical(lock.sourceSnapshots.claimSet) !== canonical(bundle.stage6.claimSet) || canonical(lock.sourceSnapshots.claims) !== canonical(bundle.stage6.claims) || canonical(lock.sourceSnapshots.report) !== canonical(bundle.stage6.report) || canonical(lock.sourceSnapshots.claimSet.realityBoundary) !== canonical(boundary.boundary)) return false;
-    return true;
-  } catch { return false; }
+const forecastLockReferenceSchema = z.object({ streamId: z.string().regex(/^outcome_calibration_stream_v2_[a-z0-9][a-z0-9_-]*$/), version: z.number().int().positive() }).strict();
+const stage7BundleSchema = z.object({ forecastLockReference: forecastLockReferenceSchema }).strict();
+export type CanonicalStage2To7ResultBundleV2 = { stage2RealityBoundary: unknown; stage3World: unknown; stage4: { runSpec: BatchRunSpecV2; trajectories: unknown[] }; stage5Analysis: BatchAnalysisV2; stage6: { claimSet: unknown; claims: unknown[]; report: unknown }; stage7: { forecastLockReference: { streamId: string; version: number } } };
+type ResolvedCanonicalBundleV2 = { persistenceVersion: OutcomeCalibrationPersistenceVersionV2; forecastLockId: string };
+
+function hasExactPersistedVersionChain(history: OutcomeCalibrationPersistenceVersionV2[], reference: { streamId: string; version: number }, loaded: OutcomeCalibrationPersistenceVersionV2) {
+  if (history.length < reference.version) return false;
+  for (let index = 0; index < history.length; index += 1) {
+    const record = history[index]!;
+    const { id, persistenceIntegritySignature, ...unsigned } = record;
+    const requestFingerprint = stage7FingerprintV2({ streamId: record.streamId, expectedVersion: record.version - 1, idempotencyKey: record.idempotencyKey, persistedAt: record.persistedAt, artifact: record.artifact });
+    if (record.streamId !== reference.streamId || record.version !== index + 1 || record.parentVersionId !== (index === 0 ? null : history[index - 1]!.id) || record.requestFingerprint !== requestFingerprint || id !== persistenceVersionIdV2(unsigned) || persistenceIntegritySignature !== stage7FingerprintV2(unsigned)) return false;
+  }
+  return canonical(history[reference.version - 1]) === canonical(loaded);
 }
-export function createStage2To7CanonicalArtifactValidatorV2() { return { validate: (bundle: CanonicalStage2To7ResultBundleV2, job: AsyncSimulationJobV2) => validateBundle(bundle, job) }; }
+
+async function resolvePersistedForecastLock(reference: unknown, repository: OutcomeCalibrationRepositoryPortV2): Promise<ResolvedCanonicalBundleV2 | null> {
+  const parsed = forecastLockReferenceSchema.safeParse(reference);
+  if (!parsed.success) return null;
+  const [loaded, history] = await Promise.all([repository.loadVersion(parsed.data), repository.loadHistory({ streamId: parsed.data.streamId })]);
+  if (!loaded.ok || !loaded.data || !history.ok || !hasExactPersistedVersionChain(history.data, parsed.data, loaded.data)) return null;
+  const persisted = parseValidatedForecastLockPersistenceVersionV2(loaded.data);
+  if (!persisted.ok || persisted.persistenceVersion.streamId !== parsed.data.streamId || persisted.persistenceVersion.version !== parsed.data.version) return null;
+  return { persistenceVersion: persisted.persistenceVersion, forecastLockId: persisted.forecastLock.id };
+}
+
+async function validateBundle(bundle: CanonicalStage2To7ResultBundleV2, job: AsyncSimulationJobV2, outcomeRepository: OutcomeCalibrationRepositoryPortV2): Promise<ResolvedCanonicalBundleV2 | null> {
+  try {
+    const stage7 = stage7BundleSchema.safeParse(bundle.stage7); if (!stage7.success) return null;
+    const boundary = parseRealityBoundarySnapshotV2(bundle.stage2RealityBoundary);
+    if (!boundary.ok || !validateWorldV2(bundle.stage3World).ok) return null;
+    const spec = parseBatchRunSpecV2(bundle.stage4.runSpec); if (!spec.ok || canonical(spec.value) !== canonical(job.runSpec) || spec.value.seedContextId !== job.seedContext.id) return null;
+    const world = bundle.stage3World as { realityBoundarySnapshot?: unknown; seedContextId?: string; realityBoundaryRevisionSnapshot?: number };
+    if (canonical(world) !== canonical(spec.value.trajectoryTemplate.initialWorld) || canonical(world.realityBoundarySnapshot) !== canonical(boundary.boundary) || world.seedContextId !== job.seedContext.id || world.realityBoundaryRevisionSnapshot !== boundary.boundary.revision) return null;
+    if (bundle.stage4.trajectories.length !== spec.value.trajectorySeeds.length || bundle.stage4.trajectories.some((trajectory, index) => !parseTrajectoryResultForFeatureV2(spec.value.trajectoryTemplate.initialWorld, trajectory, { seedContextId: spec.value.seedContextId, trajectorySeed: spec.value.trajectorySeeds[index], policyId: spec.value.policyId, policyVersion: spec.value.policyVersion, trajectoryEngineVersion: spec.value.trajectoryEngineVersion, batchRunSpec: spec.value }).ok)) return null;
+    const rebuiltAnalysis = revalidateBatchAnalysisV2({ ...bundle.stage5Analysis, spec: spec.value, trajectories: bundle.stage4.trajectories }, boundary.boundary);
+    if (!rebuiltAnalysis.ok || canonical(rebuiltAnalysis.analysis) !== canonical(bundle.stage5Analysis)) return null;
+    const claimSet = bundle.stage6.claimSet as { kind?: unknown; payload?: unknown; realityBoundary?: unknown };
+    if (claimSet.kind !== "batch" || canonical(claimSet.payload) !== canonical(rebuiltAnalysis.analysis) || canonical(claimSet.realityBoundary) !== canonical(boundary.boundary)) return null;
+    const claims = buildClaimsV2(bundle.stage6.claimSet);
+    if (!claims.ok || canonical(claims.claims) !== canonical(bundle.stage6.claims) || !validateClaimsReportV2(bundle.stage6.report, bundle.stage6.claimSet, bundle.stage6.claims).ok) return null;
+    const persisted = await resolvePersistedForecastLock(stage7.data.forecastLockReference, outcomeRepository);
+    if (!persisted || persisted.persistenceVersion.seedContextId !== job.seedContext.id) return null;
+    const parsedLock = parseValidatedForecastLockPersistenceVersionV2(persisted.persistenceVersion); if (!parsedLock.ok) return null;
+    const lock = parsedLock.forecastLock;
+    if (canonical(lock.sourceSnapshots.run) !== canonical({ kind: "batch", payload: rebuiltAnalysis.analysis }) || canonical(lock.sourceSnapshots.claimSet) !== canonical(bundle.stage6.claimSet) || canonical(lock.sourceSnapshots.claims) !== canonical(bundle.stage6.claims) || canonical(lock.sourceSnapshots.report) !== canonical(bundle.stage6.report) || canonical(lock.sourceSnapshots.claimSet.realityBoundary) !== canonical(boundary.boundary)) return null;
+    return persisted;
+  } catch { return null; }
+}
+export function createStage2To7CanonicalArtifactValidatorV2(outcomeRepository: OutcomeCalibrationRepositoryPortV2) { return { validate: async (bundle: CanonicalStage2To7ResultBundleV2, job: AsyncSimulationJobV2) => Boolean(await validateBundle(bundle, job, outcomeRepository)), resolve: (bundle: CanonicalStage2To7ResultBundleV2, job: AsyncSimulationJobV2) => validateBundle(bundle, job, outcomeRepository) }; }
 
 const submitSchema = z.object({ idempotencyKey: z.string().regex(/^stage8_job_key_[a-z0-9][a-z0-9_-]*$/), seedContext: z.object({ id: z.string().min(1), summary: z.string().min(1) }).strict(), runSpec: z.unknown(), schemaVersion: z.literal("2.0") }).strict();
 const workerSchema = z.object({ workerId: z.string().regex(/^worker_[a-z0-9][a-z0-9_-]*$/) }).strict();
@@ -141,26 +171,30 @@ const signedJob = (job: Omit<AsyncSimulationJobV2, "integritySignature">): Async
 function hasLeaseAuthority(job: AsyncSimulationJobV2 | undefined, input: { jobId: string; workerId: string; leaseToken: string; attempt: number }) {
   return Boolean(job && job.status === "running" && job.jobId === input.jobId && job.workerId === input.workerId && job.leaseToken === input.leaseToken && job.attempt === input.attempt && Date.parse(job.leaseExpiresAt ?? "") > Date.now());
 }
-function resultIds(bundle: CanonicalStage2To7ResultBundleV2) { const lock = bundle.stage7.forecastLockPersistenceVersion as { id?: string; artifact?: { value?: { id?: string } } }; return { evidenceLedgerId: (bundle.stage2RealityBoundary as { evidenceLedger?: { id?: string } }).evidenceLedger?.id ?? "", worldId: (bundle.stage3World as { id?: string }).id ?? "", analysisRunSpecId: bundle.stage5Analysis.spec.analysisRunSpecId, reportId: (bundle.stage6.report as { id?: string }).id ?? "", forecastLockPersistenceVersionId: lock.id ?? "", forecastLockId: lock.artifact?.value?.id ?? "" }; }
+function resultIds(bundle: CanonicalStage2To7ResultBundleV2, persisted: ResolvedCanonicalBundleV2) { return { evidenceLedgerId: (bundle.stage2RealityBoundary as { evidenceLedger?: { id?: string } }).evidenceLedger?.id ?? "", worldId: (bundle.stage3World as { id?: string }).id ?? "", analysisRunSpecId: bundle.stage5Analysis.spec.analysisRunSpecId, reportId: (bundle.stage6.report as { id?: string }).id ?? "", forecastLockPersistenceVersionId: persisted.persistenceVersion.id, forecastLockId: persisted.forecastLockId }; }
+function resultBindingSignature(job: AsyncSimulationJobV2, bundle: CanonicalStage2To7ResultBundleV2, persisted: ResolvedCanonicalBundleV2, ids: Record<string, string>) {
+  return fingerprint({ jobId: job.jobId, requestFingerprint: job.requestFingerprint, attempt: job.attempt, workerId: job.workerId, leaseToken: job.leaseToken, resultIds: ids, artifactFingerprints: { stage2: fingerprint(bundle.stage2RealityBoundary), stage3: fingerprint(bundle.stage3World), stage4: fingerprint(bundle.stage4), stage5: fingerprint(bundle.stage5Analysis), stage6: fingerprint(bundle.stage6), stage7: fingerprint(persisted.persistenceVersion) }, versions: { schemaVersion: job.schemaVersion, engineVersion: job.engineVersion, persistenceSchemaVersion: persisted.persistenceVersion.persistenceSchemaVersion, forecastLockSchemaVersion: (persisted.persistenceVersion.artifact.value as { versions?: { forecastLockSchemaVersion?: string } }).versions?.forecastLockSchemaVersion ?? "" } });
+}
 export type AsyncSimulationJobRepositoryPortV2 = { submit(input: unknown): Promise<Ok<AsyncSimulationJobV2> & { idempotent: boolean } | Fail<"invalid_job_input" | "idempotency_conflict">>; get(input: unknown): Promise<Ok<AsyncSimulationJobV2 | null> | Fail<"invalid_job_input">>; claim(input: unknown): Promise<Ok<AsyncSimulationJobV2 | null> | Fail<"invalid_worker_input">>; complete(input: unknown): Promise<Ok<AsyncSimulationJobV2> | Fail<"invalid_completion_input" | "lease_mismatch" | "invalid_canonical_artifacts" | "result_binding_tampering">>; fail(input: unknown): Promise<Ok<AsyncSimulationJobV2> | Fail<"invalid_completion_input" | "lease_mismatch">>; };
-export function createInMemoryAsyncSimulationJobRepositoryV2(): AsyncSimulationJobRepositoryPortV2 {
+export function createInMemoryAsyncSimulationJobRepositoryV2(outcomeRepository: OutcomeCalibrationRepositoryPortV2): AsyncSimulationJobRepositoryPortV2 {
   const jobs = new Map<string, AsyncSimulationJobV2>(); const keys = new Map<string, { fingerprint: string; jobId: string }>();
   return {
     async submit(input) { try { const parsed = submitSchema.safeParse(input); if (!parsed.success) return fail("invalid_job_input"); const spec = parseBatchRunSpecV2(parsed.data.runSpec); if (!spec.ok || spec.value.seedContextId !== parsed.data.seedContext.id) return fail("invalid_job_input"); const requestFingerprint = fingerprint({ seedContext: parsed.data.seedContext, runSpec: spec.value, schemaVersion: parsed.data.schemaVersion }); const existing = keys.get(parsed.data.idempotencyKey); if (existing) return existing.fingerprint === requestFingerprint ? { ok: true, data: clone(jobs.get(existing.jobId)!), errorCode: null, idempotent: true } : fail("idempotency_conflict"); const now = new Date().toISOString(); const jobId = `async_simulation_job_v2_${fingerprint({ requestFingerprint, key: parsed.data.idempotencyKey })}` as const; const job = signedJob({ jobId, requestFingerprint, seedContext: clone(parsed.data.seedContext), runSpec: clone(spec.value), schemaVersion: "2.0", engineVersion: spec.value.trajectoryEngineVersion, status: "queued", attempt: 0, createdAt: now, startedAt: null, completedAt: null, workerId: null, leaseToken: null, leasedAt: null, leaseExpiresAt: null, resultIds: null, errorCode: null, resultBindingIntegritySignature: null }); jobs.set(jobId, job); keys.set(parsed.data.idempotencyKey, { fingerprint: requestFingerprint, jobId }); return { ok: true, data: clone(job), errorCode: null, idempotent: false }; } catch { return fail("invalid_job_input"); } },
     async get(input) { try { const parsed = z.object({ jobId: z.string().regex(/^async_simulation_job_v2_[a-f0-9]{24}$/) }).strict().safeParse(input); return parsed.success ? { ok: true, data: clone(jobs.get(parsed.data.jobId) ?? null), errorCode: null } : fail("invalid_job_input"); } catch { return fail("invalid_job_input"); } },
     async claim(input) { try { const parsed = workerSchema.safeParse(input); if (!parsed.success) return fail("invalid_worker_input"); const now = Date.now(); const candidate = [...jobs.values()].find((job) => job.status === "queued" || (job.status === "running" && Date.parse(job.leaseExpiresAt ?? "") <= now)); if (!candidate) return { ok: true, data: null, errorCode: null }; const attempt = candidate.attempt + 1; const leasedAt = new Date(now).toISOString(); const leaseToken = `lease_v2_${fingerprint({ jobId: candidate.jobId, workerId: parsed.data.workerId, attempt, leasedAt })}` as const; const leased = signedJob({ ...candidate, status: "running", attempt, startedAt: candidate.startedAt ?? leasedAt, workerId: parsed.data.workerId, leaseToken, leasedAt, leaseExpiresAt: new Date(now + leaseDurationMs).toISOString(), resultIds: null, errorCode: null, completedAt: null, resultBindingIntegritySignature: null }); jobs.set(leased.jobId, leased); return { ok: true, data: clone(leased), errorCode: null }; } catch { return fail("invalid_worker_input"); } },
-    async complete(input) { try { const parsed = completionSchema.safeParse(input); if (!parsed.success) return fail("invalid_completion_input"); const job = jobs.get(parsed.data.jobId); if (!hasLeaseAuthority(job, parsed.data)) return fail("lease_mismatch"); const bundle = parsed.data.resultBundle as CanonicalStage2To7ResultBundleV2; if (!validateBundle(bundle, job!)) return fail("invalid_canonical_artifacts"); const ids = resultIds(bundle); if (Object.values(ids).some((id) => !id)) return fail("invalid_canonical_artifacts"); const binding = fingerprint({ jobId: job!.jobId, requestFingerprint: job!.requestFingerprint, attempt: job!.attempt, workerId: job!.workerId, leaseToken: job!.leaseToken, resultIds: ids, artifactFingerprints: Object.fromEntries(Object.entries(bundle).map(([key, value]) => [key, fingerprint(value)])), versions: { schemaVersion: job!.schemaVersion, engineVersion: job!.engineVersion } }); if (binding !== parsed.data.resultBindingIntegritySignature) return fail("result_binding_tampering"); const next = signedJob({ ...job!, status: "succeeded", completedAt: new Date().toISOString(), resultIds: ids, errorCode: null, resultBindingIntegritySignature: binding }); jobs.set(job!.jobId, next); return { ok: true, data: clone(next), errorCode: null }; } catch { return fail("invalid_completion_input"); } },
+    async complete(input) { try { const parsed = completionSchema.safeParse(input); if (!parsed.success) return fail("invalid_completion_input"); const job = jobs.get(parsed.data.jobId); if (!hasLeaseAuthority(job, parsed.data)) return fail("lease_mismatch"); const bundle = parsed.data.resultBundle as CanonicalStage2To7ResultBundleV2; const persisted = await createStage2To7CanonicalArtifactValidatorV2(outcomeRepository).resolve(bundle, job!); if (!persisted) return fail("invalid_canonical_artifacts"); const ids = resultIds(bundle, persisted); if (Object.values(ids).some((id) => !id)) return fail("invalid_canonical_artifacts"); const binding = resultBindingSignature(job!, bundle, persisted, ids); if (binding !== parsed.data.resultBindingIntegritySignature) return fail("result_binding_tampering"); const next = signedJob({ ...job!, status: "succeeded", completedAt: new Date().toISOString(), resultIds: ids, errorCode: null, resultBindingIntegritySignature: binding }); jobs.set(job!.jobId, next); return { ok: true, data: clone(next), errorCode: null }; } catch { return fail("invalid_completion_input"); } },
     async fail(input) { try { const parsed = z.object({ jobId: z.string().regex(/^async_simulation_job_v2_[a-f0-9]{24}$/), workerId: z.string().regex(/^worker_[a-z0-9][a-z0-9_-]*$/), leaseToken: z.string().regex(/^lease_v2_[a-f0-9]{24}$/), attempt: z.number().int().positive(), errorCode: z.string().min(1).max(200) }).strict().safeParse(input); if (!parsed.success) return fail("invalid_completion_input"); const job = jobs.get(parsed.data.jobId); if (!hasLeaseAuthority(job, parsed.data)) return fail("lease_mismatch"); const next = signedJob({ ...job!, status: "failed", completedAt: new Date().toISOString(), resultIds: null, errorCode: parsed.data.errorCode, resultBindingIntegritySignature: null }); jobs.set(job!.jobId, next); return { ok: true, data: clone(next), errorCode: null }; } catch { return fail("invalid_completion_input"); } },
   };
 }
-export function createControlledAsyncSimulationExecutorV2(repository: AsyncSimulationJobRepositoryPortV2, execute: (job: Readonly<AsyncSimulationJobV2>) => Promise<CanonicalStage2To7ResultBundleV2>) {
+export function createControlledAsyncSimulationExecutorV2(repository: AsyncSimulationJobRepositoryPortV2, outcomeRepository: OutcomeCalibrationRepositoryPortV2, execute: (job: Readonly<AsyncSimulationJobV2>) => Promise<CanonicalStage2To7ResultBundleV2>) {
   return { async runOnce(workerId: unknown) {
     const claimed = await repository.claim({ workerId });
     if (!claimed.ok) return { status: "invalid_worker_input" as const };
     if (!claimed.data) return { status: "idle" as const };
     try {
-      const bundle = await execute(clone(claimed.data)); const ids = resultIds(bundle);
-      const signature = fingerprint({ jobId: claimed.data.jobId, requestFingerprint: claimed.data.requestFingerprint, attempt: claimed.data.attempt, workerId: claimed.data.workerId, leaseToken: claimed.data.leaseToken, resultIds: ids, artifactFingerprints: Object.fromEntries(Object.entries(bundle).map(([key, value]) => [key, fingerprint(value)])), versions: { schemaVersion: claimed.data.schemaVersion, engineVersion: claimed.data.engineVersion } });
+      const bundle = await execute(clone(claimed.data)); const persisted = await createStage2To7CanonicalArtifactValidatorV2(outcomeRepository).resolve(bundle, claimed.data);
+      const ids = persisted ? resultIds(bundle, persisted) : {};
+      const signature = persisted ? resultBindingSignature(claimed.data, bundle, persisted, ids) : fingerprint({ invalid: true });
       const completed = await repository.complete({ jobId: claimed.data.jobId, workerId: claimed.data.workerId, leaseToken: claimed.data.leaseToken, attempt: claimed.data.attempt, resultBundle: bundle, resultBindingIntegritySignature: signature });
       if (completed.ok) return { status: "succeeded" as const };
       await repository.fail({ jobId: claimed.data.jobId, workerId: claimed.data.workerId, leaseToken: claimed.data.leaseToken, attempt: claimed.data.attempt, errorCode: completed.errorCode });

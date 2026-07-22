@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { normalizeSeedContextDraft } from "@/lib/seed-context/storage";
-import { createControlledAsyncSimulationExecutorV2, createInMemoryAsyncSimulationJobRepositoryV2, createV1DraftMigrationServiceV2 } from "./index";
-import { forecastLockPersistenceFixtureV2, stage6SourceFixtureV2 } from "../outcome-calibration/test-fixtures";
+import { createControlledAsyncSimulationExecutorV2, createInMemoryAsyncSimulationJobRepositoryV2, createStage2To7CanonicalArtifactValidatorV2, createV1DraftMigrationServiceV2 } from "./index";
+import { forecastLockPersistenceFixtureV2, persistedForecastLockReferenceFixtureV2, stage6SourceFixtureV2 } from "../outcome-calibration/test-fixtures";
+import { createInMemoryOutcomeCalibrationRepositoryV2 } from "../outcome-calibration/in-memory-repository";
 
 function v1(overrides: Record<string, unknown> = {}) {
   return { ok: true as const, draft: normalizeSeedContextDraft({
@@ -13,13 +14,14 @@ function v1(overrides: Record<string, unknown> = {}) {
   }) };
 }
 
-function validJob() {
+async function validJob() {
   const source = stage6SourceFixtureV2();
-  const lock = forecastLockPersistenceFixtureV2({ source });
+  const lock = await persistedForecastLockReferenceFixtureV2({ source });
   const analysis = source.run.payload;
   return {
     request: { idempotencyKey: "stage8_job_key_valid_bundle", seedContext: { id: analysis.spec.seedContextId, summary: "Career context" }, runSpec: analysis.spec, schemaVersion: "2.0" as const },
-    bundle: { stage2RealityBoundary: source.claimSet.realityBoundary, stage3World: analysis.spec.trajectoryTemplate.initialWorld, stage4: { runSpec: analysis.spec, trajectories: analysis.trajectories }, stage5Analysis: analysis, stage6: { claimSet: source.claimSet, claims: source.claims, report: source.report }, stage7: { forecastLockPersistenceVersion: lock.persistenceVersion, history: [lock.persistenceVersion] } },
+    outcomeRepository: lock.repository,
+    bundle: { stage2RealityBoundary: source.claimSet.realityBoundary, stage3World: analysis.spec.trajectoryTemplate.initialWorld, stage4: { runSpec: analysis.spec, trajectories: analysis.trajectories }, stage5Analysis: analysis, stage6: { claimSet: source.claimSet, claims: source.claims, report: source.report }, stage7: { forecastLockReference: lock.forecastLockReference } },
   };
 }
 
@@ -58,30 +60,30 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
   });
 
   it("rejects caller-controlled terminal finalization, forged signatures, wrong worker/lease/attempt, and hostile finalize input", async () => {
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2();
+    const fixture = await validJob();
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
     expect(repository).not.toHaveProperty("finalize");
     await expect(repository.complete(null)).resolves.toMatchObject({ ok: false });
     await expect(repository.complete(Object.defineProperty({}, "jobId", { enumerable: true, get: () => { throw new Error("hostile"); } }))).resolves.toMatchObject({ ok: false });
-    const fixture = validJob();
     const submitted = await repository.submit(fixture.request); if (!submitted.ok) throw new Error(submitted.errorCode);
     const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
     const bad = await repository.complete({ jobId: lease.data.jobId, workerId: "worker_b", leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: "a".repeat(24) });
     expect(bad).toMatchObject({ ok: false, errorCode: "lease_mismatch" });
     expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", resultIds: null } });
-    const executor = createControlledAsyncSimulationExecutorV2(repository, async () => fixture.bundle);
+    const executor = createControlledAsyncSimulationExecutorV2(repository, fixture.outcomeRepository, async () => fixture.bundle);
     expect(await executor.runOnce("worker_a")).toMatchObject({ status: "idle" });
     expect(await repository.fail({ jobId: lease.data.jobId, workerId: "worker_a", leaseToken: lease.data.leaseToken, attempt: lease.data.attempt + 1, errorCode: "forged" })).toMatchObject({ ok: false, errorCode: "lease_mismatch" });
   });
 
   it("hard-wires the canonical publication gate: six fake ids and a caller validate bypass cannot publish", async () => {
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2(); const fixture = validJob();
+    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
     await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_fake_bundle" });
-    const executor = createControlledAsyncSimulationExecutorV2(repository, async () => ({ stage2RealityBoundary: { id: "evidence" }, stage3World: { id: "world" }, stage4: { runSpec: fixture.request.runSpec, trajectories: [] }, stage5Analysis: fixture.bundle.stage5Analysis, stage6: { claimSet: {}, claims: [], report: {} }, stage7: { forecastLockPersistenceVersion: {}, history: [] } }));
+    const executor = createControlledAsyncSimulationExecutorV2(repository, fixture.outcomeRepository, async () => ({ stage2RealityBoundary: { id: "evidence" }, stage3World: { id: "world" }, stage4: { runSpec: fixture.request.runSpec, trajectories: [] }, stage5Analysis: fixture.bundle.stage5Analysis, stage6: { claimSet: {}, claims: [], report: {} }, stage7: { forecastLockReference: { streamId: "outcome_calibration_stream_v2_fake", version: 1 } } }));
     expect(await executor.runOnce("worker_a")).toMatchObject({ status: "failed", errorCode: "invalid_canonical_artifacts" });
   });
 
   it("rejects forged result bindings atomically after full bundle revalidation", async () => {
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2(); const fixture = validJob();
+    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
     await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_binding" });
     const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
     await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: "a".repeat(24) })).resolves.toMatchObject({ ok: false });
@@ -89,10 +91,128 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
   });
 
   it("publishes a Stage 6/7 official fixture bundle once and never republishes a terminal Job", async () => {
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2(); const fixture = validJob();
+    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
     await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_positive" });
-    const executor = createControlledAsyncSimulationExecutorV2(repository, async () => fixture.bundle);
+    const executor = createControlledAsyncSimulationExecutorV2(repository, fixture.outcomeRepository, async () => fixture.bundle);
     expect(await executor.runOnce("worker_a")).toMatchObject({ status: "succeeded" });
     expect(await executor.runOnce("worker_b")).toMatchObject({ status: "idle" });
+  });
+
+  it("rejects an unappended self-consistent Forecast Lock and keeps the Job atomic", async () => {
+    const fixture = await validJob();
+    const unappended = forecastLockPersistenceFixtureV2({ source: stage6SourceFixtureV2() });
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(createInMemoryOutcomeCalibrationRepositoryV2());
+    const submitted = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_unappended_lock" });
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const lease = await repository.claim({ workerId: "worker_a" });
+    if (!lease.ok || !lease.data) throw new Error("lease");
+    const rejected = await repository.complete({
+      jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt,
+      resultBundle: { ...fixture.bundle, stage7: { forecastLockReference: { streamId: unappended.persistenceVersion.streamId, version: 1 } } },
+      resultBindingIntegritySignature: "a".repeat(24),
+    });
+    expect(rejected).toMatchObject({ ok: false, errorCode: "invalid_canonical_artifacts" });
+    expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", resultIds: null } });
+  });
+
+  it("uses repository records only: wrong references, missing versions, truncated history, and a broken parent chain reject", async () => {
+    const fixture = await validJob();
+    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
+    await expect(validator.validate({ ...fixture.bundle, stage7: { forecastLockReference: { streamId: "outcome_calibration_stream_v2_wrong", version: 1 } } }, submitted.data)).resolves.toBe(false);
+    await expect(validator.validate({ ...fixture.bundle, stage7: { forecastLockReference: { ...fixture.bundle.stage7.forecastLockReference, version: 2 } } }, submitted.data)).resolves.toBe(false);
+    const truncated = { ...fixture.outcomeRepository, loadHistory: async () => ({ ok: true as const, data: [], errorCode: null }) };
+    await expect(createStage2To7CanonicalArtifactValidatorV2(truncated).validate(fixture.bundle, submitted.data)).resolves.toBe(false);
+    const history = await fixture.outcomeRepository.loadHistory({ streamId: fixture.bundle.stage7.forecastLockReference.streamId });
+    if (!history.ok) throw new Error(history.errorCode);
+    const broken = structuredClone(history.data); broken[0]!.parentVersionId = "outcome_calibration_version_v2_forged";
+    const brokenChain = { ...fixture.outcomeRepository, loadHistory: async () => ({ ok: true as const, data: broken, errorCode: null }) };
+    await expect(createStage2To7CanonicalArtifactValidatorV2(brokenChain).validate(fixture.bundle, submitted.data)).resolves.toBe(false);
+    for (const mutate of [
+      (record: Record<string, unknown>) => { record.requestFingerprint = "a".repeat(24); },
+      (record: Record<string, unknown>) => { record.id = "outcome_calibration_version_v2_forged"; },
+      (record: Record<string, unknown>) => { record.persistenceIntegritySignature = "a".repeat(24); },
+    ]) {
+      const tampered = structuredClone(history.data);
+      mutate(tampered[0]! as unknown as Record<string, unknown>);
+      const tamperedRepository = { ...fixture.outcomeRepository, loadHistory: async () => ({ ok: true as const, data: tampered, errorCode: null }) };
+      await expect(createStage2To7CanonicalArtifactValidatorV2(tamperedRepository).validate(fixture.bundle, submitted.data)).resolves.toBe(false);
+    }
+  });
+
+  it("enforces the exact lease boundary and makes a reclaimed lease permanently stale", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2040-01-01T00:00:00.000Z"));
+      const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+      await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_lease_expiry" });
+      const first = await repository.claim({ workerId: "worker_a" }); if (!first.ok || !first.data) throw new Error("lease");
+      await vi.advanceTimersByTimeAsync(59_999);
+      await expect(repository.fail({ jobId: first.data.jobId, workerId: first.data.workerId, leaseToken: first.data.leaseToken, attempt: first.data.attempt, errorCode: "before_expiry" })).resolves.toMatchObject({ ok: true });
+
+      await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_reclaim_expiry" });
+      const stale = await repository.claim({ workerId: "worker_a" }); if (!stale.ok || !stale.data) throw new Error("lease");
+      await vi.advanceTimersByTimeAsync(60_000);
+      await expect(repository.complete({ jobId: stale.data.jobId, workerId: stale.data.workerId, leaseToken: stale.data.leaseToken, attempt: stale.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: "a".repeat(24) })).resolves.toMatchObject({ ok: false, errorCode: "lease_mismatch" });
+      await expect(repository.fail({ jobId: stale.data.jobId, workerId: stale.data.workerId, leaseToken: stale.data.leaseToken, attempt: stale.data.attempt, errorCode: "at_expiry" })).resolves.toMatchObject({ ok: false, errorCode: "lease_mismatch" });
+      const reclaimed = await repository.claim({ workerId: "worker_b" }); if (!reclaimed.ok || !reclaimed.data) throw new Error("reclaim");
+      expect(reclaimed.data.attempt).toBe(stale.data.attempt + 1);
+      await expect(repository.fail({ jobId: stale.data.jobId, workerId: stale.data.workerId, leaseToken: stale.data.leaseToken, attempt: stale.data.attempt, errorCode: "stale" })).resolves.toMatchObject({ ok: false, errorCode: "lease_mismatch" });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("contains execution and repository-input failures without publishing an artifact", async () => {
+    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    await expect(repository.submit(null)).resolves.toMatchObject({ ok: false, errorCode: "invalid_job_input" });
+    await expect(repository.claim(null)).resolves.toMatchObject({ ok: false, errorCode: "invalid_worker_input" });
+    const first = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_conflict" });
+    if (!first.ok) throw new Error(first.errorCode);
+    await expect(repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_conflict", seedContext: { ...fixture.request.seedContext, summary: "different" } })).resolves.toMatchObject({ ok: false, errorCode: "idempotency_conflict" });
+    const executor = createControlledAsyncSimulationExecutorV2(repository, fixture.outcomeRepository, async () => { throw new Error("execution"); });
+    expect(await executor.runOnce("worker_a")).toMatchObject({ status: "failed", errorCode: "execution_failed" });
+    expect(await repository.get({ jobId: first.data.jobId })).toMatchObject({ ok: true, data: { status: "failed", resultIds: null } });
+  });
+
+  it("rejects repository exceptions and hostile migration artifacts without throwing", async () => {
+    const fixture = await validJob();
+    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const unavailable = { ...fixture.outcomeRepository, loadVersion: async () => { throw new Error("repository unavailable"); } };
+    await expect(createStage2To7CanonicalArtifactValidatorV2(unavailable).validate(fixture.bundle, submitted.data)).resolves.toBe(false);
+    const hostile = Object.defineProperty({}, "artifactId", { enumerable: true, get: () => { throw new Error("hostile"); } });
+    expect(createV1DraftMigrationServiceV2().parseArtifact(hostile)).toMatchObject({ ok: false, errorCode: "invalid_migration_input" });
+    const hostileDraft = Object.defineProperty({}, "id", { enumerable: true, get: () => { throw new Error("hostile"); } });
+    expect(createV1DraftMigrationServiceV2().migrate(hostileDraft)).toMatchObject({ ok: false, errorCode: "invalid_migration_input" });
+  });
+
+  it("rejects a later Boundary, final World, and a persisted Lock from another Stage 5/6 source", async () => {
+    const fixture = await validJob();
+    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
+    const laterBoundary = structuredClone(fixture.bundle.stage2RealityBoundary) as { revision: number };
+    laterBoundary.revision += 1;
+    await expect(validator.validate({ ...fixture.bundle, stage2RealityBoundary: laterBoundary }, submitted.data)).resolves.toBe(false);
+    const finalWorld = (fixture.bundle.stage4.trajectories[0] as { finalWorld?: unknown }).finalWorld;
+    await expect(validator.validate({ ...fixture.bundle, stage3World: finalWorld }, submitted.data)).resolves.toBe(false);
+    const unrelated = await persistedForecastLockReferenceFixtureV2({ source: stage6SourceFixtureV2({ unitIndex: 1 }) });
+    await expect(createStage2To7CanonicalArtifactValidatorV2(unrelated.repository).validate({ ...fixture.bundle, stage7: { forecastLockReference: unrelated.forecastLockReference } }, submitted.data)).resolves.toBe(false);
+  });
+
+  it("rejects malformed Stage 2–7 layers before they can reach publication", async () => {
+    const fixture = await validJob();
+    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
+    const attempts = [
+      { ...fixture.bundle, stage7: { forecastLockReference: { ...fixture.bundle.stage7.forecastLockReference, extra: true } } },
+      { ...fixture.bundle, stage4: { runSpec: null as never, trajectories: fixture.bundle.stage4.trajectories } },
+      { ...fixture.bundle, stage4: { ...fixture.bundle.stage4, trajectories: [] } },
+      { ...fixture.bundle, stage5Analysis: {} as never },
+      { ...fixture.bundle, stage6: { ...fixture.bundle.stage6, claimSet: {} } },
+      { ...fixture.bundle, stage6: { ...fixture.bundle.stage6, claims: [] } },
+    ];
+    for (const attempt of attempts) await expect(validator.validate(attempt, submitted.data)).resolves.toBe(false);
   });
 });

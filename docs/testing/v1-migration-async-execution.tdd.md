@@ -11,6 +11,18 @@ fixed canonical publication gate, including a Stage 6/7 official-fixture
 `submit -> claim -> execute -> complete -> succeeded` path. This task requires one final repair commit,
 so no intermediate Git checkpoint is created.
 
+## Repository-backed Forecast Lock repair from `ccc9191`
+
+RED was run after changing the Stage 8 test contract to pass only a persisted
+Forecast Lock `{ streamId, version }` reference and its repository. The prior
+executor treated the repository as the execute adapter, so the official
+append -> submit -> claim -> execute path failed with `execution_failed`.
+GREEN injects `OutcomeCalibrationRepositoryPortV2` into the fixed canonical
+gate, loads the actual version and history, and recomputes the persistence,
+request, Forecast Lock, and cross-stage bindings before publication. This task
+requires one final repair commit, so the executable RED/GREEN evidence is kept
+here instead of creating interim commits.
+
 ## Scope and non-goals
 
 Journeys were derived from the confirmed Stage 8 boundary in
@@ -22,15 +34,16 @@ work.
 
 ## RED evidence
 
-Command run before production implementation:
+Command run before the repository-backed production change:
 
 ```text
-npm exec vitest run src/lib/v2/migration-async-execution/migration-async-execution.test.ts --coverage=false
+npm run test:v2:migration-async-execution
 ```
 
-Observed result: the new suite loaded zero tests and failed because
-`./index` did not exist. This is the intended compile-time RED for the missing
-Stage 8 migration and async-execution module.
+Observed result: 8 tests executed; the official persisted-reference positive
+case failed as `execution_failed` and the fake-bundle test received the same
+error. This was the intended RED: the executor had no repository-backed Stage
+7 trust boundary.
 
 ## GREEN evidence
 
@@ -40,8 +53,8 @@ Command run after implementation:
 npm run test:v2:migration-async-execution
 ```
 
-Observed result: 1 test file passed, 7 tests passed. Coverage was Statements
-90.62%, Branches 85.71%, Functions 100%, and Lines 92.85%.
+Observed result: 1 test file passed, 14 tests passed. Coverage was Statements
+92.94%, Branches 85.57%, Functions 100%, and Lines 99.23%.
 
 | # | Guarantee | Test evidence | Result |
 |---|---|---|---|
@@ -50,7 +63,10 @@ Observed result: 1 test file passed, 7 tests passed. Coverage was Statements
 | 3 | Unknown versions/fields, corrupted nested values, historical V1 artifacts, cross-draft references, and hostile input fail atomically. | migration tests 3-4 | PASS |
 | 4 | Submit is strict, server-controlled, idempotent by key plus content, and reads are defensive. | async test 5 | PASS |
 | 5 | Concurrent workers lease at most one Job; duplicate delivery after completion is idle. | async test 6 | PASS |
-| 6 | Executor failure, invalid canonical artifacts, hostile repository/worker input, and invalid canonical-validator input publish no result ids. | async test 7 | PASS |
+| 6 | Executor failure, invalid canonical artifacts, hostile repository/worker input, and invalid canonical-validator input publish no result ids. | async tests 7, 11 | PASS |
+| 7 | A self-consistent but unappended Forecast Lock cannot publish; only the actual Stage 7 repository record and history can satisfy the gate. | async tests 8-9 | PASS |
+| 8 | Missing/wrong references, truncated or broken persistence chains, later Boundaries, final Worlds, and unrelated Stage 5/6/7 sources reject atomically. | async tests 9, 12, 13 | PASS |
+| 9 | Lease expiry is millisecond-bounded; reclaim increments attempt and permanently invalidates the former worker/token/attempt. | async test 10 | PASS |
 
 The separate test command enforces the Stage 8 threshold: Statements 90%,
 Branches 85%, Functions 95%, Lines 90%.

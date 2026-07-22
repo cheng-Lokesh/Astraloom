@@ -788,6 +788,17 @@ cross-Seed input, or tampered result fails atomically: `resultIds` remains
 null, no partial artifact is published, and historical artifacts remain
 unchanged.
 
+Stage 7 bundle input is strictly only `forecastLockReference: { streamId,
+version }`; it must not contain a caller-provided persistence envelope or
+history. The canonical gate receives an `OutcomeCalibrationRepositoryPortV2`
+and calls `loadVersion(streamId, version)` plus `loadHistory(streamId)`. It
+accepts only the repository-returned record after revalidating contiguous
+versions, `parentVersionId`, request fingerprint, persistence id/signature,
+Forecast Lock integrity/content signature, and the exact Run, Reality Boundary,
+Claim Set, Claims, and Report source snapshots. A missing append, wrong
+reference, truncated/broken history, or cross-stage binding mismatch leaves the
+Job in its prior state with `resultIds=null`.
+
 ### entitlements
 
 Purpose: Stores free preview, paid report, and subscription unlock state.
