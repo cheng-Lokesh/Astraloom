@@ -9,10 +9,10 @@ import type {
 export const OUTCOME_CALIBRATION_ENGINE_VERSION_V2 =
   "outcome-calibration-engine-v2-stage-7" as const;
 export const OUTCOME_SCHEMA_VERSION_V2 = "outcome-v2.1" as const;
-export const FORECAST_LOCK_SCHEMA_VERSION_V2 = "forecast-lock-v2.0" as const;
-export const BACKTEST_SCHEMA_VERSION_V2 = "backtest-v2.2" as const;
-export const CALIBRATION_SCHEMA_VERSION_V2 = "calibration-v2.2" as const;
-export const PERSISTENCE_SCHEMA_VERSION_V2 = "outcome-calibration-persistence-v2.1" as const;
+export const FORECAST_LOCK_SCHEMA_VERSION_V2 = "forecast-lock-v2.1" as const;
+export const BACKTEST_SCHEMA_VERSION_V2 = "backtest-v2.3" as const;
+export const CALIBRATION_SCHEMA_VERSION_V2 = "calibration-v2.3" as const;
+export const PERSISTENCE_SCHEMA_VERSION_V2 = "outcome-calibration-persistence-v2.2" as const;
 export const CALIBRATION_METHOD_NAME_V2 = "binary-brier-score" as const;
 export const CALIBRATION_METHOD_VERSION_V2 = "3" as const;
 export const MIN_CALIBRATION_SAMPLE_SIZE_V2 = 5 as const;
@@ -107,7 +107,6 @@ export type ForecastUnitSemanticsV2 = {
     fingerprint: string;
     revision: number;
   };
-  lockedAt: string;
 };
 
 export type ForecastLockV2 = {
@@ -191,6 +190,7 @@ export type BacktestV2 = {
   };
   observationUnitSignature: string;
   forecastUnitSignature: string;
+  forecastTargetSignature: string;
   forecastLockBinding: {
     forecastLockId: ForecastLockV2["id"];
     persistenceVersionId: OutcomeCalibrationPersistenceVersionIdV2;

@@ -197,7 +197,6 @@ function buildUnsafe(input: unknown) {
         memberTrajectorySeeds: [...cluster.memberTrajectorySeeds].sort((left, right) => left - right),
       },
       forecastRealityBoundary: { fingerprint: boundaryFingerprint, revision: boundary.revision },
-      lockedAt: locked.value.isoTimestamp,
     };
     units.push({
       claimId: claim.id,

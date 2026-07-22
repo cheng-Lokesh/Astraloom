@@ -175,8 +175,47 @@ forecast-unit signature; five such aliases cannot reach calibration minimum.
 They also prove full Run/Claim Set/Claims/Report lock replay, strict lock
 schemas, lock and persistence time before Evidence capture, tamper detection,
 and repository ordering of Forecast Lock -> Outcome -> Backtest -> Calibration.
-The sufficient five-sample fixture uses five distinct lock times, each before
-its paired Outcome Evidence, and verifies exact forecast-window pairing.
+The sufficient five-sample fixture verifies each pre-locked Forecast/Outcome
+pair against its exact evaluation window.
+
+## Repository-bound Forecast Target repair RED/GREEN evidence
+
+Starting from `ba6be57ddb452bca6fb7994206185fc52b7dcd68`, RED tests proved
+that lock time and persistence aliases changed `forecastUnitSignature`, two
+Outcome aliases could evade target-level de-duplication, a lock after window
+start was accepted, and Backtest accepted a caller-assembled receipt instead
+of loading a repository version. `npm run test:v2:outcome-calibration` failed
+with those four intended assertions before production code changed.
+
+GREEN result after the repair:
+
+```text
+npm run test:v2:outcome-calibration
+Exit code: 0
+Test Files  4 passed (4)
+Tests       39 passed (39)
+Statements 90.36% (563/623)
+Branches   86.68% (423/488)
+Functions 97.52% (118/121)
+Lines     94.08% (493/524)
+```
+
+The repaired Backtest accepts only a strict Lock stream/version reference,
+loads the exact stored record through the repository port, and persists the
+loaded record in its immutable snapshot. Forecast signatures omit `lockedAt`,
+Lock identity, and persistence identity; Calibration additionally rejects a
+duplicate semantic forecast target for the same evaluation window. Locks and
+persistence must predate the window start, and occurred Outcomes additionally
+require `lockedAt < occurredAt`. The five-sample GREEN fixture now uses five
+semantic forecast targets with distinct trajectory-seed cohorts and paired
+Outcomes, never lock-time or persistence-version aliases.
+
+The final RED adds a hash-self-consistent receipt returned by `loadVersion` but
+absent from `loadHistory`; it fails before the chain guard exists. GREEN now
+requires the exact stored record at the requested stream/version and validates
+the contiguous parent/version chain, request fingerprint, persistence id, and
+integrity signature before a Backtest can be constructed. The public-index test
+also imports the Forecast Lock builder and validator directly from Stage 7.
 
 ## Coverage and known gaps
 
@@ -196,16 +235,15 @@ All requested commands passed on the final Stage 7 implementation:
 | `npm run test:v2:trajectory` | PASS: 63 tests |
 | `npm run test:v2:analysis` | PASS: 47 tests and Stage 5 coverage gates |
 | `npm run test:v2:claims-reports` | PASS: 23 tests and Stage 6 coverage gates |
-| `npm run test:v2:outcome-calibration` | PASS: 33 tests in 4 files and Stage 7 coverage gates |
-| `npm test` | PASS: 382 tests in 35 files |
-| `npm run test:unit` | PASS: 379 tests in 34 files |
+| `npm run test:v2:outcome-calibration` | PASS: 39 tests in 4 files and Stage 7 coverage gates |
+| `npm test` | PASS: 388 tests in 35 files |
+| `npm run test:unit` | PASS: 385 tests in 34 files |
 | `npm run test:golden` | PASS: 3 tests covering exactly eight V1 Golden Cases |
-| `npm run test:coverage` | PASS: statements 90.70%, branches 80.47%, functions 95.10%, lines 93.22% |
+| `npm run test:coverage` | PASS: statements 90.62%, branches 80.55%, functions 95.10%, lines 93.19% |
 | `npm run check` | PASS: full tests, lint, type-check, and production build |
 | `npm run check:ci` | PASS: coverage, lint, type-check, and production build |
 | `git diff --check` | PASS |
 
-The final diff contains only the new Stage 7 module/tests, the Stage 7 data and
-TDD documentation, the new package command, and global coverage inclusion. It
-does not modify V1 or Stage 2-6 production code, and it does not modify
-`docs/FUTURE_SIMULATOR_V2.md`.
+The final diff contains only Stage 7 implementation/tests and the permitted
+Stage 7 data/TDD documentation. It does not modify V1 or Stage 2-6 production
+code, and it does not modify `docs/FUTURE_SIMULATOR_V2.md`.

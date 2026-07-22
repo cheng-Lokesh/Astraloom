@@ -15,6 +15,7 @@ import { buildClaimsV2 } from "../claims-reports/claim-builder";
 import { buildClaimsReportV2 } from "../claims-reports/report-builder";
 import type { ClaimV2 } from "../claims-reports/types";
 import { buildForecastLockV2 } from "./forecast-lock";
+import { createInMemoryOutcomeCalibrationRepositoryV2 } from "./in-memory-repository";
 import { persistenceVersionIdV2, stage7FingerprintV2 } from "./ids";
 import type { OutcomeCalibrationPersistenceVersionV2 } from "./types";
 import { PERSISTENCE_SCHEMA_VERSION_V2 } from "./types";
@@ -36,11 +37,11 @@ export const OUTCOME_RECORDED_AT_FIXTURES_V2 = [
 ] as const;
 
 export const FORECAST_START_AT_FIXTURES_V2 = [
-  "2026-07-19T10:00:00.000Z",
-  "2026-07-19T10:00:00.000Z",
-  "2026-07-19T10:00:00.000Z",
-  "2026-07-19T10:00:00.000Z",
-  "2026-07-19T10:00:00.000Z",
+  "2026-07-20T10:00:00.000Z",
+  "2026-07-20T10:00:00.000Z",
+  "2026-07-20T10:00:00.000Z",
+  "2026-07-20T10:00:00.000Z",
+  "2026-07-20T10:00:00.000Z",
 ] as const;
 
 function forecastWindow(startAt: string, horizonDays = 30) {
@@ -84,9 +85,11 @@ export function forecastRealityBoundaryFixtureV2() {
 export function stage6SourceFixtureV2({
   unitIndex = 0,
   startAt,
+  trajectorySeedOffset = 0,
 }: {
   unitIndex?: number;
   startAt?: string;
+  trajectorySeedOffset?: number;
 } = {}) {
   const template = trajectoryRunSpecFixtureV2();
   template.runSpecId = `trajectory_run_spec_v2_stage_7_unit_${unitIndex + 1}`;
@@ -96,7 +99,7 @@ export function stage6SourceFixtureV2({
     analysisRunSpecId: `analysis_run_spec_v2_stage_7_unit_${unitIndex + 1}`,
     seedContextId: template.seedContextId,
     trajectoryTemplate: template,
-    trajectorySeeds: [7, 11, 19],
+    trajectorySeeds: [7 + trajectorySeedOffset, 11 + trajectorySeedOffset, 19 + trajectorySeedOffset],
     sampleCount: 3,
     horizonDays: template.horizonDays,
     policyId: template.policyId,
@@ -319,12 +322,14 @@ export function forecastLockPersistenceFixtureV2({
   persistedAt = lockedAt,
   streamId = "outcome_calibration_stream_v2_career_fixture" as const,
   version = 1,
+  idempotencyKey = `stage7_idempotency_v2_forecast_lock_${version}` as const,
 }: {
   source?: ReturnType<typeof stage6SourceFixtureV2> | ReturnType<typeof stage6SensitivitySourceFixtureV2>;
   lockedAt?: string;
   persistedAt?: string;
   streamId?: `outcome_calibration_stream_v2_${string}`;
   version?: number;
+  idempotencyKey?: `stage7_idempotency_v2_${string}`;
 } = {}) {
   const built = buildForecastLockV2({
     forecastLockSpecId: `forecast_lock_spec_v2_stage_7_fixture_${version}`,
@@ -335,7 +340,6 @@ export function forecastLockPersistenceFixtureV2({
     report: source.report,
   });
   if (!built.ok) throw new Error(built.errorCode);
-  const idempotencyKey = `stage7_idempotency_v2_forecast_lock_${version}` as const;
   const requestFingerprint = stage7FingerprintV2({
     streamId,
     expectedVersion: version - 1,
@@ -363,4 +367,33 @@ export function forecastLockPersistenceFixtureV2({
     persistenceIntegritySignature: stage7FingerprintV2(unsigned),
   };
   return { forecastLock: built.forecastLock, persistenceVersion };
+}
+
+export async function persistedForecastLockReferenceFixtureV2({
+  source = stage6SourceFixtureV2(),
+  lockedAt = "2026-07-19T10:01:00.000Z",
+  persistedAt = lockedAt,
+  streamId = "outcome_calibration_stream_v2_career_fixture" as const,
+}: {
+  source?: ReturnType<typeof stage6SourceFixtureV2> | ReturnType<typeof stage6SensitivitySourceFixtureV2>;
+  lockedAt?: string;
+  persistedAt?: string;
+  streamId?: `outcome_calibration_stream_v2_${string}`;
+} = {}) {
+  const fixture = forecastLockPersistenceFixtureV2({ source, lockedAt, persistedAt, streamId });
+  const repository = createInMemoryOutcomeCalibrationRepositoryV2();
+  const appended = await repository.append({
+    streamId,
+    expectedVersion: 0,
+    idempotencyKey: fixture.persistenceVersion.idempotencyKey,
+    persistedAt,
+    artifact: fixture.persistenceVersion.artifact,
+  });
+  if (!appended.ok) throw new Error(appended.errorCode);
+  return {
+    repository,
+    forecastLock: fixture.forecastLock,
+    persistenceVersion: appended.data,
+    forecastLockReference: { streamId, version: appended.data.version },
+  };
 }

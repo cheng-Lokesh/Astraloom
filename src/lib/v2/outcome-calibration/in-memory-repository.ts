@@ -125,13 +125,21 @@ function dependenciesPresent(artifact: OutcomeCalibrationArtifactV2, history: Ou
       (item) => item.id === artifact.value.source.realEvidenceId,
     );
     const captured = parseTrajectoryInstantV2(primary?.capturedAt);
-    return captured.ok && history.some((record) => {
+    const windowStart = parseTrajectoryInstantV2(artifact.value.observationWindow.startAt);
+    const occurredAt = artifact.value.observed === "occurred"
+      ? parseTrajectoryInstantV2(artifact.value.occurredAt)
+      : null;
+    return captured.ok && windowStart.ok && history.some((record) => {
       if (record.artifact.kind !== "forecast_lock") return false;
       const locked = parseTrajectoryInstantV2(record.artifact.value.lockedAt);
       const persisted = parseTrajectoryInstantV2(record.persistedAt);
       return locked.ok && persisted.ok &&
+        locked.value.epochMilliseconds < windowStart.value.epochMilliseconds &&
+        persisted.value.epochMilliseconds < windowStart.value.epochMilliseconds &&
         locked.value.epochMilliseconds < captured.value.epochMilliseconds &&
         persisted.value.epochMilliseconds < captured.value.epochMilliseconds &&
+        (artifact.value.observed !== "occurred" ||
+          (occurredAt?.ok && locked.value.epochMilliseconds < occurredAt.value.epochMilliseconds)) &&
         record.artifact.value.forecastUnits.some((unit) =>
           unit.claimId === artifact.value.claimReference.claimId &&
           unit.clusterId === artifact.value.claimReference.clusterId);

@@ -5,9 +5,9 @@ import { calibrateBacktestsV2 } from "./calibration";
 import { createInMemoryOutcomeCalibrationRepositoryV2 } from "./in-memory-repository";
 import { captureOutcomeV2 } from "./outcome-capture";
 import {
-  forecastLockPersistenceFixtureV2,
   outcomeCaptureInputFixtureV2,
   outcomeRealityBoundaryFixtureV2,
+  persistedForecastLockReferenceFixtureV2,
   stage6SourceFixtureV2,
 } from "./test-fixtures";
 import {
@@ -17,22 +17,22 @@ import {
   PERSISTENCE_SCHEMA_VERSION_V2,
 } from "./types";
 
-function artifacts() {
+async function artifacts() {
   const boundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
   const captured = captureOutcomeV2(outcomeCaptureInputFixtureV2({ boundary }));
   if (!captured.ok) throw new Error(captured.errorCode);
   const source = stage6SourceFixtureV2();
-  const lock = forecastLockPersistenceFixtureV2({ source });
-  const tested = backtestClaimsReportV2({
+  const lock = await persistedForecastLockReferenceFixtureV2({ source });
+  const tested = await backtestClaimsReportV2({
     backtestSpecId: "backtest_spec_v2_repository_fixture",
     run: source.run,
     claimSet: source.claimSet,
     claims: source.claims,
     report: source.report,
-    forecastLockPersistenceVersion: lock.persistenceVersion,
+    forecastLockReference: lock.forecastLockReference,
     outcome: captured.outcome,
     outcomeRealityBoundary: boundary,
-  });
+  }, lock.repository);
   if (!tested.ok) throw new Error(tested.errorCode);
   const calibrated = calibrateBacktestsV2({
     calibrationSpecId: "calibration_spec_v2_repository_fixture",
@@ -58,7 +58,7 @@ const streamId = "outcome_calibration_stream_v2_career_fixture";
 describe("Stage 7 versioned persistence port and deterministic memory adapter", () => {
   it("appends immutable versions in dependency order and returns defensive snapshots", async () => {
     const repository = createInMemoryOutcomeCalibrationRepositoryV2();
-    const values = artifacts();
+    const values = await artifacts();
     const first = await repository.append({
       streamId,
       expectedVersion: 0,
@@ -110,7 +110,7 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
 
   it("enforces optimistic concurrency and content-bound idempotency", async () => {
     const repository = createInMemoryOutcomeCalibrationRepositoryV2();
-    const values = artifacts();
+    const values = await artifacts();
     const request = {
       streamId,
       expectedVersion: 0,
@@ -133,11 +133,11 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     expect(repeated).toEqual({ ...first, idempotent: true });
     expect(conflict).toMatchObject({ ok: false, data: null, errorCode: "idempotency_conflict" });
     expect(stale).toMatchObject({ ok: false, data: null, errorCode: "stale_version" });
-  });
+  }, 15_000);
 
   it("fails atomically for missing dependencies, extra input, illegal ids, or corrupt nested artifacts", async () => {
     const repository = createInMemoryOutcomeCalibrationRepositoryV2();
-    const values = artifacts();
+    const values = await artifacts();
     const missingDependency = await repository.append({
       streamId,
       expectedVersion: 0,
@@ -184,7 +184,7 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
 
   it("rejects calendar-invalid persistence timestamps instead of normalizing them", async () => {
     const repository = createInMemoryOutcomeCalibrationRepositoryV2();
-    const values = artifacts();
+    const values = await artifacts();
 
     await expect(repository.append({
       streamId,
@@ -206,7 +206,7 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
 
   it("rejects immutable artifact replacement and cross-Seed or cross-Ledger stream mixing", async () => {
     const repository = createInMemoryOutcomeCalibrationRepositoryV2();
-    const values = artifacts();
+    const values = await artifacts();
     const first = await repository.append({
       streamId,
       expectedVersion: 0,

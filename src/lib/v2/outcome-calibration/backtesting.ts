@@ -8,10 +8,16 @@ import { parseRealityBoundarySnapshotV2, parseValidatedClaimV2 } from "../claims
 import type { BatchAnalysisV2 } from "../trajectory-analysis/types";
 import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "../trajectory/time";
 import { parseTrajectoryRunSpecV2 } from "../trajectory/validation";
-import { backtestIdV2, canonicalStage7JsonV2, stage7FingerprintV2 } from "./ids";
+import { backtestIdV2, canonicalStage7JsonV2, persistenceVersionIdV2, stage7FingerprintV2 } from "./ids";
 import { parseValidatedForecastLockPersistenceVersionV2 } from "./forecast-lock";
 import { parseValidatedOutcomeV2 } from "./outcome-capture";
-import type { BacktestV2, Stage7ClaimSetSnapshotV2, Stage7RunSnapshotV2 } from "./types";
+import type { OutcomeCalibrationRepositoryPortV2 } from "./repository";
+import type {
+  BacktestV2,
+  OutcomeCalibrationPersistenceVersionV2,
+  Stage7ClaimSetSnapshotV2,
+  Stage7RunSnapshotV2,
+} from "./types";
 import {
   BACKTEST_SCHEMA_VERSION_V2,
   OUTCOME_CALIBRATION_ENGINE_VERSION_V2,
@@ -36,6 +42,20 @@ const inputSchema = z.object({
   claims: z.array(z.unknown()).min(1).max(1000),
   report: z.unknown(),
   forecastLockPersistenceVersion: z.unknown(),
+  outcome: z.unknown(),
+  outcomeRealityBoundary: z.unknown(),
+}).strict();
+const forecastLockReferenceSchema = z.object({
+  streamId: namespaced("outcome_calibration_stream_v2_"),
+  version: z.number().int().positive(),
+}).strict();
+const buildRequestSchema = z.object({
+  backtestSpecId: namespaced("backtest_spec_v2_"),
+  run: runSchema,
+  claimSet: claimSetSchema,
+  claims: z.array(z.unknown()).min(1).max(1000),
+  report: z.unknown(),
+  forecastLockReference: forecastLockReferenceSchema,
   outcome: z.unknown(),
   outcomeRealityBoundary: z.unknown(),
 }).strict();
@@ -121,6 +141,7 @@ const backtestSchema = z.object({
   evaluationWindow: evaluationWindowSchema,
   observationUnitSignature: z.string().regex(/^[a-f0-9]{24}$/),
   forecastUnitSignature: z.string().regex(/^[a-f0-9]{24}$/),
+  forecastTargetSignature: z.string().regex(/^[a-f0-9]{24}$/),
   forecastLockBinding: z.object({
     forecastLockId: namespaced("forecast_lock_v2_"),
     persistenceVersionId: namespaced("outcome_calibration_version_v2_"),
@@ -210,6 +231,32 @@ function deriveEvaluationWindow(run: Stage7RunSnapshotV2) {
   return end.ok ? { startAt: start.value.isoTimestamp, horizonEnd: end.value.isoTimestamp } : null;
 }
 
+function hasExactPersistedVersionChain(
+  history: OutcomeCalibrationPersistenceVersionV2[],
+  reference: { streamId: string; version: number },
+  loaded: OutcomeCalibrationPersistenceVersionV2,
+) {
+  if (history.length < reference.version) return false;
+  for (let index = 0; index < history.length; index += 1) {
+    const record = history[index]!;
+    const { id, persistenceIntegritySignature, ...unsigned } = record;
+    const requestFingerprint = stage7FingerprintV2({
+      streamId: record.streamId,
+      expectedVersion: record.version - 1,
+      idempotencyKey: record.idempotencyKey,
+      persistedAt: record.persistedAt,
+      artifact: record.artifact,
+    });
+    if (record.streamId !== reference.streamId ||
+        record.version !== index + 1 ||
+        record.parentVersionId !== (index === 0 ? null : history[index - 1]!.id) ||
+        record.requestFingerprint !== requestFingerprint ||
+        id !== persistenceVersionIdV2(unsigned) ||
+        persistenceIntegritySignature !== stage7FingerprintV2(unsigned)) return false;
+  }
+  return canonicalStage7JsonV2(history[reference.version - 1]) === canonicalStage7JsonV2(loaded);
+}
+
 function backtestUnsafeV2(input: unknown) {
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, errorCode: "invalid_backtest_input" as const };
@@ -284,9 +331,17 @@ function backtestUnsafeV2(input: unknown) {
   const capturedAt = parseTrajectoryInstantV2(primaryEvidence.capturedAt);
   const lockedAt = parseTrajectoryInstantV2(forecastLock.lockedAt);
   const persistedAt = parseTrajectoryInstantV2(persistedLock.persistedAt);
+  const occurredAt = outcomeResult.outcome.observed === "occurred"
+    ? parseTrajectoryInstantV2(outcomeResult.outcome.occurredAt)
+    : null;
   if (!capturedAt.ok || !lockedAt.ok || !persistedAt.ok ||
+      !forecastStart.ok ||
+      lockedAt.value.epochMilliseconds >= forecastStart.value.epochMilliseconds ||
+      persistedAt.value.epochMilliseconds >= forecastStart.value.epochMilliseconds ||
       lockedAt.value.epochMilliseconds >= capturedAt.value.epochMilliseconds ||
       persistedAt.value.epochMilliseconds >= capturedAt.value.epochMilliseconds ||
+      (outcomeResult.outcome.observed === "occurred" &&
+        (!occurredAt?.ok || lockedAt.value.epochMilliseconds >= occurredAt.value.epochMilliseconds)) ||
       forecastLock.seedContextId !== forecast.seedContextId ||
       forecastLock.realityBoundaryBinding.revision !== forecast.revision ||
       forecastLock.realityBoundaryBinding.fingerprint !== stage7FingerprintV2(forecast) ||
@@ -358,6 +413,7 @@ function backtestUnsafeV2(input: unknown) {
     evaluationWindow,
     observationUnitSignature: outcomeResult.outcome.observationUnitSignature,
     forecastUnitSignature: forecastUnit.forecastUnitSignature,
+    forecastTargetSignature: stage7FingerprintV2(forecastUnit.semantics),
     forecastLockBinding: {
       forecastLockId: forecastLock.id,
       persistenceVersionId: persistedLock.id,
@@ -401,9 +457,39 @@ function backtestUnsafeV2(input: unknown) {
   return { ok: true as const, backtest };
 }
 
-export function backtestClaimsReportV2(input: unknown) {
+export async function backtestClaimsReportV2(
+  input: unknown,
+  repository: OutcomeCalibrationRepositoryPortV2,
+) {
   try {
-    return backtestUnsafeV2(input);
+    const parsed = buildRequestSchema.safeParse(input);
+    if (!parsed.success) return { ok: false as const, errorCode: "invalid_backtest_input" as const };
+    const loaded = await repository.loadVersion(parsed.data.forecastLockReference);
+    if (!loaded.ok || !loaded.data ||
+        loaded.data.streamId !== parsed.data.forecastLockReference.streamId ||
+        loaded.data.version !== parsed.data.forecastLockReference.version ||
+        loaded.data.artifact.kind !== "forecast_lock") {
+      return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
+    }
+    const history = await repository.loadHistory({ streamId: parsed.data.forecastLockReference.streamId });
+    if (!history.ok || !hasExactPersistedVersionChain(
+      history.data,
+      parsed.data.forecastLockReference,
+      loaded.data,
+    )) return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
+    const persistedLock = structuredClone(loaded.data);
+    const { forecastLockReference, ...request } = parsed.data;
+    void forecastLockReference;
+    const result = backtestUnsafeV2({
+      ...request,
+      forecastLockPersistenceVersion: persistedLock,
+    });
+    if (!result.ok) return result;
+    if (canonicalStage7JsonV2(result.backtest.sourceSnapshots.forecastLockPersistenceVersion) !==
+        canonicalStage7JsonV2(persistedLock)) {
+      return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
+    }
+    return result;
   } catch {
     return { ok: false as const, errorCode: "invalid_backtest_input" as const };
   }

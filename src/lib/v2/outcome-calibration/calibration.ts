@@ -91,7 +91,8 @@ function calibrateUnsafeV2(input: unknown) {
     return { ok: false as const, errorCode: "duplicate_id" as const };
   }
   if (new Set(backtests.map((item) => item.observationUnitSignature)).size !== backtests.length ||
-      new Set(backtests.map((item) => item.forecastUnitSignature)).size !== backtests.length) {
+      new Set(backtests.map((item) => item.forecastUnitSignature)).size !== backtests.length ||
+      new Set(backtests.map((item) => item.forecastTargetSignature)).size !== backtests.length) {
     return { ok: false as const, errorCode: "duplicate_calibration_unit" as const };
   }
   const first = backtests[0]!;

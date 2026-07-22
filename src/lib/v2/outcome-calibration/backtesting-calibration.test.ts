@@ -5,11 +5,11 @@ import { backtestClaimsReportV2, parseValidatedBacktestV2 } from "./backtesting"
 import { calibrateBacktestsV2, parseValidatedCalibrationV2 } from "./calibration";
 import { captureOutcomeV2 } from "./outcome-capture";
 import {
-  forecastLockPersistenceFixtureV2,
   outcomeCaptureInputFixtureV2,
   outcomeRealityBoundaryFixtureV2,
   stage6SensitivitySourceFixtureV2,
   stage6SourceFixtureV2,
+  persistedForecastLockReferenceFixtureV2,
 } from "./test-fixtures";
 import {
   BACKTEST_SCHEMA_VERSION_V2,
@@ -38,35 +38,39 @@ function capturedOutcome({
   return result.outcome;
 }
 
-function backtestInput(
+async function backtestInput(
   outcome = capturedOutcome(),
   source = stage6SourceFixtureV2(),
   lockedAt = "2026-07-19T10:01:00.000Z",
 ) {
-  const lock = forecastLockPersistenceFixtureV2({ source, lockedAt });
+  const lock = await persistedForecastLockReferenceFixtureV2({ source, lockedAt });
   return {
+    repository: lock.repository,
+    input: {
     backtestSpecId: `backtest_spec_v2_${outcome.outcomeSpecId.slice("outcome_spec_v2_".length)}`,
     run: source.run,
     claimSet: source.claimSet,
     claims: source.claims,
     report: source.report,
-    forecastLockPersistenceVersion: lock.persistenceVersion,
+    forecastLockReference: lock.forecastLockReference,
     outcome,
     outcomeRealityBoundary: outcome.realityBoundarySnapshot,
+    },
   };
 }
 
-function builtBacktest(
+async function builtBacktest(
   outcome = capturedOutcome(),
   source = stage6SourceFixtureV2(),
   lockedAt = "2026-07-19T10:01:00.000Z",
 ) {
-  const result = backtestClaimsReportV2(backtestInput(outcome, source, lockedAt));
+  const request = await backtestInput(outcome, source, lockedAt);
+  const result = await backtestClaimsReportV2(request.input, request.repository);
   if (!result.ok) throw new Error(result.errorCode);
   return result.backtest;
 }
 
-function calibrationInput(backtests: ReturnType<typeof builtBacktest>[]) {
+function calibrationInput(backtests: Awaited<ReturnType<typeof builtBacktest>>[]) {
   return {
     calibrationSpecId: "calibration_spec_v2_stage_7_fixture",
     method: {
@@ -79,11 +83,12 @@ function calibrationInput(backtests: ReturnType<typeof builtBacktest>[]) {
 }
 
 describe("Stage 7 Backtesting", () => {
-  it("revalidates the Stage 6 Report and canonical Claim Set and completely binds Run, samples, Outcome, versions, and both Reality Boundary revisions", () => {
-    const input = backtestInput();
+  it("revalidates the Stage 6 Report and canonical Claim Set and completely binds Run, samples, Outcome, versions, and both Reality Boundary revisions", async () => {
+    const request = await backtestInput();
+    const { input, repository } = request;
     const before = structuredClone(input);
-    const first = backtestClaimsReportV2(input);
-    const second = backtestClaimsReportV2(structuredClone(input));
+    const first = await backtestClaimsReportV2(input, repository);
+    const second = await backtestClaimsReportV2(structuredClone(input), repository);
 
     expect(first).toEqual(second);
     expect(input).toEqual(before);
@@ -120,10 +125,11 @@ describe("Stage 7 Backtesting", () => {
         },
         evaluationWindow: {
           startAt: input.claimSet.payload.spec.trajectoryTemplate.startAt,
-          horizonEnd: "2026-08-18T10:00:00.000Z",
+          horizonEnd: "2026-08-19T10:00:00.000Z",
         },
         observationUnitSignature: expect.stringMatching(/^[a-f0-9]{24}$/),
         forecastUnitSignature: expect.stringMatching(/^[a-f0-9]{24}$/),
+        forecastTargetSignature: expect.stringMatching(/^[a-f0-9]{24}$/),
         versions: { backtestSchemaVersion: BACKTEST_SCHEMA_VERSION_V2 },
       },
     });
@@ -134,28 +140,28 @@ describe("Stage 7 Backtesting", () => {
     expect(parseValidatedBacktestV2(first.backtest)).toEqual({ ok: true, backtest: first.backtest });
   }, 15_000);
 
-  it("atomically rejects non-canonical Claims, escalated Reports, mismatched Runs, and corrupt nested objects", () => {
-    const tamperedClaim = backtestInput();
-    tamperedClaim.claims[0]!.numerator = 0;
-    const escalatedReport = backtestInput();
-    escalatedReport.report.sections[0]!.statement = "Guaranteed real-world outcome.";
-    const mismatchedRun = backtestInput();
-    mismatchedRun.run.payload.spec.sampleCount = 2;
-    const corruptNested = backtestInput();
-    (corruptNested.claimSet.payload.spec as unknown as Record<string, unknown>).unexpected = true;
+  it("atomically rejects non-canonical Claims, escalated Reports, mismatched Runs, and corrupt nested objects", async () => {
+    const tamperedClaim = await backtestInput();
+    tamperedClaim.input.claims[0]!.numerator = 0;
+    const escalatedReport = await backtestInput();
+    escalatedReport.input.report.sections[0]!.statement = "Guaranteed real-world outcome.";
+    const mismatchedRun = await backtestInput();
+    mismatchedRun.input.run.payload.spec.sampleCount = 2;
+    const corruptNested = await backtestInput();
+    (corruptNested.input.claimSet.payload.spec as unknown as Record<string, unknown>).unexpected = true;
 
-    for (const result of [
-      backtestClaimsReportV2(tamperedClaim),
-      backtestClaimsReportV2(escalatedReport),
-      backtestClaimsReportV2(mismatchedRun),
-      backtestClaimsReportV2(corruptNested),
-    ]) {
+    for (const result of await Promise.all([
+      backtestClaimsReportV2(tamperedClaim.input, tamperedClaim.repository),
+      backtestClaimsReportV2(escalatedReport.input, escalatedReport.repository),
+      backtestClaimsReportV2(mismatchedRun.input, mismatchedRun.repository),
+      backtestClaimsReportV2(corruptNested.input, corruptNested.repository),
+    ])) {
       expect(result.ok).toBe(false);
       expect(result).not.toHaveProperty("backtest");
     }
-  });
+  }, 15_000);
 
-  it("rejects cross-Seed and cross-Ledger Outcomes even when each Outcome is independently valid", () => {
+  it("rejects cross-Seed and cross-Ledger Outcomes even when each Outcome is independently valid", async () => {
     const otherSeedBoundary = outcomeRealityBoundaryFixtureV2({
       count: 1,
       seedContextId: "seed_context_v2_other",
@@ -164,29 +170,31 @@ describe("Stage 7 Backtesting", () => {
     const otherLedgerBoundary = outcomeRealityBoundaryFixtureV2({ count: 1, alternateLedger: true });
     const otherLedgerOutcome = capturedOutcome({ boundary: otherLedgerBoundary });
 
-    expect(backtestClaimsReportV2(backtestInput(otherSeedOutcome))).toMatchObject({
+    const otherSeedRequest = await backtestInput(otherSeedOutcome);
+    const otherLedgerRequest = await backtestInput(otherLedgerOutcome);
+    expect(await backtestClaimsReportV2(otherSeedRequest.input, otherSeedRequest.repository)).toMatchObject({
       ok: false,
       errorCode: "cross_seed_reference",
     });
-    expect(backtestClaimsReportV2(backtestInput(otherLedgerOutcome))).toMatchObject({
+    expect(await backtestClaimsReportV2(otherLedgerRequest.input, otherLedgerRequest.repository)).toMatchObject({
       ok: false,
       errorCode: "cross_ledger_reference",
     });
   });
 
-  it("rejects a Stage 6 version drift and a historical-boundary rewrite", () => {
-    const versionDrift = backtestInput();
-    (versionDrift.claims[0]!.versions.claimSchemaVersion as string) = "claim-v2.999";
-    const rewrittenBoundary = backtestInput();
-    rewrittenBoundary.outcomeRealityBoundary.evidenceLedger.items[0]!.statement = "Historical evidence was rewritten.";
+  it("rejects a Stage 6 version drift and a historical-boundary rewrite", async () => {
+    const versionDrift = await backtestInput();
+    (versionDrift.input.claims[0]!.versions.claimSchemaVersion as string) = "claim-v2.999";
+    const rewrittenBoundary = await backtestInput();
+    rewrittenBoundary.input.outcomeRealityBoundary.evidenceLedger.items[0]!.statement = "Historical evidence was rewritten.";
 
-    expect(backtestClaimsReportV2(versionDrift)).toMatchObject({ ok: false });
-    const rewriteResult = backtestClaimsReportV2(rewrittenBoundary);
+    expect(await backtestClaimsReportV2(versionDrift.input, versionDrift.repository)).toMatchObject({ ok: false });
+    const rewriteResult = await backtestClaimsReportV2(rewrittenBoundary.input, rewrittenBoundary.repository);
     expect(rewriteResult.ok).toBe(false);
     expect(rewriteResult).not.toHaveProperty("backtest");
   });
 
-  it("rejects a same-revision boundary increment and evidence captured before the forecast was locked", () => {
+  it("rejects a same-revision boundary increment and evidence captured before the forecast was locked", async () => {
     const sameRevisionBoundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
     sameRevisionBoundary.revision = forecastRealityRevision();
     sameRevisionBoundary.evidenceLedger.revision = forecastRealityRevision();
@@ -219,17 +227,19 @@ describe("Stage 7 Backtesting", () => {
     const earlyOutcome = captureOutcomeV2(earlyInput);
     if (!earlyOutcome.ok) throw new Error(earlyOutcome.errorCode);
 
-    expect(backtestClaimsReportV2(backtestInput(sameRevisionOutcome))).toMatchObject({
+    const sameRevisionRequest = await backtestInput(sameRevisionOutcome);
+    const earlyRequest = await backtestInput(earlyOutcome.outcome, source);
+    expect(await backtestClaimsReportV2(sameRevisionRequest.input, sameRevisionRequest.repository)).toMatchObject({
       ok: false,
       errorCode: "cross_ledger_reference",
     });
-    expect(backtestClaimsReportV2(backtestInput(earlyOutcome.outcome, source))).toMatchObject({
+    expect(await backtestClaimsReportV2(earlyRequest.input, earlyRequest.repository)).toMatchObject({
       ok: false,
       errorCode: "invalid_observation_time",
     });
   });
 
-  it("rejects primary Outcome Evidence that was already present in the forecast snapshot", () => {
+  it("rejects primary Outcome Evidence that was already present in the forecast snapshot", async () => {
     const source = stage6SourceFixtureV2();
     const outcomeBoundary = outcomeRealityBoundaryFixtureV2({ count: 1, nonOccurrenceIndices: [0] });
     const preexistingEvidence = outcomeBoundary.evidenceLedger.items[0]!;
@@ -250,25 +260,27 @@ describe("Stage 7 Backtesting", () => {
     const captured = captureOutcomeV2(input);
     if (!captured.ok) throw new Error(captured.errorCode);
 
-    expect(backtestClaimsReportV2(backtestInput(captured.outcome, source))).toMatchObject({
+    const request = await backtestInput(captured.outcome, source);
+    expect(await backtestClaimsReportV2(request.input, request.repository)).toMatchObject({
       ok: false,
       errorCode: "invalid_observation_time",
     });
   });
 
-  it("rejects an independently valid Outcome boundary that rewrites the historical boundary creation time", () => {
+  it("rejects an independently valid Outcome boundary that rewrites the historical boundary creation time", async () => {
     const boundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
     boundary.createdAt = "2026-07-19T10:00:00.001Z";
     const outcome = capturedOutcome({ boundary });
 
-    expect(backtestClaimsReportV2(backtestInput(outcome))).toMatchObject({
+    const request = await backtestInput(outcome);
+    expect(await backtestClaimsReportV2(request.input, request.repository)).toMatchObject({
       ok: false,
       errorCode: "cross_ledger_reference",
     });
   });
 
-  it("detects Backtest schema-version drift after a successful canonical replay", () => {
-    const backtest = builtBacktest();
+  it("detects Backtest schema-version drift after a successful canonical replay", async () => {
+    const backtest = await builtBacktest();
     (backtest.versions.backtestSchemaVersion as string) = "backtest-v2.999";
 
     expect(parseValidatedBacktestV2(backtest)).toMatchObject({
@@ -277,7 +289,7 @@ describe("Stage 7 Backtesting", () => {
     });
   });
 
-  it("does not treat a single actual Outcome as an observable causal counterfactual for a sensitivity Claim", () => {
+  it("does not treat a single actual Outcome as an observable causal counterfactual for a sensitivity Claim", async () => {
     const source = stage6SensitivitySourceFixtureV2();
     const boundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
     const captured = captureOutcomeV2(outcomeCaptureInputFixtureV2({
@@ -285,16 +297,17 @@ describe("Stage 7 Backtesting", () => {
       source,
     }));
     if (!captured.ok) throw new Error(captured.errorCode);
-    const tested = backtestClaimsReportV2({
+    const lock = await persistedForecastLockReferenceFixtureV2({ source });
+    const tested = await backtestClaimsReportV2({
       backtestSpecId: "backtest_spec_v2_sensitivity_counterfactual",
       run: source.run,
       claimSet: source.claimSet,
       claims: source.claims,
       report: source.report,
-      forecastLockPersistenceVersion: forecastLockPersistenceFixtureV2({ source }).persistenceVersion,
+      forecastLockReference: lock.forecastLockReference,
       outcome: captured.outcome,
       outcomeRealityBoundary: boundary,
-    });
+    }, lock.repository);
     if (!tested.ok) throw new Error(tested.errorCode);
 
     expect(tested).toMatchObject({
@@ -325,8 +338,8 @@ describe("Stage 7 Backtesting", () => {
 });
 
 describe("Stage 7 Calibration", () => {
-  it("returns a stable insufficient-data result and keeps the metric named simulation frequency", () => {
-    const input = calibrationInput([builtBacktest()]);
+  it("returns a stable insufficient-data result and keeps the metric named simulation frequency", async () => {
+    const input = calibrationInput([await builtBacktest()]);
     const first = calibrateBacktestsV2(input);
     const second = calibrateBacktestsV2(structuredClone(input));
 
@@ -352,20 +365,21 @@ describe("Stage 7 Calibration", () => {
     expect(first.calibration.limitations.join(" ").toLowerCase()).toContain("insufficient");
   });
 
-  it("deterministically computes a disclosed Brier calibration from enough unique actual Outcomes without causal or certainty escalation", () => {
+  it("deterministically computes a disclosed Brier calibration from enough unique actual Outcomes without causal or certainty escalation", async () => {
     const observations = [true, true, true, false, false];
-    const backtests = observations.map((observed, index) => {
-      const source = stage6SourceFixtureV2({ unitIndex: index });
+    const backtests = [];
+    for (const [index, observed] of observations.entries()) {
+      const source = stage6SourceFixtureV2({ unitIndex: index, trajectorySeedOffset: index * 101 });
       const boundary = outcomeRealityBoundaryFixtureV2({
         count: index + 1,
         nonOccurrenceIndices: observed ? [] : [index],
       });
-      return builtBacktest(
+      backtests.push(await builtBacktest(
         capturedOutcome({ index, observed, boundary, source }),
         source,
         `2026-07-19T10:0${index + 1}:00.000Z`,
-      );
-    });
+      ));
+    }
     const input = calibrationInput(backtests);
     const result = calibrateBacktestsV2(input);
     const shuffled = calibrateBacktestsV2(calibrationInput([...backtests].reverse()));
@@ -375,7 +389,8 @@ describe("Stage 7 Calibration", () => {
       0,
     ) / observations.length;
 
-    expect(new Set(backtests.map((item) => item.forecastLockBinding.lockedAt)).size).toBe(5);
+    expect(new Set(backtests.map((item) => item.runBinding.trajectorySeeds.join(","))).size).toBe(5);
+    expect(new Set(backtests.map((item) => item.forecastTargetSignature)).size).toBe(5);
     expect(backtests.every((item) =>
       item.evaluationWindow.startAt === item.sourceSnapshots.outcome.observationWindow.startAt &&
       item.evaluationWindow.horizonEnd === item.sourceSnapshots.outcome.observationWindow.horizonEnd)).toBe(true);
@@ -402,7 +417,7 @@ describe("Stage 7 Calibration", () => {
     });
   }, 15_000);
 
-  it("rejects aliases for the same observation or the same pre-locked forecast unit", () => {
+  it("rejects aliases for the same observation or the same pre-locked forecast unit", async () => {
     const source = stage6SourceFixtureV2();
     const boundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
     const firstOutcome = capturedOutcome({ boundary, source });
@@ -419,8 +434,8 @@ describe("Stage 7 Calibration", () => {
     aliasInput.source.realEvidenceId = evidenceAlias.id;
     const aliasResult = captureOutcomeV2(aliasInput);
     if (!aliasResult.ok) throw new Error(aliasResult.errorCode);
-    const first = builtBacktest(firstOutcome, source);
-    const alias = builtBacktest(aliasResult.outcome, source);
+    const first = await builtBacktest(firstOutcome, source);
+    const alias = await builtBacktest(aliasResult.outcome, source);
 
     expect(alias.observationUnitSignature).toBe(first.observationUnitSignature);
     expect(alias.forecastUnitSignature).toBe(first.forecastUnitSignature);
@@ -430,7 +445,7 @@ describe("Stage 7 Calibration", () => {
     });
   });
 
-  it("rejects different observations aliased onto the same forecast target", () => {
+  it("rejects different observations aliased onto the same forecast target", async () => {
     const source = stage6SourceFixtureV2();
     const firstBoundary = outcomeRealityBoundaryFixtureV2({ count: 1 });
     const secondBoundary = structuredClone(firstBoundary);
@@ -468,8 +483,8 @@ describe("Stage 7 Calibration", () => {
     };
     const secondOutcome = captureOutcomeV2(secondInput);
     if (!secondOutcome.ok) throw new Error(secondOutcome.errorCode);
-    const first = builtBacktest(capturedOutcome({ boundary: firstBoundary, source }), source);
-    const second = builtBacktest(secondOutcome.outcome, source);
+    const first = await builtBacktest(capturedOutcome({ boundary: firstBoundary, source }), source);
+    const second = await builtBacktest(secondOutcome.outcome, source);
 
     expect(second.observationUnitSignature).not.toBe(first.observationUnitSignature);
     expect(second.forecastUnitSignature).toBe(first.forecastUnitSignature);
@@ -479,8 +494,8 @@ describe("Stage 7 Calibration", () => {
     });
   });
 
-  it("rejects extra fields, duplicate Outcomes, version drift, and mixed Seed or Ledger cohorts without partial Calibration", () => {
-    const backtest = builtBacktest();
+  it("rejects extra fields, duplicate Outcomes, version drift, and mixed Seed or Ledger cohorts without partial Calibration", async () => {
+    const backtest = await builtBacktest();
     const extra = { ...calibrationInput([backtest]), unexpected: true };
     const duplicate = calibrationInput([backtest, backtest]);
     const drift = calibrationInput([backtest]);
@@ -499,8 +514,8 @@ describe("Stage 7 Calibration", () => {
     }
   });
 
-  it("detects Calibration schema-version drift after a successful deterministic build", () => {
-    const result = calibrateBacktestsV2(calibrationInput([builtBacktest()]));
+  it("detects Calibration schema-version drift after a successful deterministic build", async () => {
+    const result = calibrateBacktestsV2(calibrationInput([await builtBacktest()]));
     if (!result.ok) throw new Error(result.errorCode);
     const drifted = structuredClone(result.calibration);
     (drifted.versions.calibrationSchemaVersion as string) = "calibration-v2.999";

@@ -590,11 +590,12 @@ the primary Outcome Evidence exists. It includes:
 - Semantic signature inputs comprising the normalized Run Spec, evaluation
   window, Seed, trajectory seeds, policy/engine versions, Claim metric and
   numerator/denominator, canonical Cluster outcome semantics, forecast Reality
-  Boundary fingerprint/revision, and lock time.
+  Boundary fingerprint/revision. Lock time, Forecast Lock ids, and persistence
+  identities are not forecast-target semantics and are excluded.
 
 Changing namespace ids alone must not change a forecast-unit signature. A lock
-must be persisted before its primary Outcome Evidence `capturedAt`; a lock or
-persistence receipt created at or after capture is invalid for Backtesting.
+must be both locked and persisted strictly before its evaluation window starts.
+For an `occurred` Outcome, `lockedAt` must also be strictly before `occurredAt`.
 
 ### OutcomeV2
 
@@ -641,11 +642,17 @@ canonical Claim Set. It binds immutable snapshots and integrity signatures for:
   and applying the Stage 4 millisecond-safe time utilities.
 - The Outcome observation-unit signature and a forecast-unit signature binding
   the semantic Run, Claim metric/frequency, Cluster outcome, Reality Boundary,
-  evaluation window, versions, seeds, and lock time independently of identity
-  aliases.
-- The exact persisted Forecast Lock version id, stream version, `lockedAt`,
-  `persistedAt`, and canonical content signature. A missing, late, mismatched,
-  or tampered persistence version invalidates the Backtest atomically.
+  evaluation window, versions, and seeds independently of identity, lock, and
+  persistence aliases. A separately stored forecast-target signature enforces
+  one semantic forecast for one evaluation window.
+- A strict `streamId`/`version` Forecast Lock reference resolved only through
+`OutcomeCalibrationRepositoryPortV2.loadVersion`. The Backtest stores and
+canonical-compares the exact record returned by the repository; callers may
+not supply a receipt. A missing, late, mismatched, or tampered stored version
+invalidates the Backtest atomically. The referenced stream history must have a
+contiguous version sequence, correct parent ids, request fingerprints,
+persistence ids, and integrity signatures; a self-consistent envelope that was
+never appended to that history is invalid.
 
 The Outcome boundary revision must be strictly greater than the forecast
 revision. It may append new Real Evidence but must keep the same Seed and Ledger
@@ -672,9 +679,10 @@ Stage 7 calibration is deterministic and explicitly versioned:
   `causalConclusion=false` and `deterministicPrediction=false` and must not
   automatically become a universal real-world probability.
 - Calibration input must use unique observation-unit and forecast-unit
-  signatures from one Seed, one Evidence Ledger, one Assumption Ledger, and
-  compatible artifact versions. Aliasing Outcome, Backtest, or Evidence ids
-  cannot increase `sampleCount`; duplicate units are rejected atomically.
+  signatures and unique forecast-target signatures from one Seed, one Evidence
+  Ledger, one Assumption Ledger, and compatible artifact versions. Aliasing
+  Outcome, Backtest, Evidence, Lock, or persistence ids cannot increase
+  `sampleCount`; duplicate units are rejected atomically.
 
 ### OutcomeCalibrationRepositoryPortV2
 
