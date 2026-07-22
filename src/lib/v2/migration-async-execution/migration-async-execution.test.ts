@@ -52,7 +52,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
     const first = service.migrate(a1.draft); const other = service.migrate(b1.draft); const revised = service.migrate(a2.draft); const alias = service.migrate({ ...a1.draft, id: "legacy:seed_a" });
     if (!first.ok || !other.ok || !revised.ok || !alias.ok) throw new Error("migration");
     expect(first.data.lineage.parentArtifactId).toBeNull(); expect(other.data.lineage.parentArtifactId).toBeNull(); expect(revised.data.lineage.parentArtifactId).toBe(first.data.artifactId);
-    expect(alias.data.lineage.sourceIdentities).toEqual(expect.arrayContaining(["seed_a", "legacy:seed_a"]));
+    expect(alias.data).toEqual(first.data);
     const read = service.history(); read[0]!.lineage.sourceIdentities.push("forged"); expect(service.history()[0]!.lineage.sourceIdentities).not.toContain("forged");
     expect(service.parseArtifact(revised.data)).toMatchObject({ ok: true });
   });
@@ -86,5 +86,13 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
     const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
     await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: "a".repeat(24) })).resolves.toMatchObject({ ok: false });
     expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", resultIds: null } });
+  });
+
+  it("publishes a Stage 6/7 official fixture bundle once and never republishes a terminal Job", async () => {
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(); const fixture = validJob();
+    await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_positive" });
+    const executor = createControlledAsyncSimulationExecutorV2(repository, async () => fixture.bundle);
+    expect(await executor.runOnce("worker_a")).toMatchObject({ status: "succeeded" });
+    expect(await executor.runOnce("worker_b")).toMatchObject({ status: "idle" });
   });
 });

@@ -7,7 +7,8 @@ not accept a real `normalizeSeedContextDraft()` result, leaked arbitrary
 finalization, and did not retain logical-source lineage. GREEN covers the
 shared V1 strict contract, alias normalization/conflict rejection,
 `A1 -> B1 -> A2` lineage, lease authority, forged binding rejection, and the
-fixed canonical publication gate. This task requires one final repair commit,
+fixed canonical publication gate, including a Stage 6/7 official-fixture
+`submit -> claim -> execute -> complete -> succeeded` path. This task requires one final repair commit,
 so no intermediate Git checkpoint is created.
 
 ## Scope and non-goals

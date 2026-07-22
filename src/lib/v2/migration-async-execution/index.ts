@@ -6,7 +6,7 @@ import { parseNormalizedSeedContextDraft } from "@/lib/seed-context/storage";
 import type { SeedContextDraft } from "@/types/seed-context";
 import { validateWorldV2 } from "../agent-world/validation";
 import { validateClaimsReportV2 } from "../claims-reports/report-builder";
-import { validateRealityBoundaryDraftV2 } from "../reality-boundary/validation";
+import { parseRealityBoundarySnapshotV2 } from "../claims-reports/validation";
 import { buildSimulationFrequencyV2 } from "../trajectory-analysis/simulation-frequency";
 import { parseTrajectoryResultForFeatureV2 } from "../trajectory-analysis/trajectory-result-validation";
 import { parseBatchRunSpecV2 } from "../trajectory-analysis/validation";
@@ -76,6 +76,7 @@ export function parseV1DraftMigrationArtifactV2(input: unknown) {
 
 export function createV1DraftMigrationServiceV2() {
   const byFingerprint = new Map<string, V1DraftMigrationArtifactV2>();
+  const aliasIndex = new Map<string, string>();
   const lastByLogicalSource = new Map<string, V1DraftMigrationArtifactV2>();
   const history: V1DraftMigrationArtifactV2[] = [];
   return {
@@ -90,7 +91,7 @@ export function createV1DraftMigrationServiceV2() {
         const sourceFingerprint = fingerprint(content.value); const logical = logicalIdentity(source.draft.id); const warningCodes = source.draft.destinyBirthInfo?.trim() ? ["legacy_destiny_isolated"] : [];
         const prior = byFingerprint.get(sourceFingerprint);
         if (prior) {
-          if (!prior.lineage.sourceIdentities.includes(source.draft.id)) { prior.lineage.sourceIdentities.push(source.draft.id); prior.lineage.sourceIdentities.sort(); prior.integritySignature = fingerprint({ artifactId: prior.artifactId, v2Draft: prior.v2Draft, lineage: prior.lineage }); }
+          aliasIndex.set(source.draft.id, prior.artifactId);
           return { ok: true, data: clone(prior), errorCode: null, idempotent: true, warningCodes };
         }
         const parent = lastByLogicalSource.get(logical) ?? null;
@@ -98,7 +99,7 @@ export function createV1DraftMigrationServiceV2() {
         const v2Draft = { ...content.value, id: `seed_context_v2_${sourceFingerprint}` as const };
         const lineage: V1DraftMigrationArtifactV2["lineage"] = { sourceIdentity: source.draft.id, sourceIdentities: [source.draft.id], logicalSourceIdentity: logical, sourceVersion: "local-deterministic-v0", sourceFingerprint, migrationSchemaVersion: MIGRATION_SCHEMA_VERSION_V2, migrationEngineVersion: MIGRATION_ENGINE_VERSION_V2, parentArtifactId: parent?.artifactId ?? null, targetArtifactIds: [v2Draft.id] };
         const artifact: V1DraftMigrationArtifactV2 = { artifactId, v2Draft, lineage, integritySignature: fingerprint({ artifactId, v2Draft, lineage }) };
-        byFingerprint.set(sourceFingerprint, artifact); lastByLogicalSource.set(logical, artifact); history.push(artifact);
+        byFingerprint.set(sourceFingerprint, artifact); aliasIndex.set(source.draft.id, artifactId); lastByLogicalSource.set(logical, artifact); history.push(artifact);
         return { ok: true, data: clone(artifact), errorCode: null, idempotent: false, warningCodes };
       } catch { return { ...fail("invalid_migration_input"), idempotent: false, warningCodes: [] }; }
     },
@@ -110,7 +111,8 @@ export function createV1DraftMigrationServiceV2() {
 export type CanonicalStage2To7ResultBundleV2 = { stage2RealityBoundary: unknown; stage3World: unknown; stage4: { runSpec: BatchRunSpecV2; trajectories: unknown[] }; stage5Analysis: BatchAnalysisV2; stage6: { claimSet: unknown; claims: unknown[]; report: unknown }; stage7: { forecastLockPersistenceVersion: unknown; history: unknown[] } };
 function validateBundle(bundle: CanonicalStage2To7ResultBundleV2, job: AsyncSimulationJobV2) {
   try {
-    if (!validateRealityBoundaryDraftV2(bundle.stage2RealityBoundary).ok || !validateWorldV2(bundle.stage3World).ok) return false;
+    const boundary = parseRealityBoundarySnapshotV2(bundle.stage2RealityBoundary);
+    if (!boundary.ok || !validateWorldV2(bundle.stage3World).ok) return false;
     const spec = parseBatchRunSpecV2(bundle.stage4.runSpec); if (!spec.ok || canonical(spec.value) !== canonical(job.runSpec) || spec.value.seedContextId !== job.seedContext.id) return false;
     if (bundle.stage4.trajectories.length !== spec.value.trajectorySeeds.length || bundle.stage4.trajectories.some((trajectory) => !parseTrajectoryResultForFeatureV2(spec.value.trajectoryTemplate.initialWorld, trajectory, { seedContextId: spec.value.seedContextId, trajectorySeed: (trajectory as { trajectorySeed?: unknown }).trajectorySeed, policyId: spec.value.policyId, policyVersion: spec.value.policyVersion, trajectoryEngineVersion: spec.value.trajectoryEngineVersion, batchRunSpec: spec.value }).ok)) return false;
     if (canonical(bundle.stage5Analysis.spec) !== canonical(spec.value) || canonical(bundle.stage5Analysis.trajectories) !== canonical(bundle.stage4.trajectories) || !buildSimulationFrequencyV2(bundle.stage5Analysis.clusters, bundle.stage5Analysis.features).ok) return false;
