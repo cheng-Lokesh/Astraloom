@@ -176,11 +176,48 @@ describe("Stage 7 versioned persistence port and deterministic memory adapter", 
     await expect(repository.append({
       streamId,
       expectedVersion: 0,
-      idempotencyKey: "stage7_idempotency_v2_valid_leap_date",
-      persistedAt: "2028-02-29T10:00:00.000Z",
+      idempotencyKey: "stage7_idempotency_v2_valid_pre_window_time",
+      persistedAt: "2026-07-19T10:01:00.000Z",
       artifact: { kind: "forecast_lock", value: values.forecastLock },
     })).resolves.toMatchObject({ ok: true, data: { version: 1 } });
   });
+
+  it("atomically rejects Forecast Lock persistence outside its write-before-window time gate", async () => {
+    const repository = createInMemoryOutcomeCalibrationRepositoryV2();
+    const values = await artifacts();
+    const rejected = [
+      {
+        idempotencyKey: "stage7_idempotency_v2_lock_persisted_at_window_start",
+        persistedAt: "2026-07-20T10:00:00.000Z",
+      },
+      {
+        idempotencyKey: "stage7_idempotency_v2_lock_persisted_after_window_start",
+        persistedAt: "2026-07-20T10:00:00.001Z",
+      },
+      {
+        idempotencyKey: "stage7_idempotency_v2_lock_persisted_before_lock",
+        persistedAt: "2026-07-19T10:00:59.999Z",
+      },
+    ];
+
+    for (const request of rejected) {
+      await expect(repository.append({
+        streamId,
+        expectedVersion: 0,
+        ...request,
+        artifact: { kind: "forecast_lock", value: values.forecastLock },
+      })).resolves.toEqual({ ok: false, data: null, errorCode: "invalid_artifact" });
+      await expect(repository.loadHistory({ streamId })).resolves.toEqual({ ok: true, data: [], errorCode: null });
+    }
+
+    await expect(repository.append({
+      streamId,
+      expectedVersion: 0,
+      idempotencyKey: rejected[0]!.idempotencyKey,
+      persistedAt: "2026-07-19T10:01:00.000Z",
+      artifact: { kind: "forecast_lock", value: values.forecastLock },
+    })).resolves.toMatchObject({ ok: true, idempotent: false, data: { version: 1 } });
+  }, 15_000);
 
   it("rejects calendar-invalid persistence timestamps instead of normalizing them", async () => {
     const repository = createInMemoryOutcomeCalibrationRepositoryV2();

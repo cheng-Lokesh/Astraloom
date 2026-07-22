@@ -593,9 +593,16 @@ the primary Outcome Evidence exists. It includes:
   Boundary fingerprint/revision. Lock time, Forecast Lock ids, and persistence
   identities are not forecast-target semantics and are excluded.
 
-Changing namespace ids alone must not change a forecast-unit signature. A lock
-must be both locked and persisted strictly before its evaluation window starts.
-For an `occurred` Outcome, `lockedAt` must also be strictly before `occurredAt`.
+Changing namespace ids alone must not change a forecast-unit signature. The
+revalidated Run derives each unit's evaluation window with the Stage 4
+millisecond-safe time utility. Before a Forecast Lock can be built or parsed,
+`boundary.updatedAt <= lockedAt < evaluationWindow.startAt` must hold for every
+unit. Before `forecast_lock` can be appended or its persistence version can be
+accepted, `boundary.updatedAt <= lockedAt <= persistedAt <
+evaluationWindow.startAt` must hold for every unit. A failed time gate is
+atomic: it produces no version, stream-history change, or idempotency-key
+reservation. For an `occurred` Outcome, `lockedAt` must also be strictly before
+`occurredAt`.
 
 ### OutcomeV2
 
@@ -697,6 +704,9 @@ artifact and enforces:
   version; the same key with different content is rejected.
 - Dependency ordering: persisted Forecast Lock before its Outcome, Outcome
   before its Backtest, and all referenced Backtests before Calibration.
+- A Forecast Lock append rechecks its write-before-window timing at millisecond
+  precision before any stream or idempotency mutation; a later Backtest is not
+  relied upon to reject an invalid persisted lock.
 - One Seed and one Ledger identity per stream.
 - No replacement of an existing Outcome, Backtest, or Calibration id.
 - Defensive snapshots on every read so callers cannot rewrite stored history.

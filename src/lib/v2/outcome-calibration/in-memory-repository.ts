@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { parseValidatedBacktestV2 } from "./backtesting";
 import { parseValidatedCalibrationV2 } from "./calibration";
-import { parseValidatedForecastLockV2 } from "./forecast-lock";
+import { parseValidatedForecastLockV2, validateForecastLockWriteTimingV2 } from "./forecast-lock";
 import { persistenceVersionIdV2, stage7FingerprintV2 } from "./ids";
 import { parseValidatedOutcomeV2 } from "./outcome-capture";
 import { parseTrajectoryInstantV2 } from "../trajectory/time";
@@ -189,6 +189,9 @@ export function createInMemoryOutcomeCalibrationRepositoryV2(): OutcomeCalibrati
       const validated = validateArtifact(parsed.data.artifact);
       if (!validated) return failure("invalid_artifact");
       const artifact = validated.artifact as OutcomeCalibrationArtifactV2;
+      if (artifact.kind === "forecast_lock" && !validateForecastLockWriteTimingV2(artifact.value, parsed.data.persistedAt).ok) {
+        return failure("invalid_artifact");
+      }
       const binding = artifactBoundary(artifact);
       const first = history[0];
       if (first && binding.seedContextId !== first.seedContextId) return failure("cross_seed_reference");

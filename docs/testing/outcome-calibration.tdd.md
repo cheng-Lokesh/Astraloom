@@ -217,6 +217,47 @@ the contiguous parent/version chain, request fingerprint, persistence id, and
 integrity signature before a Backtest can be constructed. The public-index test
 also imports the Forecast Lock builder and validator directly from Stage 7.
 
+## Forecast Lock write-before-window repair RED/GREEN evidence
+
+Starting from `285172a8e432dc1f276e591f83582c017e6b21df`, executable RED tests
+were added before the Stage 7 implementation changed. The focused command was:
+
+```text
+npm run test:v2:outcome-calibration -- --run src/lib/v2/outcome-calibration/forecast-lock.test.ts src/lib/v2/outcome-calibration/repository.test.ts
+Exit code: 1
+Test Files  2 failed | 2 passed (4)
+Tests       2 failed | 39 passed (41)
+```
+
+RED demonstrated that a lock at the revalidated evaluation-window start was
+buildable and that the repository appended a `forecast_lock` version at that
+same start instant. The tests also cover a post-start lock, post-start
+`persistedAt`, `persistedAt < lockedAt`, a self-consistent but late persistence
+envelope, atomic empty-history/idempotency behavior, and a legal pre-window
+append.
+
+GREEN after the time-gate implementation was:
+
+```text
+npm run test:v2:outcome-calibration -- --run src/lib/v2/outcome-calibration/forecast-lock.test.ts src/lib/v2/outcome-calibration/repository.test.ts
+Exit code: 0
+Test Files  4 passed (4)
+Tests       40 passed (40)
+Statements 90.58% (577/637)
+Branches   86.61% (440/508)
+Functions 97.54% (119/122)
+Lines     94.23% (507/538)
+```
+
+The implementation derives each Forecast Unit window from the revalidated Run
+with Stage 4 millisecond-safe timestamps. It rejects build/parse locks unless
+`boundary.updatedAt <= lockedAt < window.startAt`, and rejects persistence
+unless `boundary.updatedAt <= lockedAt <= persistedAt < window.startAt`. The
+repository checks this before append mutation, so failed requests retain empty
+history and may reuse their idempotency key with a valid request. The former
+2028 leap-date append fixture now uses a valid pre-window 2026 persistence time
+instead of violating the Forecast time contract.
+
 ## Coverage and known gaps
 
 The independent Stage 7 command enforces 90% statements, 85% branches, 95%

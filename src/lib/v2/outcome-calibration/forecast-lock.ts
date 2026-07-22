@@ -135,6 +135,26 @@ function evaluationWindow(run: Stage7RunSnapshotV2) {
   return end.ok ? { startAt: start.value.isoTimestamp, horizonEnd: end.value.isoTimestamp } : null;
 }
 
+export function validateForecastLockWriteTimingV2(lock: ForecastLockV2, persistedAt: unknown) {
+  const boundaryResult = parseRealityBoundarySnapshotV2(lock.sourceSnapshots.claimSet.realityBoundary);
+  const boundaryUpdated = boundaryResult.ok ? parseTrajectoryInstantV2(boundaryResult.boundary.updatedAt) : null;
+  const locked = parseTrajectoryInstantV2(lock.lockedAt);
+  const persisted = parseTrajectoryInstantV2(persistedAt);
+  if (!boundaryUpdated?.ok || !locked.ok || !persisted.ok ||
+      boundaryUpdated.value.epochMilliseconds > locked.value.epochMilliseconds ||
+      locked.value.epochMilliseconds > persisted.value.epochMilliseconds) {
+    return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
+  }
+  for (const unit of lock.forecastUnits) {
+    const start = parseTrajectoryInstantV2(unit.semantics.evaluationWindow.startAt);
+    if (!start.ok || locked.value.epochMilliseconds >= start.value.epochMilliseconds ||
+        persisted.value.epochMilliseconds >= start.value.epochMilliseconds) {
+      return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
+    }
+  }
+  return { ok: true as const };
+}
+
 function clusterForClaim(run: Stage7RunSnapshotV2, claim: ClaimV2): TrajectoryClusterV2 | null {
   const matches = analysesForRun(run).flatMap((analysis) => analysis.clusters)
     .filter((cluster) => claim.clusterIds.includes(cluster.clusterId));
@@ -169,6 +189,10 @@ function buildUnsafe(input: unknown) {
   const run = structuredClone(parsed.data.run) as Stage7RunSnapshotV2;
   const window = evaluationWindow(run);
   if (!window) return { ok: false as const, errorCode: "run_mismatch" as const };
+  const windowStart = parseTrajectoryInstantV2(window.startAt);
+  if (!windowStart.ok || locked.value.epochMilliseconds >= windowStart.value.epochMilliseconds) {
+    return { ok: false as const, errorCode: "invalid_forecast_lock" as const };
+  }
   const normalizedRunSpec = normalizedSemanticValue(
     analysesForRun(run).map((analysis) => analysis.spec),
   );
@@ -281,9 +305,7 @@ export function parseValidatedForecastLockPersistenceVersionV2(input: unknown) {
     const lockResult = parseValidatedForecastLockV2(parsed.data.artifact.value);
     if (!lockResult.ok) return lockResult;
     const lock = lockResult.forecastLock;
-    const persisted = parseTrajectoryInstantV2(parsed.data.persistedAt);
-    const locked = parseTrajectoryInstantV2(lock.lockedAt);
-    if (!persisted.ok || !locked.ok || persisted.value.epochMilliseconds < locked.value.epochMilliseconds ||
+    if (!validateForecastLockWriteTimingV2(lock, parsed.data.persistedAt).ok ||
         parsed.data.seedContextId !== lock.seedContextId ||
         parsed.data.evidenceLedgerId !== lock.realityBoundaryBinding.evidenceLedgerId ||
         parsed.data.assumptionLedgerId !== lock.realityBoundaryBinding.assumptionLedgerId ||

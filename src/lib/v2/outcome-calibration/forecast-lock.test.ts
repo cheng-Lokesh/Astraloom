@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { backtestClaimsReportV2 } from "./backtesting";
 import { calibrateBacktestsV2 } from "./calibration";
-import { buildForecastLockV2, parseValidatedForecastLockV2 } from "./forecast-lock";
+import {
+  buildForecastLockV2,
+  parseValidatedForecastLockPersistenceVersionV2,
+  parseValidatedForecastLockV2,
+} from "./forecast-lock";
 import { createInMemoryOutcomeCalibrationRepositoryV2 } from "./in-memory-repository";
 import {
   buildForecastLockV2 as buildForecastLockFromIndexV2,
@@ -102,25 +106,35 @@ describe("Stage 7 Forecast Lock", () => {
     expect(buildForecastLockV2(tamperedClaim)).toMatchObject({ ok: false });
   });
 
-  it("rejects a Forecast locked or persisted after its primary Outcome Evidence was captured", async () => {
+  it("rejects a Forecast Lock at or after its revalidated evaluation-window start", () => {
     const source = stage6SourceFixtureV2();
-    const outcome = capture(0, source);
-    const late = await persistedForecastLockReferenceFixtureV2({
-      source,
-      lockedAt: "2026-07-29T10:00:00.001Z",
-      persistedAt: "2026-07-29T10:00:00.002Z",
-    });
-
-    expect(await backtestClaimsReportV2({
-      backtestSpecId: "backtest_spec_v2_late_forecast_lock",
+    const input = {
+      forecastLockSpecId: "forecast_lock_spec_v2_window_time_gate",
       run: source.run,
       claimSet: source.claimSet,
       claims: source.claims,
       report: source.report,
-      forecastLockReference: late.forecastLockReference,
-      outcome,
-      outcomeRealityBoundary: outcome.realityBoundarySnapshot,
-    }, late.repository)).toMatchObject({ ok: false, errorCode: "invalid_forecast_lock" });
+    };
+
+    expect(buildForecastLockV2({
+      ...input,
+      lockedAt: "2026-07-20T10:00:00.000Z",
+    })).toEqual({ ok: false, errorCode: "invalid_forecast_lock" });
+    expect(buildForecastLockV2({
+      ...input,
+      lockedAt: "2026-07-20T10:00:00.001Z",
+    })).toEqual({ ok: false, errorCode: "invalid_forecast_lock" });
+  });
+
+  it("rejects a self-consistent persisted Forecast Lock at the evaluation-window start", () => {
+    const fixture = forecastLockPersistenceFixtureV2({
+      persistedAt: "2026-07-20T10:00:00.000Z",
+    });
+
+    expect(parseValidatedForecastLockPersistenceVersionV2(fixture.persistenceVersion)).toEqual({
+      ok: false,
+      errorCode: "invalid_forecast_lock",
+    });
   });
 
   it("rejects a tampered or unpersisted Forecast Lock and enforces Lock -> Outcome -> Backtest -> Calibration", async () => {
@@ -229,27 +243,6 @@ describe("Stage 7 Forecast Lock", () => {
       backtests: [first, alias],
     })).toMatchObject({ ok: false, errorCode: "duplicate_calibration_unit" });
   }, 20_000);
-
-  it("rejects a lock made after the forecast window began even when it predates the occurred Outcome", async () => {
-    const source = stage6SourceFixtureV2();
-    const outcome = capture(0, source);
-    const late = await persistedForecastLockReferenceFixtureV2({
-      source,
-      lockedAt: "2026-07-20T10:00:00.001Z",
-      persistedAt: "2026-07-20T10:00:00.002Z",
-    });
-
-    expect(await backtestClaimsReportV2({
-      backtestSpecId: "backtest_spec_v2_lock_after_window_start",
-      run: source.run,
-      claimSet: source.claimSet,
-      claims: source.claims,
-      report: source.report,
-      forecastLockReference: late.forecastLockReference,
-      outcome,
-      outcomeRealityBoundary: outcome.realityBoundarySnapshot,
-    }, late.repository)).toMatchObject({ ok: false, errorCode: "invalid_forecast_lock" });
-  });
 
   it("loads the exact Forecast Lock record from the repository instead of accepting a caller-assembled receipt", async () => {
     const source = stage6SourceFixtureV2();
