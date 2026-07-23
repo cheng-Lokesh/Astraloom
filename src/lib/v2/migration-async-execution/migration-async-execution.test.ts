@@ -36,6 +36,15 @@ function canonical(value: unknown): string {
   return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(",")}}`;
 }
 const fingerprint = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex").slice(0, 24);
+
+function createManualRuntime(nowEpochMs: number) {
+  let current = nowEpochMs;
+  return {
+    runtime: { nowEpochMs: () => current },
+    setNowEpochMs: (next: number) => { current = next; },
+  };
+}
+
 function validCompletionSignature(job: import("./index").AsyncSimulationJobV2, fixture: Awaited<ReturnType<typeof validJob>>) {
   const ids = {
     evidenceLedgerId: (fixture.bundle.stage2RealityBoundary as { evidenceLedger: { id: string } }).evidenceLedger.id,
@@ -49,6 +58,24 @@ function validCompletionSignature(job: import("./index").AsyncSimulationJobV2, f
 }
 
 describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority", () => {
+  it("derives the complete Job lifecycle from an explicit runtime clock", async () => {
+    const fixture = await validJob();
+    const clock = createManualRuntime(Date.parse("2042-02-03T04:05:06.789Z"));
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository, clock.runtime);
+
+    const submitted = await repository.submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    expect(submitted.data.createdAt).toBe("2042-02-03T04:05:06.789Z");
+
+    const lease = await repository.claim({ workerId: "worker_a" });
+    if (!lease.ok || !lease.data) throw new Error("lease");
+    expect(lease.data.leasedAt).toBe("2042-02-03T04:05:06.789Z");
+    expect(lease.data.leaseExpiresAt).toBe("2042-02-03T04:06:06.789Z");
+
+    clock.setNowEpochMs(Date.parse("2042-02-03T04:06:06.789Z"));
+    expect(await repository.fail({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, errorCode: "expired" })).toMatchObject({ ok: false, errorCode: "lease_mismatch" });
+  });
+
   it("accepts an actual normalizeSeedContextDraft output without mutating it and isolates destiny", () => {
     const draft = v1({ destinyBirthInfo: "legacy-only", privacySafetyAck: true, contextQualityScore: 80, missingContextHints: ["Add evidence."] });
     const before = structuredClone(draft.draft);
