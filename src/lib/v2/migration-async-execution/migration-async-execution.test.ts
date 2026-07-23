@@ -270,7 +270,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
     for (const attempt of attempts) await expect(validator.validate(attempt, submitted.data)).resolves.toBe(false);
   });
 
-  it("rechecks lease authority after async validation at expiry and after reclaim", async () => {
+  it("rejects lease-authority changes after async validation without rereading the runtime", async () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2041-01-01T00:00:00.000Z"));
@@ -377,8 +377,24 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
     expect(runtime.nowEpochMs).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the first distinct runtime value for fail", async () => {
+    const fixture = await validJob();
+    let nextNow = Date.parse("2042-02-03T04:05:06.789Z");
+    const runtime = { nowEpochMs: vi.fn(() => nextNow++) };
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository, runtime);
+    const submitted = await repository.submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const lease = await repository.claim({ workerId: "worker_a" });
+    if (!lease.ok || !lease.data) throw new Error("lease");
+
+    nextNow = Date.parse("2042-02-03T04:05:08.789Z");
+    runtime.nowEpochMs.mockClear();
+    await expect(repository.fail({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, errorCode: "expected" })).resolves.toMatchObject({ ok: true, data: { completedAt: "2042-02-03T04:05:08.789Z" } });
+    expect(runtime.nowEpochMs).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects malformed runtime values atomically before they can create or claim Jobs", async () => {
-    const invalidValues = [NaN, Infinity, -Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 8.64e15];
+    const invalidValues = [NaN, Infinity, -Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 8.64e15 + 1];
     for (const invalidNow of invalidValues) {
       const fixture = await validJob();
       let now = invalidNow;
