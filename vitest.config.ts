@@ -91,6 +91,7 @@ export default defineConfig({
         "src/lib/v2/outcome-calibration/outcome-capture.ts",
         "src/lib/v2/outcome-calibration/repository.ts",
         "src/lib/v2/outcome-calibration/types.ts",
+        "src/lib/v2/migration-async-execution/index.ts",
       ],
       reporter: ["text", "json-summary"],
       reportsDirectory: "coverage/v1-baseline",

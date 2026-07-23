@@ -45,6 +45,10 @@ function createManualRuntime(nowEpochMs: number) {
   };
 }
 
+const testRuntime = { nowEpochMs: () => Date.now() };
+const createJobRepository = (outcomeRepository: Parameters<typeof createInMemoryAsyncSimulationJobRepositoryV2>[0]) =>
+  createInMemoryAsyncSimulationJobRepositoryV2(outcomeRepository, testRuntime);
+
 function validCompletionSignature(job: import("./index").AsyncSimulationJobV2, fixture: Awaited<ReturnType<typeof validJob>>) {
   const ids = {
     evidenceLedgerId: (fixture.bundle.stage2RealityBoundary as { evidenceLedger: { id: string } }).evidenceLedger.id,
@@ -111,7 +115,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
 
   it("rejects caller-controlled terminal finalization, forged signatures, wrong worker/lease/attempt, and hostile finalize input", async () => {
     const fixture = await validJob();
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    const repository = createJobRepository(fixture.outcomeRepository);
     expect(repository).not.toHaveProperty("finalize");
     await expect(repository.complete(null)).resolves.toMatchObject({ ok: false });
     await expect(repository.complete(Object.defineProperty({}, "jobId", { enumerable: true, get: () => { throw new Error("hostile"); } }))).resolves.toMatchObject({ ok: false });
@@ -126,14 +130,14 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
   });
 
   it("hard-wires the canonical publication gate: six fake ids and a caller validate bypass cannot publish", async () => {
-    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    const fixture = await validJob(); const repository = createJobRepository(fixture.outcomeRepository);
     await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_fake_bundle" });
     const executor = createControlledAsyncSimulationExecutorV2(repository, fixture.outcomeRepository, async () => ({ stage2RealityBoundary: { id: "evidence" }, stage3World: { id: "world" }, stage4: { runSpec: fixture.request.runSpec, trajectories: [] }, stage5Analysis: fixture.bundle.stage5Analysis, stage6: { claimSet: {}, claims: [], report: {} }, stage7: { forecastLockReference: { streamId: "outcome_calibration_stream_v2_fake", version: 1 } } }));
     expect(await executor.runOnce("worker_a")).toMatchObject({ status: "failed", errorCode: "invalid_canonical_artifacts" });
   });
 
   it("rejects forged result bindings atomically after full bundle revalidation", async () => {
-    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    const fixture = await validJob(); const repository = createJobRepository(fixture.outcomeRepository);
     await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_binding" });
     const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
     await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: "a".repeat(24) })).resolves.toMatchObject({ ok: false });
@@ -141,7 +145,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
   });
 
   it("publishes a Stage 6/7 official fixture bundle once and never republishes a terminal Job", async () => {
-    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    const fixture = await validJob(); const repository = createJobRepository(fixture.outcomeRepository);
     await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_positive" });
     const executor = createControlledAsyncSimulationExecutorV2(repository, fixture.outcomeRepository, async () => fixture.bundle);
     expect(await executor.runOnce("worker_a")).toMatchObject({ status: "succeeded" });
@@ -151,7 +155,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
   it("rejects an unappended self-consistent Forecast Lock and keeps the Job atomic", async () => {
     const fixture = await validJob();
     const unappended = forecastLockPersistenceFixtureV2({ source: stage6SourceFixtureV2() });
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2(createInMemoryOutcomeCalibrationRepositoryV2());
+    const repository = createJobRepository(createInMemoryOutcomeCalibrationRepositoryV2());
     const submitted = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_unappended_lock" });
     if (!submitted.ok) throw new Error(submitted.errorCode);
     const lease = await repository.claim({ workerId: "worker_a" });
@@ -167,7 +171,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
 
   it("uses repository records only: wrong references, missing versions, truncated history, and a broken parent chain reject", async () => {
     const fixture = await validJob();
-    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    const submitted = await createJobRepository(fixture.outcomeRepository).submit(fixture.request);
     if (!submitted.ok) throw new Error(submitted.errorCode);
     const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
     await expect(validator.validate({ ...fixture.bundle, stage7: { forecastLockReference: { streamId: "outcome_calibration_stream_v2_wrong", version: 1 } } }, submitted.data)).resolves.toBe(false);
@@ -195,7 +199,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2040-01-01T00:00:00.000Z"));
-      const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+      const fixture = await validJob(); const repository = createJobRepository(fixture.outcomeRepository);
       await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_lease_expiry" });
       const first = await repository.claim({ workerId: "worker_a" }); if (!first.ok || !first.data) throw new Error("lease");
       await vi.advanceTimersByTimeAsync(59_999);
@@ -213,7 +217,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
   });
 
   it("contains execution and repository-input failures without publishing an artifact", async () => {
-    const fixture = await validJob(); const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    const fixture = await validJob(); const repository = createJobRepository(fixture.outcomeRepository);
     await expect(repository.submit(null)).resolves.toMatchObject({ ok: false, errorCode: "invalid_job_input" });
     await expect(repository.claim(null)).resolves.toMatchObject({ ok: false, errorCode: "invalid_worker_input" });
     const first = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_conflict" });
@@ -226,7 +230,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
 
   it("rejects repository exceptions and hostile migration artifacts without throwing", async () => {
     const fixture = await validJob();
-    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    const submitted = await createJobRepository(fixture.outcomeRepository).submit(fixture.request);
     if (!submitted.ok) throw new Error(submitted.errorCode);
     const unavailable = { ...fixture.outcomeRepository, loadVersion: async () => { throw new Error("repository unavailable"); } };
     await expect(createStage2To7CanonicalArtifactValidatorV2(unavailable).validate(fixture.bundle, submitted.data)).resolves.toBe(false);
@@ -238,7 +242,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
 
   it("rejects a later Boundary, final World, and a persisted Lock from another Stage 5/6 source", async () => {
     const fixture = await validJob();
-    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    const submitted = await createJobRepository(fixture.outcomeRepository).submit(fixture.request);
     if (!submitted.ok) throw new Error(submitted.errorCode);
     const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
     const laterBoundary = structuredClone(fixture.bundle.stage2RealityBoundary) as { revision: number };
@@ -252,7 +256,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
 
   it("rejects malformed Stage 2–7 layers before they can reach publication", async () => {
     const fixture = await validJob();
-    const submitted = await createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository).submit(fixture.request);
+    const submitted = await createJobRepository(fixture.outcomeRepository).submit(fixture.request);
     if (!submitted.ok) throw new Error(submitted.errorCode);
     const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
     const attempts = [
@@ -271,7 +275,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
     try {
       vi.setSystemTime(new Date("2041-01-01T00:00:00.000Z"));
       const fixture = await validJob();
-      const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+      const repository = createJobRepository(fixture.outcomeRepository);
       const submit = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_toctou_expiry" });
       if (!submit.ok) throw new Error(submit.errorCode);
       const lease = await repository.claim({ workerId: "worker_a" }); if (!lease.ok || !lease.data) throw new Error("lease");
@@ -289,7 +293,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
           return secondFixture.outcomeRepository.loadVersion(input);
         },
       };
-      const delayedRepository = createInMemoryAsyncSimulationJobRepositoryV2(delayedOutcomeRepository);
+      const delayedRepository = createJobRepository(delayedOutcomeRepository);
       const second = await delayedRepository.submit({ ...secondFixture.request, idempotencyKey: "stage8_job_key_toctou_reclaim" });
       if (!second.ok) throw new Error(second.errorCode);
       const oldLease = await delayedRepository.claim({ workerId: "worker_a" }); if (!oldLease.ok || !oldLease.data) throw new Error("lease");
@@ -306,7 +310,7 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
 
   it("strictly rejects extra, missing, malformed, and hostile canonical Bundle wrappers atomically", async () => {
     const fixture = await validJob();
-    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository);
+    const repository = createJobRepository(fixture.outcomeRepository);
     const submitted = await repository.submit({ ...fixture.request, idempotencyKey: "stage8_job_key_bundle_schema" });
     if (!submitted.ok) throw new Error(submitted.errorCode);
     const validator = createStage2To7CanonicalArtifactValidatorV2(fixture.outcomeRepository);
