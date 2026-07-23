@@ -330,4 +330,87 @@ describe("Stage 8 repair: V1 contract, lineage, and server-owned Job authority",
     await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: { ...fixture.bundle, extra: true }, resultBindingIntegritySignature: validCompletionSignature(lease.data, fixture) })).resolves.toMatchObject({ ok: false, errorCode: "invalid_canonical_artifacts" });
     expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", resultIds: null, resultBindingIntegritySignature: null } });
   });
+
+  it("reads the runtime at most once for submit, claim, and fail, and never for get", async () => {
+    const fixture = await validJob();
+    const runtime = { nowEpochMs: vi.fn(() => Date.parse("2042-02-03T04:05:06.789Z")) };
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository, runtime);
+
+    const submitted = await repository.submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    expect(runtime.nowEpochMs).toHaveBeenCalledTimes(1);
+
+    runtime.nowEpochMs.mockClear();
+    await repository.get({ jobId: submitted.data.jobId });
+    expect(runtime.nowEpochMs).not.toHaveBeenCalled();
+
+    const lease = await repository.claim({ workerId: "worker_a" });
+    if (!lease.ok || !lease.data) throw new Error("lease");
+    expect(runtime.nowEpochMs).toHaveBeenCalledTimes(1);
+
+    runtime.nowEpochMs.mockClear();
+    await expect(repository.fail({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, errorCode: "expected" })).resolves.toMatchObject({ ok: true });
+    expect(runtime.nowEpochMs).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the first operation time exactly once across asynchronous complete validation", async () => {
+    const fixture = await validJob();
+    const delayedOutcomeRepository = {
+      ...fixture.outcomeRepository,
+      loadVersion: async (input: unknown) => {
+        await Promise.resolve();
+        return fixture.outcomeRepository.loadVersion(input);
+      },
+    };
+    let now = Date.parse("2042-02-03T04:05:06.789Z");
+    const runtime = { nowEpochMs: vi.fn(() => now) };
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(delayedOutcomeRepository, runtime);
+    const submitted = await repository.submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+    const lease = await repository.claim({ workerId: "worker_a" });
+    if (!lease.ok || !lease.data) throw new Error("lease");
+
+    runtime.nowEpochMs.mockClear();
+    const completion = repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: validCompletionSignature(lease.data, fixture) });
+    now = Date.parse("2042-02-03T04:05:07.789Z");
+    await expect(completion).resolves.toMatchObject({ ok: true, data: { completedAt: "2042-02-03T04:05:06.789Z" } });
+    expect(runtime.nowEpochMs).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed runtime values atomically before they can create or claim Jobs", async () => {
+    const invalidValues = [NaN, Infinity, -Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 8.64e15];
+    for (const invalidNow of invalidValues) {
+      const fixture = await validJob();
+      let now = invalidNow;
+      const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository, { nowEpochMs: () => now });
+      await expect(repository.submit(fixture.request)).resolves.toMatchObject({ ok: false, errorCode: "invalid_runtime_time" });
+
+      now = Date.parse("2042-02-03T04:05:06.789Z");
+      const submitted = await repository.submit(fixture.request);
+      if (!submitted.ok) throw new Error(submitted.errorCode);
+      now = invalidNow;
+      await expect(repository.claim({ workerId: "worker_a" })).resolves.toMatchObject({ ok: false, errorCode: "invalid_runtime_time" });
+      expect(await repository.get({ jobId: submitted.data.jobId })).toMatchObject({ ok: true, data: { status: "queued", attempt: 0, leaseToken: null } });
+    }
+  });
+
+  it("rejects operation times before persisted lifecycle times without mutating the Job", async () => {
+    const fixture = await validJob();
+    let now = Date.parse("2042-02-03T04:05:06.789Z");
+    const repository = createInMemoryAsyncSimulationJobRepositoryV2(fixture.outcomeRepository, { nowEpochMs: () => now });
+    const submitted = await repository.submit(fixture.request);
+    if (!submitted.ok) throw new Error(submitted.errorCode);
+
+    now -= 1;
+    await expect(repository.claim({ workerId: "worker_a" })).resolves.toMatchObject({ ok: false, errorCode: "invalid_runtime_time" });
+    expect(await repository.get({ jobId: submitted.data.jobId })).toMatchObject({ ok: true, data: { status: "queued", attempt: 0 } });
+
+    now = Date.parse("2042-02-03T04:05:07.789Z");
+    const lease = await repository.claim({ workerId: "worker_a" });
+    if (!lease.ok || !lease.data) throw new Error("lease");
+    now = Date.parse("2042-02-03T04:05:06.789Z");
+    await expect(repository.complete({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, resultBundle: fixture.bundle, resultBindingIntegritySignature: validCompletionSignature(lease.data, fixture) })).resolves.toMatchObject({ ok: false, errorCode: "invalid_runtime_time" });
+    await expect(repository.fail({ jobId: lease.data.jobId, workerId: lease.data.workerId, leaseToken: lease.data.leaseToken, attempt: lease.data.attempt, errorCode: "backwards" })).resolves.toMatchObject({ ok: false, errorCode: "invalid_runtime_time" });
+    expect(await repository.get({ jobId: lease.data.jobId })).toMatchObject({ ok: true, data: { status: "running", attempt: 1, leasedAt: "2042-02-03T04:05:07.789Z", completedAt: null } });
+  });
 });
