@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
@@ -20,6 +20,7 @@ import {
   buildMissingContextHints,
   calculateContextQualityScore,
 } from "@/lib/seed-context/storage";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
 
 const sample = {
@@ -66,6 +67,13 @@ function hasUsefulText(value: string, minimum = 1) {
   return value.trim().length >= minimum;
 }
 
+type SubmittedSeedContext = {
+  id: string;
+  version: string;
+  submittedAt: string;
+  frozenAt: string;
+};
+
 export default function IntakePage() {
   const [repos] = useState(() => getRepositories());
   const [initialDraft] = useState(() => {
@@ -106,6 +114,40 @@ export default function IntakePage() {
   const [safetyDecision, setSafetyDecision] = useState<SafetyDecision | null>(
     null,
   );
+  const [submissionStep, setSubmissionStep] = useState<
+    "idle" | "confirm" | "submitting" | "success" | "failure"
+  >("idle");
+  const [submissionKey, setSubmissionKey] = useState<string | null>(null);
+  const [submittedSeedContext, setSubmittedSeedContext] =
+    useState<SubmittedSeedContext | null>(null);
+  const [recoveredSeedContexts, setRecoveredSeedContexts] = useState<
+    SubmittedSeedContext[]
+  >([]);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+
+    let cancelled = false;
+    void supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user || cancelled) return;
+
+      try {
+        const response = await fetch("/api/seed-context", { method: "GET" });
+        if (!response.ok || cancelled) return;
+        const payload = (await response.json()) as {
+          seedContexts?: SubmittedSeedContext[];
+        };
+        if (!cancelled) setRecoveredSeedContexts(payload.seedContexts ?? []);
+      } catch {
+        // Recovery is read-only and must never block local drafting.
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const previewDraft: SeedContextDraft = {
     id: initialDraft?.id ?? "preview_seed",
@@ -148,7 +190,7 @@ export default function IntakePage() {
   ];
   const completedSectionCount = sectionCompletion.filter(Boolean).length;
 
-  function save(status: SeedContextDraft["status"] = "submitted") {
+  function saveLocalDraft() {
     if (situationSummary.trim().length < 20) {
       setMessage("Add a short situation summary so agents have a clear starting point.");
       return false;
@@ -169,7 +211,7 @@ export default function IntakePage() {
     const draftForScore = {
       ...previewDraft,
       id: draftId,
-      status,
+      status: "draft",
       createdAt: initialDraft?.createdAt ?? now,
       updatedAt: now,
     } satisfies SeedContextDraft;
@@ -198,7 +240,7 @@ export default function IntakePage() {
       privacyAck: privacySafetyAck,
       privacySafetyAck,
       locale: "en",
-      status,
+      status: "draft",
       createdAt: initialDraft?.createdAt ?? now,
       updatedAt: now,
     } satisfies SeedContextDraft;
@@ -222,9 +264,56 @@ export default function IntakePage() {
     }
 
     setMessage(
-      "Scenario saved. The next page can use the richer context to extract better key people.",
+      "Local draft saved on this device. It has not been uploaded or submitted.",
     );
     return true;
+  }
+
+  function startFormalSubmission() {
+    if (!saveLocalDraft()) return;
+
+    if (timeWindow !== "30_days" && timeWindow !== "90_days") {
+      setMessage("Formal submission is currently limited to Track A (30 or 90 days).");
+      return;
+    }
+
+    setSubmissionKey((current) => current ?? crypto.randomUUID());
+    setSubmissionStep("confirm");
+  }
+
+  async function confirmFormalSubmission() {
+    const saved = saveLocalDraft();
+    if (!saved || !submissionKey) return;
+
+    setSubmissionStep("submitting");
+    try {
+      const response = await fetch("/api/seed-context", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ draft: previewDraft, submissionKey }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { seedContext?: SubmittedSeedContext; errorCode?: string }
+        | null;
+
+      if (!response.ok || !payload?.seedContext) {
+        setSubmissionStep("failure");
+        setMessage(
+          payload?.errorCode === "idempotency_key_content_conflict"
+            ? "This confirmation key already belongs to different content. Your local draft is still safe; start a new confirmation."
+            : "Formal submission did not complete. Your local draft remains on this device.",
+        );
+        return;
+      }
+
+      setSubmittedSeedContext(payload.seedContext);
+      setRecoveredSeedContexts((current) => [payload.seedContext!, ...current]);
+      setSubmissionStep("success");
+      setMessage("Formal Track A version submitted and frozen. Later edits remain local until you submit a new version.");
+    } catch {
+      setSubmissionStep("failure");
+      setMessage("Formal submission did not complete. Your local draft remains on this device.");
+    }
   }
 
   function useSample() {
@@ -422,7 +511,7 @@ export default function IntakePage() {
           <div className="mt-7 flex flex-wrap gap-3">
             <Button
               type="button"
-              onClick={() => save()}
+              onClick={saveLocalDraft}
               className="px-5 py-3"
             >
               Save scenario
@@ -439,16 +528,55 @@ export default function IntakePage() {
               href="/app/new/people"
               variant="accent"
               onClick={(event) => {
-                if (!save()) event.preventDefault();
+                if (!saveLocalDraft()) event.preventDefault();
               }}
               className="px-5 py-3"
             >
               Confirm people
             </ButtonLink>
+            <Button
+              type="button"
+              variant="accent"
+              onClick={startFormalSubmission}
+              className="px-5 py-3"
+            >
+              Submit formal Track A version
+            </Button>
           </div>
 
           {message ? (
             <p className="mt-4 text-sm leading-6 text-[#62695d]">{message}</p>
+          ) : null}
+          {submissionStep === "confirm" ? (
+            <div className="mt-5 rounded-md border border-[#b6c6ac] bg-[#f7faf4] p-5">
+              <h2 className="text-sm font-semibold text-[#11150f]">Confirm formal submission</h2>
+              <p className="mt-2 text-sm leading-6 text-[#52594d]">
+                This uploads only the current Track A SeedContext and its consent record. The submitted version is frozen;
+                later edits stay local until you explicitly submit another version. This does not start a simulation.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Button type="button" onClick={confirmFormalSubmission} className="px-4 py-2">
+                  Confirm and submit
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setSubmissionStep("idle")} className="px-4 py-2">
+                  Keep editing locally
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {submissionStep === "submitting" ? (
+            <p className="mt-5 text-sm font-semibold text-[#526650]">Submitting and freezing the formal version…</p>
+          ) : null}
+          {submissionStep === "success" && submittedSeedContext ? (
+            <div className="mt-5 rounded-md border border-[#99c7a7] bg-[#eff8f0] p-5 text-sm text-[#294c34]">
+              <p className="font-semibold">Formal version submitted and frozen.</p>
+              <p className="mt-2">Version: {submittedSeedContext.version}</p>
+              <p>Submitted: {new Date(submittedSeedContext.submittedAt).toLocaleString()}</p>
+              <p className="mt-2">Your form remains a separate local draft. Submitting an edited case creates a new version; it never overwrites this one.</p>
+            </div>
+          ) : null}
+          {submissionStep === "failure" ? (
+            <p className="mt-5 text-sm font-semibold text-[#8a3d28]">The formal version was not submitted; your local draft was retained.</p>
           ) : null}
           {safetyDecision && safetyDecision.safetyLevel !== "safe" ? (
             <div className="mt-5">
@@ -456,6 +584,17 @@ export default function IntakePage() {
                 decision={safetyDecision}
                 title="Safety check before simulation"
               />
+            </div>
+          ) : null}
+          {recoveredSeedContexts.length > 0 ? (
+            <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
+              <p className="text-sm font-semibold text-[#11150f]">Recovered formal submissions</p>
+              <p className="mt-1 text-xs leading-5 text-[#62695d]">Read-only recovery after login. These records do not overwrite the local form.</p>
+              <ul className="mt-3 space-y-1 text-xs text-[#52594d]">
+                {recoveredSeedContexts.slice(0, 3).map((seedContext) => (
+                  <li key={seedContext.id}>{seedContext.version} · {new Date(seedContext.submittedAt).toLocaleString()}</li>
+                ))}
+              </ul>
             </div>
           ) : null}
         </SurfaceCard>

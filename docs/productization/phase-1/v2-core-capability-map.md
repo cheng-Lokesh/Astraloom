@@ -35,3 +35,8 @@
 ## 统计
 
 按上表：`VERIFIED_IMPLEMENTED` 1，`CORE_ONLY` 9，`PARTIAL` 12，`MOCK_OR_UI_ONLY` 2，`DOCUMENTED_ONLY` 1，`MISSING` 2。唯一的 VERIFIED 项是回归测试资产，不是完整用户产品功能。
+## Phase 2 / Delivery Step 1 更新（2026-07-27）
+
+- `PROD-DATA-001`：由 `DOCUMENTED_ONLY` 提升为 `PARTIAL`。本地 Supabase 已实际执行 migration、RLS、pgTAP 及 lint；提交的 Track A SeedContext 与 consent 具备 owner、版本、冻结时间、trace、幂等和原子性边界。尚未完成独立 QA/生产环境的两账户浏览器验收，因此不能标为 `VERIFIED_IMPLEMENTED`。
+- `PROD-API-001`：Phase 2 范围内的 `/api/seed-context` 已具备严格请求校验、会话归属、稳定错误码、owner-scoped idempotency 和版本恢复；people/graph/run/events API 仍属于后续阶段。
+- `PROD-INPUT-001`：`/app/new/intake` 已将 local draft 与正式 submitted SeedContext 分离；正式提交是显式双步骤，恢复为登录后的只读 GET，不会自动上传或覆盖草稿。

@@ -33,3 +33,10 @@
 | PROD-TRACK-B-001 | Track B | 长期气候视图 | 无可验收链路 | 产品决策、开发 | P2 | Track A、Quality | 8 | 独立合同/Golden Cases；无确定性日级预测 |
 | PROD-EXPORT-001 | 国际化 | 本地化与出海 | 无验收 | 产品决策、外部准备 | P2 | Legal、Ops | 8 | 仅在 Launch 后按第 30 章另立项目 |
 | PROD-RELEASE-001 | 上线 | Launch 发布与事故响应 | 无生产演练 | 外部准备、服务配置 | P2 | Legal、Ops、Beta | 8 | 第 29 章发布、报警、回滚、支持门禁完成 |
+## Phase 2 / Delivery Step 1 直接更新（2026-07-27）
+
+| Gap ID | 当前状态 | 已验证证据 | 仍阻塞的验收 |
+|---|---|---|---|
+| PROD-DATA-001 | PARTIAL | 本地 Supabase migration/reset、RLS pgTAP、原子 seed+consent、owner 复合外键、数据库 lint | 独立非生产 QA 项目的实际两账户浏览器交叉读写验证 |
+| PROD-AUTH-001 | PARTIAL | API 使用服务端 `getUser()`，数据库测试模拟两位 authenticated 用户并验证隔离 | Magic Link/会话恢复的真实浏览器两账户验收 |
+| PROD-INPUT-001 | PARTIAL | 本地草稿与远端正式版本分离；显式确认提交；登录后只读恢复；接口测试 | 真实浏览器验证刷新、退出/重登及失败保留本地草稿 |
