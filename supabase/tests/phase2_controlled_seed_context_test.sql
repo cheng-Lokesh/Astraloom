@@ -1,0 +1,12 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select plan(7);
+select ok((select relrowsecurity from pg_class where oid = 'public.seed_contexts'::regclass), 'seed contexts use RLS');
+select ok(not has_table_privilege('anon', 'public.seed_contexts', 'select'), 'anon cannot select seeds');
+select ok(not has_table_privilege('anon', 'public.consent_events', 'insert'), 'anon cannot insert consent');
+select ok(not has_table_privilege('authenticated', 'public.seed_contexts', 'update'), 'submitted seeds are immutable to browser role');
+select ok(not has_table_privilege('authenticated', 'public.consent_events', 'delete'), 'consent history is immutable to browser role');
+select has_index('public', 'seed_contexts', 'seed_contexts_owner_submission_key_idx', 'submission key is owner-scoped');
+select has_index('public', 'seed_contexts', 'seed_contexts_owner_submitted_at_idx', 'submitted recovery index exists');
+select * from finish();
+rollback;
