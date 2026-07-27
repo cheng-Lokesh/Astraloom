@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { useLanguage } from "@/components/language-provider";
+import { getCanonicalAuthCallbackUrl } from "@/lib/auth/callback-url";
 import { appConfig, isSupabaseConfigured } from "@/lib/env";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
@@ -76,7 +77,7 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${appConfig.appUrl}/auth/callback?next=/app/new/intake`,
+        emailRedirectTo: getCanonicalAuthCallbackUrl(appConfig.appUrl),
         shouldCreateUser: true,
       },
     });

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { appConfig } from "@/lib/env";
+import { getSafeNextPath } from "@/lib/auth/callback-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const requestedNext = requestUrl.searchParams.get("next") || "/sync";
-  const next = requestedNext.startsWith("/") ? requestedNext : "/sync";
+  const next = getSafeNextPath(requestUrl.searchParams.get("next"));
   const error = requestUrl.searchParams.get("error_description");
   const redirectUrl = new URL(next, requestUrl.origin || appConfig.appUrl);
 
@@ -30,14 +30,25 @@ export async function GET(request: Request) {
   );
 
   if (exchangeError) {
-    return redirectToLogin(requestUrl, exchangeError.message);
+    return redirectToLogin(requestUrl, "auth_exchange_failed");
   }
 
-  return NextResponse.redirect(redirectUrl);
+  const { data: auth, error: userError } = await supabase.auth.getUser();
+  if (userError || !auth.user) {
+    return redirectToLogin(requestUrl, "auth_session_restore_failed");
+  }
+
+  return noStoreRedirect(redirectUrl);
 }
 
 function redirectToLogin(requestUrl: URL, error: string) {
   const loginUrl = new URL("/login", requestUrl.origin || appConfig.appUrl);
   loginUrl.searchParams.set("error", error);
-  return NextResponse.redirect(loginUrl);
+  return noStoreRedirect(loginUrl);
+}
+
+function noStoreRedirect(url: URL) {
+  const response = NextResponse.redirect(url);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }

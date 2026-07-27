@@ -103,7 +103,7 @@ describe("/api/seed-context", () => {
   });
 
   it("recovers formal submitted versions without returning a trace identifier", async () => {
-    const eq = vi.fn(() => ({ order: vi.fn().mockResolvedValue({
+    const order = vi.fn().mockResolvedValue({
       data: [{
         id: "seed-a",
         version: "phase2-submitted-v1",
@@ -112,12 +112,17 @@ describe("/api/seed-context", () => {
         frozen_at: "2026-07-27T00:00:00.000Z",
       }],
       error: null,
-    }) }));
+    });
+    const not = vi.fn(() => ({ not, order }));
+    const eq = vi.fn(() => ({ not }));
     select.mockReturnValue({ eq });
 
     const response = await GET();
     expect(response.status).toBe(200);
     expect(select).toHaveBeenCalledWith("id, version, submitted_at, frozen_at");
+    expect(eq).toHaveBeenCalledWith("status", "submitted");
+    expect(not).toHaveBeenNthCalledWith(1, "frozen_at", "is", null);
+    expect(not).toHaveBeenNthCalledWith(2, "consent_event_id", "is", null);
     expect(await response.json()).toEqual({
       seedContexts: [{
         id: "seed-a",
@@ -126,5 +131,19 @@ describe("/api/seed-context", () => {
         frozenAt: "2026-07-27T00:00:00.000Z",
       }],
     });
+  });
+
+  it("rejects anonymous recovery and reports retrieval failures without leaking database details", async () => {
+    createSupabaseServerClient.mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
+    });
+    expect((await GET()).status).toBe(401);
+
+    const order = vi.fn().mockResolvedValue({ data: null, error: { message: "database detail" } });
+    const not = vi.fn(() => ({ not, order }));
+    select.mockReturnValue({ eq: vi.fn(() => ({ not })) });
+    const response = await GET();
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ errorCode: "seed_context_recovery_failed" });
   });
 });

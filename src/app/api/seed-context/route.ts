@@ -62,7 +62,13 @@ export async function GET() {
   if (!supabase) return NextResponse.json({ errorCode: "supabase_not_configured" }, { status: 503 });
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return NextResponse.json({ errorCode: "authentication_required" }, { status: 401 });
-  const { data, error } = await supabase.from("seed_contexts").select("id, version, submitted_at, frozen_at").eq("status", "submitted").order("submitted_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("seed_contexts")
+    .select("id, version, submitted_at, frozen_at")
+    .eq("status", "submitted")
+    .not("frozen_at", "is", null)
+    .not("consent_event_id", "is", null)
+    .order("submitted_at", { ascending: false });
   if (error) return NextResponse.json({ errorCode: "seed_context_recovery_failed" }, { status: 500 });
   return NextResponse.json({
     seedContexts: (data ?? []).map((seedContext) => ({
