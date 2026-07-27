@@ -4,8 +4,9 @@
 
 - 代码基线：`720a4f0c928fba30b7531bb083b3a2281b2639aa`（V2 Core Final Acceptance: PASS）。
 - 审计分支：`productization/phase-1-contract`，仅允许本目录下的 Markdown 变更。
-- 产品权威：`C:\Users\clf04\Documents\AI推演\白皮书_补齐版_v35_VibeCoding实施协作手册版.docx`，SHA-256 `661A67253FF125B2138E8E4528A348537024782750426E8D281C39F8331117F4`。
-- 仓库约束：`AGENTS.md`、`docs/FUTURE_SIMULATOR_V2.md`、各现行契约文档及可执行测试。白皮书与已验收 V2 Core 若冲突，均不在本阶段改写；见 [决策登记册](decision-register.md)。
+- 最高产品方向与实现顺序权威：`AGENTS.md` 指定的 `docs/FUTURE_SIMULATOR_V2.md`。
+- 产品需求与完整能力来源：`C:\Users\clf04\Documents\AI推演\白皮书_补齐版_v35_VibeCoding实施协作手册版.docx`，SHA-256 `661A67253FF125B2138E8E4528A348537024782750426E8D281C39F8331117F4`。
+- 实现事实权威：现行生产代码、可执行测试与已验收 V2 Core；它们只证明“已实现什么”，不能单独改变产品方向。白皮书与 V2 已确认边界冲突时以 V2 为准，并在 [决策登记册](decision-register.md) 保留冲突记录。
 
 ## 一页执行摘要
 
@@ -13,7 +14,11 @@ V2 Core 已完成并验收的是：以真实世界证据/假设边界、动态 A
 
 当前最近的成熟度是 **受控的产品化前 Alpha 准备态**：有局部页面、API、Supabase migration、DeepSeek Reality Intake、Stripe webhook 和 V1/V2 核心，但首条可由真实用户完成、可追溯且可恢复的产品链路尚未通过验收。不能将“V2 Core PASS”表述为“Alpha 已完成”。
 
-本审计登记 **P0 13 项、P1 9 项、P2 7 项**差距；从现在起还需要 **8 个产品化阶段**。Phase 1–4 导向 Alpha，Phase 5–6 导向完整 MVP，Phase 7 为封闭 Beta，Phase 8 为 Launch。下一阶段唯一目标是：**让一位已登录的内部测试用户在受控数据存储中完成 Track A 的输入、人物确认、只读图谱、异步运行和证据报告闭环。**
+本审计登记 **P0 13 项、P1 9 项、P2 7 项**差距；Productization Phase 1（契约与差距审计）已经完成，从现在起还剩 **8 个 Delivery Steps**：Productization Phase 2–5 导向 Alpha，Phase 6–7 导向完整 MVP，Phase 8 为封闭 Beta，Phase 9 为 Launch。
+
+下一阶段唯一目标：**让一名已认证的内部测试用户，将确认提交的 Track A SeedContext 安全持久化到带 RLS 的数据层，并能在刷新、退出和重新登录后恢复；两个测试用户之间不能发生任何数据越权。**
+
+下一阶段明确不做：人物抽取与确认、Agent 生成、图谱、真实 LLM 扩展、推演运行、队列或 Worker、Event、Claim、Report、支付和 Track B。
 
 ## 阅读顺序
 
