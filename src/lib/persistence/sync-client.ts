@@ -263,40 +263,13 @@ export async function syncClientWritableDrafts(
   user: User,
   bundle: LocalDraftBundle,
 ): Promise<PersistenceSyncResult> {
-  const currentState = loadPersistenceSyncState();
-  const remoteSeedContextId = await upsertSeedContext(
-    supabase,
-    user,
-    bundle,
-    currentState.remoteSeedContextId,
-  );
-
-  await replaceKeyPeople(supabase, user, bundle, remoteSeedContextId);
-  const remoteFeedbackIds = await syncFeedbackLog(
-    supabase,
-    user,
-    bundle,
-    remoteSeedContextId,
-  );
-  const remoteSupportTicketIds = await syncSupportTickets(
-    supabase,
-    user,
-    bundle,
-    null,
-  );
-
-  const nextState = {
-    remoteSeedContextId,
-    remoteFeedbackIds,
-    remoteSupportTicketIds,
-    lastSyncedAt: new Date().toISOString(),
-  };
-
-  savePersistenceSyncState(nextState);
-
+  void supabase;
+  void user;
+  void bundle;
+  const nextState = loadPersistenceSyncState();
   return {
     ok: true,
-    message: "Client-writable drafts synced.",
+    message: "Phase 2 blocks legacy client sync. Local drafts remain local until an explicit submitted SeedContext request.",
     state: nextState,
   };
 }
