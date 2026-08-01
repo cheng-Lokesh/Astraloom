@@ -159,4 +159,33 @@ describe("POST /api/agents/generate", () => {
     expect(JSON.stringify(body)).not.toContain("private");
     expect(JSON.stringify(body)).not.toContain("field_sources");
   });
+
+  it("keeps a successful replay stable and rejects malformed controlled-writer payloads", async () => {
+    rpc.mockResolvedValueOnce({ data: [{
+      idempotent: true,
+      snapshot: { id: "snapshot-a", version: "phase3-agent-snapshot-v1", safety_level: "safe" },
+      agents: [{ id: "agent-a", agent_type: "user_core", display_name: "You", confidence: 58 }],
+    }], error: null });
+
+    const replay = await POST(request({
+      selector: { seed_id: seedId },
+      idempotency_key: idempotencyKey,
+      include_parallel_selves: false,
+    }));
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      ok: true,
+      idempotent: true,
+      snapshot: { id: "snapshot-a" },
+      agents: [{ id: "agent-a", agent_type: "user_core" }],
+    });
+
+    rpc.mockResolvedValueOnce({ data: [{ idempotent: false, snapshot: null, agents: [] }], error: null });
+    const malformed = await POST(request({
+      selector: { seed_id: seedId },
+      idempotency_key: "33333333-3333-4333-8333-333333333333",
+    }));
+    expect(malformed.status).toBe(500);
+    expect(await malformed.json()).toMatchObject({ ok: false, error_code: "persistence_failed" });
+  });
 });

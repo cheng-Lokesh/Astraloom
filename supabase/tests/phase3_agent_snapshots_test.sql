@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select no_plan();
+select plan(51);
 
 -- Shape and least-privilege contract. Column checks deliberately prove there
 -- is no broad table SELECT grant before proving the safe projection.
