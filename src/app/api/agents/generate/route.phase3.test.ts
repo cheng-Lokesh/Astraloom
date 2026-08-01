@@ -13,6 +13,27 @@ import { POST } from "./route";
 
 const seedId = "11111111-1111-4111-8111-111111111111";
 const idempotencyKey = "22222222-2222-4222-8222-222222222222";
+const snapshotId = "33333333-3333-4333-8333-333333333333";
+const agentId = "44444444-4444-4444-8444-444444444444";
+const validSnapshot = {
+  id: snapshotId,
+  version: "phase3-agent-snapshot-v1",
+  safety_level: "safe",
+  error_code: null,
+};
+const validAgent = {
+  id: agentId,
+  snapshot_id: snapshotId,
+  key_person_id: null,
+  version: "phase3-agent-snapshot-v1",
+  agent_type: "user_core",
+  display_name: "You",
+  relationship_to_user: "self",
+  source: "conservative_snapshot",
+  confidence: 58,
+  evidence_refs: ["seed:submitted"],
+  safety_level: "safe",
+};
 
 function request(body: unknown) {
   return new Request("http://localhost/api/agents/generate", {
@@ -92,6 +113,20 @@ describe("POST /api/agents/generate", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it("rejects JSON lookalike and empty MIME types before reaching the writer", async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    for (const contentType of ["application/jsonp", "application/jsonx", ""]) {
+      const response = await POST(new Request("http://localhost/api/agents/generate", {
+        method: "POST",
+        headers: contentType ? { "content-type": contentType } : {},
+        body: JSON.stringify({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }),
+      }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error_code: "invalid_request" });
+    }
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("rejects missing, invalid, null, and non-boolean narrow inputs without reaching the writer", async () => {
     const cases = [
       {},
@@ -112,8 +147,8 @@ describe("POST /api/agents/generate", () => {
     rpc.mockResolvedValue({
       data: [{
         idempotent: false,
-        snapshot: { id: "snapshot-a", version: "phase3-agent-snapshot-v1", safety_level: "safe" },
-        agents: [{ id: "agent-a", agent_type: "user_core", display_name: "You", confidence: 58 }],
+        snapshot: validSnapshot,
+        agents: [validAgent],
       }],
       error: null,
     });
@@ -134,8 +169,8 @@ describe("POST /api/agents/generate", () => {
     expect(await response.json()).toMatchObject({
       ok: true,
       source: "controlled_snapshot",
-      snapshot: { id: "snapshot-a", safety_level: "safe" },
-      agents: [{ id: "agent-a", agent_type: "user_core" }],
+      snapshot: { id: snapshotId, safety_level: "safe" },
+      agents: [{ id: agentId, agent_type: "user_core" }],
     });
   });
 
@@ -164,8 +199,8 @@ describe("POST /api/agents/generate", () => {
   it("returns a downgraded snapshot only from the controlled writer and never exposes provenance", async () => {
     rpc.mockResolvedValue({ data: [{
       idempotent: false,
-      snapshot: { id: "snapshot-d", version: "phase3-agent-snapshot-v1", safety_level: "downgraded", error_code: "safety_downgraded", trace_id: "private" },
-      agents: [{ id: "agent-d", agent_type: "user_core", display_name: "You", field_sources: { private: true }, trace_id: "private" }],
+      snapshot: { ...validSnapshot, id: "55555555-5555-4555-8555-555555555555", safety_level: "downgraded", error_code: "safety_downgraded", trace_id: "private" },
+      agents: [{ ...validAgent, id: "66666666-6666-4666-8666-666666666666", snapshot_id: "55555555-5555-4555-8555-555555555555", safety_level: "downgraded", field_sources: { private: true }, trace_id: "private" }],
     }], error: null });
 
     const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
@@ -179,8 +214,8 @@ describe("POST /api/agents/generate", () => {
   it("redacts forged raw Seed, provenance, and receipt fields even when an RPC response is malformedly verbose", async () => {
     rpc.mockResolvedValue({ data: [{
       idempotent: false,
-      snapshot: { id: "snapshot-safe", safety_level: "safe", raw_context: "do not expose", trace_id: "private-trace" },
-      agents: [{ id: "agent-safe", agent_type: "user_core", display_name: "You", field_sources: { private: true }, request_hash: "private-hash" }],
+      snapshot: { ...validSnapshot, raw_context: "do not expose", trace_id: "private-trace" },
+      agents: [{ ...validAgent, field_sources: { private: true }, request_hash: "private-hash" }],
       receipt: { idempotency_key: idempotencyKey, raw_context: "do not expose" },
     }], error: null });
 
@@ -193,11 +228,46 @@ describe("POST /api/agents/generate", () => {
     expect(text).not.toContain("receipt");
   });
 
+  it("fails closed for malformed controlled-writer safety projections without exposing private values", async () => {
+    const withoutSource = { ...validAgent };
+    delete (withoutSource as Partial<typeof validAgent>).source;
+    const withoutVersion = { ...validSnapshot };
+    delete (withoutVersion as Partial<typeof validSnapshot>).version;
+    const cases = [
+      { snapshot: { ...validSnapshot, id: "not-a-uuid" }, agents: [validAgent] },
+      { snapshot: { ...validSnapshot, version: "legacy-writer" }, agents: [validAgent] },
+      { snapshot: withoutVersion, agents: [validAgent] },
+      { snapshot: { ...validSnapshot, error_code: "private_detail" }, agents: [validAgent] },
+      { snapshot: { ...validSnapshot, error_code: "safety_downgraded" }, agents: [validAgent] },
+      { snapshot: { ...validSnapshot, safety_level: "downgraded" }, agents: [{ ...validAgent, safety_level: "downgraded" }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, id: "not-a-uuid" }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, snapshot_id: "not-a-uuid" }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, snapshot_id: "77777777-7777-4777-8777-777777777777" }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, key_person_id: "not-a-uuid" }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, safety_level: "downgraded" }] },
+      { snapshot: validSnapshot, agents: [withoutSource] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, confidence: 101 }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, confidence: 58.5 }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, evidence_refs: [] }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, evidence_refs: [{ raw_context: "private nested raw context" }] }] },
+    ];
+
+    for (const row of cases) {
+      rpc.mockResolvedValueOnce({ data: [{ idempotent: false, ...row }], error: null });
+      const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
+      const body = await response.json();
+      expect(response.status).toBe(500);
+      expect(body).toMatchObject({ ok: false, error_code: "persistence_failed" });
+      expect(JSON.stringify(body)).not.toContain("private_detail");
+      expect(JSON.stringify(body)).not.toContain("private nested raw context");
+    }
+  });
+
   it("keeps a successful replay stable and rejects malformed controlled-writer payloads", async () => {
     rpc.mockResolvedValueOnce({ data: [{
       idempotent: true,
-      snapshot: { id: "snapshot-a", version: "phase3-agent-snapshot-v1", safety_level: "safe" },
-      agents: [{ id: "agent-a", agent_type: "user_core", display_name: "You", confidence: 58 }],
+      snapshot: validSnapshot,
+      agents: [validAgent],
     }], error: null });
 
     const replay = await POST(request({
@@ -209,8 +279,8 @@ describe("POST /api/agents/generate", () => {
     expect(await replay.json()).toMatchObject({
       ok: true,
       idempotent: true,
-      snapshot: { id: "snapshot-a" },
-      agents: [{ id: "agent-a", agent_type: "user_core" }],
+      snapshot: { id: snapshotId },
+      agents: [{ id: agentId, agent_type: "user_core" }],
     });
 
     rpc.mockResolvedValueOnce({ data: [{ idempotent: false, snapshot: null, agents: [] }], error: null });
