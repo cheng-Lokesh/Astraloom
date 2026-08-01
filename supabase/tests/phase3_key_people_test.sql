@@ -9,14 +9,16 @@ insert into auth.users (
   ('00000000-0000-0000-0000-00000000c001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-a@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-00000000d001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-b@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now());
 
-select plan(36);
+select plan(44);
 
-select has_function('public', 'extract_key_people_phase3', array['uuid', 'uuid', 'jsonb'], 'extract RPC exists');
+select has_function('public', 'extract_key_people_phase3', array['uuid', 'uuid'], 'controlled extract RPC exists');
+select hasnt_function('public', 'extract_key_people_phase3', array['uuid', 'uuid', 'jsonb'], 'caller-controlled extract RPC is removed');
 select has_function('public', 'mutate_key_people_phase3', array['uuid', 'uuid', 'jsonb'], 'mutation RPC exists');
-select ok(not (select prosecdef from pg_proc where oid = 'public.extract_key_people_phase3(uuid,uuid,jsonb)'::regprocedure), 'extract RPC is SECURITY INVOKER');
+select ok(not (select prosecdef from pg_proc where oid = to_regprocedure('public.extract_key_people_phase3(uuid,uuid)')), 'extract RPC is SECURITY INVOKER');
 select ok(not (select prosecdef from pg_proc where oid = 'public.mutate_key_people_phase3(uuid,uuid,jsonb)'::regprocedure), 'mutation RPC is SECURITY INVOKER');
-select is((select proconfig::text from pg_proc where oid = 'public.extract_key_people_phase3(uuid,uuid,jsonb)'::regprocedure), '{"search_path=public, extensions"}', 'extract RPC has fixed search path');
+select is((select proconfig::text from pg_proc where oid = to_regprocedure('public.extract_key_people_phase3(uuid,uuid)')), '{"search_path=public, extensions"}', 'extract RPC has fixed search path');
 select is((select proconfig::text from pg_proc where oid = 'public.mutate_key_people_phase3(uuid,uuid,jsonb)'::regprocedure), '{"search_path=public, extensions"}', 'mutation RPC has fixed search path');
+select function_privs_are('public', 'extract_key_people_phase3', array['uuid', 'uuid'], 'authenticated', array['EXECUTE'], 'only authenticated can execute controlled extraction');
 select ok(not has_table_privilege('anon', 'public.key_people', 'select'), 'anon cannot read people');
 select ok(not has_table_privilege('authenticated', 'public.agent_profiles', 'insert'), 'Agent DML remains denied');
 select ok(not has_table_privilege('authenticated', 'public.relation_edges', 'update'), 'Edge DML remains denied');
@@ -28,7 +30,7 @@ set local role authenticated;
 
 select * from public.submit_seed_context_phase2(
   '33333333-3333-4333-8333-333333333333',
-  '{"trackType":"crossroad","timeWindow":"90_days","questionText":"Should I accept the role?","situationSummary":"A concrete workplace decision with a deadline.","recentEvents":"An answer is needed this week.","keyPeopleText":"Manager and recruiter.","decisionOptions":"Accept or negotiate.","worries":"Timing is uncertain.","forbiddenActions":"Do not burn bridges.","safetyBoundaries":"Keep communication professional.","desiredOutput":"Compare pressure points.","privacyAck":true,"privacySafetyAck":true}'::jsonb
+  '{"trackType":"crossroad","timeWindow":"90_days","questionText":"Should I accept the role?","situationSummary":"My manager, the same manager, and a recruiter need an answer this week.","recentEvents":"An answer is needed this week.","keyPeopleText":"Manager and recruiter.","decisionOptions":"Accept or negotiate.","worries":"Timing is uncertain.","forbiddenActions":"Do not burn bridges.","safetyBoundaries":"Keep communication professional.","desiredOutput":"Compare pressure points.","privacyAck":true,"privacySafetyAck":true}'::jsonb
 );
 
 select throws_ok(
@@ -41,33 +43,36 @@ select throws_ok(
   'direct key_people REST writes are denied outside the RPC guard'
 );
 
+select throws_ok($$
+  select * from public.extract_key_people_phase3(
+    (select id from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'),
+    '43434343-4343-4343-8343-434343434343',
+    '[{"display_name":"Attacker supplied individual","relationship_to_user":"fabricated relation","role_type":"fabricated role","confidence":99,"known_evidence":[],"missing_fields":[],"source":"seed_context_text"}]'::jsonb
+  )
+$$, 'caller-controlled candidate injection signature is unavailable');
+select is((select count(*) from public.key_people), 0::bigint, 'failed candidate injection writes zero people');
+
 select lives_ok($$
   select * from public.extract_key_people_phase3(
     (select id from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'),
-    '44444444-4444-4444-8444-444444444444',
-    '[{"display_name":"Manager","relationship_to_user":"boss","role_type":"authority","confidence":78,"known_evidence":["Named in seed"],"missing_fields":["Recent commitment"],"source":"seed_context_text"}]'::jsonb
+    '44444444-4444-4444-8444-444444444444'
   )
 $$, 'submitted owner can persist deterministic candidate extraction');
 
-select is((select count(*) from public.key_people), 1::bigint, 'first extraction writes one candidate');
-select is((select status::text from public.key_people limit 1), 'candidate', 'candidate remains provisional');
+select is((select count(*) from public.key_people), 2::bigint, 'repeated role mentions produce one manager and one recruiter');
+select is((select count(distinct extraction_fingerprint) from public.key_people), 2::bigint, 'canonical extraction fingerprints are unique');
+select is((select cardinality(person_ids) from public.key_people_idempotency_receipts where operation_kind = 'extract'), 2, 'receipt contains one UUID per unique person');
+select ok((select bool_and(status in ('candidate', 'needs_confirmation')) from public.key_people), 'candidates remain provisional');
 select ok((select version = 'phase3-key-person-v1' and trace_id is not null and field_sources ? 'display_name' from public.key_people limit 1), 'formal provenance is persisted');
 
 select lives_ok($$
   select * from public.extract_key_people_phase3(
     (select id from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'),
-    '44444444-4444-4444-8444-444444444444',
-    '[{"display_name":"Manager","relationship_to_user":"boss","role_type":"authority","confidence":78,"known_evidence":["Named in seed"],"missing_fields":["Recent commitment"],"source":"seed_context_text"}]'::jsonb
+    '44444444-4444-4444-8444-444444444444'
   )
 $$, 'same key and canonical content replays');
-select is((select count(*) from public.key_people), 1::bigint, 'replay creates no duplicate');
-select throws_ok($$
-  select * from public.extract_key_people_phase3(
-    (select id from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'),
-    '44444444-4444-4444-8444-444444444444',
-    '[{"display_name":"Different","relationship_to_user":"boss","role_type":"authority","confidence":78,"known_evidence":["Named in seed"],"missing_fields":[],"source":"seed_context_text"}]'::jsonb
-  )
-$$, 'P0001', 'idempotency_key_content_conflict', 'same key with different canonical content conflicts');
+select is((select count(*) from public.key_people), 2::bigint, 'replay creates no duplicate');
+select is((select count(*) from public.key_people_idempotency_receipts where operation_kind = 'extract'), 1::bigint, 'replay creates no duplicate receipt');
 
 select lives_ok($$
   select * from public.mutate_key_people_phase3(
@@ -139,6 +144,12 @@ select * from public.submit_seed_context_phase2(
   '{"trackType":"crossroad","timeWindow":"30_days","questionText":"Should I stay?","situationSummary":"Another concrete workplace decision with a deadline.","recentEvents":"An answer is needed this week.","keyPeopleText":"A manager.","decisionOptions":"Stay or leave.","worries":"Timing is uncertain.","forbiddenActions":"Do not burn bridges.","safetyBoundaries":"Keep communication professional.","desiredOutput":"Compare pressure points.","privacyAck":true,"privacySafetyAck":true}'::jsonb
 );
 select throws_ok($$
+  select * from public.extract_key_people_phase3(
+    (select id from public.seed_contexts where submission_key = '89898989-8989-4898-8898-898989898989'),
+    '44444444-4444-4444-8444-444444444444'
+  )
+$$, 'P0001', 'idempotency_key_content_conflict', 'same extraction key cannot be reused for another Seed');
+select throws_ok($$
   select * from public.mutate_key_people_phase3(
     (select id from public.seed_contexts where submission_key = '89898989-8989-4898-8898-898989898989'),
     '78787878-7878-4787-8787-787878787878',
@@ -154,8 +165,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000c001
 select throws_ok($$
   select * from public.extract_key_people_phase3(
     (select id from public.seed_contexts where user_question = 'Draft only'),
-    '79797979-7979-4797-8797-797979797979',
-    '[]'::jsonb
+    '79797979-7979-4797-8797-797979797979'
   )
 $$, 'P0001', 'seed_not_found', 'unsubmitted Seeds cannot enter Key People persistence');
 
