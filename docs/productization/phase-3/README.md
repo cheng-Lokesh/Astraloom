@@ -2,7 +2,7 @@
 
 ## Authority and status
 
-**Status: authorized and in implementation; not complete.** This is the
+**Status: Step A independently accepted; Step B authorized.** This is the
 normative Phase 3 implementation contract. Phase 2 is closed at
 `79cc6970d61eb8695b8cdbbbac68de77059f99ea`. Phase 3 does not authorize Phase
 4 or any non-goal listed below.
@@ -133,9 +133,11 @@ normalizes extraction inside the database. A subsequent effective-grant audit
 also found private metadata and receipt visibility plus broad hard-table
 privileges; the second RED/GREEN revokes those grants, narrows Data API columns,
 guards receipts, and preserves provenance through an inaccessible guarded
-trigger. Step A still requires independent re-acceptance before Step B is
-authorized. See `STEP_A_TDD_EVIDENCE.md` for the RED/GREEN, blocked, repair,
-least-privilege, Unicode, and non-destructive database evidence.
+trigger. Independent task `019fbdaa-ccd6-77a2-a1c7-545ba6a23b74` re-tested the
+final Step A SHA and returned PASS, including a separate GitHub branch-head
+check. Step B is authorized. See `STEP_A_TDD_EVIDENCE.md` for the RED/GREEN,
+blocked, repair, least-privilege, Unicode, and non-destructive database
+evidence.
 
 ## Acceptance matrix
 

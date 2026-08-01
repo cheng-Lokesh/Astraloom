@@ -92,9 +92,15 @@ single transaction and recorded as migration `20260801230352`. The same counts
 were observed after the expanded rollback fixtures and full regression. No
 reset, persistent fixture, deletion, or business-data rewrite was used.
 
-## Remaining gate
+## Independent acceptance
 
-This implementation does not authorize Step B by itself. A separate read-only
-review must repeat the authenticated direct-RPC attack, duplicate replay,
-anonymous/two-user isolation, full repository check, V2 comparison, and
-local/upstream/origin SHA verification.
+Independent read-only review task `019fbdaa-ccd6-77a2-a1c7-545ba6a23b74`
+re-tested commit `3a6d7c2963e0b1e806a8b016deaf97229798129d` and returned **PASS**.
+It independently repeated Phase 3 pgTAP 74/74, Phase 2 pgTAP 7/7 and 10/10,
+the 18/18 API suite and focused coverage, `plpgsql_check`, the full 444-test
+repository check and 103-page build, rollback data-count checks, and the frozen
+V2 comparison. The final remote gate used the read-only GitHub connection to
+confirm the branch head equals local and upstream.
+
+Step A is closed. Step B Agent snapshot implementation is authorized; this does
+not authorize Graph, UI/browser, Phase 4, or any other Phase 3 non-goal.
