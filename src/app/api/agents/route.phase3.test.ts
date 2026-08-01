@@ -163,7 +163,9 @@ describe("GET /api/agents", () => {
     const snapshotOwner = vi.fn(() => ({ eq: snapshotSeed }));
     const snapshotSelect = vi.fn(() => ({ eq: snapshotOwner }));
     const agentOrder = vi.fn().mockResolvedValue({ data: [{ id: "agent-latest", snapshot_id: "snapshot-latest", agent_type: "user_core", display_name: "You", relationship_to_user: "self", source: "conservative_snapshot", confidence: 58, evidence_refs: ["seed:submitted"], safety_level: "caution" }], error: null });
-    const agentSnapshot = vi.fn(() => ({ order: agentOrder }));
+    const agentSeed = vi.fn(() => ({ order: agentOrder }));
+    const agentOwner = vi.fn(() => ({ eq: agentSeed }));
+    const agentSnapshot = vi.fn(() => ({ eq: agentOwner }));
     const agentSelect = vi.fn(() => ({ eq: agentSnapshot }));
     const from = vi.fn((table: string) => {
       if (table === "seed_contexts") return { select: seedSelect };
@@ -186,5 +188,7 @@ describe("GET /api/agents", () => {
     expect(snapshotLimit).toHaveBeenCalledWith(1);
     expect(from).toHaveBeenNthCalledWith(3, "agent_profiles");
     expect(agentSnapshot).toHaveBeenCalledWith("snapshot_id", "snapshot-latest");
+    expect(agentOwner).toHaveBeenCalledWith("user_id", "owner-a");
+    expect(agentSeed).toHaveBeenCalledWith("seed_context_id", seedId);
   });
 });
