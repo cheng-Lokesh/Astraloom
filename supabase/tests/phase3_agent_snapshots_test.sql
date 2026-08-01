@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(173);
+select plan(174);
 
 -- Shape and least-privilege contract. Column checks deliberately prove there
 -- is no broad table SELECT grant before proving the safe projection.
@@ -22,6 +22,7 @@ select enum_has_labels('public', 'agent_profile_type', array['user_core', 'user_
 select is((select count(*) from pg_enum where enumtypid = 'public.agent_profile_type'::regtype), 3::bigint, 'formal Agent enum has exactly three writable Step B roles');
 select ok(not exists (select 1 from pg_enum where enumtypid = 'public.agent_profile_type'::regtype and enumlabel = 'group'), 'legacy group Agent type is not writable in Step B');
 select has_function('public', 'generate_agent_snapshot_phase3', array['uuid', 'uuid', 'boolean'], 'single controlled Agent writer exists');
+select is((select count(*) from plpgsql_check_function_tb('public.generate_agent_snapshot_phase3(uuid,uuid,boolean)'::regprocedure)), 0::bigint, 'Agent writer has no plpgsql_check diagnostics');
 select ok(not (select prosecdef from pg_proc where oid = to_regprocedure('public.generate_agent_snapshot_phase3(uuid,uuid,boolean)')), 'Agent writer is SECURITY INVOKER');
 select is((select proconfig::text from pg_proc where oid = to_regprocedure('public.generate_agent_snapshot_phase3(uuid,uuid,boolean)')), '{"search_path=public, extensions"}', 'Agent writer has fixed search path');
 select function_privs_are('public', 'generate_agent_snapshot_phase3', array['uuid', 'uuid', 'boolean'], 'authenticated', array['EXECUTE'], 'only authenticated can execute Agent writer');
