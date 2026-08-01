@@ -150,4 +150,41 @@ describe("GET /api/agents", () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({ error_code: "persistence_failed" });
   });
+
+  it("binds the safe Agent projection to the latest immutable parent for the authenticated owner and seed", async () => {
+    const seedMaybeSingle = vi.fn().mockResolvedValue({ data: { id: seedId }, error: null });
+    const seedStatus = vi.fn(() => ({ maybeSingle: seedMaybeSingle }));
+    const seedOwner = vi.fn(() => ({ eq: seedStatus }));
+    const seedSelect = vi.fn(() => ({ eq: seedOwner }));
+    const snapshotMaybeSingle = vi.fn().mockResolvedValue({ data: { id: "snapshot-latest", safety_level: "caution", error_code: null }, error: null });
+    const snapshotLimit = vi.fn(() => ({ maybeSingle: snapshotMaybeSingle }));
+    const snapshotOrder = vi.fn(() => ({ limit: snapshotLimit }));
+    const snapshotSeed = vi.fn(() => ({ order: snapshotOrder }));
+    const snapshotOwner = vi.fn(() => ({ eq: snapshotSeed }));
+    const snapshotSelect = vi.fn(() => ({ eq: snapshotOwner }));
+    const agentOrder = vi.fn().mockResolvedValue({ data: [{ id: "agent-latest", snapshot_id: "snapshot-latest", agent_type: "user_core", display_name: "You", relationship_to_user: "self", source: "conservative_snapshot", confidence: 58, evidence_refs: ["seed:submitted"], safety_level: "caution" }], error: null });
+    const agentSnapshot = vi.fn(() => ({ order: agentOrder }));
+    const agentSelect = vi.fn(() => ({ eq: agentSnapshot }));
+    const from = vi.fn((table: string) => {
+      if (table === "seed_contexts") return { select: seedSelect };
+      if (table === "agent_profile_snapshots") return { select: snapshotSelect };
+      return { select: agentSelect };
+    });
+    createSupabaseServerClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) },
+      from,
+    });
+
+    const response = await GET(new Request(`http://localhost/api/agents?seed_id=${seedId}`));
+    expect(response.status).toBe(200);
+    expect(from).toHaveBeenNthCalledWith(1, "seed_contexts");
+    expect(from).toHaveBeenNthCalledWith(2, "agent_profile_snapshots");
+    expect(snapshotSelect).toHaveBeenCalledWith("id,version,safety_level,error_code");
+    expect(snapshotOwner).toHaveBeenCalledWith("user_id", "owner-a");
+    expect(snapshotSeed).toHaveBeenCalledWith("seed_context_id", seedId);
+    expect(snapshotOrder).toHaveBeenCalledWith("created_at", { ascending: false });
+    expect(snapshotLimit).toHaveBeenCalledWith(1);
+    expect(from).toHaveBeenNthCalledWith(3, "agent_profiles");
+    expect(agentSnapshot).toHaveBeenCalledWith("snapshot_id", "snapshot-latest");
+  });
 });

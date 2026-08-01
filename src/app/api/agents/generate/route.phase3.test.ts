@@ -92,6 +92,22 @@ describe("POST /api/agents/generate", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it("rejects missing, invalid, null, and non-boolean narrow inputs without reaching the writer", async () => {
+    const cases = [
+      {},
+      { selector: { seed_id: "not-a-uuid" }, idempotency_key: idempotencyKey },
+      { selector: { seed_id: seedId }, idempotency_key: "not-a-uuid" },
+      { selector: { seed_id: seedId }, idempotency_key: idempotencyKey, include_parallel_selves: null },
+      { selector: { seed_id: seedId }, idempotency_key: idempotencyKey, include_parallel_selves: "true" },
+      { selector: null, idempotency_key: idempotencyKey },
+    ];
+
+    for (const payload of cases) {
+      expect((await POST(request(payload))).status).toBe(400);
+    }
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("passes only trusted selectors to the single controlled writer", async () => {
     rpc.mockResolvedValue({
       data: [{
@@ -158,6 +174,23 @@ describe("POST /api/agents/generate", () => {
     expect(body).toMatchObject({ snapshot: { safety_level: "downgraded", error_code: "safety_downgraded" }, agents: [{ agent_type: "user_core" }] });
     expect(JSON.stringify(body)).not.toContain("private");
     expect(JSON.stringify(body)).not.toContain("field_sources");
+  });
+
+  it("redacts forged raw Seed, provenance, and receipt fields even when an RPC response is malformedly verbose", async () => {
+    rpc.mockResolvedValue({ data: [{
+      idempotent: false,
+      snapshot: { id: "snapshot-safe", safety_level: "safe", raw_context: "do not expose", trace_id: "private-trace" },
+      agents: [{ id: "agent-safe", agent_type: "user_core", display_name: "You", field_sources: { private: true }, request_hash: "private-hash" }],
+      receipt: { idempotency_key: idempotencyKey, raw_context: "do not expose" },
+    }], error: null });
+
+    const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
+    const text = JSON.stringify(await response.json());
+    expect(response.status).toBe(201);
+    expect(text).not.toContain("do not expose");
+    expect(text).not.toContain("private-trace");
+    expect(text).not.toContain("private-hash");
+    expect(text).not.toContain("receipt");
   });
 
   it("keeps a successful replay stable and rejects malformed controlled-writer payloads", async () => {
