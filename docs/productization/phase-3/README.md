@@ -22,6 +22,11 @@ The graph is an orientation and evidence surface, never a relationship editor.
 - `key_people` are user-owned. Candidate extraction, confirmation, rename,
   deletion, merge, and supplemental people use the current authenticated user
   session, RLS, and atomic `SECURITY INVOKER` RPCs.
+- Direct Data API reads on `key_people` have column-level SELECT grants only for
+  the product-safe projection. Opaque trace, writer, idempotency, fingerprint,
+  source, and field-provenance columns are not browser-readable. Receipt rows
+  are hidden outside the guarded RPC transaction. Authenticated roles have no
+  hard DELETE/TRUNCATE/TRIGGER/REFERENCES privilege on Key People.
 - All reads are scoped to the current owner and a submitted Seed belonging to
   that owner. A user cannot read or act on another user's Seed, people, Agents,
   or graph.
@@ -124,9 +129,13 @@ deterministic extraction, five-operation management, Seed-bound replay, and
 RLS/RPC coverage. The original three-argument extraction RPC was independently
 blocked because authenticated callers could inject candidates and duplicate
 fingerprints broke replay. The hardening change removes that signature and
-normalizes extraction inside the database. Step A still requires independent
-re-acceptance before Step B is authorized. See `STEP_A_TDD_EVIDENCE.md` for the
-RED/GREEN, blocked, repair, and non-destructive database evidence.
+normalizes extraction inside the database. A subsequent effective-grant audit
+also found private metadata and receipt visibility plus broad hard-table
+privileges; the second RED/GREEN revokes those grants, narrows Data API columns,
+guards receipts, and preserves provenance through an inaccessible guarded
+trigger. Step A still requires independent re-acceptance before Step B is
+authorized. See `STEP_A_TDD_EVIDENCE.md` for the RED/GREEN, blocked, repair,
+least-privilege, Unicode, and non-destructive database evidence.
 
 ## Acceptance matrix
 

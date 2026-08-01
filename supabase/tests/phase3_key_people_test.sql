@@ -9,7 +9,7 @@ insert into auth.users (
   ('00000000-0000-0000-0000-00000000c001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-a@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-00000000d001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-b@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now());
 
-select plan(63);
+select plan(74);
 
 select has_function('public', 'extract_key_people_phase3', array['uuid', 'uuid'], 'controlled extract RPC exists');
 select hasnt_function('public', 'extract_key_people_phase3', array['uuid', 'uuid', 'jsonb'], 'caller-controlled extract RPC is removed');
@@ -19,6 +19,15 @@ select ok(not (select prosecdef from pg_proc where oid = 'public.mutate_key_peop
 select is((select proconfig::text from pg_proc where oid = to_regprocedure('public.extract_key_people_phase3(uuid,uuid)')), '{"search_path=public, extensions"}', 'extract RPC has fixed search path');
 select is((select proconfig::text from pg_proc where oid = 'public.mutate_key_people_phase3(uuid,uuid,jsonb)'::regprocedure), '{"search_path=public, extensions"}', 'mutation RPC has fixed search path');
 select function_privs_are('public', 'extract_key_people_phase3', array['uuid', 'uuid'], 'authenticated', array['EXECUTE'], 'only authenticated can execute controlled extraction');
+select function_privs_are('public', 'mutate_key_people_phase3', array['uuid', 'uuid', 'jsonb'], 'authenticated', array['EXECUTE'], 'only authenticated can execute controlled mutation');
+select has_function('public', 'stamp_key_people_phase3_provenance', array[]::text[], 'guarded provenance trigger function exists');
+select ok(not (select prosecdef from pg_proc where oid = to_regprocedure('public.stamp_key_people_phase3_provenance()')), 'provenance trigger is SECURITY INVOKER');
+select is((select proconfig::text from pg_proc where oid = to_regprocedure('public.stamp_key_people_phase3_provenance()')), '{"search_path=public, extensions"}', 'provenance trigger has fixed search path');
+select ok(
+  not has_function_privilege('authenticated', 'public.stamp_key_people_phase3_provenance()', 'execute')
+  and not has_function_privilege('anon', 'public.stamp_key_people_phase3_provenance()', 'execute'),
+  'browser roles cannot call the provenance trigger function directly'
+);
 select ok(not has_table_privilege('anon', 'public.key_people', 'select'), 'anon cannot read people');
 select ok(not has_table_privilege('authenticated', 'public.agent_profiles', 'insert'), 'Agent DML remains denied');
 select ok(not has_table_privilege('authenticated', 'public.relation_edges', 'update'), 'Edge DML remains denied');
@@ -95,6 +104,32 @@ select ok((select version = 'phase3-key-person-v1' and trace_id is not null and 
 set local role authenticated;
 select set_config('app.phase3_key_people_rpc', 'off', true);
 select is((select count(*) from public.key_people_idempotency_receipts), 0::bigint, 'receipt rows are hidden from direct browser reads outside an RPC');
+select lives_ok(
+  $$ update public.key_people set display_name = 'Direct REST tamper' $$,
+  'direct browser UPDATE is safely filtered outside the RPC guard'
+);
+select is(
+  (select count(*) from public.key_people where display_name = 'Direct REST tamper'),
+  0::bigint,
+  'direct browser UPDATE reaches zero rows outside the RPC guard'
+);
+select throws_ok(
+  $$
+    insert into public.key_people_idempotency_receipts (
+      user_id, seed_context_id, operation_kind, idempotency_key, content_hash, person_ids
+    ) values (
+      auth.uid(),
+      (select id from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'),
+      'extract',
+      '45454545-4545-4545-8545-454545454545',
+      repeat('a', 64),
+      '{}'::uuid[]
+    )
+  $$,
+  '42501',
+  'new row violates row-level security policy for table "key_people_idempotency_receipts"',
+  'direct browser receipt INSERT is denied outside the RPC guard'
+);
 
 select lives_ok($$
   select * from public.extract_key_people_phase3(
@@ -122,6 +157,15 @@ select lives_ok($$
   )
 $$, 'confirmed person can be renamed');
 select is((select display_name from public.key_people limit 1), 'Primary Manager', 'rename persists inside the owner Seed');
+reset role;
+select ok((
+  select field_sources->>'display_name' = 'user_confirmed'
+    and field_sources->>'relationship_to_user' = 'deterministic_extractor'
+    and writer_version = 'phase3-key-people-rpc-v3'
+  from public.key_people
+  where display_name = 'Primary Manager'
+), 'guarded provenance trigger preserves prior field sources while stamping the changed field');
+set local role authenticated;
 select throws_ok($$
   select * from public.mutate_key_people_phase3(
     (select id from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'),
@@ -199,6 +243,25 @@ select throws_ok($$
     '79797979-7979-4797-8797-797979797979'
   )
 $$, 'P0001', 'seed_not_found', 'unsubmitted Seeds cannot enter Key People persistence');
+
+select * from public.submit_seed_context_phase2(
+  '91919191-9191-4191-8191-919191919191',
+  U&'{"trackType":"crossroad","timeWindow":"30_days","questionText":"Should I accept the new role?","situationSummary":"My \4E0A\7EA7 and \62DB\8058 contact need an answer this week.","recentEvents":"An answer is needed this week.","keyPeopleText":"\4E0A\7EA7 and \62DB\8058.","decisionOptions":"Accept or negotiate.","worries":"Timing is uncertain.","forbiddenActions":"Do not burn bridges.","safetyBoundaries":"Keep communication professional.","desiredOutput":"Compare pressure points.","privacyAck":true,"privacySafetyAck":true}'::jsonb
+);
+select lives_ok($$
+  select * from public.extract_key_people_phase3(
+    (select id from public.seed_contexts where submission_key = '91919191-9191-4191-8191-919191919191'),
+    '92929292-9292-4292-8292-929292929292'
+  )
+$$, 'Unicode role keywords are decoded and extracted without regex corruption');
+select is((
+  select count(*)
+  from public.key_people
+  where seed_context_id = (
+    select id from public.seed_contexts where submission_key = '91919191-9191-4191-8191-919191919191'
+  )
+    and display_name in ('Current manager', 'Recruiter')
+), 2::bigint, 'Unicode manager and recruiter keywords map to two conservative candidates');
 
 select set_config('test.phase3_foreign_seed', (select id::text from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'), true);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d001', true);
