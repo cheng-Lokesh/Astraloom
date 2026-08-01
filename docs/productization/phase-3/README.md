@@ -116,14 +116,17 @@ foreign object exists.
 5. **Step E — regression and docs:** execute the agreed regression matrix,
    document observed results, and re-check this contract against the code.
 
-### Step A delivery record
+### Step A implementation record
 
-Step A is complete on `productization/phase-3-people-graph`: submitted Track A
-Seed-owned Key People persistence, deterministic extraction, five-operation
-management, content-bound replay, and RLS/RPC coverage are implemented. It does
-not authorize Step B Agent snapshots, graph generation, UI work, or any other
-later step. See `STEP_A_TDD_EVIDENCE.md` for the RED/GREEN checkpoints and
-non-destructive database evidence.
+Step A implementation on `productization/phase-3-people-graph` contains
+submitted Track A Seed-owned Key People persistence, database-controlled
+deterministic extraction, five-operation management, Seed-bound replay, and
+RLS/RPC coverage. The original three-argument extraction RPC was independently
+blocked because authenticated callers could inject candidates and duplicate
+fingerprints broke replay. The hardening change removes that signature and
+normalizes extraction inside the database. Step A still requires independent
+re-acceptance before Step B is authorized. See `STEP_A_TDD_EVIDENCE.md` for the
+RED/GREEN, blocked, repair, and non-destructive database evidence.
 
 ## Acceptance matrix
 

@@ -1,43 +1,67 @@
 # Phase 3 Step A TDD evidence
 
-Source: the authorized Phase 3 README user journey, converted directly into
-route and database guarantees during this implementation. No UI/browser work,
-LLM, service-role client, Agent/Edge writer, Track B, or V2 code was included.
+Scope: formal submitted Track A Seed and Key People persistence only. No UI,
+browser implementation, LLM, service-role client, Agent/Edge writer, Track B,
+Phase 4, or frozen V2 code is included.
 
-## Journeys and checkpoints
+## Checkpoint history
 
-| Journey | RED evidence | GREEN evidence | Guarantee |
-|---|---|---|---|
-| Current user extracts people from an owned submitted Seed | `npm test -- src/app/api/key-people/extract/route.phase3.test.ts` failed 3 assertions because the legacy route rejected the selector and did not call the Phase 3 RPC. | The same focused route suite passes. | The API accepts only selector + UUID key, DB-re-reads the submitted Seed, uses the deterministic extractor, and persists through one RPC. |
-| Current user recovers and manages people | Missing GET/confirm route imports were part of RED; the test checkpoint was committed before implementation. | `18` focused route assertions pass. | GET hides foreign/missing Seeds as `404 seed_not_found`; confirm/rename/delete/merge/supplement use strict batches and stable errors. |
-| Isolation, replay, atomicity, and formal provenance | `supabase/tests/phase3_key_people_test.sql` was added before migration/RPC implementation. | `36/36` pgTAP checks pass in a rollback fixture. | RLS, submitted-Seed gates, same-key replay/conflict, transaction rollback, merge union, status transitions, cross-user/Cross-Seed denial, and no Agent/Edge DML expansion hold. |
+1. Initial contract RED: `744c0f0 test: add Phase 3 key people contract`.
+2. Initial GREEN: `afa4f5e feat: persist Phase 3 key people`.
+3. Independent attack review at `afa4f5e` returned **BLOCKED**:
+   - an authenticated owner could bypass the API and pass fabricated candidate
+     fields to `extract_key_people_phase3(uuid,uuid,jsonb)`;
+   - duplicate fingerprints produced duplicate receipt UUIDs, so the first
+     request succeeded but the same-key replay raised `persistence_failed`.
+4. Hardening RED: `863c0e7 test: expose Phase 3 extraction trust gaps`. The
+   focused route suite failed because the route still read Seed prose and sent
+   `p_candidates`; the new pgTAP contract required removal of that signature.
+5. Hardening GREEN: the follow-up migration removes the three-argument function
+   and creates `extract_key_people_phase3(uuid,uuid)`. It re-reads the invoking
+   user's immutable submitted Seed and derives the canonical candidate set
+   inside the database.
 
-RED checkpoint commit: `744c0f0 test: add Phase 3 key people contract`.
+## Security and replay guarantees
+
+- The browser/API supplies only `seed_context_id` and `idempotency_key`.
+- Both writers remain `SECURITY INVOKER` with fixed
+  `search_path=public, extensions`, non-empty `auth.uid()`, submitted ownership,
+  and transaction-local RLS guards.
+- The role catalog is conservative and ordered. It stores fixed provenance
+  labels, never raw Seed prose, and repeated role mentions produce one
+  fingerprint and one receipt UUID.
+- Receipt hashes bind the immutable Seed payload hash, Seed id, and extractor
+  version. Reusing a key for another Seed conflicts; same-key replay validates
+  the real unique rows before returning.
+- Direct table DML, anonymous access, cross-owner access, draft Seeds, and
+  browser DML for Agent/RelationEdge remain denied.
 
 ## Automated results
 
 | Check | Result |
 |---|---|
-| Focused route tests | PASS — 18 tests, 3 files |
-| Focused coverage | PASS — statements 98.96%, branches 91.66%, functions 95%, lines 100% |
-| Phase 3 pgTAP | PASS — 36/36, inside `BEGIN … ROLLBACK` |
-| Phase 2 pgTAP regression | PASS — 17/17, inside `BEGIN … ROLLBACK` |
-| Database function lint | PASS — `plpgsql_check` reported no findings for both Phase 3 RPCs |
-| Lint / type check | PASS |
-| V2 comparison | PASS — `git diff productization/phase-1-contract -- src/lib/v2` is empty |
+| Focused extract route | PASS - 5/5 |
+| Phase 3 pgTAP | PASS - 43/43 inside `BEGIN` / `ROLLBACK` |
+| Phase 2 pgTAP regression | PASS - 7/7 controlled Seed plus 10/10 atomic submission |
+| Candidate injection attack | PASS - old three-argument function absent; attempted call writes zero rows |
+| Duplicate/replay attack | PASS - two repeated manager mentions plus recruiter yield two unique rows and two unique receipt UUIDs; replay remains at two rows and one receipt |
+| Migration strategy | PASS - follow-up migration only; no database reset and no edit to the already-applied Step A migration |
+| Database function lint | PASS - `plpgsql_check` returned zero rows for both Step A RPCs |
+| Frozen V2 comparison | PASS - zero diff from `productization/phase-1-contract` |
+| Full tests, lint, type check, build | PASS - 45 files and 444 tests; ESLint, TypeScript, and the 103-page production build completed |
 
 ## Non-destructive database evidence
 
-The additive migration ran on the local Supabase database after recording table
-counts. Before and after the rollback fixtures: `seed_contexts=16`,
-`key_people=0`, `agent_profiles=0`, `relation_edges=0`, and
-`consent_events=16`; `key_people_idempotency_receipts=0` after the fixture.
-No reset, delete, or data rewrite was used.
+Before the hardening migration and after all rollback fixtures:
+`seed_contexts=16`, `key_people=0`,
+`key_people_idempotency_receipts=0`, `agent_profiles=0`,
+`relation_edges=0`, and `consent_events=16`. The new migration was applied as a
+single transaction. No reset, persistent fixture, deletion, or business-data
+rewrite was used.
 
-## Known boundary
+## Remaining gate
 
-The transaction-local `app.phase3_key_people_rpc` RLS guard is required because
-the RPCs intentionally use `SECURITY INVOKER`: authenticated needs ordinary
-table privileges for PostgreSQL to execute an invoker function, while direct
-REST writes remain RLS-denied unless the narrow RPC sets the local guard. The
-functions re-read `auth.uid()` and submitted ownership before setting it.
+This implementation does not authorize Step B by itself. A separate read-only
+review must repeat the authenticated direct-RPC attack, duplicate replay,
+anonymous/two-user isolation, full repository check, V2 comparison, and
+local/upstream/origin SHA verification.

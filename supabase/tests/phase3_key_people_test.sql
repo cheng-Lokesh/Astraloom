@@ -9,7 +9,7 @@ insert into auth.users (
   ('00000000-0000-0000-0000-00000000c001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-a@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-00000000d001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-b@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now());
 
-select plan(44);
+select plan(43);
 
 select has_function('public', 'extract_key_people_phase3', array['uuid', 'uuid'], 'controlled extract RPC exists');
 select hasnt_function('public', 'extract_key_people_phase3', array['uuid', 'uuid', 'jsonb'], 'caller-controlled extract RPC is removed');
@@ -46,10 +46,10 @@ select throws_ok(
 select throws_ok($$
   select * from public.extract_key_people_phase3(
     (select id from public.seed_contexts where submission_key = '33333333-3333-4333-8333-333333333333'),
-    '43434343-4343-4343-8343-434343434343',
+    '43434343-4343-4343-8343-434343434343'::uuid,
     '[{"display_name":"Attacker supplied individual","relationship_to_user":"fabricated relation","role_type":"fabricated role","confidence":99,"known_evidence":[],"missing_fields":[],"source":"seed_context_text"}]'::jsonb
   )
-$$, 'caller-controlled candidate injection signature is unavailable');
+$$, '42883', 'function public.extract_key_people_phase3(uuid, uuid, jsonb) does not exist', 'caller-controlled candidate injection signature is unavailable');
 select is((select count(*) from public.key_people), 0::bigint, 'failed candidate injection writes zero people');
 
 select lives_ok($$

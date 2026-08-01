@@ -1070,9 +1070,14 @@ client JSON.
 
 The only Step A writers are `SECURITY INVOKER` RPCs with a fixed
 `public, extensions` search path. They require a non-empty `auth.uid()`,
-re-read `status=submitted` ownership, and use an RPC-local RLS guard; direct
-REST mutations fail. No grant or policy change expands browser DML for
-`agent_profiles` or `relation_edges`.
+re-read frozen `status=submitted` Track A ownership, and use an RPC-local RLS
+guard; direct REST mutations fail. The extraction RPC accepts only the Seed id
+and UUID idempotency key. It derives candidate fields inside the database from
+the immutable Seed payload, canonicalizes and de-duplicates the role set, and
+binds the receipt hash to the Seed payload hash plus extractor version. A
+browser caller can trigger extraction for its own Seed but cannot supply or
+override candidate fields or their provenance. No grant or policy change
+expands browser DML for `agent_profiles` or `relation_edges`.
 
 - User-owned rows must only be readable by the owning user.
 - User-owned rows must only be writable by the owning user unless the table is system-owned.

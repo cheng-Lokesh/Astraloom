@@ -39,10 +39,14 @@ Allowed operations:
 
 - Require the current Supabase user session.
 - Accept only a strict Seed selector and UUID idempotency key.
-- Re-read an owned `status=submitted`, crossroad Seed from the database, then
-  run the existing deterministic `extractPeopleCandidates` mapping.
-- Persist only through `extract_key_people_phase3`; low-confidence output stays
-  `needs_confirmation` and is never silently confirmed.
+- Call only the two-argument `extract_key_people_phase3(seed_id,
+  idempotency_key)` boundary. That RPC re-reads an owned, frozen
+  `status=submitted` crossroad Seed and derives a conservative, ordered role
+  set from persisted Seed fields inside the database.
+- The API and browser never send candidate names, relationships, roles,
+  confidence, evidence, source, or provenance to the extraction writer.
+- Low-confidence output stays `needs_confirmation` and is never silently
+  confirmed. Repeated role mentions are normalized to one canonical candidate.
 - Return `{ ok, error_code, trace_id }` on every result. Foreign and missing
   Seeds both return `404 seed_not_found`.
 

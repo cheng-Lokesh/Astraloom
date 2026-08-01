@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  extractFormalCandidates,
-  type SubmittedSeedRecord,
-} from "@/lib/people/formal-key-people";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const requestSchema = z.object({
   selector: z.object({ seed_id: z.string().uuid() }).strict(),
   idempotency_key: z.string().uuid(),
 }).strict();
-
-const submittedSeedColumns = "id, user_question, simulation_track, time_horizon, raw_context, decision_options, forbidden_actions, desired_output, safety_flags";
 
 function traceId() {
   return `key_people_extract_${crypto.randomUUID()}`;
@@ -36,21 +30,9 @@ export async function POST(request: Request) {
   const input = requestSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) return failure(400, "invalid_request", traceIdValue);
 
-  const { data: seed, error: seedError } = await supabase
-    .from("seed_contexts")
-    .select(submittedSeedColumns)
-    .eq("id", input.data.selector.seed_id)
-    .eq("status", "submitted")
-    .maybeSingle();
-
-  if (seedError) return failure(500, "persistence_failed", traceIdValue);
-  if (!seed) return failure(404, "seed_not_found", traceIdValue);
-
-  const candidates = extractFormalCandidates(seed as SubmittedSeedRecord);
   const { data, error } = await supabase.rpc("extract_key_people_phase3", {
     p_seed_context_id: input.data.selector.seed_id,
     p_idempotency_key: input.data.idempotency_key,
-    p_candidates: candidates,
   });
 
   if (error) {
