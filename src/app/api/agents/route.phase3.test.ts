@@ -31,6 +31,37 @@ describe("GET /api/agents", () => {
     });
   });
 
+  it("rejects malformed, duplicate, unknown, and non-UUID selectors after authenticating", async () => {
+    createSupabaseServerClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) },
+    });
+
+    for (const suffix of ["", "?seed_id=not-a-uuid", `?seed_id=${seedId}&seed_id=${seedId}`, `?seed_id=${seedId}&extra=forbidden`]) {
+      const response = await GET(new Request(`http://localhost/api/agents${suffix}`));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error_code: "invalid_request" });
+    }
+  });
+
+  it("hides authentication lookup and persistence details", async () => {
+    createSupabaseServerClient.mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: { message: "private auth detail" } }) },
+    });
+    const authError = await GET(new Request(`http://localhost/api/agents?seed_id=${seedId}`));
+    expect(authError.status).toBe(401);
+    expect(JSON.stringify(await authError.json())).not.toContain("private auth detail");
+
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: { message: "private database detail" } });
+    const from = vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle })) })) })) }));
+    createSupabaseServerClient.mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) },
+      from,
+    });
+    const persistenceError = await GET(new Request(`http://localhost/api/agents?seed_id=${seedId}`));
+    expect(persistenceError.status).toBe(500);
+    expect(JSON.stringify(await persistenceError.json())).not.toContain("private database detail");
+  });
+
   it("returns the same not-found result for missing, foreign, draft, and unsubmitted seeds", async () => {
     const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
     const status = vi.fn(() => ({ maybeSingle }));
@@ -102,5 +133,21 @@ describe("GET /api/agents", () => {
     expect(agentSelect).toHaveBeenCalledWith(
       "id,snapshot_id,key_person_id,version,agent_type,display_name,relationship_to_user,source,confidence,evidence_refs,safety_level",
     );
+  });
+
+  it("maps empty or malformed Agent persistence results to a safe failure", async () => {
+    const emptyOrder = vi.fn().mockResolvedValue({ data: null, error: null });
+    const emptySelect = vi.fn(() => ({ eq: vi.fn(() => ({ order: emptyOrder })) }));
+    const seedMaybeSingle = vi.fn().mockResolvedValue({ data: { id: seedId }, error: null });
+    const seedSelect = vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: seedMaybeSingle })) })) }));
+    const from = vi.fn((table: string) => table === "seed_contexts" ? { select: seedSelect } : { select: emptySelect });
+    createSupabaseServerClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) },
+      from,
+    });
+
+    const response = await GET(new Request(`http://localhost/api/agents?seed_id=${seedId}`));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ error_code: "persistence_failed" });
   });
 });

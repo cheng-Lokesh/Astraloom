@@ -69,6 +69,29 @@ describe("POST /api/agents/generate", () => {
     expect(from).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed JSON, an invalid content type, and unknown nested selector keys", async () => {
+    const malformed = new Request("http://localhost/api/agents/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    expect((await POST(malformed)).status).toBe(400);
+
+    const nonJson = new Request("http://localhost/api/agents/generate", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }),
+    });
+    expect((await POST(nonJson)).status).toBe(400);
+
+    const nestedUnknown = await POST(request({
+      selector: { seed_id: seedId, user_id: "forbidden" },
+      idempotency_key: idempotencyKey,
+    }));
+    expect(nestedUnknown.status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("passes only trusted selectors to the single controlled writer", async () => {
     rpc.mockResolvedValue({
       data: [{
@@ -108,12 +131,32 @@ describe("POST /api/agents/generate", () => {
     rpc.mockResolvedValueOnce({ data: null, error: { message: "safety_blocked" } });
     expect((await POST(request(payload))).status).toBe(409);
 
-    rpc.mockResolvedValueOnce({ data: null, error: { message: "safety_downgraded" } });
-    expect((await POST(request(payload))).status).toBe(201);
-
     rpc.mockResolvedValueOnce({ data: null, error: { message: "idempotency_key_content_conflict" } });
     const conflict = await POST(request(payload));
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ error_code: "idempotency_key_content_conflict" });
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "private detail", details: "private detail" } });
+    const hidden = await POST(request(payload));
+    expect(hidden.status).toBe(500);
+    expect(JSON.stringify(await hidden.json())).not.toContain("private detail");
+
+    rpc.mockResolvedValueOnce({ data: [], error: null });
+    expect((await POST(request(payload))).status).toBe(500);
+  });
+
+  it("returns a downgraded snapshot only from the controlled writer and never exposes provenance", async () => {
+    rpc.mockResolvedValue({ data: [{
+      idempotent: false,
+      snapshot: { id: "snapshot-d", version: "phase3-agent-snapshot-v1", safety_level: "downgraded", error_code: "safety_downgraded", trace_id: "private" },
+      agents: [{ id: "agent-d", agent_type: "user_core", display_name: "You", field_sources: { private: true }, trace_id: "private" }],
+    }], error: null });
+
+    const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
+    const body = await response.json();
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({ snapshot: { safety_level: "downgraded", error_code: "safety_downgraded" }, agents: [{ agent_type: "user_core" }] });
+    expect(JSON.stringify(body)).not.toContain("private");
+    expect(JSON.stringify(body)).not.toContain("field_sources");
   });
 });
