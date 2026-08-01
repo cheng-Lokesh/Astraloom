@@ -52,11 +52,13 @@ V2 Core 是这些对象的**确定性核心消费者/生产者**，不是产品�
 
 尚未确认提交的用户原始草稿保持 local-first；不得默认自动上传。页面和数据契约必须显式区分 `local draft`、`submitted SeedContext` 与 `formal simulation input`。只有在用户明确确认/提交后，才创建带 `user_id`、`trace_id`、版本和同意记录的正式 `SeedContext`；后续正式异步运行只能消费冻结且已提交的 `SeedContext`，不能消费任意 local draft。
 
-## 6. 下一阶段唯一目标
+## 6. Phase 2 数据地基状态与后续授权
 
-让一名已认证的内部测试用户，将确认提交的 Track A SeedContext 安全持久化到带 RLS 的数据层，并能在刷新、退出和重新登录后恢复；两个测试用户之间不能发生任何数据越权。
+Phase 2 已达到本地数据地基门槛：已认证用户可以将明确确认的 Track A `SeedContext` 及同意记录安全持久化到受 RLS 保护的数据层；刷新、退出和重新登录后只恢复自己的正式版本；未提交内容保持 local-first；普通用户之间不能跨用户读取或写入。
 
-明确不做：人物抽取与确认、Agent 生成、图谱、真实 LLM 扩展、推演运行、队列或 Worker、Event、Claim、Report、支付和 Track B。
+本阶段的实现和独立验收已完成，但正式关闭仍待 Phase 2 收尾提交、推送，以及本地、upstream 与远端一致性独立复验。本状态只记录已验证的阶段事实，不构成 Phase 3 或任何后续阶段的启动授权。
+
+Phase 2 明确不扩展到人物抽取与确认、Agent 生成、图谱、真实 LLM 扩展、推演运行、队列或 Worker、Event、Claim、Report、支付或 Track B。这些边界和安全原则在后续阶段仍然有效，任何实际启动均需创始人明确授权。
 
 ## 7. No-Go
 

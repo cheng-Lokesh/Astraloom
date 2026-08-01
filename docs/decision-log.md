@@ -61,3 +61,15 @@ Consequence: Use `docs/implementation-state.md`, `docs/stage-index.md`, `docs/de
 Decision: The project should progress deliberately toward a complete, stable, accurate product that creates payment pull before launch pressure.
 
 Consequence: Future work should improve user-visible value, reliability, safety, and cost control together; do not add expensive AI calls, Stripe writes, deployments, report unlocks, or privileged backend writes until the gates are explicit and verified.
+
+## DEC-011: Phase 2 Controlled Data Foundation Is Locally Accepted, Not Formally Closed
+
+Decision: Phase 2 has completed local implementation and independent acceptance for controlled Track A SeedContext persistence, recovery, user isolation, anonymous denial, local-draft separation, idempotency, and atomicity. Formal closure remains pending the Phase 2 closing commit, push, and independent local/upstream/remote consistency verification.
+
+Consequence: Do not describe Phase 2 as formally closed, production-ready, deployed, Alpha-complete, or MVP-complete. Phase 3 remains unstarted and requires explicit founder authorization.
+
+## DEC-012: Serialize Test Files To Preserve Aggregate Stability
+
+Decision: Set Vitest `fileParallelism: false` after evidence identified file-level parallel resource contention as the source of aggregate-only timeouts.
+
+Consequence: Full-suite runs are slower because files execute serially. This does not change test timeouts, coverage thresholds, test cases, or V2 logic; regression evidence must continue to cover the normal aggregate suite and coverage run.

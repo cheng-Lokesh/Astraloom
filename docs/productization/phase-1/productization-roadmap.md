@@ -21,7 +21,7 @@ Alpha 在 Productization Phase 5 后达成；完整 MVP 在 Productization Phase
 
 | Productization Phase / Delivery Step | 里程碑 | 主要风险 | 用户可见结果 | 明确不做 |
 |---|---|---|---|---|
-| Phase 2 / Step 1 | 受控数据地基 | 无归属/无持久化 | 已提交 SeedContext 的安全保存与恢复 | 人物、图谱、运行、支付 |
+| Phase 2 / Step 1 | 受控数据地基（本地实现与独立验收完成；正式关闭待 push + 远端一致性复验） | 无归属/无持久化 | 已提交 SeedContext 的安全保存与恢复 | 人物、图谱、运行、支付 |
 | Phase 3 / Step 2 | 人物确认与只读图谱 | 输入不能成为可信生态 | 用户确认人物并看只读来源图 | 自由改边、Track B |
 | Phase 4 / Step 3 | 异步可恢复运行 | 纯引擎无法变成服务 | 可见 queued/running/failed/retry 状态 | 批量频率与付费 |
 | Phase 5 / Step 4 | 证据结果与 Alpha | 结果不能解释或验收 | Event->Claim->Report 的 Track A Alpha | Track B、公开发布 |
@@ -32,7 +32,9 @@ Alpha 在 Productization Phase 5 后达成；完整 MVP 在 Productization Phase
 
 ## Productization Phase 2 / Delivery Step 1：受控数据地基（P0）
 
-**下一阶段唯一目标**：让一名已认证的内部测试用户，将确认提交的 Track A SeedContext 安全持久化到带 RLS 的数据层，并能在刷新、退出和重新登录后恢复；两个测试用户之间不能发生任何数据越权。
+**当前状态**：本地实现与独立验收已完成，正式关闭待本阶段收尾提交、推送，以及本地、upstream 与远端一致性独立复验。当前状态不构成 Phase 3 启动授权。
+
+**已达到的数据地基门槛**：已认证用户可将确认提交的 Track A SeedContext 安全持久化到带 RLS 的数据层，并可在刷新、退出和重新登录后恢复；普通用户之间不能跨用户读取或写入数据。未提交内容仍保持 local-first，不默认同步。
 
 **local-first 边界**：尚未确认提交的原始用户草稿保持 local-first，不默认自动上传。页面必须区分 local draft、submitted SeedContext 与 formal simulation input；本阶段验收对象仅为用户确认/提交后创建的正式 `SeedContext`。后续正式异步运行只能消费冻结且已提交的 `SeedContext`。
 
@@ -45,9 +47,11 @@ Alpha 在 Productization Phase 5 后达成；完整 MVP 在 Productization Phase
 - **自动化/手工/Golden**：双用户越权拒绝、session 恢复、submitted SeedContext 恢复和 schema migration 测试；手工用两账户交叉验证；Golden：最小 Track A 已确认提交输入。
 - **P0 停止条件**：任意跨用户读取、正式对象缺少 user/version/trace/consent、或未提交 local draft 被默认同步。
 - **允许文件范围/分支/提交顺序**：`src/app/login/**`、`src/app/app/new/{scene,intake}/**`、`src/lib/{supabase,seed-context,v2/reality-boundary}/**`、`supabase/migrations/**`、`tests/**`、`docs/**`；分支 `productization/phase-2-data-foundation`；先 migration/contract，再 repository/API，再 UI/tests/docs。
-- **下一门槛**：一条已确认提交的 Track A SeedContext 可持久化、恢复且 RLS 通过。
+- **正式关闭前的收尾门槛**：仅限 Phase 2 文档收尾提交、推送，以及本地、upstream 与远端一致性独立复验；不得在此之前启动后续阶段。
 
 ## Productization Phase 3 / Delivery Step 2：人物确认与只读图谱（P0）
+
+**状态**：下一计划阶段，尚未获授权；不得启动实现、配置变更、迁移或测试工作。
 
 - **用户可见结果**：从已保存输入抽取人物；用户确认、合并、删除、重命名后得到不可编辑的来源/置信度图谱。
 - **技术目标**：`key_people`、`agent_profiles`、`relation_edges` repository；将 confirmed people 连接 Agent draft；图谱从数据读取。
