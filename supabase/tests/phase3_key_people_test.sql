@@ -9,7 +9,7 @@ insert into auth.users (
   ('00000000-0000-0000-0000-00000000c001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-a@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-00000000d001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'phase3-b@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now());
 
-select plan(43);
+select plan(63);
 
 select has_function('public', 'extract_key_people_phase3', array['uuid', 'uuid'], 'controlled extract RPC exists');
 select hasnt_function('public', 'extract_key_people_phase3', array['uuid', 'uuid', 'jsonb'], 'caller-controlled extract RPC is removed');
@@ -23,6 +23,23 @@ select ok(not has_table_privilege('anon', 'public.key_people', 'select'), 'anon 
 select ok(not has_table_privilege('authenticated', 'public.agent_profiles', 'insert'), 'Agent DML remains denied');
 select ok(not has_table_privilege('authenticated', 'public.relation_edges', 'update'), 'Edge DML remains denied');
 select has_index('public', 'key_people', 'key_people_owner_seed_idempotency_idx', 'owner-seed idempotency index exists');
+select ok(not has_table_privilege('authenticated', 'public.key_people', 'delete'), 'hard delete is not granted on Key People');
+select ok(not has_table_privilege('authenticated', 'public.key_people', 'truncate'), 'TRUNCATE is not granted on Key People');
+select ok(not has_table_privilege('authenticated', 'public.key_people', 'trigger'), 'TRIGGER is not granted on Key People');
+select ok(not has_table_privilege('authenticated', 'public.key_people', 'references'), 'REFERENCES is not granted on Key People');
+select ok(has_column_privilege('authenticated', 'public.key_people', 'display_name', 'select'), 'product-safe display name remains readable');
+select ok(has_column_privilege('authenticated', 'public.key_people', 'evidence_refs', 'select'), 'product-safe evidence references remain readable');
+select ok(not has_column_privilege('authenticated', 'public.key_people', 'trace_id', 'select'), 'opaque trace metadata is not browser-readable');
+select ok(not has_column_privilege('authenticated', 'public.key_people', 'writer_version', 'select'), 'writer version is not browser-readable');
+select ok(not has_column_privilege('authenticated', 'public.key_people', 'idempotency_key', 'select'), 'idempotency key is not browser-readable');
+select ok(not has_column_privilege('authenticated', 'public.key_people', 'extraction_fingerprint', 'select'), 'extraction fingerprint is not browser-readable');
+select ok(not has_column_privilege('authenticated', 'public.key_people', 'field_sources', 'select'), 'field-source ledger is not browser-readable');
+select ok(not has_column_privilege('authenticated', 'public.key_people', 'source', 'select'), 'internal source tag is not browser-readable');
+select ok(not has_table_privilege('authenticated', 'public.key_people_idempotency_receipts', 'truncate'), 'TRUNCATE is not granted on receipts');
+select ok(not has_table_privilege('authenticated', 'public.key_people_idempotency_receipts', 'trigger'), 'TRIGGER is not granted on receipts');
+select ok(not has_table_privilege('authenticated', 'public.key_people_idempotency_receipts', 'references'), 'REFERENCES is not granted on receipts');
+select ok(not has_table_privilege('authenticated', 'public.key_people_idempotency_receipts', 'update'), 'receipt updates remain denied');
+select ok(not has_table_privilege('authenticated', 'public.key_people_idempotency_receipts', 'delete'), 'receipt deletes remain denied');
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000c001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -42,6 +59,16 @@ select throws_ok(
   'new row violates row-level security policy for table "key_people"',
   'direct key_people REST writes are denied outside the RPC guard'
 );
+select throws_ok(
+  $$ select trace_id from public.key_people limit 1 $$,
+  '42501',
+  'permission denied for table key_people',
+  'browser role cannot select internal Key People metadata'
+);
+select lives_ok(
+  $$ select id, display_name, relationship_to_user, role_type, confidence, known_evidence, missing_fields, status, merged_into_id, evidence_refs, version from public.key_people limit 1 $$,
+  'browser role can select only the product-safe Key People projection'
+);
 
 select throws_ok($$
   select * from public.extract_key_people_phase3(
@@ -60,10 +87,14 @@ select lives_ok($$
 $$, 'submitted owner can persist deterministic candidate extraction');
 
 select is((select count(*) from public.key_people), 2::bigint, 'repeated role mentions produce one manager and one recruiter');
+reset role;
 select is((select count(distinct extraction_fingerprint) from public.key_people), 2::bigint, 'canonical extraction fingerprints are unique');
 select is((select cardinality(person_ids) from public.key_people_idempotency_receipts where operation_kind = 'extract'), 2, 'receipt contains one UUID per unique person');
 select ok((select bool_and(status in ('candidate', 'needs_confirmation')) from public.key_people), 'candidates remain provisional');
 select ok((select version = 'phase3-key-person-v1' and trace_id is not null and field_sources ? 'display_name' from public.key_people limit 1), 'formal provenance is persisted');
+set local role authenticated;
+select set_config('app.phase3_key_people_rpc', 'off', true);
+select is((select count(*) from public.key_people_idempotency_receipts), 0::bigint, 'receipt rows are hidden from direct browser reads outside an RPC');
 
 select lives_ok($$
   select * from public.extract_key_people_phase3(
