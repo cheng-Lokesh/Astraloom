@@ -16,6 +16,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     clearMocks: true,
     restoreMocks: true,
+    fileParallelism: false,
     coverage: {
       provider: "v8",
       include: [

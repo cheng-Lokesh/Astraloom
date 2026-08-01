@@ -69,4 +69,66 @@ an external-command timeout, or a need to increase the tests' 5000 ms timeout.
 
 ## GREEN evidence
 
-Pending the configuration change and the required repeated regression runs.
+The only runtime configuration change is `fileParallelism: false` in
+`vitest.config.ts`. This serializes test *files* through one worker; it does
+not skip tests, disable isolation, change test code, increase a timeout, or
+change any coverage threshold.
+
+### Affected singleton targets
+
+| Command | Exit | Result | Wall time |
+|---|---:|---|---:|
+| `npm test -- src/lib/v2/outcome-calibration/forecast-lock.test.ts` | 0 | 1 file, 10 tests passed | 14.60 s |
+| `npm test -- src/lib/v2/migration-async-execution/migration-async-execution.test.ts` | 0 | 1 file, 22 tests passed | 19.29 s |
+
+### Phase 2 V2 gates
+
+| Command | Exit | Result | Wall time |
+|---|---:|---|---:|
+| `npm run test:v2:evidence` | 0 | 5 files, 83 tests passed | 5.13 s |
+| `npm run test:v2:world` | 0 | 6 files, 116 tests passed | 7.58 s |
+| `npm run test:v2:trajectory` | 0 | 4 files, 63 tests passed | 5.52 s |
+| `npm run test:v2:analysis` | 0 | 4 files, 47 tests passed; coverage S 91.13%, B 85.24%, F 97.22%, L 97.31% | 9.59 s |
+| `npm run test:v2:claims-reports` | 0 | 2 files, 23 tests passed; coverage S 91.10%, B 85.26%, F 95.94%, L 96.34% | 24.27 s |
+| `npm run test:v2:outcome-calibration` | 0 | 4 files, 40 tests passed; coverage S 90.58%, B 86.61%, F 97.54%, L 94.23% | 65.69 s |
+| `npm run test:v2:migration-async-execution` | 0 | 1 file, 22 tests passed; coverage S 92.25%, B 86.17%, F 100%, L 98.62% | 22.79 s |
+
+### Repeated aggregate stability gates
+
+| Command | Exit | Result | Wall time |
+|---|---:|---|---:|
+| `npm test` (run 1) | 0 | 42 files, 426 tests passed | 109.06 s |
+| `npm test` (run 2) | 0 | 42 files, 426 tests passed | 109.15 s |
+| `npm test` (run 3) | 0 | 42 files, 426 tests passed | 109.90 s |
+| `npm run test:coverage` (run 1) | 0 | 42 files, 426 tests passed; coverage S 90.82%, B 81.21%, F 95.44%, L 93.52% | 143.40 s |
+| `npm run test:coverage` (run 2) | 0 | 42 files, 426 tests passed; coverage S 90.82%, B 81.21%, F 95.44%, L 93.52% | 146.79 s |
+
+The unchanged aggregate thresholds are statements 80%, lines 80%, functions
+80%, and branches 60%. Both coverage runs exceeded every threshold.
+
+### Project gates
+
+| Command | Exit | Result | Wall time |
+|---|---:|---|---:|
+| `npm run lint` | 0 | ESLint passed | 51.77 s |
+| `npm run type-check` | 0 | Next route types and TypeScript passed | 12.50 s |
+| `npm run build` | 0 | Production build passed | 95.23 s |
+| `npm run check` | 0 | 42 files, 426 tests; lint; type check; and production build passed | 314.34 s |
+
+`npm run check:ci` was intentionally not run: its exact components are one
+coverage aggregate plus lint, type check, and build, all of which were already
+run successfully above (including two coverage aggregates). A further identical
+composition would add no distinct stability evidence.
+
+## Final guarantees and boundary checks
+
+- Three consecutive normal aggregates and two consecutive coverage aggregates
+  passed without a 5000 ms timeout or any skipped/disabled test.
+- The passing V2 gates, singleton targets, and project checks establish that
+  file-level serialization resolves the observed scheduling-sensitive runner
+  failure while preserving all existing behavior checks.
+- `src/lib/v2/**` remains unchanged relative to
+  `productization/phase-1-contract`; the final diff is limited to this evidence
+  report and `vitest.config.ts`.
+- No database, localhost service, browser, Phase 2 roadmap/acceptance/decision
+  document, or Phase 3 work was changed.
