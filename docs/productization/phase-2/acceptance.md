@@ -1,5 +1,19 @@
 # Phase 2 收尾候选验收记录（脱敏）
 
+## Authoritative final result (2026-08-01)
+
+**PASS — Phase 2 is formally closed.** The closing push and independent final
+verification completed successfully. Local HEAD, upstream, and
+`origin/productization/phase-2-data-foundation` were all
+`79cc6970d61eb8695b8cdbbbac68de77059f99ea`; the worktree was clean and
+`src/lib/v2/**` remained zero-diff against `productization/phase-1-contract`.
+The final `npm run check` and coverage evidence were PASS before this final
+three-way check.
+
+The remainder of this file preserves the earlier acceptance evidence and its
+then-pending wording as history only. This result does not claim Alpha or MVP
+completion.
+
 ## 记录用途与状态
 
 本记录汇总 Phase 2 / Delivery Step 1“受控数据地基”的本地实现与独立验收结论，供收尾提交前恢复上下文和复验使用。检查点提交为 `7f7673c585e0f4278524683c6b8899e86c5803dd`。

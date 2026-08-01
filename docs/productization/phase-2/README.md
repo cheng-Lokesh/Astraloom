@@ -1,5 +1,18 @@
 # Astraloom Productization Phase 2 / Delivery Step 1
 
+## Authoritative closure status (2026-08-01)
+
+**Phase 2 is formally complete.** The closing commit was pushed and the
+independent final verification passed: local HEAD, its upstream, and the
+`origin/productization/phase-2-data-foundation` ref all resolved to
+`79cc6970d61eb8695b8cdbbbac68de77059f99ea`. The final check and coverage
+evidence had already passed before that independent three-way verification.
+
+Earlier wording in this record that describes a pending close is retained only
+as historical candidate evidence. It is superseded by this closure note. Phase
+2 is neither an Alpha nor an MVP claim; it is the completed controlled-data
+foundation delivery step.
+
 ## 当前状态
 
 Phase 2 的本地实现和独立验收已完成；当前检查点为

@@ -1,5 +1,17 @@
 # 产品化路线图：从 V2 Core 到 Launch
 
+## Authoritative delivery status (2026-08-01)
+
+- **Phase 2 / Delivery Step 1 — complete.** Its final independently verified
+  commit is `79cc6970d61eb8695b8cdbbbac68de77059f99ea`; local, upstream, and
+  remote were consistent at closure.
+- **Phase 3 / Delivery Step 2 — authorized and in implementation.** It is not
+  complete, does not authorize any Phase 4 work, and remains bounded by the
+  Phase 3 people-and-graph contract.
+
+Where older milestone text below says Phase 2 is pending closure or Phase 3 is
+unauthorized, treat it as superseded historical planning language.
+
 ## 为什么是 8 个阶段
 
 Productization Phase 1“契约与差距审计”已经完成。从当前状态起还剩 8 个 Delivery Steps，统一编号为 Productization Phase 2–9：

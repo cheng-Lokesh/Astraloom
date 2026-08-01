@@ -1,5 +1,14 @@
 # 决策登记册
 
+## Phase 3 authorization record
+
+| Decision ID | Decision | Authority and guardrails | Effect |
+|---|---|---|---|
+| DEC-PHASE3-001 | Authorize the people-and-read-only-graph delivery step with one controlled Agent/Edge snapshot writer. | Never use, read, or expose a service-role key; do not create a service-role client. `key_people` remains user-owned through current authenticated session, RLS, and atomic `SECURITY INVOKER` RPCs. Browser roles receive no table-level DML on `agent_profiles` or `relation_edges`. The sole writer has fixed `search_path`, authenticated-only execution, mandatory non-empty current user identity, re-read ownership and Seed checks, rejection of cross-owner/cross-Seed/self-edge/empty evidence/illegal weight/downgraded/blocked input, server-derived weights, atomic zero-write failures, and content-bound idempotency with stable same-key conflict. | Phase 3 may implement Steps A–E in its contract. It does not authorize runs, events, Claims, Reports, payment, Track B, real LLM expansion, Phase 4, arbitrary SQL, a general finalizer, or browser table DML. |
+
+The current authority for this record is the Phase 3 contract. Older language in
+this file that calls Phase 3 unauthorized is superseded historical context.
+
 仅记录本审计确证的冲突和会改变产品边界/成本/安全/不可逆架构的未决项。权威顺序为：`docs/FUTURE_SIMULATOR_V2.md` 先于白皮书 v35；白皮书与 V2 已确认边界冲突时以 V2 为准，代码和测试仅证明当前实现事实。
 
 | Decision ID | 问题 | 白皮书依据 | 仓库现状 | 推荐默认方案 | 影响 | 是否阻断下一阶段 |

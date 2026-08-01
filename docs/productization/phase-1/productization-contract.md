@@ -1,5 +1,34 @@
 # Astraloom 产品化权威契约
 
+## Current delivery authority (2026-08-01)
+
+Phase 2 is closed at
+`79cc6970d61eb8695b8cdbbbac68de77059f99ea`, after an independent matching
+local/upstream/remote verification. Phase 3 is expressly authorized and in
+implementation, but is not complete.
+
+Phase 3 keeps `key_people` as a user-owned object: authenticated current-user
+session, RLS, and `SECURITY INVOKER` atomic RPCs govern candidate extraction,
+confirmation, rename, deletion, merge, and supplemental people. Browser roles
+retain no table-level INSERT, UPDATE, or DELETE rights for `agent_profiles` or
+`relation_edges`.
+
+There is no service-role key, no service-role client, and no general-purpose
+database finalizer or arbitrary SQL surface. A single minimal controlled writer
+may create Agent and Relation Edge snapshots only when it runs with a fixed
+`search_path`, is callable only by `authenticated`, rejects an empty current
+user identity, re-reads that user's submitted Seed, confirmed people, and
+current Agents, and rejects cross-owner, cross-Seed, self-edge, empty-evidence,
+illegal-weight, downgraded, and blocked requests. Client requests never submit
+weights. The writer must commit atomically, use content-bound idempotency, replay
+the same key plus same content, and return a stable conflict for the same key
+plus different content.
+
+Phase 3 excludes runs, events, Claims, Reports, payment, Track B, and real LLM
+expansion. The detailed normative implementation contract is
+[`../phase-3/README.md`](../phase-3/README.md). Older Phase 2-close and
+Phase 3-authorization statements below are historical and superseded here.
+
 ## 1. 目的与裁决顺序
 
 本契约将当前 V2 方向与白皮书 v35 的重要产品需求转化为后续产品化工作的可执行边界，而不复制白皮书。裁决顺序为：

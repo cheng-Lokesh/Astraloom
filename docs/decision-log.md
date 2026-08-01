@@ -73,3 +73,16 @@ Consequence: Do not describe Phase 2 as formally closed, production-ready, deplo
 Decision: Set Vitest `fileParallelism: false` after evidence identified file-level parallel resource contention as the source of aggregate-only timeouts.
 
 Consequence: Full-suite runs are slower because files execute serially. This does not change test timeouts, coverage thresholds, test cases, or V2 logic; regression evidence must continue to cover the normal aggregate suite and coverage run.
+
+## DEC-013: Phase 3 Uses a Controlled RPC, Not a Service Role
+
+Decision: Phase 2 is formally closed. Phase 3 is authorized to implement
+user-owned Key People and read-only Agent/Relation Graph snapshots without
+using, reading, exposing, or creating any service-role credential or client.
+
+Consequence: Key People changes use the current authenticated user, RLS, and
+atomic `SECURITY INVOKER` RPCs. Agent and Relation Edge writes are possible only
+through one minimal controlled, authenticated writer with fixed search path,
+ownership re-validation, server-derived weights, atomicity, and content-bound
+idempotency. Browser roles do not receive table-level DML, and Phase 3 does not
+authorize runs, events, Claims, Reports, payment, Track B, or real LLM work.
