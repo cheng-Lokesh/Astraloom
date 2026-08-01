@@ -64,6 +64,17 @@ describe("POST /api/key-people/extract", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it("maps unavailable persistence, invalid input, and Seed read errors safely", async () => {
+    createSupabaseServerClient.mockResolvedValueOnce(null);
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(500);
+
+    expect((await POST(request({ selector: { seed_id: "not-a-uuid" }, idempotency_key: idempotencyKey }))).status).toBe(400);
+
+    const seedError = vi.fn().mockResolvedValue({ data: null, error: { message: "private detail" } });
+    select.mockReturnValue({ eq: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: seedError })) })) });
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(500);
+  });
+
   it("re-reads only the submitted owner seed, uses deterministic extraction, and persists through the atomic RPC", async () => {
     const seed = {
       id: seedId,
@@ -107,5 +118,17 @@ describe("POST /api/key-people/extract", () => {
     const conflict = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ error_code: "idempotency_key_content_conflict" });
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "key_people_invalid" } });
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(400);
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "seed_not_found" } });
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(404);
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "private detail" } });
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(500);
+
+    rpc.mockResolvedValueOnce({ data: null, error: null });
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(500);
   });
 });

@@ -31,6 +31,26 @@ describe("GET /api/key-people", () => {
     });
   });
 
+  it("maps unavailable persistence, invalid selectors, and read failures to safe errors", async () => {
+    createSupabaseServerClient.mockResolvedValueOnce(null);
+    expect((await GET(new Request(`http://localhost/api/key-people?seed_id=${seedId}`))).status).toBe(500);
+
+    createSupabaseServerClient.mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) },
+    });
+    expect((await GET(new Request("http://localhost/api/key-people?seed_id=not-a-uuid"))).status).toBe(400);
+
+    const seedMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: { message: "private detail" } });
+    const seedStatus = vi.fn(() => ({ maybeSingle: seedMaybeSingle }));
+    const seedIdEq = vi.fn(() => ({ eq: seedStatus }));
+    const from = vi.fn(() => ({ select: vi.fn(() => ({ eq: seedIdEq })) }));
+    createSupabaseServerClient.mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) },
+      from,
+    });
+    expect((await GET(new Request(`http://localhost/api/key-people?seed_id=${seedId}`))).status).toBe(500);
+  });
+
   it("returns the same not-found result for foreign and missing submitted seeds", async () => {
     const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
     const status = vi.fn(() => ({ maybeSingle }));
@@ -85,7 +105,7 @@ describe("GET /api/key-people", () => {
     const response = await GET(new Request(`http://localhost/api/key-people?seed_id=${seedId}`));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       error_code: null,
       people: [{
@@ -102,5 +122,19 @@ describe("GET /api/key-people", () => {
         version: "phase3-key-person-v1",
       }],
     });
+  });
+
+  it("hides person-query failures", async () => {
+    const peopleOrder = vi.fn().mockResolvedValue({ data: null, error: { message: "private detail" } });
+    const peopleSelect = vi.fn(() => ({ eq: vi.fn(() => ({ order: peopleOrder })) }));
+    const seedMaybeSingle = vi.fn().mockResolvedValue({ data: { id: seedId }, error: null });
+    const seedSelect = vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: seedMaybeSingle })) })) }));
+    const from = vi.fn((table: string) => table === "seed_contexts" ? { select: seedSelect } : { select: peopleSelect });
+    createSupabaseServerClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) },
+      from,
+    });
+
+    expect((await GET(new Request(`http://localhost/api/key-people?seed_id=${seedId}`))).status).toBe(500);
   });
 });

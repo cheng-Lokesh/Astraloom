@@ -1057,6 +1057,23 @@ Audit event rules:
 
 ## RLS Requirements
 
+### Phase 3 formal Key People
+
+Formal Key People exist only beneath an owned submitted Track A Seed. Each row
+has `version`, `writer_version`, opaque `trace_id`, `source`, `field_sources`,
+and request `idempotency_key`; its `(seed_context_id, user_id)` composite
+foreign key and the composite merge reference prevent cross-owner or cross-Seed
+people links. `key_people_idempotency_receipts` binds the owner, Seed,
+operation, UUID key, canonical-content SHA-256, and affected person ids. A
+replay validates those real rows before returning, instead of trusting stored
+client JSON.
+
+The only Step A writers are `SECURITY INVOKER` RPCs with a fixed
+`public, extensions` search path. They require a non-empty `auth.uid()`,
+re-read `status=submitted` ownership, and use an RPC-local RLS guard; direct
+REST mutations fail. No grant or policy change expands browser DML for
+`agent_profiles` or `relation_edges`.
+
 - User-owned rows must only be readable by the owning user.
 - User-owned rows must only be writable by the owning user unless the table is system-owned.
 - System-owned generated artifacts must not become browser-writable unless explicitly approved.

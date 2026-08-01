@@ -44,6 +44,24 @@ describe("POST /api/key-people/confirm", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it("maps unavailable persistence, invalid JSON, invalid people, and missing RPC results safely", async () => {
+    createSupabaseServerClient.mockResolvedValueOnce(null);
+    expect((await POST(request([{ type: "confirm", person_id: personA }]))).status).toBe(500);
+
+    const malformed = await POST(new Request("http://localhost/api/key-people/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
+    }));
+    expect(malformed.status).toBe(400);
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "key_people_invalid" } });
+    expect((await POST(request([{ type: "confirm", person_id: personA }]))).status).toBe(400);
+
+    rpc.mockResolvedValueOnce({ data: null, error: null });
+    expect((await POST(request([{ type: "confirm", person_id: personA }]))).status).toBe(500);
+  });
+
   it.each([
     [{ type: "confirm", person_id: personA }],
     [{ type: "rename", person_id: personA, display_name: "Renamed manager" }],

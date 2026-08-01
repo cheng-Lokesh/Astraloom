@@ -1,21 +1,31 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  extractFormalCandidates,
-  type SubmittedSeedRecord,
-} from "@/lib/people/formal-key-people";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+const personId = z.string().uuid();
+const operationSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("confirm"), person_id: personId }).strict(),
+  z.object({ type: z.literal("rename"), person_id: personId, display_name: z.string().trim().min(1).max(120) }).strict(),
+  z.object({ type: z.literal("delete"), person_id: personId }).strict(),
+  z.object({ type: z.literal("merge"), source_person_id: personId, target_person_id: personId }).strict(),
+  z.object({
+    type: z.literal("supplement"),
+    display_name: z.string().trim().min(1).max(120),
+    relationship_to_user: z.string().trim().min(1).max(80),
+    role_type: z.string().trim().min(1).max(80),
+    note: z.string().trim().min(1).max(1000).optional(),
+  }).strict(),
+]);
 
 const requestSchema = z.object({
   selector: z.object({ seed_id: z.string().uuid() }).strict(),
   idempotency_key: z.string().uuid(),
+  operations: z.array(operationSchema).min(1).max(25),
 }).strict();
 
-const submittedSeedColumns = "id, user_question, simulation_track, time_horizon, raw_context, decision_options, forbidden_actions, desired_output, safety_flags";
-
 function traceId() {
-  return `key_people_extract_${crypto.randomUUID()}`;
+  return `key_people_confirm_${crypto.randomUUID()}`;
 }
 
 function failure(status: number, errorCode: string, traceIdValue: string) {
@@ -36,27 +46,19 @@ export async function POST(request: Request) {
   const input = requestSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) return failure(400, "invalid_request", traceIdValue);
 
-  const { data: seed, error: seedError } = await supabase
-    .from("seed_contexts")
-    .select(submittedSeedColumns)
-    .eq("id", input.data.selector.seed_id)
-    .eq("status", "submitted")
-    .maybeSingle();
-
-  if (seedError) return failure(500, "persistence_failed", traceIdValue);
-  if (!seed) return failure(404, "seed_not_found", traceIdValue);
-
-  const candidates = extractFormalCandidates(seed as SubmittedSeedRecord);
-  const { data, error } = await supabase.rpc("extract_key_people_phase3", {
+  const { data, error } = await supabase.rpc("mutate_key_people_phase3", {
     p_seed_context_id: input.data.selector.seed_id,
     p_idempotency_key: input.data.idempotency_key,
-    p_candidates: candidates,
+    p_operations: input.data.operations,
   });
 
   if (error) {
     if (error.message === "seed_not_found") return failure(404, "seed_not_found", traceIdValue);
     if (error.message === "idempotency_key_content_conflict") {
       return failure(409, "idempotency_key_content_conflict", traceIdValue);
+    }
+    if (error.message === "invalid_people_transition") {
+      return failure(409, "invalid_people_transition", traceIdValue);
     }
     if (error.message === "key_people_invalid") return failure(400, "key_people_invalid", traceIdValue);
     return failure(500, "persistence_failed", traceIdValue);
@@ -65,14 +67,11 @@ export async function POST(request: Request) {
   const result = Array.isArray(data) ? data[0] : data;
   if (!result) return failure(500, "persistence_failed", traceIdValue);
 
-  return NextResponse.json(
-    {
-      ok: true,
-      error_code: null,
-      trace_id: traceIdValue,
-      idempotent: result.idempotent,
-      people: result.people ?? [],
-    },
-    { status: result.idempotent ? 200 : 201 },
-  );
+  return NextResponse.json({
+    ok: true,
+    error_code: null,
+    trace_id: traceIdValue,
+    idempotent: result.idempotent,
+    people: result.people ?? [],
+  });
 }

@@ -32,46 +32,26 @@ Forbidden:
 
 ### `/api/key-people/extract`
 
-Purpose: Extract candidate people from intake text.
+Purpose: Persist deterministic candidate people for one formal submitted Track A
+Seed.
 
 Allowed operations:
 
-- Return candidate people with confidence, evidence snippets, and missing fields.
-- Use an LLM only for candidate Key People extraction.
-- Validate request and model output with Zod.
-- Attach a `trace_id` to every request.
-- Record a model call log entry with `prompt_version`, `model_version`,
-  `latency_ms`, `cost_estimate`, `error_code`, and `source`.
-- `ENABLE_AI_GENERATION=true` only opens the global gate. The authenticated
-  user must also match `ALLOWED_AI_TESTER_EMAILS` or
-  `ALLOWED_AI_TESTER_USER_IDS` before the route may call a real model.
-- Fall back to local `extractPeopleCandidates` when the LLM is unavailable,
-  times out, returns invalid JSON, fails schema validation, or is blocked by
-  SafetyVerifier, rate limits, disabled AI config, or the tester allowlist.
+- Require the current Supabase user session.
+- Accept only a strict Seed selector and UUID idempotency key.
+- Re-read an owned `status=submitted`, crossroad Seed from the database, then
+  run the existing deterministic `extractPeopleCandidates` mapping.
+- Persist only through `extract_key_people_phase3`; low-confidence output stays
+  `needs_confirmation` and is never silently confirmed.
+- Return `{ ok, error_code, trace_id }` on every result. Foreign and missing
+  Seeds both return `404 seed_not_found`.
 
 Input:
 
 ```json
 {
-  "seedContextId": "string",
-  "seedContext": {
-    "id": "string",
-    "questionText": "string",
-    "trackType": "crossroad",
-    "timeWindow": "90_days",
-    "situationSummary": "string",
-    "recentEventsText": "string",
-    "keyPeopleText": "string",
-    "decisionOptionsText": "string",
-    "forbiddenActionsText": "string",
-    "desiredOutputText": "string",
-    "privacyAck": true,
-    "privacySafetyAck": true,
-    "locale": "zh",
-    "status": "submitted",
-    "createdAt": "ISO string",
-    "updatedAt": "ISO string"
-  }
+  "selector": { "seed_id": "UUID" },
+  "idempotency_key": "UUID"
 }
 ```
 
@@ -81,45 +61,23 @@ Output:
 {
   "ok": true,
   "trace_id": "string",
-  "source": "llm",
-  "model_version": "string",
-  "prompt_version": "extract-people-v1",
-  "latency_ms": 0,
-  "cost_estimate": 0,
   "error_code": null,
-  "people": [
-    {
-      "display_name": "string",
-      "relationship_to_user": "boss",
-      "role_type": "authority",
-      "confidence": 0.82,
-      "known_evidence": ["string"],
-      "missing_fields": ["string"],
-      "source_refs": ["string"]
-    }
-  ],
-  "uncertainty_flags": ["string"]
+  "idempotent": false,
+  "people": []
 }
 ```
 
-Fallback output keeps the same shape and uses:
-
-- `source: "local_fallback"`
-- `fallback_reason`
-- `model_version: "not_called"` when no model call was made
-- `candidates` as local `KeyPersonDraft[]` for the current MVP UI bridge
-
 Forbidden:
 
-- Do not create final Agent Profiles unless the task explicitly includes that transition.
-- Do not infer private facts as high-confidence truth.
-- Do not run when high-risk seed text requires safety downgrade.
-- Do not generate Claims.
-- Do not generate Reports.
-- Do not generate RelationEdges.
-- Do not modify edge weights.
-- Do not judge whether a third party loves, betrays, deceives, or secretly
-  intends something.
+- Do not accept raw Seed fields, a user id, client-selected people, evidence,
+  version, or trace input.
+- Do not call an LLM, create Agent Profiles or edges, or change edge weights.
+
+### `GET /api/key-people?seed_id=...`
+
+Purpose: Recover the current user's candidate and confirmed Key People for one
+submitted owned Seed. The response exposes only person-facing fields and never
+raw Seed text, trace bodies, credentials, or foreign-object metadata.
 
 ### `/api/reality-intake`
 
@@ -233,16 +191,22 @@ Forbidden:
 
 ### `/api/key-people/confirm`
 
-Purpose: Save user confirmation decisions.
+Purpose: Atomically manage a submitted Seed's persisted Key People.
 
 Allowed operations:
 
-- Confirm, delete, rename, merge, or supplement candidates.
-- Preserve `evidence_refs` when merging.
+- Require `{ selector: { seed_id }, idempotency_key, operations }`, validated
+  as a strict Zod batch of `confirm`, `rename`, `delete`, `merge`, or
+  `supplement` operations.
+- Use only `mutate_key_people_phase3`, which re-reads owner and submitted-Seed
+  scope and is content-bound idempotent.
+- Merge only same-owner, same-Seed people and union/deduplicate their evidence
+  references.
 
 Forbidden:
 
-- Do not expose or edit relation edge weights.
+- Do not accept `user_id`, `evidence_refs`, version, trace, or unknown input.
+- Do not expose or edit relation edge weights or write Agents/Edges.
 
 ### `/api/agents/generate`
 
