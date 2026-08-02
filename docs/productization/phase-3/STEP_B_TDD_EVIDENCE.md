@@ -1,6 +1,6 @@
 # Phase 3 Step B TDD evidence
 
-Status: **implementation verification complete; independent review pending**.
+Status: **independently accepted; Step C authorized**.
 
 Scope: immutable Agent snapshot persistence, controlled generation, and safe
 GET/POST API projections for a current owner's submitted and frozen Track A
@@ -103,14 +103,15 @@ The test fixtures always rolled back. No database reset, persistent fixture,
 deletion, service-role client, or business-data rewrite was used. The formal
 Agent enum is `user_core,user_variant,npc`.
 
-## Remaining gates
+## Independent acceptance
 
-Step B is not yet formally accepted. The remaining gates are:
+An isolated GPT-5.6-terra high reviewer performed a read-only review of pushed
+SHA `590d988a1a46062cf97e882fb06084c97bf85f6e`. It independently repeated the
+migration-history and hash checks, all database regression suites, function
+lint, enum inspection, Agent API suite, full repository tests, lint, typecheck,
+105-page production build, runtime HTTP smoke, remote SHA comparison, frozen V2
+comparison, business-data counts, and the full security/privacy attack matrix.
 
-1. commit the verified GREEN implementation and documentation;
-2. push the branch and prove local, upstream, and remote SHA equality;
-3. run a separate GPT-5.6-terra high, read-only independent review against the
-   pushed SHA;
-4. address any blocking finding with another RED/GREEN cycle.
-
-Only an independent PASS closes Step B and authorizes Step C.
+The result was **PASS**: no Step B blocking issue was found. The review made no
+file, database, commit, or remote change and did not begin Step C. Step B is
+therefore closed and Step C is authorized.

@@ -2,7 +2,7 @@
 
 ## Authority and status
 
-**Status: Step A independently accepted; Step B authorized.** This is the
+**Status: Step B independently accepted; Step C authorized.** This is the
 normative Phase 3 implementation contract. Phase 2 is closed at
 `79cc6970d61eb8695b8cdbbbac68de77059f99ea`. Phase 3 does not authorize Phase
 4 or any non-goal listed below.
@@ -141,8 +141,8 @@ evidence.
 
 ### Step B implementation record
 
-Step B implementation verification is complete and independent review is
-pending. The current work adds an immutable Agent snapshot parent, a single
+Step B is independently accepted. The current work adds an immutable Agent
+snapshot parent, a single
 authenticated `SECURITY INVOKER` writer, content-bound replay, conservative
 safety routing, safe GET/POST projections, and schema-level ownership,
 cardinality, provenance, and safety/error invariants. Browser roles retain no
@@ -157,7 +157,11 @@ build matrix. Runtime smoke checks returned 200 for the home and Agent pages and
 401 for unauthenticated Agent GET/POST. Business-data counts remained
 16/0/0/0/16 and `src/lib/v2/**` remained zero-diff. See
 `STEP_B_TDD_EVIDENCE.md` for the RED chain, immutable migration hashes,
-security/privacy evidence, and remaining push/SHA/independent-review gates.
+security/privacy evidence and formal acceptance record. The independent
+GPT-5.6-terra high reviewer checked pushed SHA
+`590d988a1a46062cf97e882fb06084c97bf85f6e`, repeated every stated database,
+API, repository, build, runtime, remote-SHA, V2, and security gate, and returned
+PASS with no Step B blocking issue. Step C is authorized.
 
 ## Acceptance matrix
 
