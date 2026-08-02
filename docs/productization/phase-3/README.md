@@ -139,6 +139,26 @@ check. Step B is authorized. See `STEP_A_TDD_EVIDENCE.md` for the RED/GREEN,
 blocked, repair, least-privilege, Unicode, and non-destructive database
 evidence.
 
+### Step B implementation record
+
+Step B implementation verification is complete and independent review is
+pending. The current work adds an immutable Agent snapshot parent, a single
+authenticated `SECURITY INVOKER` writer, content-bound replay, conservative
+safety routing, safe GET/POST projections, and schema-level ownership,
+cardinality, provenance, and safety/error invariants. Browser roles retain no
+broad Agent/receipt read or Agent/Edge write path. The applied base migration
+was kept immutable when post-apply static analysis found a loop-variable
+warning; a separate additive migration removed it and restored zero
+`plpgsql_check` diagnostics.
+
+Controller verification observed Step B pgTAP 174/174, Step A 74/74, Phase 2
+7/7 and 10/10, Agent API 19/19, and the full 463-test, lint, type, and 105-page
+build matrix. Runtime smoke checks returned 200 for the home and Agent pages and
+401 for unauthenticated Agent GET/POST. Business-data counts remained
+16/0/0/0/16 and `src/lib/v2/**` remained zero-diff. See
+`STEP_B_TDD_EVIDENCE.md` for the RED chain, immutable migration hashes,
+security/privacy evidence, and remaining push/SHA/independent-review gates.
+
 ## Acceptance matrix
 
 | Area | Required evidence |

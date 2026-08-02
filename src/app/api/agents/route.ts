@@ -3,12 +3,7 @@ import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const requestSchema = z.object({
-  selector: z.object({ seed_id: z.string().uuid() }).strict(),
-  idempotency_key: z.string().uuid(),
-  include_parallel_selves: z.boolean().optional().default(true),
-}).strict();
-
+const querySchema = z.object({ seed_id: z.string().uuid() }).strict();
 const safetyLevelSchema = z.enum(["safe", "caution", "downgraded"]);
 const snapshotVersionSchema = z.literal("phase3-agent-snapshot-v1");
 const opaqueEvidenceRefSchema = z.union([
@@ -41,7 +36,6 @@ const safeAgentSchema = z.object({
   evidence_refs: z.array(opaqueEvidenceRefSchema).min(1).max(32),
   safety_level: safetyLevelSchema,
 }).strip();
-
 function parseSafeAgents(snapshot: z.infer<typeof safeSnapshotSchema>, value: unknown) {
   const agents = z.array(safeAgentSchema).safeParse(value);
   if (!agents.success) return null;
@@ -64,56 +58,46 @@ function parseSafeAgents(snapshot: z.infer<typeof safeSnapshotSchema>, value: un
     && (agents.data.length !== 1 || agents.data[0]?.agent_type !== "user_core")) return null;
   return agents.data;
 }
-
-function isJsonMediaType(contentType: string | null) {
-  return contentType?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
-}
-
-function traceId() { return `agent_snapshot_${crypto.randomUUID()}`; }
+function traceId() { return `agent_snapshot_read_${crypto.randomUUID()}`; }
 function failure(status: number, errorCode: string, trace: string) {
   return NextResponse.json({ ok: false, error_code: errorCode, trace_id: trace }, { status });
 }
-function errorStatus(message: string) {
-  if (message === "seed_not_found") return [404, message] as const;
-  if (message === "unauthenticated") return [401, message] as const;
-  if (message === "agent_snapshot_invalid") return [400, message] as const;
-  if (message === "idempotency_key_content_conflict" || message === "safety_blocked") return [409, message] as const;
-  return [500, "persistence_failed"] as const;
-}
-
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   const trace = traceId();
   const supabase = await createSupabaseServerClient();
   if (!supabase) return failure(500, "persistence_failed", trace);
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user?.id) return failure(401, "unauthenticated", trace);
-  if (!isJsonMediaType(request.headers.get("content-type"))) {
+  const url = new URL(request.url);
+  if ([...url.searchParams.keys()].length !== 1 || url.searchParams.getAll("seed_id").length !== 1) {
     return failure(400, "invalid_request", trace);
   }
-  const body = await request.json().catch(() => null);
-  const parsed = requestSchema.safeParse(body);
-  if (!parsed.success) return failure(400, "invalid_request", trace);
-
-  const { data, error } = await supabase.rpc("generate_agent_snapshot_phase3", {
-    p_seed_context_id: parsed.data.selector.seed_id,
-    p_idempotency_key: parsed.data.idempotency_key,
-    p_include_parallel_selves: parsed.data.include_parallel_selves,
-  });
-  if (error) {
-    const [status, code] = errorStatus(error.message);
-    return failure(status, code, trace);
-  }
-  if (!Array.isArray(data) || data.length !== 1 || !data[0] || typeof data[0] !== "object") {
-    return failure(500, "persistence_failed", trace);
-  }
-  const row = data[0] as { idempotent?: unknown; snapshot?: unknown; agents?: unknown };
-  const snapshot = safeSnapshotSchema.safeParse(row.snapshot);
-  const agents = snapshot.success ? parseSafeAgents(snapshot.data, row.agents) : null;
-  if (typeof row.idempotent !== "boolean" || !snapshot.success || !agents) {
-    return failure(500, "persistence_failed", trace);
-  }
+  const query = querySchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+  if (!query.success) return failure(400, "invalid_request", trace);
+  const { data: seed, error: seedError } = await supabase.from("seed_contexts").select("id")
+    .eq("id", query.data.seed_id).eq("user_id", auth.user.id).eq("status", "submitted")
+    .not("submitted_at", "is", null).not("frozen_at", "is", null).maybeSingle();
+  if (seedError) return failure(500, "persistence_failed", trace);
+  if (!seed) return failure(404, "seed_not_found", trace);
+  const { data: snapshot, error: snapshotError } = await supabase.from("agent_profile_snapshots")
+    .select("id,version,safety_level,error_code").eq("user_id", auth.user.id).eq("seed_context_id", seed.id)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (snapshotError) return failure(500, "persistence_failed", trace);
+  if (!snapshot) return NextResponse.json({ ok: true, error_code: null, trace_id: trace, snapshot: null, agents: [] });
+  const safeSnapshot = safeSnapshotSchema.safeParse(snapshot);
+  if (!safeSnapshot.success) return failure(500, "persistence_failed", trace);
+  const { data: agents, error: agentsError } = await supabase.from("agent_profiles")
+    .select("id,snapshot_id,key_person_id,version,agent_type,display_name,relationship_to_user,source,confidence,evidence_refs,safety_level")
+    .eq("snapshot_id", snapshot.id).eq("user_id", auth.user.id).eq("seed_context_id", seed.id)
+    .order("created_at", { ascending: true });
+  if (agentsError || !Array.isArray(agents)) return failure(500, "persistence_failed", trace);
+  const safeAgents = parseSafeAgents(safeSnapshot.data, agents);
+  if (!safeAgents) return failure(500, "persistence_failed", trace);
   return NextResponse.json({
-    ok: true, error_code: null, trace_id: trace, source: "controlled_snapshot", idempotent: row.idempotent,
-    snapshot: snapshot.data, agents,
-  }, { status: row.idempotent ? 200 : 201 });
+    ok: true,
+    error_code: null,
+    trace_id: trace,
+    snapshot: safeSnapshot.data,
+    agents: safeAgents,
+  });
 }
