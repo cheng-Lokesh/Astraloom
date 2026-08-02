@@ -144,6 +144,10 @@ select lives_ok($verify$
   end
   $check$
 $verify$, 'invalid generation leaves Graph, Edge, receipt, simulation, tick, and event counts unchanged');
+-- Keep the focused generate/lock side-effect probe independent from the main
+-- lifecycle scenario below. The product contract correctly forbids replacing
+-- a locked Graph; the test must not carry this probe's lock into later cases.
+savepoint graph_side_effect_probe;
 select lives_ok($verify$
   do $check$
   declare e0 bigint; s0 bigint; t0 bigint; v0 bigint;
@@ -164,6 +168,8 @@ select lives_ok($verify$
   end
   $check$
 $verify$, 'lock changes only Graph lock lifecycle and never creates Edge or downstream objects');
+rollback to savepoint graph_side_effect_probe;
+release savepoint graph_side_effect_probe;
 select is(current_setting('app.phase3_graph_rpc', true), 'off', 'Graph receipt guard closes after success, replay, conflict, and lock paths');
 select throws_ok($$ insert into public.relation_edges (user_id, from_agent_id, to_agent_id, version, relationship_type, weights, confidence, evidence_refs) values ('00000000-0000-0000-0000-00000000c301', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'phase3-graph-snapshot-v1', 'professional', '{}'::jsonb, 0, '[]'::jsonb) $$, '42501', NULL, 'direct authenticated Edge insert is denied before malformed data can persist');
 select throws_ok($$ update public.relation_edges set weights = '{}'::jsonb $$, '42501', NULL, 'direct authenticated Edge mutation stays denied after any Graph lifecycle state');
