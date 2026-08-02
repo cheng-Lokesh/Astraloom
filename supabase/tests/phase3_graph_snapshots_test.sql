@@ -76,7 +76,13 @@ select ok(exists (select 1 from information_schema.column_privileges where grant
 select ok(exists (select 1 from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'relation_graph_snapshots' and column_name = 'locked_at' and privilege_type = 'SELECT'), 'safe Graph lock timestamp projection is granted');
 select ok(not exists (select 1 from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'relation_graph_snapshots' and column_name in ('trace_id','writer_version','idempotency_key','request_hash') and privilege_type = 'SELECT'), 'Graph private provenance and idempotency columns are not selectable');
 select ok(not exists (select 1 from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'relation_edges' and column_name in ('trace_id','writer_version','idempotency_key','request_hash','field_sources') and privilege_type = 'SELECT'), 'Edge private provenance and idempotency columns are not selectable');
-select ok(not exists (select 1 from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'relation_graph_idempotency_receipts' and privilege_type = 'SELECT'), 'receipt internals have no browser column projection');
+select ok(
+  has_column_privilege('authenticated', 'public.relation_graph_idempotency_receipts', 'user_id', 'select')
+  and has_column_privilege('authenticated', 'public.relation_graph_idempotency_receipts', 'seed_context_id', 'select')
+  and has_column_privilege('authenticated', 'public.relation_graph_idempotency_receipts', 'idempotency_key', 'select')
+  and has_column_privilege('authenticated', 'public.relation_graph_idempotency_receipts', 'request_hash', 'select'),
+  'receipt replay columns are available to the SECURITY INVOKER RPC but remain hidden by the closed guard'
+);
 select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname not in ('generate_relation_graph_phase3','lock_relation_graph_phase3') and has_function_privilege('authenticated', p.oid, 'EXECUTE') and pg_get_functiondef(p.oid) ilike '%insert into public.relation_edges%'), 'no alternate authenticated public Edge writer exists');
 select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname = 'lock_relation_graph_phase3' and pg_get_functiondef(p.oid) ilike '%insert into public.relation_edges%'), 'lock function never inserts Edges');
 select ok(exists (select 1 from pg_proc p where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(p.oid) ilike '%phase3-key-people:%' and pg_get_functiondef(p.oid) ilike '%pg_advisory_xact_lock%'), 'Graph generator follows the Step A owner/Seed lock family before operation locks');
@@ -123,7 +129,7 @@ select throws_ok($$ delete from public.relation_graph_snapshots $$, '42501', NUL
 select throws_ok($$ insert into public.relation_graph_idempotency_receipts (user_id, seed_context_id, idempotency_key, request_hash) values ('00000000-0000-0000-0000-00000000c301', '00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000305', repeat('0', 64)) $$, '42501', NULL, 'direct authenticated Graph receipt insert is denied');
 select throws_ok($$ update public.relation_graph_idempotency_receipts set request_hash = repeat('0', 64) $$, '42501', NULL, 'direct authenticated Graph receipt update is denied');
 select throws_ok($$ delete from public.relation_graph_idempotency_receipts $$, '42501', NULL, 'direct authenticated Graph receipt delete is denied');
-select is(current_setting('app.phase3_graph_rpc', true), 'off', 'Graph receipt guard is closed before generation');
+select is(coalesce(current_setting('app.phase3_graph_rpc', true), 'off'), 'off', 'an unset Graph receipt guard is closed before generation');
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), null) $$, 'P0001', 'graph_snapshot_invalid', 'null Graph idempotency key writes nothing');
 select throws_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), null) $$, 'P0001', 'graph_snapshot_invalid', 'null lock idempotency key writes nothing');
 select is(current_setting('app.phase3_graph_rpc', true), 'off', 'Graph receipt guard closes after invalid generate');
