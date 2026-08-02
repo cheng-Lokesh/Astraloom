@@ -53,7 +53,7 @@ describe("GET /api/graph", () => {
     expect(text).not.toContain("private");
   });
 
-  it("uses the same safe not-found response for absent, foreign, draft, unlocked, and malformed Graph persistence", async () => {
+  it("uses the same safe not-found response for absent, foreign, or draft Seeds", async () => {
     const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
     const from = vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(() => ({ not: vi.fn(() => ({ not: vi.fn(() => ({ maybeSingle })) })) })) })) })) }));
     createSupabaseServerClient.mockResolvedValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) }, from });

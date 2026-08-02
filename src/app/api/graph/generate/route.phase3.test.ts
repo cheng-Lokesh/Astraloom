@@ -23,7 +23,9 @@ describe("POST /api/graph/generate", () => {
     for (const body of [{}, { selector: { seed_id: seedId }, idempotency_key: idempotencyKey, weights: { trust: 100 } }, { selector: { seed_id: seedId }, idempotency_key: idempotencyKey, agent_snapshot_id: graphId }, { selector: { seed_id: seedId, user_id: "forbidden" }, idempotency_key: idempotencyKey }]) {
       expect((await POST(request(body))).status).toBe(400);
     }
-    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }, "application/jsonp"))).status).toBe(400);
+    for (const contentType of ["application/jsonp", "application/jsonx", "text/plain"]) {
+      expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }, contentType))).status).toBe(400);
+    }
     expect(rpc).not.toHaveBeenCalled();
   });
 
