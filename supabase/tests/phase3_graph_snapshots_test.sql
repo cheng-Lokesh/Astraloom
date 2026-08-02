@@ -239,8 +239,12 @@ select * from public.generate_agent_snapshot_phase3((select id from public.seed_
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000309'), '00000000-0000-4000-8000-000000000311') $$, 'P0001', 'safety_downgraded', 'downgraded Agent snapshot creates zero Edges and cannot generate or lock a Graph');
 select * from public.submit_seed_context_phase2('00000000-0000-4000-8000-000000000312', '{"trackType":"crossroad","timeWindow":"30_days","questionText":"I want to kill someone.","situationSummary":"Blocked safety request.","recentEvents":"Immediate danger.","keyPeopleText":"Person.","decisionOptions":"Seek urgent help.","worries":"Safety.","forbiddenActions":"Do not harm anyone.","safetyBoundaries":"Emergency support.","desiredOutput":"Safe next step.","privacyAck":true,"privacySafetyAck":true}'::jsonb);
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000312'), '00000000-0000-4000-8000-000000000313') $$, 'P0001', 'safety_blocked', 'blocked Seed creates zero Edges and cannot generate or lock a Graph');
+-- Preserve the first owner's real opaque Seed id before changing the JWT.
+-- Looking it up after the switch would correctly return NULL through RLS and
+-- would test an empty selector rather than a foreign-owner selector.
+select set_config('app.phase3_graph_foreign_seed_id', (select id::text from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), true);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d301', true);
-select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000308') $$, 'P0001', 'seed_not_found', 'second user cannot discover or write the first user Graph');
+select throws_ok($$ select * from public.generate_relation_graph_phase3(current_setting('app.phase3_graph_foreign_seed_id')::uuid, '00000000-0000-4000-8000-000000000308') $$, 'P0001', 'seed_not_found', 'second user cannot discover or write the first user Graph');
 
 reset role;
 select * from finish();
