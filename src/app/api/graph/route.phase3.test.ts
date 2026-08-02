@@ -63,15 +63,27 @@ describe("GET /api/graph", () => {
   });
 
   it("allows review of a safe generated unlocked Graph rather than requiring lock before GET", async () => {
-    const seedChain: any = { maybeSingle: vi.fn().mockResolvedValue({ data: { id: seedId }, error: null }) };
-    seedChain.eq = vi.fn(() => seedChain);
-    seedChain.not = vi.fn(() => seedChain);
-    const graphChain: any = { maybeSingle: vi.fn().mockResolvedValue({ data: { id: graphId, agent_snapshot_id: agentSnapshotId, version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, error: null }) };
-    graphChain.eq = vi.fn(() => graphChain);
-    graphChain.order = vi.fn(() => graphChain);
-    graphChain.limit = vi.fn(() => graphChain);
-    const edgeChain: any = { order: vi.fn().mockResolvedValue({ data: [{ id: edgeId, graph_snapshot_id: graphId, agent_snapshot_id: agentSnapshotId, from_agent_id: "55555555-5555-4555-8555-555555555555", to_agent_id: "66666666-6666-4666-8666-666666666666", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["agent:confirmed"], safety_level: "safe" }], error: null }) };
-    edgeChain.eq = vi.fn(() => edgeChain);
+    const seedChain = {
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: seedId }, error: null }),
+      eq: vi.fn(),
+      not: vi.fn(),
+    };
+    seedChain.eq.mockImplementation(() => seedChain);
+    seedChain.not.mockImplementation(() => seedChain);
+    const graphChain = {
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: graphId, agent_snapshot_id: agentSnapshotId, version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, error: null }),
+      eq: vi.fn(),
+      order: vi.fn(),
+      limit: vi.fn(),
+    };
+    graphChain.eq.mockImplementation(() => graphChain);
+    graphChain.order.mockImplementation(() => graphChain);
+    graphChain.limit.mockImplementation(() => graphChain);
+    const edgeChain = {
+      order: vi.fn().mockResolvedValue({ data: [{ id: edgeId, graph_snapshot_id: graphId, agent_snapshot_id: agentSnapshotId, from_agent_id: "55555555-5555-4555-8555-555555555555", to_agent_id: "66666666-6666-4666-8666-666666666666", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["agent:confirmed"], safety_level: "safe" }], error: null }),
+      eq: vi.fn(),
+    };
+    edgeChain.eq.mockImplementation(() => edgeChain);
     const from = vi.fn((table: string) => ({ select: vi.fn(() => table === "seed_contexts" ? seedChain : table === "relation_graph_snapshots" ? graphChain : edgeChain) }));
     createSupabaseServerClient.mockResolvedValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) }, from });
     const response = await GET(new Request(`http://localhost/api/graph?seed_id=${seedId}`));
