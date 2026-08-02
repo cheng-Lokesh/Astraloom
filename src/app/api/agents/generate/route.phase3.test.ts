@@ -233,6 +233,13 @@ describe("POST /api/agents/generate", () => {
     delete (withoutSource as Partial<typeof validAgent>).source;
     const withoutVersion = { ...validSnapshot };
     delete (withoutVersion as Partial<typeof validSnapshot>).version;
+    const userVariant = { ...validAgent, id: "55555555-5555-4555-8555-555555555555", agent_type: "user_variant" };
+    const secondUserCore = { ...validAgent, id: "66666666-6666-4666-8666-666666666666" };
+    const secondVariant = { ...validAgent, id: "77777777-7777-4777-8777-777777777777", agent_type: "user_variant" };
+    const thirdVariant = { ...validAgent, id: "88888888-8888-4888-8888-888888888888", agent_type: "user_variant" };
+    const confirmedPersonId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const firstNpc = { ...validAgent, id: "99999999-9999-4999-8999-999999999999", key_person_id: confirmedPersonId, agent_type: "npc", source: "confirmed_person_snapshot" };
+    const secondNpc = { ...firstNpc, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
     const cases = [
       { snapshot: { ...validSnapshot, id: "not-a-uuid" }, agents: [validAgent] },
       { snapshot: { ...validSnapshot, version: "legacy-writer" }, agents: [validAgent] },
@@ -250,6 +257,13 @@ describe("POST /api/agents/generate", () => {
       { snapshot: validSnapshot, agents: [{ ...validAgent, confidence: 58.5 }] },
       { snapshot: validSnapshot, agents: [{ ...validAgent, evidence_refs: [] }] },
       { snapshot: validSnapshot, agents: [{ ...validAgent, evidence_refs: [{ raw_context: "private nested raw context" }] }] },
+      { snapshot: validSnapshot, agents: [] },
+      { snapshot: validSnapshot, agents: [userVariant] },
+      { snapshot: validSnapshot, agents: [validAgent, secondUserCore] },
+      { snapshot: validSnapshot, agents: [validAgent, userVariant, secondVariant, thirdVariant] },
+      { snapshot: validSnapshot, agents: [validAgent, firstNpc, secondNpc] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, source: "private_raw_source" }] },
+      { snapshot: validSnapshot, agents: [{ ...validAgent, evidence_refs: ["private raw user context must not leak"] }] },
     ];
 
     for (const row of cases) {
@@ -260,6 +274,8 @@ describe("POST /api/agents/generate", () => {
       expect(body).toMatchObject({ ok: false, error_code: "persistence_failed" });
       expect(JSON.stringify(body)).not.toContain("private_detail");
       expect(JSON.stringify(body)).not.toContain("private nested raw context");
+      expect(JSON.stringify(body)).not.toContain("private_raw_source");
+      expect(JSON.stringify(body)).not.toContain("private raw user context must not leak");
     }
   });
 
