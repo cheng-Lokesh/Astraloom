@@ -69,4 +69,16 @@ describe("POST /api/graph/lock", () => {
     }
     expect(rpc).not.toHaveBeenCalled();
   });
+
+  it("accepts JSON charset with a valid controlled lock result and never calls from", async () => {
+    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: "33333333-3333-4333-8333-333333333333", agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: true, locked_at: "2026-08-02T00:00:00.000Z", safety_level: "safe", error_code: null } }], error: null });
+    const response = await POST(new Request("http://localhost/api/graph/lock", { method: "POST", headers: { "content-type": "application/json; charset=utf-8" }, body: JSON.stringify({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }) }));
+    expect(response.status).toBe(201); expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed for an invalid lock Graph projection without echoing private fields", async () => {
+    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: "bad", agent_snapshot_id: "bad", version: "legacy", graph_locked: true, locked_at: null, safety_level: "safe", error_code: "private" } }], error: null });
+    const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
+    expect(response.status).toBe(500); expect(JSON.stringify(await response.json())).not.toContain("private");
+  });
 });

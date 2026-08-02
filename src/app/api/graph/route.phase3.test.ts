@@ -92,4 +92,25 @@ describe("GET /api/graph", () => {
     expect(response.status).toBe(401);
     expect(JSON.stringify(await response.json())).not.toContain("private auth detail");
   });
+
+  it("does not query Edges after a missing latest Graph parent", async () => {
+    const from = vi.fn(() => { throw new Error("missing parent"); });
+    createSupabaseServerClient.mockResolvedValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) }, from });
+    const response = await GET(new Request(`http://localhost/api/graph?seed_id=${seedId}`));
+    expect(response.status).toBe(500);
+    expect(from).not.toHaveBeenCalledWith("relation_edges");
+  });
+
+  it("fails closed for an Edge with private raw evidence or invalid confidence", async () => {
+    createSupabaseServerClient.mockResolvedValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) }, from: vi.fn(() => { throw new Error("raw evidence") }) });
+    const response = await GET(new Request(`http://localhost/api/graph?seed_id=${seedId}`));
+    expect(response.status).toBe(500); expect(JSON.stringify(await response.json())).not.toContain("raw evidence");
+  });
+
+  it("rejects an authenticated selector with a client Graph or Agent snapshot override", async () => {
+    createSupabaseServerClient.mockResolvedValue({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-a" } } }) } });
+    for (const query of [`?seed_id=${seedId}&graph_id=${graphId}`, `?seed_id=${seedId}&agent_snapshot_id=${agentSnapshotId}`]) {
+      expect((await GET(new Request(`http://localhost/api/graph${query}`))).status).toBe(400);
+    }
+  });
 });
