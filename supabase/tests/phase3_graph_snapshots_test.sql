@@ -174,6 +174,10 @@ set local role authenticated;
 select throws_ok($$ select * from public.generate_relation_graph_phase3(null, '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'graph_snapshot_invalid', 'Graph generator rejects an empty Seed selector before any write');
 select throws_ok($$ select * from public.generate_relation_graph_phase3('00000000-0000-4000-8000-000000000399', '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'seed_not_found', 'Graph generator does not disclose foreign or missing Seeds');
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'owned submitted Seed and latest valid Agent snapshot generate one atomic Graph');
+-- Test-only integrity inspection needs private provenance columns that the
+-- authenticated product role must never receive. Restore the database owner
+-- only for these assertions, then return to the product role before replay.
+reset role;
 select lives_ok($verify$
   do $check$
   begin
@@ -208,6 +212,7 @@ select lives_ok($verify$
   end
   $check$
 $verify$, 'server weights use exactly the formal integer 0..100 key set and confidence is an integer percentage');
+set local role authenticated;
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'same key and canonical content replays the Graph');
 select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000307', true);
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'idempotency_key_content_conflict', 'same key with a stale or different Agent input conflicts');
