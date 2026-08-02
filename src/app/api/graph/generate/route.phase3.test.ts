@@ -28,7 +28,7 @@ describe("POST /api/graph/generate", () => {
   });
 
   it("calls exactly one controlled Graph RPC without a client weight or direct table write", async () => {
-    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, edges: [{ id: "55555555-5555-4555-8555-555555555555", graph_snapshot_id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", from_agent_id: "66666666-6666-4666-8666-666666666666", to_agent_id: "77777777-7777-4777-8777-777777777777", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50 }, confidence: 67, evidence_refs: ["agent:confirmed"], safety_level: "safe" }] }], error: null });
+    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, edges: [{ id: "55555555-5555-4555-8555-555555555555", graph_snapshot_id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", from_agent_id: "66666666-6666-4666-8666-666666666666", to_agent_id: "77777777-7777-4777-8777-777777777777", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["agent:confirmed"], safety_level: "safe" }] }], error: null });
     const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
     expect(response.status).toBe(201);
     expect(rpc).toHaveBeenCalledTimes(1);
@@ -46,5 +46,29 @@ describe("POST /api/graph/generate", () => {
     }
     rpc.mockResolvedValueOnce({ data: [], error: null });
     expect((await POST(request(payload))).status).toBe(500);
+  });
+
+  it("authenticates before parsing malformed JSON and accepts only application/json with an optional charset", async () => {
+    createSupabaseServerClient.mockResolvedValueOnce({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) } });
+    const malformed = new Request("http://localhost/api/graph/generate", { method: "POST", headers: { "content-type": "application/json" }, body: "{" });
+    expect((await POST(malformed)).status).toBe(401);
+    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, edges: [{ id: "55555555-5555-4555-8555-555555555555", graph_snapshot_id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", from_agent_id: "66666666-6666-4666-8666-666666666666", to_agent_id: "77777777-7777-4777-8777-777777777777", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["agent:confirmed"], safety_level: "safe" }] }], error: null });
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }, "application/json; charset=utf-8"))).status).toBe(201);
+  });
+
+  it("fails closed when a controlled writer returns a malformed Graph, duplicate Edge pair, private field, or illegal weight object", async () => {
+    for (const edges of [[], [{ id: "55555555-5555-4555-8555-555555555555", graph_snapshot_id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", from_agent_id: "66666666-6666-4666-8666-666666666666", to_agent_id: "66666666-6666-4666-8666-666666666666", version: "phase3-graph-snapshot-v1", relationship_type: "invented", weights: { trust: 101 }, confidence: 101, evidence_refs: [], safety_level: "safe", trace_id: "private" }]]) {
+      rpc.mockResolvedValueOnce({ data: [{ idempotent: false, graph: { id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null, trace_id: "private" }, edges }], error: null });
+      const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
+      expect(response.status).toBe(500);
+      expect(JSON.stringify(await response.json())).not.toContain("private");
+    }
+  });
+
+  it("returns 200 with the identical safe Graph on a controlled replay", async () => {
+    rpc.mockResolvedValue({ data: [{ idempotent: true, graph: { id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, edges: [{ id: "55555555-5555-4555-8555-555555555555", graph_snapshot_id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", from_agent_id: "66666666-6666-4666-8666-666666666666", to_agent_id: "77777777-7777-4777-8777-777777777777", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["agent:confirmed"], safety_level: "safe" }] }], error: null });
+    const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, idempotent: true, graph: { id: graphId } });
   });
 });

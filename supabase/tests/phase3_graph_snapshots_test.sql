@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(47);
+select plan(77);
 
 -- Step C owns an immutable Graph parent. Existing relation_edges are not a
 -- graph snapshot until every Edge is bound to this parent and its Agent input.
@@ -37,6 +37,30 @@ select ok(not has_table_privilege('authenticated', 'public.relation_edges', 'tri
 select ok(not has_table_privilege('authenticated', 'public.relation_edges', 'references'), 'browser cannot reference Edges');
 select ok(not has_table_privilege('anon', 'public.relation_edges', 'select'), 'anon has no Edge projection');
 select ok(not has_table_privilege('anon', 'public.relation_edges', 'insert'), 'anon has no Edge writer');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_graph_snapshots') and attname = 'user_id'), false), 'Graph parent owner is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_graph_snapshots') and attname = 'seed_context_id'), false), 'Graph parent Seed is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_graph_snapshots') and attname = 'agent_snapshot_id'), false), 'Graph parent Agent snapshot is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_graph_snapshots') and attname = 'version'), false), 'Graph parent version is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_graph_snapshots') and attname = 'graph_locked'), false), 'Graph parent lock flag is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_graph_snapshots') and attname = 'request_hash'), false), 'Graph parent request hash is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_edges') and attname = 'graph_snapshot_id'), false), 'Edge Graph parent is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_edges') and attname = 'agent_snapshot_id'), false), 'Edge Agent snapshot is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_edges') and attname = 'seed_context_id'), false), 'Edge Seed is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_edges') and attname = 'request_hash'), false), 'Edge request hash is required');
+select ok(coalesce((select attnotnull from pg_attribute where attrelid = to_regclass('public.relation_edges') and attname = 'safety_level'), false), 'Edge safety is required');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_graph_snapshots') and conname = 'relation_graph_snapshots_owner_seed_agent_fkey'), 'Graph parent composite owner/Seed/Agent integrity exists');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_graph_owner_seed_agent_fkey'), 'Edge composite parent integrity exists');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_no_self_edge_check'), 'self-edges are rejected by schema');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_unordered_pair_unique'), 'unordered endpoint pair uniqueness exists');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_graph_snapshots') and conname = 'relation_graph_snapshots_lock_consistency_check'), 'Graph lock and locked_at consistency is constrained');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_graph_snapshots') and conname = 'relation_graph_snapshots_request_hash_length_check'), 'Graph request hash length is constrained');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_request_hash_length_check'), 'Edge request hash length is constrained');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_evidence_nonempty_check'), 'Edge evidence is nonempty by schema');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_weights_shape_check'), 'Edge server weight keys and integer bounds are constrained');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_confidence_check'), 'Edge confidence is integer-bounded by schema');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_safety_error_code_check'), 'Edge safety/error consistency is constrained');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_phase3_no_simulation_check'), 'Phase 3 Edges do not couple to simulations or events');
+select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prosecdef and pg_get_functiondef(p.oid) ilike '%relation_edges%'), 'no SECURITY DEFINER alternative Edge writer exists');
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -55,6 +79,12 @@ select * from public.extract_key_people_phase3((select id from public.seed_conte
 select * from public.mutate_key_people_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000303', jsonb_build_array(jsonb_build_object('type', 'confirm', 'person_id', (select id::text from public.key_people where seed_context_id = (select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301') order by id limit 1))));
 select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000304', false);
 
+select throws_ok($$ insert into public.relation_edges (user_id, from_agent_id, to_agent_id, version, relationship_type, weights, confidence, evidence_refs) values ('00000000-0000-0000-0000-00000000c301', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'phase3-graph-snapshot-v1', 'professional', '{}'::jsonb, 0, '[]'::jsonb) $$, '42501', NULL, 'direct authenticated Edge insert is denied before malformed data can persist');
+select throws_ok($$ update public.relation_edges set weights = '{}'::jsonb $$, '42501', NULL, 'direct authenticated Edge mutation stays denied after any Graph lifecycle state');
+set local role anon;
+select throws_ok($$ select * from public.generate_relation_graph_phase3('00000000-0000-4000-8000-000000000301'::uuid, '00000000-0000-4000-8000-000000000305'::uuid) $$, '42501', NULL, 'anon cannot execute the Graph generator');
+reset role;
+set local role authenticated;
 select throws_ok($$ select * from public.generate_relation_graph_phase3(null, '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'graph_snapshot_invalid', 'Graph generator rejects an empty Seed selector before any write');
 select throws_ok($$ select * from public.generate_relation_graph_phase3('00000000-0000-4000-8000-000000000399', '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'seed_not_found', 'Graph generator does not disclose foreign or missing Seeds');
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'owned submitted Seed and latest valid Agent snapshot generate one atomic Graph');
@@ -83,10 +113,21 @@ select lives_ok($verify$
   end
   $check$
 $verify$, 'every Edge has nonempty evidence, server-bounded weights and confidence, and a unique unordered pair');
+select lives_ok($verify$
+  do $check$
+  begin
+    if exists (select 1 from public.relation_edges where weights <> jsonb_build_object('trust', weights->'trust', 'hostility', weights->'hostility', 'dependency', weights->'dependency', 'attraction', weights->'attraction', 'competition', weights->'competition', 'information_gap', weights->'information_gap', 'resource_control', weights->'resource_control', 'emotional_debt', weights->'emotional_debt')) then raise exception 'weight key set differs'; end if;
+    if exists (select 1 from public.relation_edges, jsonb_each(weights) w where jsonb_typeof(w.value) <> 'number' or (w.value #>> '{}') !~ '^(0|[1-9][0-9]?)$|^100$') then raise exception 'weight values are not integer percentages'; end if;
+    if exists (select 1 from public.relation_edges where confidence <> trunc(confidence) or confidence < 0 or confidence > 100) then raise exception 'confidence is not an integer percentage'; end if;
+  end
+  $check$
+$verify$, 'server weights use exactly the formal integer 0..100 key set and confidence is an integer percentage');
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'same key and canonical content replays the Graph');
 select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000307', true);
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'idempotency_key_content_conflict', 'same key with a stale or different Agent input conflicts');
-select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000306') $$, 'complete safe Graph locks atomically');
+select throws_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000306') $$, 'P0001', 'agent_snapshot_invalid', 'newer Agent snapshot prevents locking the old Graph and writes nothing');
+select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314') $$, 'latest valid Agent snapshot creates a fresh replacement Graph');
+select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000315') $$, 'fresh latest Graph locks atomically');
 select lives_ok($verify$
   do $check$
   begin
