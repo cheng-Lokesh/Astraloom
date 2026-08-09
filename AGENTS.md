@@ -41,3 +41,23 @@ Non-negotiables:
 - Paid unlock reveals evidence and strategy depth; it cannot invent stronger claims or bypass safety.
 - High-risk scenarios must trigger safety downgrade before generation or unlock.
 - Do not add social/community/feed/native-app/broad multi-domain prediction features in MVP.
+
+# Long-term version record
+
+Keep versioning lightweight and permanent. Do not turn it into a separate review,
+release-candidate, worktree, or approval workflow.
+
+- At the end of every completed development task, automatically update the project
+  version information.
+- A new feature increments the minor version: `v0.1.0` -> `v0.2.0`.
+- A fix or small improvement increments the patch version: `v0.1.0` -> `v0.1.1`.
+- Every version must update `CHANGELOG.md` with the version number, date, additions,
+  changes, fixes, improvement over the previous version, branch, and commit SHA.
+- When a page or visual changes, run the latest page and save real screenshots under
+  `docs/version-screenshots/<version>/`; link to them from `CHANGELOG.md`.
+- When no page changed, write exactly: `本版本无页面变化` in the corresponding
+  `CHANGELOG.md` entry.
+- After recording the version, automatically create the Git commit and version tag,
+  then safely push the current branch and tag without force-pushing.
+- Preserve unrelated untracked files. Stage only the files that belong to the
+  completed task unless the user explicitly asks otherwise.
