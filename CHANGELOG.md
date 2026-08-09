@@ -8,7 +8,7 @@ newest first.
 ### Release metadata
 
 - Branch: `governance/phase-3-version-baseline`
-- Commit SHA: `__VERSION_BASELINE_COMMIT_SHA__`
+- Version baseline commit SHA: `a42da5df1c983fe723ce5612f607775694fb1943`
 - Previous project revision: `38ad3353332a2e68b7ed3a15ce583a308914c010`
 - Screenshot: [latest locally running home page](docs/version-screenshots/v0.1.0/home.png)
 
