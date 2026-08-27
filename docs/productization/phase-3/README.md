@@ -2,9 +2,10 @@
 
 ## Authority and status
 
-**Status: Step D1 independently accepted; Step D2 code/API gates independently
-accepted with rendered browser replay still pending; Step D3 authorized.** This is the
-normative Phase 3 implementation contract. Phase 2 is closed at
+**Status: Step D1 independently accepted; Step D2 and D3 code/API gates
+independently accepted with combined rendered browser replay still pending;
+Step E regression and documentation closeout authorized.** This is the normative
+Phase 3 implementation contract. Phase 2 is closed at
 `79cc6970d61eb8695b8cdbbbac68de77059f99ea`. Phase 3 does not authorize Phase
 4 or any non-goal listed below.
 
@@ -201,8 +202,24 @@ passed. Independent reviewer task `01a043e2-2e52-7641-a6a4-3c1660684856`
 returned FINAL PASS for code/API candidate
 `106aaa8a2fda07a43187d9d44fab32cbf7be851a`. Its 375/1280 rendered replay is
 still open because both available browser runtimes were denied before page
-interaction. This evidence debt remains in the combined Step D gate and does
-not authorize Step E or Phase 4. Step D3 Graph UI is authorized.
+interaction.
+
+Step D3 replaced the editable/local Graph surface with the formal read-only
+Seed, Agent, Graph generation, and irreversible lock ledger. The controller
+rejects inconsistent projections, edges without an NPC endpoint, duplicate or
+self relations, stale/downgraded Agent snapshots, and offset-ordering mistakes
+when selecting the newest submitted Seed. Root verification observed 22/22
+controller and 72/72 related Agent/Graph tests, exact and full lint,
+type-check, a 108-page production build, clean whitespace, and frozen V2. The
+independent reviewer first blocked an offset-aware Seed ordering defect, then
+returned PASS after RED/GREEN repair at candidate
+`b20bd21e553a84d87e74e150bc4135a7b148b768` in task
+`01a043f8-8378-7050-8351-b519670f2d4d`.
+
+No D3 browser profile or business data was created. The 375/1280 rendered
+replay for Agents and Graph remains open in the combined Step D gate. Step E
+may execute the aggregate regression and attempt that combined browser gate,
+but neither Step D nor Phase 3 is accepted and Phase 4 remains unauthorized.
 
 ## Acceptance matrix
 
