@@ -23,13 +23,18 @@
 - `e3d4166` made the generate API fixture use the persisted
   `seed_context:<uuid>:<16-hex>` evidence form. It was RED (500 instead of
   201) before the safe projection accepted that exact persisted format.
+- Independent review blocked `2cdf61b` because `generate(K) -> lock(L) ->
+  generate(K)` correctly replayed a locked Graph from the database, while the
+  API response schema accepted only `graph_locked=false` with `locked_at=null`.
+  `6d7682e` recorded the API RED (500 instead of 200) and the database
+  lifecycle contract; the database behavior was already GREEN.
 
 ## GREEN evidence
 
 | Guarantee | Command | Result |
 |---|---|---|
-| Graph schema, lock replay, owner/Seed/Agent/request/safety bindings, endpoint evidence, and browser-read-only behavior | outer `BEGIN`, Graph migration, `phase3_graph_snapshots_test.sql`, `ROLLBACK` in one psql session | PASS 152/152 |
-| Graph GET/generate/lock input, redaction, safety projection, and lock mapping | `npm test -- src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts` | PASS 30/30 |
+| Graph schema, lock replay, owner/Seed/Agent/request/safety bindings, endpoint evidence, browser-read-only behavior, and `generate(K) -> lock(L) -> generate(K)` continuity | outer `BEGIN`, Graph migration, `phase3_graph_snapshots_test.sql`, `ROLLBACK` in one psql session | PASS 156/156 |
+| Graph GET/generate/lock input, redaction, safety projection, lock mapping, and locked generation replay | `npm test -- src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts` | PASS 31/31 |
 | Step B Agent database regression | outer `BEGIN`, `phase3_agent_snapshots_test.sql`, `ROLLBACK` | PASS 174/174 |
 | Step A database regression | outer `BEGIN`, `phase3_key_people_test.sql`, `ROLLBACK` | PASS 74/74 |
 | Phase 2 database regressions | outer `BEGIN`, each Phase 2 pgTAP suite, `ROLLBACK` | PASS 7/7 and 10/10 |
@@ -44,10 +49,10 @@ rollbacks, `relation_graph_snapshots` and
 `seed_contexts=16`, `key_people=0`, `agent_profiles=0`,
 `relation_edges=0`, and `consent_events=16`.
 
-## Known validation gap
+## Master long-command verification
 
-The desktop command bridge terminates long-running npm parent processes after
-about 30 seconds while leaving Vitest/ESLint child processes detached. It did
-not return a final aggregate result for full Vitest, lint, type-check, or build
-in this task. These commands must be re-run from a stable terminal before
-formal Step C acceptance; no PASS is claimed for them here.
+The controller independently ran the long commands in a stable local session:
+full Vitest passed **50 files / 493 tests**, lint passed, type-check passed, and
+the Next production build passed with **108 pages**. This repair did not rerun
+those commands because the desktop command bridge is limited to short-lived
+parent processes; the focused API and database regressions above were rerun.
