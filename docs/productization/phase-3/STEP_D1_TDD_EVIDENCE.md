@@ -58,6 +58,20 @@ Follow-up command: npx vitest run src/lib/people/formal-people-client.test.ts --
 
 Follow-up result: PASS - 1 file, 20 tests. Lint and type-check also passed.
 
+## Reviewer type-check block and repair
+
+An independent reviewer blocked D1 at commit 85e773b because type-check found
+11 errors in the controller test: recoverFetch was declared as the production
+FormalPeopleFetch function type while the test later used Vitest mock APIs on
+that value. The failure was reproduced with npm run type-check.
+
+The test helper now returns Mock&lt;FormalPeopleFetch&gt;. This preserves the mock
+API type for test setup while remaining structurally valid wherever the
+controller accepts FormalPeopleFetch. No production behavior changed.
+
+Repair verification: npm run type-check PASS; People controller tests PASS
+(1 file, 20 tests); eslint for the three D1 files PASS.
+
 ## Additional verification
 
 - npm run lint for the People page, client adapter, and controller test - PASS.

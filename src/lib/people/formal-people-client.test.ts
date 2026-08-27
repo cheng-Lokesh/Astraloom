@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, type Mock, vi } from "vitest";
 
 import {
   FormalPeopleController,
@@ -32,7 +32,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function recoverFetch(people = [person]): FormalPeopleFetch {
+function recoverFetch(people = [person]): Mock<FormalPeopleFetch> {
   return vi.fn()
     .mockResolvedValueOnce(json({
       seedContexts: [
