@@ -26,7 +26,7 @@ describe("POST /api/graph/lock", () => {
   });
 
   it("uses one controlled lock RPC and returns only a safe locked parent", async () => {
-    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: "33333333-3333-4333-8333-333333333333", agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: true, locked_at: "2026-08-02T00:00:00.000Z", safety_level: "safe", error_code: null, trace_id: "private" } }], error: null });
+    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: "33333333-3333-4333-8333-333333333333", agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: true, locked_at: "2026-08-02T00:00:00+00:00", safety_level: "safe", error_code: null, trace_id: "private" } }], error: null });
     const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
     expect(response.status).toBe(201);
     expect(rpc).toHaveBeenCalledWith("lock_relation_graph_phase3", { p_seed_context_id: seedId, p_idempotency_key: idempotencyKey });

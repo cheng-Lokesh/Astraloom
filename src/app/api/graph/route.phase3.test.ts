@@ -27,7 +27,7 @@ describe("GET /api/graph", () => {
     const edgeOrder = vi.fn().mockResolvedValue({ data: [{ id: edgeId, graph_snapshot_id: graphId, agent_snapshot_id: agentSnapshotId, from_agent_id: "55555555-5555-4555-8555-555555555555", to_agent_id: "66666666-6666-4666-8666-666666666666", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["agent:confirmed"], safety_level: "safe", trace_id: "private" }], error: null });
     const edgeGraph = vi.fn(() => ({ order: edgeOrder }));
     const edgeSelect = vi.fn(() => ({ eq: edgeGraph }));
-    const graphMaybe = vi.fn().mockResolvedValue({ data: { id: graphId, agent_snapshot_id: agentSnapshotId, version: "phase3-graph-snapshot-v1", graph_locked: true, locked_at: "2026-08-02T00:00:00.000Z", safety_level: "safe", error_code: null, trace_id: "private" }, error: null });
+    const graphMaybe = vi.fn().mockResolvedValue({ data: { id: graphId, agent_snapshot_id: agentSnapshotId, version: "phase3-graph-snapshot-v1", graph_locked: true, locked_at: "2026-08-02T00:00:00+00:00", safety_level: "safe", error_code: null, trace_id: "private" }, error: null });
     const graphLimit = vi.fn(() => ({ maybeSingle: graphMaybe }));
     const graphOrder = vi.fn(() => ({ limit: graphLimit }));
     const graphSeed = vi.fn(() => ({ order: graphOrder }));

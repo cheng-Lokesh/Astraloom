@@ -75,7 +75,7 @@ describe("POST /api/graph/generate", () => {
   });
 
   it("returns 200 with the same complete locked Graph when generation replays after lock", async () => {
-    const lockedAt = "2026-08-02T00:00:00.000Z";
+    const lockedAt = "2026-08-02T00:00:00+00:00";
     rpc.mockResolvedValue({ data: [{ idempotent: true, graph: { id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: true, locked_at: lockedAt, safety_level: "safe", error_code: null }, edges: [{ id: "55555555-5555-4555-8555-555555555555", graph_snapshot_id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", from_agent_id: "66666666-6666-4666-8666-666666666666", to_agent_id: "77777777-7777-4777-8777-777777777777", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["seed:submitted"], safety_level: "safe" }] }], error: null });
     const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
     expect(response.status).toBe(200);
