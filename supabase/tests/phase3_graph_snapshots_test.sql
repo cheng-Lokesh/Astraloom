@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(134);
+select plan(152);
 
 -- Step C owns an immutable Graph parent. Existing relation_edges are not a
 -- graph snapshot until every Edge is bound to this parent and its Agent input.
@@ -105,6 +105,23 @@ select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('publ
 select ok(exists (select 1 from pg_class where oid = to_regclass('public.relation_graph_snapshots') and relreplident = 'd'), 'Graph parent uses ordinary immutable row identity rather than browser mutation semantics');
 select ok(not exists (select 1 from information_schema.column_privileges where grantee = 'anon' and table_schema = 'public' and table_name in ('relation_graph_snapshots','relation_edges','relation_graph_idempotency_receipts') and privilege_type = 'SELECT'), 'anon has no safe or private Graph column projection');
 select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname not in ('generate_relation_graph_phase3','lock_relation_graph_phase3') and has_function_privilege('anon', p.oid, 'EXECUTE') and pg_get_functiondef(p.oid) ilike '%relation_graph%'), 'anon has no alternate Graph RPC surface');
+select ok((select pg_get_expr(adbin, adrelid) from pg_attrdef where adrelid = to_regclass('public.relation_graph_snapshots') and adnum = (select attnum from pg_attribute where attrelid = to_regclass('public.relation_graph_snapshots') and attname = 'created_at')) ilike '%clock_timestamp%', 'Graph parents use clock time to make latest selection deterministic inside one transaction');
+select ok((select pg_get_expr(adbin, adrelid) from pg_attrdef where adrelid = to_regclass('public.agent_profile_snapshots') and adnum = (select attnum from pg_attribute where attrelid = to_regclass('public.agent_profile_snapshots') and attname = 'created_at')) ilike '%clock_timestamp%', 'future Agent snapshots use clock time before Graph selects the latest input');
+select ok(has_column_privilege('authenticated', 'public.relation_graph_snapshots', 'graph_locked', 'update') and has_column_privilege('authenticated', 'public.relation_graph_snapshots', 'locked_at', 'update'), 'authenticated receives only the two lock lifecycle UPDATE columns');
+select ok(not exists (select 1 from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'relation_graph_snapshots' and privilege_type = 'UPDATE' and column_name not in ('graph_locked', 'locked_at')), 'no Graph parent field outside the lock lifecycle is browser-updatable');
+select ok(exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'relation_graph_snapshots' and policyname = 'relation_graph_snapshots_update_phase3_lock_rpc'), 'Graph parent update policy is present only for guarded lock lifecycle writes');
+select ok(exists (select 1 from pg_trigger where tgrelid = to_regclass('public.relation_graph_snapshots') and tgname = 'relation_graph_snapshots_lock_guard_phase3'), 'Graph parent BEFORE UPDATE lock guard trigger exists');
+select ok(exists (select 1 from pg_trigger where tgrelid = to_regclass('public.relation_edges') and tgname = 'relation_edges_phase3_endpoint_guard'), 'Edge endpoint membership and evidence guard trigger exists');
+select ok(exists (select 1 from pg_trigger where tgrelid = to_regclass('public.relation_edges') and tgname = 'relation_edges_phase3_parent_guard'), 'Edge parent owner Seed request and safety guard trigger exists');
+select ok(exists (select 1 from pg_constraint where conrelid = to_regclass('public.relation_edges') and conname = 'relation_edges_endpoint_agent_snapshot_fkey'), 'Edge endpoints use the persisted Agent snapshot composite foreign key');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.lock_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%update public.relation_graph_snapshots%' and pg_get_functiondef(oid) not ilike '%insert into public.relation_graph_snapshots%'), 'lock transitions the existing Graph parent in place and never clones it');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%agent_type=''user_core''%' and pg_get_functiondef(oid) ilike '%v_core%'), 'Graph generation uses the persisted user_core Agent as every Edge anchor');
+select ok(not exists (select 1 from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%agent:confirmed%'), 'Graph generation never fabricates agent confirmed evidence');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%evidence_refs%' and pg_get_functiondef(oid) ilike '%jsonb_array_elements_text%'), 'Graph generation derives Edge evidence from persisted endpoint evidence');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%relationship_type%' and pg_get_functiondef(oid) ilike '%confidence%' and pg_get_functiondef(oid) ilike '%v_weights%'), 'Graph generation deterministically derives relationship-aware weights and confidence');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%v_edge.safety_level%' and pg_get_functiondef(oid) ilike '%v_hash%'), 'Graph generation binds every Edge safety and request hash to its Graph parent values');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.lock_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%idempotency_key_content_conflict%'), 'Graph lock binds same-key replay to the original in-place parent');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.phase3_relation_graph_lock_guard()') and pg_get_functiondef(oid) ilike '%old.graph_locked%' and pg_get_functiondef(oid) ilike '%new.locked_at%'), 'lock guard prohibits unlocks and non-lock Graph parent mutations');
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -241,7 +258,7 @@ select lives_ok($verify$
   $check$
 $verify$, 'Graph lock lifecycle keeps graph_locked and locked_at consistent');
 set local role authenticated;
-select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000306') $$, 'repeated lock is stable replay');
+select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000315') $$, 'repeated lock uses the original successful idempotency key and returns the same parent');
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000307') $$, 'P0001', 'graph_locked', 'a locked Graph cannot be generated or replaced');
 select * from public.submit_seed_context_phase2('00000000-0000-4000-8000-000000000309', '{"trackType":"crossroad","timeWindow":"30_days","questionText":"I want to stalk my partner.","situationSummary":"Sensitive relationship request.","recentEvents":"Recent conflict.","keyPeopleText":"Partner.","decisionOptions":"Pause.","worries":"Privacy.","forbiddenActions":"Do not monitor.","safetyBoundaries":"Respect privacy.","desiredOutput":"Safe next step.","privacyAck":true,"privacySafetyAck":true}'::jsonb);
 select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000309'), '00000000-0000-4000-8000-000000000310', false);
