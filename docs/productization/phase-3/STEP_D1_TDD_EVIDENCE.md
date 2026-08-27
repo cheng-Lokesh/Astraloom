@@ -96,19 +96,44 @@ exit code 0).
 - git diff --exit-code productization/phase-1-contract -- src/lib/v2 - PASS (zero diff).
 - Local temporary authenticated E2E setup created one unique test user and one non-sensitive submitted Track A Seed through local GoTrue and the existing submit_seed_context_phase2 boundary, then deleted the user. Counts returned to 16/0/0/0/16, with Graph 0/0.
 
-## Browser limitation
+## Executor browser limitation
 
 The local dev server started successfully. Playwright CLI was attempted with the
 standard browser, a writable isolated daemon directory, and the installed Chrome
 channel. In both browser attempts the CLI launched a browser process and failed
 with Target crashed / Playwright CDP assertion before the first page could load.
-No screenshots or browser-flow PASS claim is made. The temporary user was still
-deleted and the CLI/browser session was closed.
+No browser-flow PASS claim was made by that executor. The temporary user was
+still deleted and the CLI/browser session was closed.
 
-## Known remaining risk
+## Controller browser acceptance
 
-The authenticated browser journey (extract, confirm, supplement, refresh and
-375px/1280px visual checks) needs a follow-up on a host where Playwright can
-launch a stable browser session. The implementation is covered by strict
-controller and existing API tests, but that does not substitute for rendered
-browser acceptance.
+The controller then repeated the journey with the Codex in-app browser against
+the local Supabase-backed application. The first rendered recovery exposed the
+`+00:00` timestamp mismatch described above. After the focused RED/GREEN repair,
+the same browser recovered the submitted Seed with HTTP 200, extracted two
+candidates with HTTP 201, confirmed one person with HTTP 200, unlocked the
+Agents CTA, added a supplemental person with HTTP 200, and recovered the full
+server ledger after reload. A second supplement verified that all four fields
+clear only after a successful response.
+
+At a 375-pixel viewport, document client width and scroll width were both 360
+pixels, with no horizontal overflow. The rendered input limits were
+120/80/80/1000, and the 1280-pixel desktop first viewport retained the intended
+evidence-ledger hierarchy. The controller then deleted exactly the four People
+rows and four idempotency receipts created by this browser run. Final database
+counts returned to 16 Seed Contexts and zero People, People receipts, Agents,
+Agent receipts, Graph snapshots, Graph receipts, and Relation Edges.
+
+The independent reviewer could not access localhost from its browser runtime,
+so it independently verified code and gates while attributing browser evidence
+to the controller. On candidate `8fbc2c5`, it returned FINAL PASS for Step D1.
+
+## Full-regression observation
+
+The controller independently passed full-repository lint, type-check, and the
+108-page production build. The default full Vitest run passed 513 of 514 tests;
+one unchanged frozen-V2 runtime-validation test exceeded its existing 5-second
+timeout. That same test completed successfully in 6.071 seconds when rerun with
+a 15-second command-line timeout, and `src/lib/v2/**` remains zero-diff. This is
+a test-duration observation for the Phase 3 Step E regression gate, not a D1
+functional failure and not authorization to change frozen V2 behavior.
