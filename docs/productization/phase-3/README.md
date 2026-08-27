@@ -2,7 +2,7 @@
 
 ## Authority and status
 
-**Status: Step B independently accepted; Step C authorized.** This is the
+**Status: Step C independently accepted; Step D authorized.** This is the
 normative Phase 3 implementation contract. Phase 2 is closed at
 `79cc6970d61eb8695b8cdbbbac68de77059f99ea`. Phase 3 does not authorize Phase
 4 or any non-goal listed below.
@@ -162,6 +162,29 @@ GPT-5.6-terra high reviewer checked pushed SHA
 `590d988a1a46062cf97e882fb06084c97bf85f6e`, repeated every stated database,
 API, repository, build, runtime, remote-SHA, V2, and security gate, and returned
 PASS with no Step B blocking issue. Step C is authorized.
+
+### Step C implementation record
+
+Step C is independently accepted. The applied Graph migrations add an
+owner/Seed/Agent-bound immutable parent, evidence-gated server-derived Edges,
+content-bound replay, and a single in-place irreversible lock transition.
+Composite foreign keys bind every Edge to its Graph request and safety state
+and to endpoint Agents in the same frozen Agent snapshot. Browser roles retain
+no arbitrary Graph or Edge mutation path; the two guarded lifecycle triggers
+treat an unset, NULL, empty, or non-`on` RPC guard as closed.
+
+Controller verification against the migrated local database observed Graph
+pgTAP 162/162, Agent 174/174, Step A 74/74, and Phase 2 7/7 plus 10/10. Graph
+API passed 31/31, the full Vitest suite passed 50 files and 494 tests, lint and
+type-check passed, and the 108-page production build completed. Business data
+counts remained 16/0/0/0/16; Graph test parents and receipts rolled back to
+zero; `src/lib/v2/**` remained zero-diff. The independent GPT-5.6-terra high
+reviewer reproduced the applied-database Graph suite, migration history and
+hashes, API regression, repository state, and frozen-V2 gate at controller
+candidate `6a2fa33c3bf12c29c75da8a721a8a43f29588faa`, then returned FINAL PASS.
+See `STEP_C_TDD_EVIDENCE.md` for the RED/GREEN chain, the blocked lifecycle
+replay finding, the applied-migration NULL-guard repair, and final evidence.
+Step D is authorized; Step C acceptance does not authorize Phase 4.
 
 ## Acceptance matrix
 
