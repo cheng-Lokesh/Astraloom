@@ -1,8 +1,9 @@
 # Phase 3 Step D2 — Agents UI TDD Evidence
 
-Status: implementation evidence only. This document does not accept Step D,
-Phase 3, Graph UI, Phase 4, migration work, API changes, V2 changes, or a
-production deployment.
+Status: D2 code and API gates independently accepted; rendered browser
+acceptance remains part of the open Step D gate. This document does not accept
+Step D, Phase 3, Graph UI, Phase 4, migration work, API changes, V2 changes, or
+a production deployment.
 
 ## Scope
 
@@ -81,6 +82,25 @@ evidence records the local business-data baseline as 16 Seed Contexts and zero
 People, People receipts, Agents, Agent receipts, Graph snapshots, Graph
 receipts, and Relation Edges; this D2 execution did not run a database fixture
 or change that baseline.
+
+## Controller and independent review
+
+The controller separately reran all D2 focused gates, full-repository lint, and
+the 108-page production build. It also queried the migrated local database and
+confirmed 16 Seed Contexts with zero People, People receipts, Agent snapshots,
+Agents, Agent receipts, Graph snapshots, Graph receipts, and Relation Edges.
+
+Independent reviewer task `01a043e2-2e52-7641-a6a4-3c1660684856` verified
+candidate `106aaa8a2fda07a43187d9d44fab32cbf7be851a` and returned FINAL PASS for
+D2 code and API gates. It independently reproduced 15/15 controller tests,
+39/39 related API tests, exact D2 ESLint, type-check, whitespace, and both V2
+zero-difference checks with exit code 0. It also confirmed the immediate
+pending-state synchronization and preservation of a previous immutable
+snapshot after a later safety-blocked zero-write request.
+
+The reviewer kept the local-browser restriction separate from this code/API
+decision. Step D cannot close until the combined People, Agents, and Graph
+journey receives rendered 375/1280 browser acceptance in an accessible runtime.
 
 ## Non-goals
 

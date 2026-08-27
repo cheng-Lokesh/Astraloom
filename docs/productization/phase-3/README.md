@@ -2,7 +2,8 @@
 
 ## Authority and status
 
-**Status: Step C independently accepted; Step D authorized.** This is the
+**Status: Step D1 independently accepted; Step D2 code/API gates independently
+accepted with rendered browser replay still pending; Step D3 authorized.** This is the
 normative Phase 3 implementation contract. Phase 2 is closed at
 `79cc6970d61eb8695b8cdbbbac68de77059f99ea`. Phase 3 does not authorize Phase
 4 or any non-goal listed below.
@@ -185,6 +186,23 @@ candidate `6a2fa33c3bf12c29c75da8a721a8a43f29588faa`, then returned FINAL PASS.
 See `STEP_C_TDD_EVIDENCE.md` for the RED/GREEN chain, the blocked lifecycle
 replay finding, the applied-migration NULL-guard repair, and final evidence.
 Step D is authorized; Step C acceptance does not authorize Phase 4.
+
+### Step D implementation record
+
+Step D1 replaced the People local-first page with the formal submitted-Seed and
+Key People API ledger. It passed controller browser verification, two
+independent repair cycles, and final independent review at pushed candidate
+`b43187088fef5212b9b8128285b536b98c8aae54`.
+
+Step D2 replaced the Agents local-draft page with strict formal Seed, People,
+and immutable Agent snapshot projections. Controller and related API tests,
+full lint, type-check, the 108-page build, database baseline, and V2 isolation
+passed. Independent reviewer task `01a043e2-2e52-7641-a6a4-3c1660684856`
+returned FINAL PASS for code/API candidate
+`106aaa8a2fda07a43187d9d44fab32cbf7be851a`. Its 375/1280 rendered replay is
+still open because both available browser runtimes were denied before page
+interaction. This evidence debt remains in the combined Step D gate and does
+not authorize Step E or Phase 4. Step D3 Graph UI is authorized.
 
 ## Acceptance matrix
 
