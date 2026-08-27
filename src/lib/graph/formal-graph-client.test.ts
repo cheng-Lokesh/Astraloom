@@ -25,13 +25,14 @@ function json(body: unknown, status = 200) {
 }
 
 function recoverFetch(options: { snapshot?: unknown; agents?: unknown[]; graph?: unknown; edges?: unknown[] } = {}): Mock<FormalGraphFetch> {
+  const has = (key: keyof typeof options) => Object.prototype.hasOwnProperty.call(options, key);
   return vi.fn()
     .mockResolvedValueOnce(json({ seedContexts: [
       { id: seedA, version: "1", submittedAt: "2026-08-26T12:00:00+00:00", frozenAt: "2026-08-26T12:00:00+00:00" },
       { id: seedB, version: "2", submittedAt: "2026-08-27T12:00:00+00:00", frozenAt: "2026-08-27T12:00:00+00:00" },
     ] }))
-    .mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", snapshot: options.snapshot ?? snapshot, agents: options.agents ?? [core, npc] }))
-    .mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", graph: options.graph ?? null, edges: options.edges ?? [] }));
+    .mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", snapshot: has("snapshot") ? options.snapshot : snapshot, agents: has("agents") ? options.agents : [core, npc] }))
+    .mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", graph: has("graph") ? options.graph : null, edges: has("edges") ? options.edges : [] }));
 }
 
 function controller(fetcher: FormalGraphFetch, ids = ["88888888-8888-4888-8888-888888888888", "99999999-9999-4999-8999-999999999999"]) {
@@ -96,7 +97,7 @@ describe("FormalGraphController", () => {
     [500, "persistence_failed", "We couldn't generate a Graph snapshot. Your saved ledger has not changed."],
   ])("preserves the prior safe Graph on generation failure %s without exposing response bodies", async (status, code, notice) => {
     const fetcher = recoverFetch({ graph, edges: [edge] });
-    fetcher.mockResolvedValueOnce(json({ ok: false, error_code: code, trace_id: "private-trace", raw_context: "private" }, status));
+    fetcher.mockResolvedValueOnce(json({ ok: false, error_code: code, trace_id: "private-trace" }, status));
     const subject = controller(fetcher);
     await subject.recover();
     await subject.generate();
@@ -128,7 +129,7 @@ describe("FormalGraphController", () => {
   it("locks only a complete current Graph through a fresh UUID and adopts the irreversible server result", async () => {
     const fetcher = recoverFetch({ graph, edges: [edge] });
     const locked = { ...graph, graph_locked: true, locked_at: "2026-08-27T12:00:00+00:00" };
-    fetcher.mockResolvedValueOnce(json({ ok: true, error_code: null, idempotent: false, graph: locked }, 201));
+    fetcher.mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", idempotent: false, graph: locked }, 201));
     const subject = controller(fetcher);
     await subject.recover();
     await subject.lock();
