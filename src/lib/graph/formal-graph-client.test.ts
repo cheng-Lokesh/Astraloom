@@ -116,6 +116,22 @@ describe("FormalGraphController", () => {
     expect(fetcher).toHaveBeenCalledTimes(4);
   });
 
+  it.each([
+    ["generate", "Graph generation was blocked by the saved safety boundary. No Graph snapshot was written."],
+    ["lock", "Graph locking was blocked by the saved safety boundary. No Graph snapshot was written."],
+  ] as const)("uses action-specific safety-blocked copy for %s", async (action, notice) => {
+    const fetcher = recoverFetch({ graph, edges: [edge] });
+    fetcher.mockResolvedValueOnce(json({ ok: false, error_code: "safety_blocked", trace_id: "private-trace" }, 409));
+    const subject = controller(fetcher);
+    await subject.recover();
+
+    await subject[action]();
+
+    expect(subject.state).toMatchObject({ phase: "blocked", graph, edges: [edge], notice });
+    expect(subject.canGenerate).toBe(false);
+    expect(subject.canLock).toBe(false);
+  });
+
   it("fails closed on inconsistent Graph schemas and does not fall back to local data", async () => {
     const fetcher = recoverFetch({ graph, edges: [edge] });
     fetcher.mockResolvedValueOnce(json({ ok: true, error_code: null, idempotent: false, graph, edges: [{ ...edge, weights: { ...edge.weights, client_weight: 100 } }], raw_context: "private" }, 201));
@@ -124,6 +140,35 @@ describe("FormalGraphController", () => {
     await subject.generate();
     expect(subject.state).toMatchObject({ phase: "ready", graph, edges: [edge], notice: "We couldn't generate a Graph snapshot. Your saved ledger has not changed." });
     expect(JSON.stringify(subject.state)).not.toContain("private");
+  });
+
+  it("rejects a Graph whose relationship only connects the user core and a parallel variant", async () => {
+    const variant = { ...core, id: "abababab-abab-4bab-8bab-abababababab", agent_type: "user_variant", display_name: "Parallel self" };
+    const nonNpcEdge = { ...edge, to_agent_id: variant.id };
+    const subject = controller(recoverFetch({ agents: [core, variant], graph, edges: [nonNpcEdge] }));
+
+    await subject.recover();
+
+    expect(subject.state).toMatchObject({ phase: "failure", graph: null, edges: [] });
+  });
+
+  it.each([
+    ["generate", "safety_downgraded", "safety_downgraded", "Graph generation is unavailable because the saved safety boundary was downgraded. No Graph snapshot was written."],
+    ["lock", "safety_downgraded", "safety_downgraded", "Graph locking is unavailable because the saved safety boundary was downgraded. No Graph snapshot was written."],
+    ["generate", "agent_snapshot_invalid", "stale_agents", "Graph generation is unavailable because the saved Agent snapshot is no longer eligible. No Graph snapshot was written."],
+    ["lock", "agent_snapshot_invalid", "stale_agents", "Graph locking is unavailable because the saved Agent snapshot is no longer eligible. No Graph snapshot was written."],
+  ] as const)("preserves a safe Graph but disables later writes when %s receives %s", async (action, errorCode, phase, notice) => {
+    const fetcher = recoverFetch({ graph, edges: [edge] });
+    fetcher.mockResolvedValueOnce(json({ ok: false, error_code: errorCode, trace_id: "private-trace" }, 409));
+    const subject = controller(fetcher);
+    await subject.recover();
+
+    await subject[action]();
+
+    expect(subject.state).toMatchObject({ phase, graph, edges: [edge], notice, pendingGeneration: false, pendingLock: false });
+    expect(subject.canGenerate).toBe(false);
+    expect(subject.canLock).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(4);
   });
 
   it("locks only a complete current Graph through a fresh UUID and adopts the irreversible server result", async () => {
