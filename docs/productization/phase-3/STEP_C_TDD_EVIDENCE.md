@@ -45,7 +45,7 @@
 | Guarantee | Command | Result |
 |---|---|---|
 | Graph schema, lock replay, owner/Seed/Agent/request/safety bindings, endpoint evidence, browser-read-only behavior, and `generate(K) -> lock(L) -> generate(K)` continuity | outer `BEGIN`, Graph migration, `phase3_graph_snapshots_test.sql`, `ROLLBACK` in one psql session | PASS 156/156 |
-| Additive unset-guard repair candidate | outer `BEGIN`, `20260827220000_phase3_graph_unset_guard_hardening.sql`, `phase3_graph_snapshots_test.sql`, `ROLLBACK` in one psql session | PASS 162/162; preview only, not applied |
+| Additive unset-guard repair | preview in an outer transaction, then controlled local apply followed by `phase3_graph_snapshots_test.sql` against the migrated database | PASS 162/162 both before and after apply |
 | Graph GET/generate/lock input, redaction, safety projection, lock mapping, and locked generation replay | `npm test -- src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts` | PASS 31/31 |
 | Step B Agent database regression | outer `BEGIN`, `phase3_agent_snapshots_test.sql`, `ROLLBACK` | PASS 174/174 |
 | Step A database regression | outer `BEGIN`, `phase3_key_people_test.sql`, `ROLLBACK` | PASS 74/74 |
@@ -55,20 +55,23 @@
 
 ## Database safety
 
-The controller had already applied the base Graph migration
-`20260802161000_phase3_graph_snapshot_persistence.sql` before this repair.
-This repair did not edit that applied file and did not apply the new additive
-candidate `20260827220000_phase3_graph_unset_guard_hardening.sql`; migration
-history contains only the base version, so the candidate remains pending. The
-candidate was exercised only in a single-session outer `BEGIN`/`ROLLBACK`
-preview. Afterwards Graph parents and receipts were both zero, and business
-counts remained `seed_contexts=16`, `key_people=0`, `agent_profiles=0`,
-`relation_edges=0`, and `consent_events=16`.
+The controller first applied the base Graph migration
+`20260802161000_phase3_graph_snapshot_persistence.sql`, whose recorded SHA-256
+is `dcce6094565112737bd3f71066379dc7de42f74722e34b4a94f41e99c7858968`.
+This repair did not edit that applied file. After independent review of the
+preview candidate, the controller applied the additive migration
+`20260827220000_phase3_graph_unset_guard_hardening.sql`, whose SHA-256 is
+`7d3ef21aef82ac2c3ce27b9adba4de4a83cc54dcf3af43e34bd96f42fcc81b0a`.
+Migration history contains both versions. The complete database regression was
+then rerun against the migrated database and passed. Graph parents and receipts
+were both zero after the transactional tests, while business counts remained
+`seed_contexts=16`, `key_people=0`, `agent_profiles=0`, `relation_edges=0`,
+and `consent_events=16`.
 
 ## Master long-command verification
 
 The controller independently ran the long commands in a stable local session:
-full Vitest passed **50 files / 493 tests**, lint passed, type-check passed, and
+full Vitest passed **50 files / 494 tests**, lint passed, type-check passed, and
 the Next production build passed with **108 pages**. This repair did not rerun
 those commands because the desktop command bridge is limited to short-lived
 parent processes; the focused API and database regressions above were rerun.
