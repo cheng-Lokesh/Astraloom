@@ -2,6 +2,7 @@ import { describe, expect, it, type Mock, vi } from "vitest";
 
 import {
   FormalAgentsController,
+  runFormalAgentsUiAction,
   type FormalAgentsFetch,
 } from "./formal-agents-client";
 
@@ -133,6 +134,18 @@ describe("FormalAgentsController", () => {
     expect(JSON.stringify(subject.state)).not.toContain("private-trace");
   });
 
+  it("preserves an existing immutable snapshot when a later generation is safety blocked", async () => {
+    const fetcher = recoverFetch({ snapshot, agents: [core] });
+    fetcher.mockResolvedValueOnce(json({ ok: false, error_code: "safety_blocked", trace_id: "opaque" }, 409));
+    const subject = controller(fetcher);
+    await subject.recover();
+    await subject.generate(true);
+
+    expect(subject.state).toMatchObject({ phase: "blocked", snapshot, agents: [core] });
+    expect(subject.canGenerate).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
   it.each([
     [404, "seed_not_found", "This submitted scenario is no longer available. Return to intake to recover it."],
     [409, "idempotency_key_content_conflict", "This generation request conflicted with saved state. Reload the Agent ledger before trying again."],
@@ -176,6 +189,25 @@ describe("FormalAgentsController", () => {
     resolveRequest?.(json({ ok: true, error_code: null, trace_id: "opaque", source: "controlled_snapshot", idempotent: false, snapshot, agents: [core] }, 201));
     await Promise.all([first, second]);
     expect(subject.state).toMatchObject({ phase: "ready", pendingGeneration: false, snapshot, agents: [core] });
+  });
+
+  it("synchronizes UI state as soon as generation begins, then after it settles", async () => {
+    let resolveRequest: ((response: Response) => void) | undefined;
+    const fetcher = recoverFetch();
+    fetcher.mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveRequest = resolve; }));
+    const subject = controller(fetcher);
+    await subject.recover();
+    const states: boolean[] = [];
+
+    const action = runFormalAgentsUiAction(
+      () => subject.generate(true),
+      () => states.push(subject.state.pendingGeneration),
+    );
+
+    expect(states).toEqual([true]);
+    resolveRequest?.(json({ ok: true, error_code: null, trace_id: "opaque", source: "controlled_snapshot", idempotent: false, snapshot, agents: [core] }, 201));
+    await action;
+    expect(states).toEqual([true, false]);
   });
 
   it("reloads server truth after a conflict without replaying the failed mutation", async () => {

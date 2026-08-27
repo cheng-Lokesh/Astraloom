@@ -1,915 +1,98 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusPill } from "@/components/status-pill";
-import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
-import { buildAgentProfiles } from "@/lib/agents/build";
-import { getRepositories } from "@/lib/repositories/repository-provider";
-import type {
-  AgentFieldSourceType,
-  AgentProfileDraft,
-} from "@/types/agent-profile";
+import { Button, ButtonLink, EmptyState, SurfaceCard } from "@/components/ui-foundation";
+import { FormalAgentsController, runFormalAgentsUiAction, type FormalAgent, type FormalAgentsState } from "@/lib/agents/formal-agents-client";
 
-function metricAverage(values: number[]) {
-  if (!values.length) return 0;
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+function makeController() {
+  return new FormalAgentsController({ fetcher: (input, init) => fetch(input, init), newId: () => crypto.randomUUID() });
 }
 
-function agentTone(agent: AgentProfileDraft) {
-  if (agent.profileJson.source.sourceType === "user_confirmed") return "ready";
-  if (agent.agentType === "self") return "ready";
-  return agent.confidence >= 70 ? "ready" : "planned";
+function safetyTone(safety: FormalAgent["safety_level"]) {
+  return safety === "safe" ? "ready" : safety === "caution" ? "caution" : "downgraded";
 }
 
-function agentTypeLabel(agent: AgentProfileDraft) {
-  if (agent.agentType === "self") return "User core";
-  if (agent.agentType === "parallel_self") return "Parallel self";
-  return "NPC agent";
+function safetyLabel(safety: FormalAgent["safety_level"]) {
+  return safety === "safe" ? "Safety reviewed" : safety === "caution" ? "Conservative review" : "Conservative downgrade";
 }
 
-function stanceLabel(value: string) {
-  return value.replaceAll("_", " ");
-}
-
-function confidenceTone(value: number) {
-  if (value >= 80) return "ready";
-  if (value >= 55) return "planned";
-  return "caution";
-}
-
-function sourceFor(agent: AgentProfileDraft, field: string) {
-  return agent.profileJson.fieldSources[field] ?? agent.profileJson.source.sourceType;
-}
-
-function fieldLabel(value: string) {
-  return value
-    .replace("motivation.fear", "motivation.concern")
-    .replace("state.currentIntention", "state.current model aim")
-    .replaceAll(".", " / ")
-    .replace(/([A-Z])/g, " $1")
-    .replaceAll("_", " ")
-    .toLowerCase();
-}
-
-function sourceLabel(value: AgentFieldSourceType) {
-  const labels: Record<AgentFieldSourceType, string> = {
-    user_confirmed: "User-confirmed",
-    chat_inferred: "Inferred",
-    default: "Default model",
-    model_inferred: "Model-inferred",
-  };
-  return labels[value];
-}
-
-function sourceClasses(value: AgentFieldSourceType) {
-  if (value === "user_confirmed") {
-    return "border-[#568262]/30 bg-[#eef5ee] text-[#2f5d3d]";
-  }
-  if (value === "default") {
-    return "border-black/8 bg-[#f7f8f4] text-[#52594d]";
-  }
-  return "border-[#d49b4a]/30 bg-[#fff8ed] text-[#7c5524]";
+function agentLabel(type: FormalAgent["agent_type"]) {
+  return type === "user_core" ? "User core" : type === "user_variant" ? "Parallel self" : "Confirmed-person agent";
 }
 
 export default function AgentsPage() {
-  const [repos] = useState(() => getRepositories());
-  const [seedContext] = useState(() => {
-    const result = repos.seedContexts.load();
-    return result.ok ? result.data : null;
-  });
-  const [keyPeople] = useState(() => {
-    if (!seedContext) return null;
-    const result = repos.keyPeople.load(seedContext.id);
-    return result.ok ? result.data : null;
-  });
-  const [includeParallelSelves, setIncludeParallelSelves] = useState(() => {
-    if (!seedContext) return true;
-    const result = repos.agentProfiles.load(seedContext.id);
-    return result.ok ? result.data?.includeParallelSelves ?? true : true;
-  });
-  const [savedAt, setSavedAt] = useState<string | null>(() => {
-    if (!seedContext) return null;
-    const result = repos.agentProfiles.load(seedContext.id);
-    return result.ok ? result.data?.updatedAt ?? null : null;
-  });
-  const [selectedId, setSelectedId] = useState("");
-  const [generationVersion, setGenerationVersion] = useState(0);
+  const [controller] = useState(makeController);
+  const [state, setState] = useState<FormalAgentsState>(() => controller.state);
+  const [includeParallelSelves, setIncludeParallelSelves] = useState(true);
+  const sync = () => setState({ ...controller.state, people: [...controller.state.people], agents: [...controller.state.agents] });
+  const run = (work: () => Promise<boolean | void>) => runFormalAgentsUiAction(work, sync);
 
-  const confirmedPeople = useMemo(
-    () =>
-      (keyPeople?.people ?? []).filter(
-        (person) => person.confirmed && person.status === "confirmed",
-      ),
-    [keyPeople],
-  );
-
-  const agents = useMemo(() => {
-    if (!seedContext) return [];
-    const nextAgents = buildAgentProfiles(seedContext, confirmedPeople, includeParallelSelves);
-    return generationVersion === 0
-      ? nextAgents
-      : nextAgents.map((agent) => ({ ...agent }));
-  }, [confirmedPeople, generationVersion, includeParallelSelves, seedContext]);
-
-  const userCore = agents.filter((agent) => agent.agentType === "self");
-  const parallelSelves = agents.filter(
-    (agent) => agent.agentType === "parallel_self",
-  );
-  const npcAgents = agents.filter((agent) => agent.agentType === "npc");
-  const selectedAgent =
-    agents.find((agent) => agent.id === selectedId) ?? userCore[0] ?? agents[0] ?? null;
-
-  function saveDraft() {
-    if (!seedContext) return;
-    const updatedAt = new Date().toISOString();
-    const result = repos.agentProfiles.save({
-      seedContextId: seedContext.id,
-      includeParallelSelves,
-      agents,
-      updatedAt,
+  useEffect(() => {
+    void controller.recover().then(() => {
+      setState({ ...controller.state, people: [...controller.state.people], agents: [...controller.state.agents] });
     });
-    if (result.ok) {
-      setSavedAt(updatedAt);
-    }
-  }
+  }, [controller]);
 
-  function regenerate() {
-    setGenerationVersion((value) => value + 1);
-    setSelectedId("");
-    setSavedAt(null);
-  }
-
-  if (!seedContext) {
-    return (
-      <AppShell>
-        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">Needs scenario</StatusPill>
-          <h1 className="mt-4 text-3xl font-semibold text-[#11150f]">
-            Add a situation before generating agents.
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            Agent Profiles are local simulation models built from intake context and confirmed people.
-          </p>
-          <ButtonLink href="/app/new/intake" className="mt-6 px-5 py-3">
-            Go to intake
-          </ButtonLink>
-        </SurfaceCard>
-      </AppShell>
-    );
-  }
-
-  if (!confirmedPeople.length) {
-    return (
-      <AppShell>
-        <SurfaceCard emphasis="strong" className="mx-auto max-w-3xl p-8">
-          <StatusPill tone="blocked">Needs confirmed people</StatusPill>
-          <h1 className="mt-4 text-3xl font-semibold text-[#11150f]">
-            Confirm the cast before creating NPC agents.
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-[#62695d]">
-            Every confirmed Key Person maps to one NPC agent. Deleted and merged people stay out of generation.
-          </p>
-          <ButtonLink href="/app/new/people" className="mt-6 px-5 py-3">
-            Return to people
-          </ButtonLink>
-        </SurfaceCard>
-      </AppShell>
-    );
-  }
-
-  return (
-    <AppShell>
-      <div className="space-y-6">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <SurfaceCard emphasis="strong">
-            <StatusPill tone="ready">Situation model details</StatusPill>
-            <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight text-[#11150f]">
-              Inspect bounded agent models behind the sandbox.
-            </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#62695d]">
-              This optional detail page shows the situation models used for
-              dynamic path simulation. They are bounded models, not statements
-              of fact about real people.
-            </p>
-            <div className="mt-5 rounded-md border border-black/8 bg-[#f7f8f4] p-4 text-sm leading-7 text-[#3f483d]">
-              <span className="font-semibold text-[#11150f]">Scenario: </span>
-              {seedContext.questionText}
-            </div>
-          </SurfaceCard>
-
-          <aside className="mf-panel-dark p-6">
-            <div className="text-xs font-semibold uppercase text-[#b7e6c6]">
-              Simulation readiness
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <Metric label="Agents" value={agents.length} />
-              <Metric label="NPC agents" value={npcAgents.length} />
-              <Metric
-                label="Avg confidence"
-                value={metricAverage(agents.map((agent) => agent.confidence))}
-              />
-              <Metric
-                label="Evidence refs"
-                value={agents.reduce(
-                  (total, agent) => total + agent.evidenceRefs.length,
-                  0,
-                )}
-              />
-            </div>
-
-            <label className="mt-5 flex items-start gap-3 rounded-md border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-white/70">
-              <input
-                type="checkbox"
-                checked={includeParallelSelves}
-                onChange={(event) => setIncludeParallelSelves(event.target.checked)}
-                className="mt-1 h-4 w-4 accent-[#b7e6c6]"
-              />
-              <span>
-                Include cautious and decisive self variants for branch comparison.
-              </span>
-            </label>
-
-            <div className="mt-5 grid gap-3">
-              <Button
-                type="button"
-                variant="ghostOnDark"
-                onClick={regenerate}
-                className="w-full px-4 py-3"
-              >
-                Regenerate from updated people/context
-              </Button>
-              <Button
-                type="button"
-                variant="onDark"
-                onClick={saveDraft}
-                className="w-full px-4 py-3"
-              >
-                Save local agent draft
-              </Button>
-            </div>
-            {savedAt ? (
-              <p className="mt-3 text-xs leading-5 text-white/50">
-                Saved {new Date(savedAt).toLocaleString()}
-              </p>
-            ) : null}
-            <ButtonLink
-              href="/app/new/graph"
-              variant="ghostOnDark"
-              className="mt-3 w-full px-4 py-3"
-            >
-              Continue to graph
-            </ButtonLink>
-          </aside>
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(340px,0.5fr)]">
-          <main className="space-y-5">
-            <UserCoreSection
-              agents={userCore}
-              selectedId={selectedAgent?.id ?? ""}
-              onSelect={setSelectedId}
-            />
-            <ParallelSelfSection
-              agents={parallelSelves}
-              selectedId={selectedAgent?.id ?? ""}
-              onSelect={setSelectedId}
-              enabled={includeParallelSelves}
-            />
-            <NpcAgentSection
-              agents={npcAgents}
-              expectedCount={confirmedPeople.length}
-              selectedId={selectedAgent?.id ?? ""}
-              onSelect={setSelectedId}
-            />
-          </main>
-
-          <AgentInspector agent={selectedAgent} />
-        </section>
-      </div>
-    </AppShell>
-  );
+  if (state.phase === "loading") return <AppShell><Loading /></AppShell>;
+  return <AppShell><section aria-labelledby="agents-title" className="mx-auto max-w-6xl py-6 sm:py-10">
+    <a href="#agent-ledger" className="sr-only rounded bg-[#11150f] px-4 py-3 text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4">Skip to saved Agent ledger</a>
+    <Header />
+    {state.phase === "unauthenticated" ? <EmptyState className="mt-8" tone="warning" title="Sign in to recover saved Agents" description="This ledger shows only immutable Agent snapshots saved to your account." action={<ButtonLink href="/login" className="!w-auto px-4 py-3">Go to login</ButtonLink>} /> : null}
+    {state.phase === "no_seed" ? <EmptyState className="mt-8" title="No submitted scenario yet" description="Confirm a formal scenario in intake before generating Agents." action={<ButtonLink href="/app/new/intake" className="!w-auto px-4 py-3">Go to intake</ButtonLink>} /> : null}
+    {state.phase === "failure" ? <EmptyState className="mt-8" tone="warning" title="Saved Agent ledger could not be recovered" description={state.notice ?? "Please try again."} action={<Button onClick={() => void run(() => controller.recover())} className="!w-auto px-4 py-3">Reload Agent ledger</Button>} /> : null}
+    {state.phase === "blocked" ? <Blocked state={state} reload={() => void run(() => controller.recover())} /> : null}
+    {state.phase === "ready" ? <Ledger state={state} includeParallelSelves={includeParallelSelves} setIncludeParallelSelves={setIncludeParallelSelves} controller={controller} run={run} /> : null}
+  </section></AppShell>;
 }
 
-function UserCoreSection({
-  agents,
-  selectedId,
-  onSelect,
-}: {
-  agents: AgentProfileDraft[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  const agent = agents[0] ?? null;
-
-  return (
-    <section>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-[#11150f]">User core card</h2>
-          <p className="mt-1 text-sm leading-6 text-[#62695d]">
-            The baseline user model used to anchor the local simulation.
-          </p>
-        </div>
-        <StatusPill tone={agent ? "ready" : "blocked"}>
-          {agent ? "Core exists" : "Missing core"}
-        </StatusPill>
-      </div>
-      {agent ? (
-        <UserCoreCard
-          agent={agent}
-          selected={selectedId === agent.id}
-          onSelect={() => onSelect(agent.id)}
-        />
-      ) : (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-900">
-          User core should always be generated before graph preparation.
-        </div>
-      )}
-    </section>
-  );
+function Header() {
+  return <header className="border-b border-black/10 pb-6"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Step 3 · Agent Profiles</p><h1 id="agents-title" className="mt-2 font-[var(--font-display)] text-4xl leading-tight text-[#11150f] sm:text-5xl">Inspect the saved agents behind your scenario.</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">Agent Profiles are immutable, evidence-bounded simulation inputs. They are not statements of fact about another person, and their saved fields cannot be edited here.</p><ButtonLink href="/app/new/people" variant="ghost" className="!w-auto mt-4 px-4 py-3">Back to People</ButtonLink></header>;
 }
 
-function ParallelSelfSection({
-  agents,
-  selectedId,
-  onSelect,
-  enabled,
-}: {
-  agents: AgentProfileDraft[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-  enabled: boolean;
-}) {
-  return (
-    <section>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-[#11150f]">
-            Parallel self comparison cards
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-[#62695d]">
-            Cautious and decisive branches expose different simulation policies for the same user context.
-          </p>
-        </div>
-        <StatusPill tone={enabled ? "active" : "locked"}>
-          {enabled ? `${agents.length} variants` : "Disabled"}
-        </StatusPill>
-      </div>
-      {enabled ? (
-        <div className="mt-3 grid gap-4 md:grid-cols-2">
-          {agents.map((agent) => (
-            <ParallelSelfCard
-              key={agent.id}
-              agent={agent}
-              selected={selectedId === agent.id}
-              onSelect={() => onSelect(agent.id)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-3 rounded-lg border border-black/8 bg-white p-5 text-sm leading-6 text-[#62695d]">
-          Parallel self variants are turned off for this draft.
-        </div>
-      )}
-    </section>
-  );
+function Loading() {
+  return <div className="mx-auto max-w-6xl py-10"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Recovering account ledger</p><p className="mt-2 text-sm text-[#62695d]">Loading the latest submitted scenario, confirmed People, and saved Agent snapshot.</p></div>;
 }
 
-function NpcAgentSection({
-  agents,
-  expectedCount,
-  selectedId,
-  onSelect,
-}: {
-  agents: AgentProfileDraft[];
-  expectedCount: number;
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  const complete = agents.length === expectedCount;
-
-  return (
-    <section>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-[#11150f]">NPC agent cards</h2>
-          <p className="mt-1 text-sm leading-6 text-[#62695d]">
-            Each confirmed Key Person becomes one NPC model with source and evidence details.
-          </p>
-        </div>
-        <StatusPill tone={complete ? "ready" : "caution"}>
-          {agents.length}/{expectedCount} mapped
-        </StatusPill>
-      </div>
-      <div className="mt-3 grid gap-4 md:grid-cols-2">
-        {agents.map((agent) => (
-          <NpcAgentCard
-            key={agent.id}
-            agent={agent}
-            selected={selectedId === agent.id}
-            onSelect={() => onSelect(agent.id)}
-          />
-        ))}
-      </div>
-    </section>
-  );
+function Blocked({ state, reload }: { state: FormalAgentsState; reload: () => void }) {
+  const confirmedCount = state.people.filter((person) => person.status === "confirmed").length;
+  const hasPreviousSnapshot = state.snapshot !== null && state.agents.length > 0;
+  return <div className="mt-8 space-y-8"><EmptyState tone="warning" title="Agent generation is blocked" description={state.notice ?? "The saved safety boundary did not permit Agent generation. No snapshot was written."} action={<div className="flex flex-wrap gap-3"><Button onClick={reload} variant="secondary" className="!w-auto px-4 py-3">Reload saved ledger</Button><ButtonLink href="/app/new/people" className="!w-auto px-4 py-3">Return to People</ButtonLink></div>} />{hasPreviousSnapshot && state.snapshot ? <section aria-label="Preserved Agent snapshot"><div className="border border-[#d49b4a]/30 bg-[#fff8ed] p-4 text-sm leading-6 text-[#7c5524]"><strong>Previous version preserved:</strong> safety blocked this new request before any write. The immutable snapshot below remains saved, readable, and unchanged; Graph and further generation stay unavailable in this blocked state.</div><div className="mt-6"><SnapshotLedger snapshot={state.snapshot} agents={state.agents} confirmedCount={confirmedCount} /></div></section> : null}</div>;
 }
 
-function SelectableCard({
-  selected,
-  onSelect,
-  children,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`rounded-lg border p-5 text-left transition ${
-        selected
-          ? "border-[#568262]/50 bg-[#eef5ee]"
-          : "border-black/8 bg-white hover:border-[#568262]/30"
-      }`}
-    >
-      {children}
-    </button>
-  );
+function Ledger({ state, includeParallelSelves, setIncludeParallelSelves, controller, run }: { state: FormalAgentsState; includeParallelSelves: boolean; setIncludeParallelSelves: (value: boolean) => void; controller: FormalAgentsController; run: (work: () => Promise<boolean | void>) => Promise<boolean> }) {
+  const confirmed = useMemo(() => state.people.filter((person) => person.status === "confirmed"), [state.people]);
+  const snapshot = state.snapshot;
+  const hasSnapshot = snapshot !== null && state.agents.length > 0;
+  const graphReady = hasSnapshot && snapshot.safety_level !== "downgraded" && state.agents.some((agent) => agent.agent_type === "npc");
+  const actionLabel = hasSnapshot ? "Generate a new immutable version" : "Generate immutable Agent snapshot";
+
+  return <div id="agent-ledger" className="mt-8 space-y-8">
+    <div className="grid gap-5 border-b border-black/10 pb-6 lg:grid-cols-[minmax(0,1fr)_340px]"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Submitted scenario</p><p className="mt-1 text-sm font-semibold text-[#11150f]">Latest submitted scenario recovered</p><p className="mt-1 max-w-2xl text-sm leading-6 text-[#62695d]">Scenario text stays private. The generation boundary receives only the submitted Seed selector and the formal confirmed-People ledger.</p></div><SurfaceCard emphasis="dark" className="p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">People evidence</p><p className="mt-2 text-3xl font-semibold text-white">{confirmed.length}</p><p className="mt-1 text-sm leading-6 text-white/65">confirmed People can enter a new generation. Candidates, merged, and deleted records cannot.</p></SurfaceCard></div>
+    {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover())} /> : null}
+    {!confirmed.length ? <EmptyState tone="warning" title="Confirm at least one person before generating" description="No local or inferred People are substituted. Return to People to confirm the evidence that may enter this Agent snapshot." action={<ButtonLink href="/app/new/people" className="!w-auto px-4 py-3">Review People</ButtonLink>} /> : null}
+    <GenerationPanel hasSnapshot={hasSnapshot} enabled={controller.canGenerate} includeParallelSelves={includeParallelSelves} setIncludeParallelSelves={setIncludeParallelSelves} pending={state.pendingGeneration} actionLabel={actionLabel} onGenerate={() => void run(() => controller.generate(includeParallelSelves))} />
+    {hasSnapshot && snapshot ? <SnapshotLedger snapshot={snapshot} agents={state.agents} confirmedCount={confirmed.length} /> : <EmptyState tone="accent" title="No Agent snapshot has been saved" description="When you generate, the server writes one bounded, immutable snapshot. This page never constructs a local Agent draft." />}
+    <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Next step</p><h2 className="mt-1 text-lg font-semibold text-white">Relation Graph uses a saved Agent snapshot.</h2><p className="mt-1 max-w-xl text-sm leading-6 text-white/65">{graphReady ? "This snapshot contains confirmed-person Agents and is ready for the read-only Graph stage." : "Graph becomes available after a non-downgraded saved snapshot includes at least one confirmed-person Agent."}</p></div><ButtonLink href="/app/new/graph" variant={graphReady ? "onDark" : "ghostOnDark"} aria-disabled={!graphReady} onClick={(event) => { if (!graphReady) event.preventDefault(); }} className="!w-auto shrink-0 px-4 py-3">{graphReady ? "Continue to Graph" : "Graph not ready"}</ButtonLink></SurfaceCard>
+  </div>;
 }
 
-function UserCoreCard({
-  agent,
-  selected,
-  onSelect,
-}: {
-  agent: AgentProfileDraft;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <SelectableCard selected={selected} onSelect={onSelect}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase text-[#7d8578]">
-            {agentTypeLabel(agent)}
-          </div>
-          <h3 className="mt-2 text-xl font-semibold text-[#11150f]">
-            {agent.label}
-          </h3>
-        </div>
-        <ConfidenceDisplay value={agent.confidence} compact />
-      </div>
-
-      <p className="mt-3 text-sm leading-6 text-[#62695d]">
-        {agent.role} / {agent.relationshipToUser}
-      </p>
-      <FieldLine
-        label="Recognizable core"
-        value={agent.profileJson.motivation.primaryGoal}
-        source={sourceFor(agent, "motivation.primaryGoal")}
-      />
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <MiniField
-          label="Resources"
-          value={`authority ${agent.profileJson.resources.authority}, information ${agent.profileJson.resources.information}`}
-          source={sourceFor(agent, "resources")}
-        />
-        <MiniField
-          label="Behavior"
-          value={`${agent.profileJson.behaviorPolicy.communicationStyle}, initiative ${agent.profileJson.behaviorPolicy.initiative}`}
-          source={sourceFor(agent, "behaviorPolicy")}
-        />
-      </div>
-      <CardFooter agent={agent} />
-    </SelectableCard>
-  );
+function GenerationPanel({ hasSnapshot, enabled, includeParallelSelves, setIncludeParallelSelves, pending, actionLabel, onGenerate }: { hasSnapshot: boolean; enabled: boolean; includeParallelSelves: boolean; setIncludeParallelSelves: (value: boolean) => void; pending: boolean; actionLabel: string; onGenerate: () => void }) {
+  return <SurfaceCard className="p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Controlled generation</p><h2 className="mt-1 text-xl font-semibold text-[#11150f]">{hasSnapshot ? "Create a later snapshot deliberately" : "Create the first saved snapshot"}</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[#62695d]">Generation sends no profile text from this browser. A new request has one new idempotency key; conflicts are never retried automatically.</p></div><StatusPill tone={hasSnapshot ? "locked" : "planned"}>{hasSnapshot ? "Existing version locked" : "No version yet"}</StatusPill></div><label className="mt-5 flex min-h-11 items-start gap-3 rounded-md border border-black/10 bg-[#f7f8f4] p-4 text-sm leading-6 text-[#3f483d]"><input type="checkbox" checked={includeParallelSelves} disabled={!enabled || pending} onChange={(event) => setIncludeParallelSelves(event.target.checked)} className="mt-1 h-4 w-4 accent-[#568262]" /><span><span className="font-semibold text-[#11150f]">Include parallel self variants</span><br />This affects only the next server-generated version; it never edits an existing snapshot.</span></label><div className="mt-5 flex flex-wrap items-center gap-3"><Button loading={pending} disabled={!enabled} onClick={onGenerate} className="!w-auto px-4 py-3" loadingLabel="Generating saved snapshot">{actionLabel}</Button>{!enabled ? <p className="text-sm text-[#7c5524]">A confirmed saved person is required before this action is available.</p> : null}</div></SurfaceCard>;
 }
 
-function ParallelSelfCard({
-  agent,
-  selected,
-  onSelect,
-}: {
-  agent: AgentProfileDraft;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <SelectableCard selected={selected} onSelect={onSelect}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase text-[#7d8578]">
-            {stanceLabel(agent.profileJson.stance)}
-          </div>
-          <h3 className="mt-2 text-xl font-semibold text-[#11150f]">
-            {agent.label}
-          </h3>
-        </div>
-        <ConfidenceDisplay value={agent.confidence} compact />
-      </div>
-      <div className="mt-4 grid gap-3">
-        <MiniField
-          label="Action speed"
-          value={String(agent.profileJson.behaviorPolicy.actionSpeed)}
-          source={sourceFor(agent, "behaviorPolicy.actionSpeed")}
-        />
-        <MiniField
-          label="Initiative"
-          value={String(agent.profileJson.behaviorPolicy.initiative)}
-          source={sourceFor(agent, "behaviorPolicy.initiative")}
-        />
-        <MiniField
-          label="Avoidance"
-          value={agent.profileJson.motivation.avoidancePattern}
-          source={sourceFor(agent, "motivation.avoidancePattern")}
-        />
-      </div>
-      <CardFooter agent={agent} />
-    </SelectableCard>
-  );
+function SnapshotLedger({ snapshot, agents, confirmedCount }: { snapshot: NonNullable<FormalAgentsState["snapshot"]>; agents: FormalAgent[]; confirmedCount: number }) {
+  const npcs = agents.filter((agent) => agent.agent_type === "npc");
+  const variants = agents.filter((agent) => agent.agent_type === "user_variant");
+  return <section><div className="flex flex-col gap-3 border-b border-black/10 pb-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Immutable Agent version</p><h2 className="mt-1 text-2xl font-semibold text-[#11150f]">Server-controlled snapshot</h2><p className="mt-1 text-sm leading-6 text-[#62695d]">This is a frozen evidence ledger. There are no edit controls for its people, source, confidence, or evidence references.</p></div><div className="flex flex-wrap gap-2"><StatusPill tone={safetyTone(snapshot.safety_level)}>{safetyLabel(snapshot.safety_level)}</StatusPill><StatusPill tone="locked">Immutable</StatusPill></div></div>{snapshot.safety_level === "downgraded" ? <div className="mt-5 border border-[#d49b4a]/30 bg-[#fff8ed] p-4 text-sm leading-6 text-[#7c5524]"><strong>Conservative downgrade:</strong> this version contains only a user core and does not infer NPCs, hidden motives, relation edges, or Graph readiness.</div> : null}<div className="mt-5 grid gap-3 sm:grid-cols-3"><Metric label="Agents" value={agents.length} /><Metric label="Confirmed-person agents" value={`${npcs.length}/${confirmedCount}`} /><Metric label="Parallel selves" value={variants.length} /></div><div className="mt-5 grid gap-4 lg:grid-cols-2">{agents.map((agent) => <AgentCard key={agent.id} agent={agent} />)}</div></section>;
 }
 
-function NpcAgentCard({
-  agent,
-  selected,
-  onSelect,
-}: {
-  agent: AgentProfileDraft;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <SelectableCard selected={selected} onSelect={onSelect}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase text-[#7d8578]">
-            NPC from confirmed Key Person
-          </div>
-          <h3 className="mt-2 text-xl font-semibold text-[#11150f]">
-            {agent.label}
-          </h3>
-        </div>
-        <ConfidenceDisplay value={agent.confidence} compact />
-      </div>
-      <p className="mt-3 text-sm leading-6 text-[#62695d]">
-        {agent.role} / {agent.relationshipToUser}
-      </p>
-      <div className="mt-4 grid gap-3">
-        <FieldLine
-          label="Why this NPC exists"
-          value={agent.profileJson.origin}
-          source={agent.profileJson.source.sourceType}
-        />
-        <MiniField
-          label="Current model state"
-          value={agent.profileJson.state.currentIntention}
-          source={sourceFor(agent, "state.currentIntention")}
-        />
-      </div>
-      <CardFooter agent={agent} />
-    </SelectableCard>
-  );
+function AgentCard({ agent }: { agent: FormalAgent }) {
+  return <SurfaceCard className="p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">{agentLabel(agent.agent_type)}</p><h3 className="mt-1 break-words text-xl font-semibold text-[#11150f]">{agent.display_name}</h3><p className="mt-1 text-sm text-[#62695d]">{agent.relationship_to_user}</p></div><StatusPill tone={safetyTone(agent.safety_level)}>{agent.confidence}% confidence</StatusPill></div><dl className="mt-5 grid gap-3 border-t border-black/10 pt-4 text-sm sm:grid-cols-2"><Detail label="Source" value={agent.source === "confirmed_person_snapshot" ? "Confirmed People evidence" : "Conservative snapshot"} /><Detail label="Version" value={agent.version} /></dl><div className="mt-4 border-t border-black/10 pt-4"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Opaque evidence references</p><div className="mt-2 flex flex-wrap gap-2">{agent.evidence_refs.map((ref) => <span key={ref} className="max-w-full break-all rounded border border-black/10 bg-[#f7f8f4] px-2.5 py-1 text-xs text-[#3f483d]">{ref}</span>)}</div></div></SurfaceCard>;
 }
 
-function CardFooter({ agent }: { agent: AgentProfileDraft }) {
-  return (
-    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/8 pt-4">
-      <SourceBadge value={agent.profileJson.source.sourceType} />
-      <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
-        evidence refs: {agent.evidenceRefs.length}
-      </span>
-      <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#3f483d]">
-        missing: {agent.profileJson.missingFields.length}
-      </span>
-    </div>
-  );
-}
-
-function FieldLine({
-  label,
-  value,
-  source,
-}: {
-  label: string;
-  value: string;
-  source: AgentFieldSourceType;
-}) {
-  return (
-    <div className="mt-4 rounded-md border border-black/8 bg-[#fbfcf8] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold uppercase text-[#7d8578]">
-          {label}
-        </div>
-        <SourceBadge value={source} />
-      </div>
-      <p className="mt-2 text-sm leading-6 text-[#3f483d]">{value}</p>
-    </div>
-  );
-}
-
-function MiniField({
-  label,
-  value,
-  source,
-}: {
-  label: string;
-  value: string;
-  source: AgentFieldSourceType;
-}) {
-  return (
-    <div className="rounded-md border border-black/8 bg-[#f7f8f4] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold uppercase text-[#7d8578]">
-          {label}
-        </div>
-        <SourceBadge value={source} />
-      </div>
-      <p className="mt-2 text-sm leading-6 text-[#3f483d]">{value}</p>
-    </div>
-  );
-}
-
-function ConfidenceDisplay({
-  value,
-  compact = false,
-}: {
-  value: number;
-  compact?: boolean;
-}) {
-  return (
-    <div className={compact ? "min-w-[76px]" : ""}>
-      <StatusPill tone={confidenceTone(value)}>{value}% confidence</StatusPill>
-      {!compact ? (
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/8">
-          <div
-            className="h-full rounded-full bg-[#568262]"
-            style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function AgentInspector({ agent }: { agent: AgentProfileDraft | null }) {
-  if (!agent) {
-    return (
-      <aside className="h-fit rounded-lg border border-black/8 bg-white p-5">
-        <h2 className="text-sm font-semibold text-[#11150f]">Agent details</h2>
-        <p className="mt-3 text-sm leading-6 text-[#62695d]">
-          Select an agent to inspect its source and simulation profile.
-        </p>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="h-fit rounded-lg border border-black/8 bg-white p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold uppercase text-[#7d8578]">
-            {agentTypeLabel(agent)}
-          </div>
-          <h2 className="mt-2 text-2xl font-semibold text-[#11150f]">
-            {agent.label}
-          </h2>
-        </div>
-        <StatusPill tone={agentTone(agent)}>{agentTypeLabel(agent)}</StatusPill>
-      </div>
-
-      <div className="mt-4 rounded-md border border-[#568262]/20 bg-[#eef5ee] p-4 text-sm leading-6 text-[#2f5d3d]">
-        This profile prepares simulation behavior. It is a bounded local model, not a statement of fact about a person.
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <ConfidenceDisplay value={agent.confidence} />
-        <div className="flex flex-wrap gap-2">
-          <SourceBadge value={agent.profileJson.source.sourceType} />
-          <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#52594d]">
-            {agent.version}
-          </span>
-          {agent.sourceKeyPersonId ? (
-            <span className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#52594d]">
-              key person: {agent.sourceKeyPersonId}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mt-5 space-y-5">
-        <FieldLine
-          label="Why this agent exists"
-          value={agent.profileJson.origin}
-          source={agent.profileJson.source.sourceType}
-        />
-        <FieldLine
-          label="Role"
-          value={agent.role}
-          source={sourceFor(agent, "role")}
-        />
-        <FieldLine
-          label="Stance"
-          value={stanceLabel(agent.profileJson.stance)}
-          source={sourceFor(agent, "stance")}
-        />
-        <FieldLine
-          label="Motivation"
-          value={agent.profileJson.motivation.primaryGoal}
-          source={sourceFor(agent, "motivation.primaryGoal")}
-        />
-        <FieldLine
-          label="Concern"
-          value={agent.profileJson.motivation.fear}
-          source={sourceFor(agent, "motivation.fear")}
-        />
-        <FieldLine
-          label="Avoidance pattern"
-          value={agent.profileJson.motivation.avoidancePattern}
-          source={sourceFor(agent, "motivation.avoidancePattern")}
-        />
-
-        <ScoreGrid
-          title="Resources"
-          items={[
-            ["Authority", agent.profileJson.resources.authority],
-            ["Information", agent.profileJson.resources.information],
-            ["Social capital", agent.profileJson.resources.socialCapital],
-            ["Emotional leverage", agent.profileJson.resources.emotionalLeverage],
-          ]}
-        />
-        <ScoreGrid
-          title="Behavior policy"
-          items={[
-            ["Action speed", agent.profileJson.behaviorPolicy.actionSpeed],
-            ["Initiative", agent.profileJson.behaviorPolicy.initiative],
-            ["Cooperation", agent.profileJson.behaviorPolicy.cooperationBias],
-          ]}
-          footer={`Communication style: ${agent.profileJson.behaviorPolicy.communicationStyle}`}
-        />
-        <ScoreGrid
-          title="Current state"
-          items={[
-            ["Stress", agent.profileJson.state.stress],
-            ["User trust", agent.profileJson.state.trustInUser],
-            ["Friction", agent.profileJson.state.hostilityToUser],
-          ]}
-          footer={agent.profileJson.state.currentIntention}
-        />
-
-        <FieldSources sources={agent.profileJson.fieldSources} />
-        <TextList
-          title="Traits"
-          items={agent.profileJson.traits}
-          empty="No traits marked."
-        />
-        <TextList
-          title="Missing fields"
-          items={agent.profileJson.missingFields}
-          empty="No missing fields marked."
-        />
-        <TextList
-          title="Model boundaries"
-          items={agent.profileJson.constraints}
-          empty="No boundaries listed."
-        />
-
-        <EvidenceDisclosure refs={agent.evidenceRefs} />
-      </div>
-    </aside>
-  );
-}
-
-function SourceBadge({ value }: { value: AgentFieldSourceType }) {
-  return (
-    <span className={`rounded border px-2 py-1 text-xs font-semibold ${sourceClasses(value)}`}>
-      {sourceLabel(value)}
-    </span>
-  );
-}
-
-function FieldSources({
-  sources,
-}: {
-  sources: Record<string, AgentFieldSourceType>;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase text-[#7d8578]">
-        Field sources
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {Object.entries(sources).map(([field, source]) => (
-          <span
-            key={field}
-            className={`rounded border px-2 py-1 text-xs ${sourceClasses(source)}`}
-          >
-            {fieldLabel(field)}: {sourceLabel(source)}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EvidenceDisclosure({ refs }: { refs: string[] }) {
-  return (
-    <details className="rounded-md bg-[#f7f8f4] p-4">
-      <summary className="cursor-pointer text-xs font-semibold uppercase text-[#7d8578]">
-        Evidence refs ({refs.length})
-      </summary>
-      {refs.length ? (
-        <div className="mt-3 space-y-1">
-          {refs.map((ref) => (
-            <code key={ref} className="block break-all text-xs text-[#3f483d]">
-              {ref}
-            </code>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-3 text-xs leading-5 text-[#62695d]">
-          No evidence refs are attached to this local model.
-        </p>
-      )}
-    </details>
-  );
-}
-
-function ScoreGrid({
-  title,
-  items,
-  footer,
-}: {
-  title: string;
-  items: Array<[string, number]>;
-  footer?: string;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase text-[#7d8578]">
-        {title}
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-3">
-        {items.map(([label, value]) => (
-          <Score key={label} label={label} value={value} />
-        ))}
-      </div>
-      {footer ? (
-        <p className="mt-2 text-xs leading-5 text-[#62695d]">{footer}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function TextList({
-  title,
-  items,
-  empty,
-}: {
-  title: string;
-  items: string[];
-  empty: string;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase text-[#7d8578]">
-        {title}
-      </div>
-      {items.length ? (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {items.map((item) => (
-            <span
-              key={item}
-              className="rounded border border-black/8 bg-[#f7f8f4] px-2 py-1 text-xs text-[#52594d]"
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-2 text-xs text-[#62695d]">{empty}</p>
-      )}
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
-      <div className="text-xs text-white/48">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
-    </div>
-  );
-}
-
-function Score({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md border border-black/8 p-3">
-      <div className="text-xs text-[#7d8578]">{label}</div>
-      <div className="mt-1 text-xl font-semibold text-[#11150f]">{value}</div>
-    </div>
-  );
-}
+function Detail({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-semibold uppercase tracking-[.12em] text-[#7d8578]">{label}</dt><dd className="mt-1 break-words text-[#3f483d]">{value}</dd></div>; }
+function Metric({ label, value }: { label: string; value: number | string }) { return <div className="border border-black/10 bg-white p-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#7d8578]">{label}</p><p className="mt-2 text-2xl font-semibold text-[#11150f]">{value}</p></div>; }
+function Notice({ notice, reload }: { notice: string; reload: () => void }) { const canReload = notice.includes("Reload the Agent ledger") || notice.includes("no longer available"); return <div role="status" className="flex flex-col gap-3 border border-[#d49b4a]/30 bg-[#fff8ed] p-4 text-sm leading-6 text-[#7c5524] sm:flex-row sm:items-center sm:justify-between"><p>{notice}</p>{canReload ? <Button variant="ghost" onClick={reload} className="!w-auto shrink-0 px-3 py-2">Reload Agent ledger</Button> : null}</div>; }
