@@ -8,6 +8,7 @@ import {
 
 const seedA = "11111111-1111-4111-8111-111111111111";
 const seedB = "22222222-2222-4222-8222-222222222222";
+const seedC = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const snapshotId = "33333333-3333-4333-8333-333333333333";
 const coreId = "44444444-4444-4444-8444-444444444444";
 const npcId = "55555555-5555-4555-8555-555555555555";
@@ -51,6 +52,23 @@ describe("FormalGraphController", () => {
     expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedB }, snapshot, agents: [core, npc], graph, edges: [edge] });
     expect(fetcher).toHaveBeenNthCalledWith(2, `/api/agents?seed_id=${seedB}`, { method: "GET" });
     expect(fetcher).toHaveBeenNthCalledWith(3, `/api/graph?seed_id=${seedB}`, { method: "GET" });
+  });
+
+  it("selects the latest submitted instant across offsets, then breaks an exact-time tie by id", async () => {
+    const fetcher: Mock<FormalGraphFetch> = vi.fn()
+      .mockResolvedValueOnce(json({ seedContexts: [
+        { id: seedA, version: "1", submittedAt: "2026-08-28T01:00:00+02:00", frozenAt: "2026-08-28T01:00:00+02:00" },
+        { id: seedB, version: "2", submittedAt: "2026-08-28T00:00:00+00:00", frozenAt: "2026-08-28T00:00:00+00:00" },
+        { id: seedC, version: "3", submittedAt: "2026-08-28T00:00:00+00:00", frozenAt: "2026-08-28T00:00:00+00:00" },
+      ] }))
+      .mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", snapshot, agents: [core, npc] }))
+      .mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", graph: null, edges: [] }));
+    const subject = controller(fetcher);
+
+    await subject.recover();
+
+    expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedC } });
+    expect(fetcher).toHaveBeenNthCalledWith(2, `/api/agents?seed_id=${seedC}`, { method: "GET" });
   });
 
   it("maps authentication, no submitted Seed, no Agent snapshot, and malformed recovery into safe states", async () => {
