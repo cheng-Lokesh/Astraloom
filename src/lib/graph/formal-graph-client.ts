@@ -24,7 +24,7 @@ export type FormalGraphFetch = (input: string, init: RequestInit) => Promise<Res
 export type FormalGraph = z.infer<typeof graphSchema>;
 export type FormalGraphEdge = z.infer<typeof edgeSchema>;
 export type FormalGraphAgent = z.infer<typeof agentSchema>;
-export type FormalGraphState = { phase: "loading" | "ready" | "unauthenticated" | "no_seed" | "no_agents" | "downgraded" | "blocked" | "failure"; seed: z.infer<typeof seedSchema> | null; snapshot: z.infer<typeof snapshotSchema> | null; agents: FormalGraphAgent[]; graph: FormalGraph | null; edges: FormalGraphEdge[]; notice: string | null; pendingGeneration: boolean; pendingLock: boolean };
+export type FormalGraphState = { phase: "loading" | "ready" | "unauthenticated" | "no_seed" | "no_agents" | "downgraded" | "safety_downgraded" | "stale_agents" | "blocked" | "failure"; seed: z.infer<typeof seedSchema> | null; snapshot: z.infer<typeof snapshotSchema> | null; agents: FormalGraphAgent[]; graph: FormalGraph | null; edges: FormalGraphEdge[]; notice: string | null; pendingGeneration: boolean; pendingLock: boolean };
 
 export async function runFormalGraphUiAction(work: () => Promise<boolean | void>, sync: () => void) { const task = work(); sync(); const result = await task; sync(); return result === true; }
 
@@ -41,7 +41,11 @@ function validAgents(snapshot: z.infer<typeof snapshotSchema> | null, agents: Fo
 }
 function validGraph(graph: FormalGraph | null, edges: FormalGraphEdge[], snapshot: z.infer<typeof snapshotSchema> | null, agents: FormalGraphAgent[]) {
   if (!graph) return edges.length === 0;
-  if (!snapshot || !edges.length || graph.agent_snapshot_id !== snapshot.id || graph.safety_level !== snapshot.safety_level || edges.some((edge) => edge.graph_snapshot_id !== graph.id || edge.agent_snapshot_id !== graph.agent_snapshot_id || edge.safety_level !== graph.safety_level || edge.from_agent_id === edge.to_agent_id || !agents.some((agent) => agent.id === edge.from_agent_id) || !agents.some((agent) => agent.id === edge.to_agent_id))) return false;
+  if (!snapshot || !edges.length || graph.agent_snapshot_id !== snapshot.id || graph.safety_level !== snapshot.safety_level || edges.some((edge) => {
+    const from = agents.find((agent) => agent.id === edge.from_agent_id);
+    const to = agents.find((agent) => agent.id === edge.to_agent_id);
+    return edge.graph_snapshot_id !== graph.id || edge.agent_snapshot_id !== graph.agent_snapshot_id || edge.safety_level !== graph.safety_level || edge.from_agent_id === edge.to_agent_id || !from || !to || (from.agent_type !== "npc" && to.agent_type !== "npc");
+  })) return false;
   const pairs = new Set<string>();
   return !edges.some((edge) => { const pair = [edge.from_agent_id, edge.to_agent_id].sort().join(":"); if (pairs.has(pair)) return true; pairs.add(pair); return false; });
 }
@@ -98,7 +102,12 @@ export class FormalGraphController {
         if (response.ok && locked.success && this.state.graph && validGraph(locked.data.graph, this.state.edges, this.state.snapshot, this.state.agents)) { this.state = { ...this.state, phase: "ready", graph: locked.data.graph, notice: null, pendingLock: false }; return true; }
       }
       const failure = failureResponseSchema.safeParse(payload);
-      if (failure.success && response.status === 409 && failure.data.error_code === "safety_blocked") { this.state = { ...this.state, phase: "blocked", notice: "Graph generation was blocked by the saved safety boundary. No Graph snapshot was written.", pendingGeneration: false, pendingLock: false }; return false; }
+      if (failure.success && response.status === 409) {
+        const actionLabel = action === "generate" ? "generation" : "locking";
+        if (failure.data.error_code === "safety_blocked") { this.state = { ...this.state, phase: "blocked", notice: `Graph ${actionLabel} was blocked by the saved safety boundary. No Graph snapshot was written.`, pendingGeneration: false, pendingLock: false }; return false; }
+        if (failure.data.error_code === "safety_downgraded") { this.state = { ...this.state, phase: "safety_downgraded", notice: `Graph ${actionLabel} is unavailable because the saved safety boundary was downgraded. No Graph snapshot was written.`, pendingGeneration: false, pendingLock: false }; return false; }
+        if (failure.data.error_code === "agent_snapshot_invalid") { this.state = { ...this.state, phase: "stale_agents", notice: `Graph ${actionLabel} is unavailable because the saved Agent snapshot is no longer eligible. No Graph snapshot was written.`, pendingGeneration: false, pendingLock: false }; return false; }
+      }
       this.state = { ...this.state, notice: this.noticeFor(action, response.status, failure.success ? failure.data.error_code : null), pendingGeneration: false, pendingLock: false };
       return false;
     } catch { this.state = { ...this.state, notice: action === "generate" ? generationFailure : lockFailure, pendingGeneration: false, pendingLock: false }; return false; } finally { this.inFlight = false; }

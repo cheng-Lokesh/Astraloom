@@ -54,8 +54,8 @@ from this D3 execution.
 
 | Check | Command | Exit | Result |
 |---|---|---:|---|
-| D3 controller | `npx vitest run src/lib/graph/formal-graph-client.test.ts --reporter=verbose` | 0 | 1 file, 14/14 passed. |
-| Related Graph and Agent API regression | `npx vitest run src/lib/graph/formal-graph-client.test.ts src/app/api/agents/route.phase3.test.ts src/app/api/agents/generate/route.phase3.test.ts src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts --reporter=verbose` | 0 | 6 files, 64/64 passed. |
+| D3 controller | `npx vitest run src/lib/graph/formal-graph-client.test.ts --reporter=verbose` | 0 | 1 file, 21/21 passed after the pre-review remediation below. |
+| Related Graph and Agent API regression | `npx vitest run src/lib/graph/formal-graph-client.test.ts src/app/api/agents/route.phase3.test.ts src/app/api/agents/generate/route.phase3.test.ts src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts --reporter=verbose` | 0 | 6 files, 71/71 passed after the pre-review remediation below. |
 | Exact D3 ESLint | `npx eslint src/app/app/new/graph/page.tsx src/lib/graph/formal-graph-client.ts src/lib/graph/formal-graph-client.test.ts src/app/api/graph/route.ts src/app/api/graph/generate/route.ts src/app/api/graph/lock/route.ts` | 0 | passed. |
 | TypeScript | `npm run type-check` | 0 | `next typegen` and `tsc --noEmit` passed. |
 | Whitespace | `git diff --check` | 0 | passed (Git emitted only CRLF conversion warnings). |
@@ -70,6 +70,31 @@ open acceptance debt remains with the controller's combined Step D browser gate.
 
 No migration or V2 file was changed. This D3 execution did not perform database
 fixture runs or business-data writes.
+
+## Controller pre-review remediation
+
+The controller pre-review identified two D3 gaps. Both received a separate
+RED checkpoint, then the minimal GREEN correction; no migration, writer, API
+request shape, V2 file, or browser data was changed.
+
+| Guarantee | RED signal | GREEN behavior |
+|---|---|---|
+| Every accepted Relation Edge includes at least one NPC endpoint | A core-to-user-variant edge was accepted as `ready`. | `validGraph` now rejects that projection before it reaches UI state. |
+| `safety_downgraded` and `agent_snapshot_invalid` stop later Graph writes | Either 409 left the controller in `ready`, allowing a repeat mutation. | They enter distinct `safety_downgraded` and `stale_agents` read-only states, retain the prior safe Graph, and disable generate/lock. |
+| Blocked copy names the rejected action | A blocked lock used generation wording. | Generate and lock now use action-specific blocked wording. |
+
+Focused RED command:
+
+```text
+npx vitest run src/lib/graph/formal-graph-client.test.ts --reporter=verbose
+```
+
+Observed exit code: **1** — six intended failures: the non-NPC edge was
+accepted, the two 409 codes stayed `ready` for both actions, and blocked lock
+copy incorrectly said generation.
+
+Focused GREEN rerun used the same command with exit code **0**: 1 file,
+21/21 passed.
 
 ## Non-goals
 
