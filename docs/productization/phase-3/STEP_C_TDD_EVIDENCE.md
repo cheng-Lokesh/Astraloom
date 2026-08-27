@@ -28,12 +28,24 @@
   API response schema accepted only `graph_locked=false` with `locked_at=null`.
   `6d7682e` recorded the API RED (500 instead of 200) and the database
   lifecycle contract; the database behavior was already GREEN.
+- After the base Graph migration had been applied under controller control, a
+  real-database run exposed 153/156: assertions #120, #121, and #125 treated
+  an absent `app.phase3_graph_rpc` GUC as text `off`. Failed RPC exception
+  paths and savepoint rollbacks restore NULL (and later reset paths can expose
+  an empty value). RLS's `= 'on'` predicate remains closed, but the two BEFORE
+  UPDATE trigger guards used `<> 'on'`, for which NULL does not enter the
+  `IF`. `ebdee95` first made the status checks explicitly normalize closed
+  NULL/empty states, added database-owner direct Graph/Edge update probes after
+  Graph creation, and required both trigger definitions to use
+  `IS DISTINCT FROM 'on'`. The current applied database was RED 160/162: only
+  those two new static guard contracts failed.
 
 ## GREEN evidence
 
 | Guarantee | Command | Result |
 |---|---|---|
 | Graph schema, lock replay, owner/Seed/Agent/request/safety bindings, endpoint evidence, browser-read-only behavior, and `generate(K) -> lock(L) -> generate(K)` continuity | outer `BEGIN`, Graph migration, `phase3_graph_snapshots_test.sql`, `ROLLBACK` in one psql session | PASS 156/156 |
+| Additive unset-guard repair candidate | outer `BEGIN`, `20260827220000_phase3_graph_unset_guard_hardening.sql`, `phase3_graph_snapshots_test.sql`, `ROLLBACK` in one psql session | PASS 162/162; preview only, not applied |
 | Graph GET/generate/lock input, redaction, safety projection, lock mapping, and locked generation replay | `npm test -- src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts` | PASS 31/31 |
 | Step B Agent database regression | outer `BEGIN`, `phase3_agent_snapshots_test.sql`, `ROLLBACK` | PASS 174/174 |
 | Step A database regression | outer `BEGIN`, `phase3_key_people_test.sql`, `ROLLBACK` | PASS 74/74 |
@@ -43,10 +55,14 @@
 
 ## Database safety
 
-The Graph migration was never applied to the real database. After preview
-rollbacks, `relation_graph_snapshots` and
-`relation_graph_idempotency_receipts` were absent. Business counts remained
-`seed_contexts=16`, `key_people=0`, `agent_profiles=0`,
+The controller had already applied the base Graph migration
+`20260802161000_phase3_graph_snapshot_persistence.sql` before this repair.
+This repair did not edit that applied file and did not apply the new additive
+candidate `20260827220000_phase3_graph_unset_guard_hardening.sql`; migration
+history contains only the base version, so the candidate remains pending. The
+candidate was exercised only in a single-session outer `BEGIN`/`ROLLBACK`
+preview. Afterwards Graph parents and receipts were both zero, and business
+counts remained `seed_contexts=16`, `key_people=0`, `agent_profiles=0`,
 `relation_edges=0`, and `consent_events=16`.
 
 ## Master long-command verification
