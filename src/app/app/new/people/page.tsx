@@ -29,7 +29,7 @@ export default function PeoplePage() {
   const controller = ref.current;
   const [state, setState] = useState<FormalPeopleState>(controller.state);
   const sync = () => setState({ ...controller.state, people: [...controller.state.people] });
-  const run = async (work: () => Promise<void>) => { await work(); sync(); };
+  const run = async (work: () => Promise<boolean | void>) => { const result = await work(); sync(); return result === true; };
 
   useEffect(() => { void run(() => controller.recover()); /* controller is lifetime-stable */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -59,7 +59,7 @@ function Loading() {
   return <div className="mx-auto max-w-6xl py-10"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Recovering account ledger</p><p className="mt-2 text-sm text-[#62695d]">Loading your latest submitted scenario and saved Key People.</p></div>;
 }
 
-function Ledger({ state, controller, run }: { state: FormalPeopleState; controller: FormalPeopleController; run: (work: () => Promise<void>) => Promise<void> }) {
+function Ledger({ state, controller, run }: { state: FormalPeopleState; controller: FormalPeopleController; run: (work: () => Promise<boolean | void>) => Promise<boolean> }) {
   const groups = [
     ["Needs review", "Candidates remain provisional until you confirm them.", state.people.filter(review)],
     ["Confirmed for the next step", "These saved people can inform the Agent Profile stage.", state.people.filter((person) => person.status === "confirmed")],
@@ -73,8 +73,8 @@ function Ledger({ state, controller, run }: { state: FormalPeopleState; controll
     </div>
     {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover())} /> : null}
     {!state.people.length ? <EmptyState tone="accent" title="No saved Key People yet" description="Extract candidates from this submitted scenario, then review only what the server returns." action={<Button onClick={() => void run(() => controller.extract())} className="!w-auto px-4 py-3">Extract Key People</Button>} /> : null}
-    {groups.map(([title, description, people]) => people.length ? <section key={title}><div className="mb-3 flex items-end justify-between"><div><h2 className="text-xl font-semibold text-[#11150f]">{title}</h2><p className="mt-1 text-sm text-[#62695d]">{description}</p></div><span className="font-mono text-sm text-[#7d8578]">{people.length}</span></div><div className="space-y-3">{people.map((person) => <PersonCard key={person.id} person={person} people={state.people} pending={state.pendingAction} action={(value) => void run(() => controller.mutate(value))} />)}</div></section> : null)}
-    <Supplement disabled={state.pendingAction !== null} pending={state.pendingAction === "supplement"} action={(value) => void run(() => controller.mutate(value))} />
+    {groups.map(([title, description, people]) => people.length ? <section key={title}><div className="mb-3 flex items-end justify-between"><div><h2 className="text-xl font-semibold text-[#11150f]">{title}</h2><p className="mt-1 text-sm text-[#62695d]">{description}</p></div><span className="font-mono text-sm text-[#7d8578]">{people.length}</span></div><div className="space-y-3">{people.map((person) => <PersonCard key={person.id} person={person} people={state.people} pending={state.pendingAction} action={(value) => run(() => controller.mutate(value))} />)}</div></section> : null)}
+    <Supplement disabled={state.pendingAction !== null} pending={state.pendingAction === "supplement"} action={(value) => run(() => controller.mutate(value))} />
     <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Next step</p><h2 className="mt-1 text-lg font-semibold text-white">Continue with the saved people you confirmed.</h2><p className="mt-1 text-sm text-white/65">Agent generation remains a separate, deliberate stage.</p></div><ButtonLink href="/app/new/agents" variant={confirmed.length ? "onDark" : "ghostOnDark"} aria-disabled={!confirmed.length} onClick={(event) => { if (!confirmed.length) event.preventDefault(); }} className="!w-auto shrink-0 px-4 py-3">{confirmed.length ? "Continue to Agents" : "Confirm a person first"}</ButtonLink></SurfaceCard>
   </div>;
 }
@@ -84,7 +84,7 @@ function Notice({ notice, reload }: { notice: string; reload: () => void }) {
   return <div role="status" className="flex flex-col gap-3 border border-[#d49b4a]/30 bg-[#fff8ed] p-4 text-sm text-[#7c5524] sm:flex-row sm:items-center sm:justify-between"><p>{notice}</p>{needsReload ? <Button variant="ghost" onClick={reload} className="!w-auto px-3 py-2">Reload saved people</Button> : null}</div>;
 }
 
-function PersonCard({ person, people, pending, action }: { person: FormalPerson; people: FormalPerson[]; pending: FormalPeopleState["pendingAction"]; action: (value: FormalPeopleAction) => void }) {
+function PersonCard({ person, people, pending, action }: { person: FormalPerson; people: FormalPerson[]; pending: FormalPeopleState["pendingAction"]; action: (value: FormalPeopleAction) => Promise<boolean> }) {
   const [name, setName] = useState(person.display_name);
   const [target, setTarget] = useState("");
   const disabled = pending !== null || archived(person);
@@ -100,12 +100,12 @@ function RecordList({ title, values, empty }: { title: string; values: string[];
   return <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#7d8578]">{title}</p>{values.length ? <ul className="mt-2 space-y-1 text-sm leading-6 text-[#3f483d]">{values.map((value) => <li key={value}>— {value}</li>)}</ul> : <p className="mt-2 text-sm text-[#62695d]">{empty}</p>}</div>;
 }
 
-function Supplement({ pending, disabled, action }: { pending: boolean; disabled: boolean; action: (value: FormalPeopleAction) => void }) {
+function Supplement({ pending, disabled, action }: { pending: boolean; disabled: boolean; action: (value: FormalPeopleAction) => Promise<boolean> }) {
   const [name, setName] = useState(""); const [relationship, setRelationship] = useState(""); const [role, setRole] = useState(""); const [note, setNote] = useState("");
-  const submit = (event: FormEvent) => { event.preventDefault(); if (name.trim() && relationship.trim() && role.trim()) action({ type: "supplement", display_name: name.trim(), relationship_to_user: relationship.trim(), role_type: role.trim(), ...(note.trim() ? { note: note.trim() } : {}) }); };
-  return <SurfaceCard className="p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Supplement</p><h2 className="mt-1 text-xl font-semibold text-[#11150f]">Add a missing person</h2><p className="mt-2 text-sm text-[#62695d]">Add only a person you want considered in this saved scenario. This is not a local draft.</p><form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="Display name" value={name} setValue={setName} disabled={disabled} required /><Field label="Relationship" value={relationship} setValue={setRelationship} disabled={disabled} required /><Field label="Role" value={role} setValue={setRole} disabled={disabled} required /><Field label="Short context (optional)" value={note} setValue={setNote} disabled={disabled} /><div className="sm:col-span-2"><Button type="submit" loading={pending} disabled={disabled} className="!w-auto px-4 py-3">Add saved person</Button></div></form></SurfaceCard>;
+  const submit = async (event: FormEvent) => { event.preventDefault(); if (name.trim() && relationship.trim() && role.trim() && await action({ type: "supplement", display_name: name.trim(), relationship_to_user: relationship.trim(), role_type: role.trim(), ...(note.trim() ? { note: note.trim() } : {}) })) { setName(""); setRelationship(""); setRole(""); setNote(""); } };
+  return <SurfaceCard className="p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Supplement</p><h2 className="mt-1 text-xl font-semibold text-[#11150f]">Add a missing person</h2><p className="mt-2 text-sm text-[#62695d]">Add only a person you want considered in this saved scenario. This is not a local draft.</p><form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="Display name" value={name} setValue={setName} disabled={disabled} maxLength={120} required /><Field label="Relationship" value={relationship} setValue={setRelationship} disabled={disabled} maxLength={80} required /><Field label="Role" value={role} setValue={setRole} disabled={disabled} maxLength={80} required /><Field label="Short context (optional)" value={note} setValue={setNote} disabled={disabled} maxLength={1000} /><div className="sm:col-span-2"><Button type="submit" loading={pending} disabled={disabled} className="!w-auto px-4 py-3">Add saved person</Button></div></form></SurfaceCard>;
 }
 
-function Field({ label, value, setValue, disabled, required = false }: { label: string; value: string; setValue: (value: string) => void; disabled: boolean; required?: boolean }) {
-  return <label className="text-sm font-semibold text-[#3f483d]">{label}<input value={value} onChange={(event) => setValue(event.target.value)} disabled={disabled} maxLength={label.includes("context") ? 1000 : 120} required={required} className="mf-input mt-1 min-h-10 w-full" /></label>;
+function Field({ label, value, setValue, disabled, maxLength, required = false }: { label: string; value: string; setValue: (value: string) => void; disabled: boolean; maxLength: number; required?: boolean }) {
+  return <label className="text-sm font-semibold text-[#3f483d]">{label}<input value={value} onChange={(event) => setValue(event.target.value)} disabled={disabled} maxLength={maxLength} required={required} className="mf-input mt-1 min-h-10 w-full" /></label>;
 }

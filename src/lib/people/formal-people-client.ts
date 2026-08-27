@@ -3,8 +3,8 @@ import { z } from "zod";
 const seedContextSchema = z.object({
   id: z.string().uuid(),
   version: z.union([z.string(), z.number()]),
-  submittedAt: z.string().datetime(),
-  frozenAt: z.string().datetime(),
+  submittedAt: z.string().datetime({ offset: true }),
+  frozenAt: z.string().datetime({ offset: true }),
 }).strict();
 
 const seedListSchema = z.object({
@@ -172,24 +172,30 @@ export class FormalPeopleController {
     }
   }
 
-  async extract() {
-    if (!this.begin("extract")) return;
+  async extract(): Promise<boolean> {
+    if (!this.begin("extract")) return false;
     const seed = this.state.seed;
-    if (!seed) return;
+    if (!seed) return false;
 
-    await this.applyMutation("/api/key-people/extract", {
+    return this.applyMutation("/api/key-people/extract", {
       selector: { seed_id: seed.id },
       idempotency_key: this.newId(),
     });
   }
 
-  async mutate(action: FormalPeopleAction) {
+  async mutate(action: FormalPeopleAction): Promise<boolean> {
     const parsedAction = formalPeopleActionSchema.safeParse(action);
-    if (!parsedAction.success || !this.begin(action.type)) return;
+    if (!parsedAction.success) {
+      if (this.state.phase === "ready") {
+        this.state = { ...this.state, notice: "Enter a valid saved-person change before trying again." };
+      }
+      return false;
+    }
+    if (!this.begin(action.type)) return false;
     const seed = this.state.seed;
-    if (!seed) return;
+    if (!seed) return false;
 
-    await this.applyMutation("/api/key-people/confirm", {
+    return this.applyMutation("/api/key-people/confirm", {
       selector: { seed_id: seed.id },
       idempotency_key: this.newId(),
       operations: [parsedAction.data],
@@ -203,7 +209,7 @@ export class FormalPeopleController {
     return true;
   }
 
-  private async applyMutation(url: string, body: Record<string, unknown>) {
+  private async applyMutation(url: string, body: Record<string, unknown>): Promise<boolean> {
     try {
       const response = await this.fetcher(url, {
         method: "POST",
@@ -215,7 +221,7 @@ export class FormalPeopleController {
 
       if (response.ok && success.success) {
         this.state = { ...this.state, people: success.data.people, notice: null, pendingAction: null };
-        return;
+        return true;
       }
 
       const failure = failureSchema.safeParse(payload);
@@ -224,8 +230,10 @@ export class FormalPeopleController {
         notice: failure.success ? actionFailureNotice(response.status, failure.data.error_code) : mutationFailure,
         pendingAction: null,
       };
+      return false;
     } catch {
       this.state = { ...this.state, notice: mutationFailure, pendingAction: null };
+      return false;
     } finally {
       this.inFlight = false;
     }

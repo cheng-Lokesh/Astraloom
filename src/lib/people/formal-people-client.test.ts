@@ -83,6 +83,19 @@ describe("FormalPeopleController", () => {
     expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedB } });
   });
 
+  it("accepts the offset timestamps returned by the live Seed API", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(json({ seedContexts: [
+        { id: seedA, version: "1", submittedAt: "2026-08-27T12:00:00+00:00", frozenAt: "2026-08-27T12:00:00+00:00" },
+      ] }))
+      .mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", people: [] }));
+
+    const subject = controller(fetcher);
+    await subject.recover();
+
+    expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedA }, people: [] });
+  });
+
   it("maps unauthenticated, absent Seed, malformed JSON, and GET errors to private recovery states", async () => {
     const unauthenticated = controller(vi.fn().mockResolvedValue(json({ errorCode: "authentication_required" }, 401)));
     await unauthenticated.recover();
@@ -196,5 +209,31 @@ describe("FormalPeopleController", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(5);
     expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedA }, people: [{ status: "confirmed" }] });
+  });
+
+  it("returns a success signal only after a server-accepted supplement, so a form can clear safely", async () => {
+    const successFetch = recoverFetch();
+    successFetch.mockResolvedValueOnce(json({ ok: true, error_code: null, trace_id: "opaque", idempotent: false, people: [person] }));
+    const success = controller(successFetch);
+    await success.recover();
+
+    expect(await success.mutate({ type: "supplement", display_name: "Sponsor", relationship_to_user: "advisor", role_type: "support" })).toBe(true);
+
+    const failureFetch = recoverFetch();
+    failureFetch.mockResolvedValueOnce(json({ ok: false, error_code: "persistence_failed", trace_id: "opaque" }, 500));
+    const failure = controller(failureFetch);
+    await failure.recover();
+
+    expect(await failure.mutate({ type: "supplement", display_name: "Sponsor", relationship_to_user: "advisor", role_type: "support" })).toBe(false);
+  });
+
+  it("keeps invalid local operations visible and does not silently discard them", async () => {
+    const fetcher = recoverFetch();
+    const subject = controller(fetcher);
+    await subject.recover();
+
+    expect(await subject.mutate({ type: "supplement", display_name: "Sponsor", relationship_to_user: "x".repeat(81), role_type: "support" })).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(subject.state).toMatchObject({ notice: "Enter a valid saved-person change before trying again." });
   });
 });

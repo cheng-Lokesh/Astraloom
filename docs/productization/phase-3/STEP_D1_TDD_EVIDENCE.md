@@ -36,6 +36,28 @@ Result: PASS - 1 file, 17 tests.
 
 GREEN checkpoint: 75683a8 feat: recover formal people ledger in UI.
 
+## Follow-up recovery and form-state repair
+
+Live browser review found that the local Supabase Seed API returns submittedAt
+and frozenAt using a +00:00 offset. The strict client schema now accepts that
+safe ISO offset form, with a focused recovery test.
+
+The supplement controller now returns a true success signal only after the
+server accepts the atomic operation. The form clears display name, relationship,
+role, and note only for that true result; a failed response leaves the entered
+values in place. UI limits now match the server contract: display name is 120,
+relationship and role are 80, and note is 1000 characters. An invalid local
+operation produces a visible safe notice instead of silently returning.
+
+The confirmed-person CTA is derived from the same copied server ledger state
+that renders the grouped records. The focused controller success test proves a
+confirmed response replaces the old ledger before page state is synchronized;
+no separate stale-state path was found.
+
+Follow-up command: npx vitest run src/lib/people/formal-people-client.test.ts --reporter=verbose
+
+Follow-up result: PASS - 1 file, 20 tests. Lint and type-check also passed.
+
 ## Additional verification
 
 - npm run lint for the People page, client adapter, and controller test - PASS.
