@@ -36,7 +36,7 @@ describe("POST /api/graph/lock", () => {
   it("replays a completed lock stably and fails closed for missing, foreign, stale, downgraded, blocked, empty, or malformed persistence", async () => {
     rpc.mockResolvedValueOnce({ data: [{ idempotent: true, graph: { id: "33333333-3333-4333-8333-333333333333", agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: true, locked_at: "2026-08-02T00:00:00.000Z", safety_level: "safe", error_code: null } }], error: null });
     expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(200);
-    for (const [message, status] of [["seed_not_found", 404], ["agent_snapshot_invalid", 409], ["graph_snapshot_invalid", 409], ["evidence_required", 400], ["safety_downgraded", 409], ["safety_blocked", 409], ["idempotency_key_content_conflict", 409]] as const) {
+    for (const [message, status] of [["seed_not_found", 404], ["agent_snapshot_invalid", 409], ["graph_snapshot_invalid", 409], ["graph_locked", 409], ["evidence_required", 400], ["safety_downgraded", 409], ["safety_blocked", 409], ["idempotency_key_content_conflict", 409]] as const) {
       rpc.mockResolvedValueOnce({ data: null, error: { message } });
       const response = await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }));
       expect(response.status).toBe(status);

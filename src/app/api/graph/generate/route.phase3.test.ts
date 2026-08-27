@@ -85,6 +85,11 @@ describe("POST /api/graph/generate", () => {
     expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(500);
   });
 
+  it("fails closed when a server result gives an Edge a different safety level than its parent Graph", async () => {
+    rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, edges: [{ id: "55555555-5555-4555-8555-555555555555", graph_snapshot_id: graphId, agent_snapshot_id: "44444444-4444-4444-8444-444444444444", from_agent_id: "66666666-6666-4666-8666-666666666666", to_agent_id: "77777777-7777-4777-8777-777777777777", version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 50, hostility: 0, dependency: 0, attraction: 0, competition: 0, information_gap: 0, resource_control: 0, emotional_debt: 0 }, confidence: 67, evidence_refs: ["seed:submitted"], safety_level: "caution" }] }], error: null });
+    expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(500);
+  });
+
   it("fails closed for self-edges, duplicate unordered pairs, and unknown relationship values", async () => {
     rpc.mockResolvedValue({ data: [{ idempotent: false, graph: { id: graphId, agent_snapshot_id: graphId, version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null }, edges: [{ id: graphId, graph_snapshot_id: graphId, agent_snapshot_id: graphId, from_agent_id: graphId, to_agent_id: graphId, relationship_type: "unknown" }] }], error: null });
     expect((await POST(request({ selector: { seed_id: seedId }, idempotency_key: idempotencyKey }))).status).toBe(500);
