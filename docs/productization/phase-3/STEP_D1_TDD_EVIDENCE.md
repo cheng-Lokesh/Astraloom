@@ -1,0 +1,62 @@
+# Phase 3 Step D1 - People UI TDD Evidence
+
+Status: Step D1 evidence only. This is not acceptance of Step D, Phase 3, Alpha, or MVP.
+
+## Scope and non-goals
+
+This delivery replaces the formal People ledger local-first behavior with a typed
+browser adapter for the existing submitted-Seed and Key People APIs. It does not
+change migrations, API routes, Agent or Graph UI/API migration, V2, LLM,
+payments, or data-write boundaries.
+
+## RED
+
+Command: npm test -- src/lib/people/formal-people-client.test.ts
+
+Result: RED. The new controller test suite failed to import the intentionally
+missing formal-people-client module. This was the expected missing
+implementation signal, not a test-environment failure.
+
+Checkpoint: 3ba85f2 test: add formal people UI recovery contract.
+
+## GREEN
+
+Command: npx vitest run src/lib/people/formal-people-client.test.ts --reporter=verbose
+
+Result: PASS - 1 file, 17 tests.
+
+| Guarantee | Test coverage |
+|---|---|
+| Recovery selects latest submitted Seed with deterministic ID tie-break and then loads Key People | recovery and tie-break tests |
+| Anonymous, absent Seed, malformed, GET, and empty-ledger states are private and clear | recovery state tests |
+| Extract and every management operation use existing endpoints with a fresh UUID key | extract plus five atomic-operation cases |
+| Duplicate in-flight action requests are blocked | in-flight action test |
+| 409 conflicts, invalid transitions, 404, 500, and schema failures retain the last server view and expose no trace/body | failure mapping and unsafe-projection tests |
+| Refresh re-reads server truth and never auto-retries a conflict | recovery-after-conflict test |
+
+GREEN checkpoint: 75683a8 feat: recover formal people ledger in UI.
+
+## Additional verification
+
+- npm run lint for the People page, client adapter, and controller test - PASS.
+- npm run type-check - PASS.
+- Focused Key People, Agent, and Graph API regression command was run against eight existing API suites.
+- git diff --exit-code productization/phase-1-contract -- src/lib/v2 - PASS (zero diff).
+- Local temporary authenticated E2E setup created one unique test user and one non-sensitive submitted Track A Seed through local GoTrue and the existing submit_seed_context_phase2 boundary, then deleted the user. Counts returned to 16/0/0/0/16, with Graph 0/0.
+
+## Browser limitation
+
+The local dev server started successfully. Playwright CLI was attempted with the
+standard browser, a writable isolated daemon directory, and the installed Chrome
+channel. In both browser attempts the CLI launched a browser process and failed
+with Target crashed / Playwright CDP assertion before the first page could load.
+No screenshots or browser-flow PASS claim is made. The temporary user was still
+deleted and the CLI/browser session was closed.
+
+## Known remaining risk
+
+The authenticated browser journey (extract, confirm, supplement, refresh and
+375px/1280px visual checks) needs a follow-up on a host where Playwright can
+launch a stable browser session. The implementation is covered by strict
+controller and existing API tests, but that does not substitute for rendered
+browser acceptance.
