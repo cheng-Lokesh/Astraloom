@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(156);
+select plan(162);
 
 -- Step C owns an immutable Graph parent. Existing relation_edges are not a
 -- graph snapshot until every Edge is bound to this parent and its Agent input.
@@ -122,6 +122,8 @@ select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.gene
 select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%v_agent.safety_level%' and pg_get_functiondef(oid) ilike '%v_hash%'), 'Graph generation binds every Edge safety and request hash to its Graph parent values');
 select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.lock_relation_graph_phase3(uuid,uuid)') and pg_get_functiondef(oid) ilike '%idempotency_key_content_conflict%'), 'Graph lock binds same-key replay to the original in-place parent');
 select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.phase3_relation_graph_lock_guard()') and pg_get_functiondef(oid) ilike '%old.graph_locked%' and pg_get_functiondef(oid) ilike '%new.locked_at%'), 'lock guard prohibits unlocks and non-lock Graph parent mutations');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.phase3_relation_graph_lock_guard()') and pg_get_functiondef(oid) ilike '%current_setting(''app.phase3_graph_rpc'', true) is distinct from ''on''%'), 'lock guard treats an unset Graph RPC receipt guard as closed');
+select ok(exists (select 1 from pg_proc where oid = to_regprocedure('public.phase3_relation_edges_endpoint_guard()') and pg_get_functiondef(oid) ilike '%current_setting(''app.phase3_graph_rpc'', true) is distinct from ''on''%'), 'Edge guard treats an unset Graph RPC receipt guard as closed');
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -148,8 +150,8 @@ select throws_ok($$ delete from public.relation_graph_idempotency_receipts $$, '
 select is(coalesce(current_setting('app.phase3_graph_rpc', true), 'off'), 'off', 'an unset Graph receipt guard is closed before generation');
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), null) $$, 'P0001', 'graph_snapshot_invalid', 'null Graph idempotency key writes nothing');
 select throws_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), null) $$, 'P0001', 'graph_snapshot_invalid', 'null lock idempotency key writes nothing');
-select is(current_setting('app.phase3_graph_rpc', true), 'off', 'Graph receipt guard closes after invalid generate');
-select is(current_setting('app.phase3_graph_rpc', true), 'off', 'Graph receipt guard closes after invalid lock');
+select is(coalesce(nullif(current_setting('app.phase3_graph_rpc', true), ''), 'off'), 'off', 'Graph receipt guard closes after invalid generate');
+select is(coalesce(nullif(current_setting('app.phase3_graph_rpc', true), ''), 'off'), 'off', 'Graph receipt guard closes after invalid lock');
 select lives_ok($verify$
   do $check$
   declare p0 bigint; e0 bigint; r0 bigint; s0 bigint; t0 bigint; v0 bigint;
@@ -186,7 +188,7 @@ select lives_ok($verify$
 $verify$, 'lock changes only Graph lock lifecycle and never creates Edge or downstream objects');
 rollback to savepoint graph_side_effect_probe;
 release savepoint graph_side_effect_probe;
-select is(current_setting('app.phase3_graph_rpc', true), 'off', 'Graph receipt guard closes after success, replay, conflict, and lock paths');
+select is(coalesce(nullif(current_setting('app.phase3_graph_rpc', true), ''), 'off'), 'off', 'Graph receipt guard closes after success, replay, conflict, and lock paths');
 select throws_ok($$ insert into public.relation_edges (user_id, from_agent_id, to_agent_id, version, relationship_type, weights, confidence, evidence_refs) values ('00000000-0000-0000-0000-00000000c301', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'phase3-graph-snapshot-v1', 'professional', '{}'::jsonb, 0, '[]'::jsonb) $$, '42501', NULL, 'direct authenticated Edge insert is denied before malformed data can persist');
 select throws_ok($$ update public.relation_edges set weights = '{}'::jsonb $$, '42501', NULL, 'direct authenticated Edge mutation stays denied after any Graph lifecycle state');
 set local role anon;
@@ -234,6 +236,19 @@ select lives_ok($verify$
   end
   $check$
 $verify$, 'server weights use exactly the formal integer 0..100 key set and confidence is an integer percentage');
+-- The owner bypasses RLS, so this probes the BEFORE UPDATE guards themselves.
+-- Do not pre-seed the custom GUC with off: an absent setting is the security
+-- boundary exposed by failed RPC exception paths and savepoint rollbacks.
+savepoint graph_unset_guard_probe;
+reset app.phase3_graph_rpc;
+select set_config('app.phase3_graph_probe_edge_id', (select id::text from public.relation_edges order by id limit 1), true);
+select set_config('app.phase3_graph_probe_weights', (select weights::text from public.relation_edges where id = current_setting('app.phase3_graph_probe_edge_id')::uuid), true);
+select throws_ok($$ update public.relation_graph_snapshots set graph_locked = true, locked_at = clock_timestamp() where id = (select id from public.relation_graph_snapshots order by id limit 1) $$, '42501', 'graph_locked', 'an unset Graph RPC guard blocks an owner lock lifecycle update');
+select is((select graph_locked from public.relation_graph_snapshots order by id limit 1), false, 'an unset Graph RPC guard leaves the Graph lifecycle unchanged');
+select throws_ok($$ update public.relation_edges set weights = weights where id = current_setting('app.phase3_graph_probe_edge_id')::uuid $$, '42501', 'graph_snapshot_invalid', 'an unset Graph RPC guard blocks an owner Edge update');
+select is((select weights::text from public.relation_edges where id = current_setting('app.phase3_graph_probe_edge_id')::uuid), current_setting('app.phase3_graph_probe_weights'), 'an unset Graph RPC guard leaves Edge data unchanged');
+rollback to savepoint graph_unset_guard_probe;
+release savepoint graph_unset_guard_probe;
 set local role authenticated;
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'same key and canonical content replays the Graph');
 select lives_ok($$ update public.relation_graph_snapshots set graph_locked = true $$, 'direct authenticated Graph update is filtered by the closed RLS guard');
