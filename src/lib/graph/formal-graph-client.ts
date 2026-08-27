@@ -31,7 +31,9 @@ export async function runFormalGraphUiAction(work: () => Promise<boolean | void>
 const recoveryFailure = "We couldn't recover your saved Graph ledger. Please try again.";
 const generationFailure = "We couldn't generate a Graph snapshot. Your saved ledger has not changed.";
 const lockFailure = "We couldn't lock this Graph snapshot. Your saved ledger has not changed.";
-function newestSeed(seeds: z.infer<typeof seedSchema>[]) { return [...seeds].sort((left, right) => right.submittedAt.localeCompare(left.submittedAt) || right.id.localeCompare(left.id))[0] ?? null; }
+function newestSeed(seeds: z.infer<typeof seedSchema>[]) {
+  return [...seeds].sort((left, right) => Date.parse(right.submittedAt) - Date.parse(left.submittedAt) || right.id.localeCompare(left.id))[0] ?? null;
+}
 function validAgents(snapshot: z.infer<typeof snapshotSchema> | null, agents: FormalGraphAgent[]) {
   if (!snapshot) return agents.length === 0;
   if (!agents.length || agents.some((agent) => agent.snapshot_id !== snapshot.id || agent.safety_level !== snapshot.safety_level)) return false;

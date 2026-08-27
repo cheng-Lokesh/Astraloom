@@ -54,8 +54,8 @@ from this D3 execution.
 
 | Check | Command | Exit | Result |
 |---|---|---:|---|
-| D3 controller | `npx vitest run src/lib/graph/formal-graph-client.test.ts --reporter=verbose` | 0 | 1 file, 21/21 passed after the pre-review remediation below. |
-| Related Graph and Agent API regression | `npx vitest run src/lib/graph/formal-graph-client.test.ts src/app/api/agents/route.phase3.test.ts src/app/api/agents/generate/route.phase3.test.ts src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts --reporter=verbose` | 0 | 6 files, 71/71 passed after the pre-review remediation below. |
+| D3 controller | `npx vitest run src/lib/graph/formal-graph-client.test.ts --reporter=verbose` | 0 | 1 file, 22/22 passed after the offset-ordering remediation below. |
+| Related Graph and Agent API regression | `npx vitest run src/lib/graph/formal-graph-client.test.ts src/app/api/agents/route.phase3.test.ts src/app/api/agents/generate/route.phase3.test.ts src/app/api/graph/route.phase3.test.ts src/app/api/graph/generate/route.phase3.test.ts src/app/api/graph/lock/route.phase3.test.ts --reporter=verbose` | 0 | 6 files, 72/72 passed after the offset-ordering remediation below. |
 | Exact D3 ESLint | `npx eslint src/app/app/new/graph/page.tsx src/lib/graph/formal-graph-client.ts src/lib/graph/formal-graph-client.test.ts src/app/api/graph/route.ts src/app/api/graph/generate/route.ts src/app/api/graph/lock/route.ts` | 0 | passed. |
 | TypeScript | `npm run type-check` | 0 | `next typegen` and `tsc --noEmit` passed. |
 | Whitespace | `git diff --check` | 0 | passed (Git emitted only CRLF conversion warnings). |
@@ -95,6 +95,19 @@ copy incorrectly said generation.
 
 Focused GREEN rerun used the same command with exit code **0**: 1 file,
 21/21 passed.
+
+## Independent-review offset-ordering remediation
+
+Independent review found that lexicographic `submittedAt` sorting is incorrect
+for valid ISO timestamps carrying different offsets. The focused RED added a
+Seed at `2026-08-28T01:00:00+02:00` (an earlier instant) alongside two
+`2026-08-28T00:00:00+00:00` entries. The old string comparison selected the
+earlier `+02:00` Seed; the focused controller command exited **1**.
+
+`newestSeed` now compares `Date.parse(submittedAt)` epoch values descending,
+then retains the existing descending ID tie-break for the same instant. The
+same focused command exited **0** with 22/22 tests passing. This changes no
+API, migration, writer, browser payload, V2 file, or business data.
 
 ## Non-goals
 
