@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(152);
+select plan(156);
 
 -- Step C owns an immutable Graph parent. Existing relation_edges are not a
 -- graph snapshot until every Edge is bound to this parent and its Agent input.
@@ -248,6 +248,10 @@ select set_config('app.phase3_graph_prelock_id', (select id::text from public.re
 select set_config('app.phase3_graph_prelock_edge_count', (select count(*)::text from public.relation_edges where graph_snapshot_id = current_setting('app.phase3_graph_prelock_id')::uuid), true);
 select set_config('app.phase3_graph_prelock_parent_count', (select count(*)::text from public.relation_graph_snapshots), true);
 select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000315') $$, 'fresh latest Graph locks atomically');
+select is((select graph ->> 'id' from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')), current_setting('app.phase3_graph_prelock_id'), 'generate replay after lock returns the same Graph parent');
+select is((select graph ->> 'graph_locked' from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')), 'true', 'generate replay after lock preserves the locked lifecycle');
+select ok((select graph ->> 'locked_at' from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')) is not null, 'generate replay after lock preserves locked_at');
+select is((select jsonb_array_length(edges) from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')), current_setting('app.phase3_graph_prelock_edge_count')::integer, 'generate replay after lock returns the complete original Edge set');
 reset role;
 select is((select id::text from public.relation_graph_snapshots where graph_locked), current_setting('app.phase3_graph_prelock_id'), 'locking preserves the generated Graph parent identity');
 select is((select count(*) from public.relation_graph_snapshots), current_setting('app.phase3_graph_prelock_parent_count')::bigint, 'locking does not create a second parent snapshot');
