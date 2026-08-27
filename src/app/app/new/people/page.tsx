@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusPill } from "@/components/status-pill";
@@ -24,15 +24,16 @@ const statusLabel = (status: FormalPerson["status"]) => ({
 })[status];
 
 export default function PeoplePage() {
-  const ref = useRef<FormalPeopleController | null>(null);
-  if (!ref.current) ref.current = makeController();
-  const controller = ref.current;
-  const [state, setState] = useState<FormalPeopleState>(controller.state);
+  const [controller] = useState(makeController);
+  const [state, setState] = useState<FormalPeopleState>(() => controller.state);
   const sync = () => setState({ ...controller.state, people: [...controller.state.people] });
   const run = async (work: () => Promise<boolean | void>) => { const result = await work(); sync(); return result === true; };
 
-  useEffect(() => { void run(() => controller.recover()); /* controller is lifetime-stable */ // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => {
+    void controller.recover().then(() => {
+      setState({ ...controller.state, people: [...controller.state.people] });
+    });
+  }, [controller]);
 
   if (state.phase === "loading") return <AppShell><Loading /></AppShell>;
 

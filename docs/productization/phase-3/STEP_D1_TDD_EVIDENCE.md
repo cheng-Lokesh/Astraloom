@@ -72,6 +72,22 @@ controller accepts FormalPeopleFetch. No production behavior changed.
 Repair verification: npm run type-check PASS; People controller tests PASS
 (1 file, 20 tests); eslint for the three D1 files PASS.
 
+## Second reviewer lint block and repair
+
+The next independent review reproduced three react-hooks/refs errors in the
+People page. The render path initialized and read a controller through
+ref.current, including the initial state and Ledger props. The exact targeted
+eslint command returned exit code 1 before repair.
+
+The page now creates its stable controller through useState(makeController),
+initializes view state lazily from that stable instance, and performs recovery
+inside an effect without render-time ref access. This retains the existing
+controller lifecycle and server-ledger behavior.
+
+Repair verification: exact targeted eslint command PASS (exit code 0); npm run
+type-check PASS (exit code 0); People controller tests PASS (1 file, 20 tests,
+exit code 0).
+
 ## Additional verification
 
 - npm run lint for the People page, client adapter, and controller test - PASS.
