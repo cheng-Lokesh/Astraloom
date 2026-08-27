@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(130);
+select plan(134);
 
 -- Step C owns an immutable Graph parent. Existing relation_edges are not a
 -- graph snapshot until every Edge is bound to this parent and its Agent input.
@@ -224,7 +224,15 @@ select * from public.generate_agent_snapshot_phase3((select id from public.seed_
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'idempotency_key_content_conflict', 'same key with a stale or different Agent input conflicts');
 select throws_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000306') $$, 'P0001', 'agent_snapshot_invalid', 'newer Agent snapshot prevents locking the old Graph and writes nothing');
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314') $$, 'latest valid Agent snapshot creates a fresh replacement Graph');
+select set_config('app.phase3_graph_prelock_id', (select id::text from public.relation_graph_snapshots where seed_context_id = (select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301') order by created_at desc, id desc limit 1), true);
+select set_config('app.phase3_graph_prelock_edge_count', (select count(*)::text from public.relation_edges where graph_snapshot_id = current_setting('app.phase3_graph_prelock_id')::uuid), true);
+select set_config('app.phase3_graph_prelock_parent_count', (select count(*)::text from public.relation_graph_snapshots), true);
 select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000315') $$, 'fresh latest Graph locks atomically');
+reset role;
+select is((select id::text from public.relation_graph_snapshots where graph_locked), current_setting('app.phase3_graph_prelock_id'), 'locking preserves the generated Graph parent identity');
+select is((select count(*) from public.relation_graph_snapshots), current_setting('app.phase3_graph_prelock_parent_count')::bigint, 'locking does not create a second parent snapshot');
+select is((select count(*) from public.relation_edges where graph_snapshot_id = (select id from public.relation_graph_snapshots where graph_locked)), current_setting('app.phase3_graph_prelock_edge_count')::bigint, 'locking preserves the complete generated Edge set on the same parent');
+select is((select graph_snapshot_id::text from public.relation_graph_idempotency_receipts where idempotency_key = '00000000-0000-4000-8000-000000000315'), current_setting('app.phase3_graph_prelock_id'), 'lock replay receipt binds the same readable Graph parent');
 select lives_ok($verify$
   do $check$
   begin
@@ -232,6 +240,7 @@ select lives_ok($verify$
   end
   $check$
 $verify$, 'Graph lock lifecycle keeps graph_locked and locked_at consistent');
+set local role authenticated;
 select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000306') $$, 'repeated lock is stable replay');
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000307') $$, 'P0001', 'graph_locked', 'a locked Graph cannot be generated or replaced');
 select * from public.submit_seed_context_phase2('00000000-0000-4000-8000-000000000309', '{"trackType":"crossroad","timeWindow":"30_days","questionText":"I want to stalk my partner.","situationSummary":"Sensitive relationship request.","recentEvents":"Recent conflict.","keyPeopleText":"Partner.","decisionOptions":"Pause.","worries":"Privacy.","forbiddenActions":"Do not monitor.","safetyBoundaries":"Respect privacy.","desiredOutput":"Safe next step.","privacyAck":true,"privacySafetyAck":true}'::jsonb);
