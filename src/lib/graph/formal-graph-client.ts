@@ -46,10 +46,11 @@ function validGraph(graph: FormalGraph | null, edges: FormalGraphEdge[], snapsho
   if (!snapshot || !edges.length || graph.agent_snapshot_id !== snapshot.id || graph.safety_level !== snapshot.safety_level || edges.some((edge) => {
     const from = agents.find((agent) => agent.id === edge.from_agent_id);
     const to = agents.find((agent) => agent.id === edge.to_agent_id);
-    return edge.graph_snapshot_id !== graph.id || edge.agent_snapshot_id !== graph.agent_snapshot_id || edge.safety_level !== graph.safety_level || edge.from_agent_id === edge.to_agent_id || !from || !to || (from.agent_type !== "npc" && to.agent_type !== "npc");
+    return edge.graph_snapshot_id !== graph.id || edge.agent_snapshot_id !== graph.agent_snapshot_id || edge.safety_level !== graph.safety_level || edge.from_agent_id === edge.to_agent_id || !from || !to || (from.agent_type === "user_core") === (to.agent_type === "user_core");
   })) return false;
   const pairs = new Set<string>();
-  return !edges.some((edge) => { const pair = [edge.from_agent_id, edge.to_agent_id].sort().join(":"); if (pairs.has(pair)) return true; pairs.add(pair); return false; });
+  const hasNpcEvidenceEdge = edges.some((edge) => agents.some((agent) => agent.id === edge.to_agent_id && agent.agent_type === "npc") || agents.some((agent) => agent.id === edge.from_agent_id && agent.agent_type === "npc"));
+  return hasNpcEvidenceEdge && !edges.some((edge) => { const pair = [edge.from_agent_id, edge.to_agent_id].sort().join(":"); if (pairs.has(pair)) return true; pairs.add(pair); return false; });
 }
 async function jsonBody(response: Response): Promise<unknown> { return response.json().catch(() => null); }
 

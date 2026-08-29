@@ -19,6 +19,10 @@ function stableSeed(graphId: string, key: string) {
   return (Number.parseInt(createHash("sha256").update(`${graphId}:${key}`).digest("hex").slice(0, 7), 16) % 1_999_999_999) + 1;
 }
 
+export function buildAccountCalibrationSnapshot(rows: Array<{rating:unknown;target_type:unknown;created_at:unknown}>) {
+  return { source:"account_feedback" as const, signals:rows.slice(0,20).map((item)=>({rating:String(item.rating),targetType:String(item.target_type),createdAt:String(item.created_at)})) };
+}
+
 export async function startFormalSandboxRun(service: SupabaseClient, userId: string, rawRequest: unknown) {
   const request = requestSchema.safeParse(rawRequest);
   if (!request.success) return { ok:false as const,errorCode:"invalid_request" as const };
@@ -27,12 +31,13 @@ export async function startFormalSandboxRun(service: SupabaseClient, userId: str
     const graph = graphSchema.safeParse(graphResult.data);
     if (graphResult.error) return { ok:false as const,errorCode:"persistence_failed" as const };
     if (!graph.success) return { ok:false as const,errorCode:"graph_not_found" as const };
-    const [seedResult,agentsResult,edgesResult] = await Promise.all([
+    const [seedResult,agentsResult,edgesResult,feedbackResult] = await Promise.all([
       service.from("seed_contexts").select("id,user_question,raw_context,safety_flags").eq("id",graph.data.seed_context_id).eq("user_id",userId).eq("status","submitted").maybeSingle(),
       service.from("agent_profiles").select("id,display_name,agent_type,evidence_refs").eq("snapshot_id",graph.data.agent_snapshot_id).eq("user_id",userId).order("id"),
       service.from("relation_edges").select("id,from_agent_id,to_agent_id,relationship_type,evidence_refs").eq("graph_snapshot_id",graph.data.id).eq("user_id",userId).order("id"),
+      service.from("feedback_logs").select("rating,target_type,created_at").eq("user_id",userId).eq("version","formal-run-feedback-m1-v1").order("created_at",{ascending:false}).limit(20),
     ]);
-    if (seedResult.error || agentsResult.error || edgesResult.error) return { ok:false as const,errorCode:"persistence_failed" as const };
+    if (seedResult.error || agentsResult.error || edgesResult.error || feedbackResult.error) return { ok:false as const,errorCode:"persistence_failed" as const };
     const seed = seedSchema.safeParse(seedResult.data);
     const agents = z.array(agentSchema).min(1).safeParse(agentsResult.data);
     const edges = z.array(edgeSchema).min(1).safeParse(edgesResult.data);
@@ -50,7 +55,7 @@ export async function startFormalSandboxRun(service: SupabaseClient, userId: str
       edges:edges.data.map((item)=>({id:item.id,fromAgentId:item.from_agent_id,toAgentId:item.to_agent_id,relationshipType:item.relationship_type,evidenceRefs:item.evidence_refs})),
       safetyLevel:graph.data.safety_level,
       symbolicLens:{mode:"bounded_fusion",summary:"Symbolic context is optional framing and does not alter causal claims."},
-      calibrationSnapshot:{source:"none",signals:[]},
+      calibrationSnapshot:buildAccountCalibrationSnapshot(feedbackResult.data??[]),
     });
     if (!built.ok) return built;
     return persistFormalSandboxRun(service,{userId,graphSnapshotId:graph.data.id,idempotencyKey:request.data.idempotency_key,horizonDays:request.data.horizon_days,bundle:built.bundle});

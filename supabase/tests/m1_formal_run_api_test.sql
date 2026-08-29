@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(19);
 select has_column('public','feedback_logs','version','canonical feedback is versioned');
 select has_column('public','feedback_logs','writer_version','canonical feedback records its controlled writer');
 select has_column('public','feedback_logs','idempotency_key','canonical feedback is owner-idempotent');
@@ -19,5 +19,6 @@ select ok(pg_get_functiondef('public.append_account_sandbox_feedback_m1(uuid,tex
 select ok(pg_get_functiondef('public.append_account_sandbox_feedback_m1(uuid,text,text,uuid)'::regprocedure) ilike '%idempotency_key_content_conflict%','same key with changed feedback is rejected');
 select ok((select count(*) from information_schema.tables where table_schema='public' and table_name in ('simulation_history','run_history','result_bundles'))=0,'History and Result reuse canonical simulations rather than parallel tables');
 select ok(exists(select 1 from supabase_migrations.schema_migrations where version='20260830160000'),'formal API migration is recorded');
+select ok(has_table_privilege('service_role','public.feedback_logs','select'),'the server can read prior owner-filtered feedback for next-Run calibration');
 select * from finish();
 rollback;

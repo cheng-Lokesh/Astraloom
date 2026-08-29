@@ -14,10 +14,12 @@ const coreId = "44444444-4444-4444-8444-444444444444";
 const npcId = "55555555-5555-4555-8555-555555555555";
 const graphId = "66666666-6666-4666-8666-666666666666";
 const edgeId = "77777777-7777-4777-8777-777777777777";
+const variantId = "abababab-abab-4bab-8bab-abababababab";
 
 const snapshot = { id: snapshotId, version: "phase3-agent-snapshot-v1", safety_level: "safe", error_code: null };
 const core = { id: coreId, snapshot_id: snapshotId, key_person_id: null, version: "phase3-agent-snapshot-v1", agent_type: "user_core", display_name: "You", relationship_to_user: "self", source: "conservative_snapshot", confidence: 58, evidence_refs: ["seed:submitted"], safety_level: "safe" };
 const npc = { id: npcId, snapshot_id: snapshotId, key_person_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", version: "phase3-agent-snapshot-v1", agent_type: "npc", display_name: "Project lead", relationship_to_user: "manager", source: "confirmed_person_snapshot", confidence: 72, evidence_refs: ["key_person:confirmed"], safety_level: "safe" };
+const variant = { ...core, id: variantId, agent_type: "user_variant", display_name: "Parallel self" };
 const graph = { id: graphId, agent_snapshot_id: snapshotId, version: "phase3-graph-snapshot-v1", graph_locked: false, locked_at: null, safety_level: "safe", error_code: null };
 const edge = { id: edgeId, graph_snapshot_id: graphId, agent_snapshot_id: snapshotId, from_agent_id: coreId, to_agent_id: npcId, version: "phase3-graph-snapshot-v1", relationship_type: "professional", weights: { trust: 61, hostility: 10, dependency: 44, attraction: 0, competition: 25, information_gap: 31, resource_control: 42, emotional_debt: 12 }, confidence: 70, evidence_refs: ["seed:submitted", "agent:user_core"], safety_level: "safe" };
 
@@ -52,6 +54,16 @@ describe("FormalGraphController", () => {
     expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedB }, snapshot, agents: [core, npc], graph, edges: [edge] });
     expect(fetcher).toHaveBeenNthCalledWith(2, `/api/agents?seed_id=${seedB}`, { method: "GET" });
     expect(fetcher).toHaveBeenNthCalledWith(3, `/api/graph?seed_id=${seedB}`, { method: "GET" });
+  });
+
+  it("accepts a server Graph with both confirmed-person and parallel-self branches", async () => {
+    const variantEdge = { ...edge, id: "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd", to_agent_id: variantId, relationship_type: "support" };
+    const fetcher = recoverFetch({ agents: [core, npc, variant], graph, edges: [edge, variantEdge] });
+    const subject = controller(fetcher);
+
+    await subject.recover();
+
+    expect(subject.state).toMatchObject({ phase: "ready", graph, edges: [edge, variantEdge] });
   });
 
   it("selects the latest submitted instant across offsets, then breaks an exact-time tie by id", async () => {
@@ -161,7 +173,6 @@ describe("FormalGraphController", () => {
   });
 
   it("rejects a Graph whose relationship only connects the user core and a parallel variant", async () => {
-    const variant = { ...core, id: "abababab-abab-4bab-8bab-abababababab", agent_type: "user_variant", display_name: "Parallel self" };
     const nonNpcEdge = { ...edge, to_agent_id: variant.id };
     const subject = controller(recoverFetch({ agents: [core, variant], graph, edges: [nonNpcEdge] }));
 

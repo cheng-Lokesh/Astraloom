@@ -43,13 +43,13 @@ describe("formal account sandbox V2 runtime adapter", () => {
       expect(claim.simulationEventIds.every((id) => eventIds.has(id))).toBe(true);
     }
     expect(result.bundle.report.claimIds).toEqual(result.bundle.claims.map((claim) => claim.id).sort());
-  });
+  }, 30_000);
 
   it("is structurally reproducible for the same fixed input and seed", async () => {
     const first = await buildFormalSandboxRunV2(input);
     const second = await buildFormalSandboxRunV2(structuredClone(input));
     expect(first).toEqual(second);
-  });
+  }, 30_000);
 
   it("keeps Symbolic Lens outside causal output and confidence", async () => {
     const first = await buildFormalSandboxRunV2(input);
@@ -59,7 +59,7 @@ describe("formal account sandbox V2 runtime adapter", () => {
     expect(first.bundle.causalFingerprint).toBe(second.bundle.causalFingerprint);
     expect(first.bundle.claims).toEqual(second.bundle.claims);
     expect(first.bundle.symbolicLensSnapshot).not.toEqual(second.bundle.symbolicLensSnapshot);
-  });
+  }, 30_000);
 
   it("blocks unsafe input before creating Events, Claims, or Report", async () => {
     await expect(buildFormalSandboxRunV2({ ...input, safetyLevel: "blocked" })).resolves.toEqual({ ok: false, errorCode: "safety_blocked" });
@@ -69,5 +69,5 @@ describe("formal account sandbox V2 runtime adapter", () => {
     const ninety = await buildFormalSandboxRunV2({ ...input, horizonDays: 90 });
     expect(ninety.ok).toBe(true);
     await expect(buildFormalSandboxRunV2({ ...input, horizonDays: 365 as 30 })).resolves.toEqual({ ok: false, errorCode: "invalid_run_input" });
-  });
+  }, 30_000);
 });

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(51);
+select plan(64);
 
 select has_column('public', 'simulations', 'graph_snapshot_id', 'canonical Run binds a locked Graph');
 select has_column('public', 'simulations', 'agent_snapshot_id', 'canonical Run binds the immutable Agent snapshot');
@@ -115,33 +115,38 @@ select lives_ok(
   'a valid locked owner Graph persists one formal Run atomically'
 );
 reset role;
-select is((select count(*) from public.simulations where execution_version = 'formal-account-sandbox-m1-v1'), 1::bigint, 'first request creates exactly one formal Run');
-select is((select status from public.simulations where execution_version = 'formal-account-sandbox-m1-v1'), 'completed'::public.simulation_status, 'the formal Run is completed only after its Bundle persists');
-select is((select count(*) from public.simulation_ticks where simulation_id = (select id from public.simulations where execution_version = 'formal-account-sandbox-m1-v1')), 1::bigint, 'the Run has the expected canonical Tick count');
-select is((select count(*) from public.event_logs where simulation_id = (select id from public.simulations where execution_version = 'formal-account-sandbox-m1-v1')), 1::bigint, 'the Run has the expected canonical Event count');
-select is((select count(*) from public.claims where simulation_id = (select id from public.simulations where execution_version = 'formal-account-sandbox-m1-v1')), 1::bigint, 'the Run has the expected canonical Claim count');
-select is((select count(*) from public.reports where simulation_id = (select id from public.simulations where execution_version = 'formal-account-sandbox-m1-v1')), 1::bigint, 'the Run has exactly one canonical Report');
+create temporary view m1_owned_runs as
+select * from public.simulations
+where user_id = '00000000-0000-0000-0000-00000000e401'
+  and execution_version = 'formal-account-sandbox-m1-v1';
+grant select on m1_owned_runs to service_role, authenticated;
+select is((select count(*) from m1_owned_runs), 1::bigint, 'first request creates exactly one formal Run for the fixture account');
+select is((select status from m1_owned_runs), 'completed'::public.simulation_status, 'the formal Run is completed only after its Bundle persists');
+select is((select count(*) from public.simulation_ticks where simulation_id = (select id from m1_owned_runs)), 1::bigint, 'the Run has the expected canonical Tick count');
+select is((select count(*) from public.event_logs where simulation_id = (select id from m1_owned_runs)), 1::bigint, 'the Run has the expected canonical Event count');
+select is((select count(*) from public.claims where simulation_id = (select id from m1_owned_runs)), 1::bigint, 'the Run has the expected canonical Claim count');
+select is((select count(*) from public.reports where simulation_id = (select id from m1_owned_runs)), 1::bigint, 'the Run has exactly one canonical Report');
 select ok(not exists (
   select 1 from public.claims c
   left join public.event_logs e on e.id = any(c.evidence_event_ids) and e.simulation_id = c.simulation_id and e.user_id = c.user_id
-  where c.simulation_id = (select id from public.simulations where execution_version = 'formal-account-sandbox-m1-v1') and e.id is null
+  where c.simulation_id = (select id from m1_owned_runs) and e.id is null
 ), 'every Claim evidence id resolves to an Event from the same owner Run');
 select ok(not exists (
   select 1 from public.reports r
   left join public.claims c on c.id = any(r.claim_ids) and c.simulation_id = r.simulation_id and c.user_id = r.user_id
-  where r.simulation_id = (select id from public.simulations where execution_version = 'formal-account-sandbox-m1-v1') and c.id is null
+  where r.simulation_id = (select id from m1_owned_runs) and c.id is null
 ), 'the Report references only Claims from the same owner Run');
-select ok((select e.created_at <= c.created_at and c.created_at <= r.created_at from public.event_logs e join public.claims c on c.simulation_id=e.simulation_id join public.reports r on r.simulation_id=e.simulation_id where e.simulation_id=(select id from public.simulations where execution_version='formal-account-sandbox-m1-v1') limit 1), 'Event then Claim then Report persistence order is observable');
-select ok((select symbolic_lens_snapshot = '{"mode":"bounded_fusion","summary":"Optional framing only"}'::jsonb from public.simulations where execution_version='formal-account-sandbox-m1-v1'), 'Symbolic Lens is stored as a separate non-causal snapshot');
-select ok((select result_bundle = (select bundle from m1_run_fixture) from public.simulations where execution_version='formal-account-sandbox-m1-v1'), 'the immutable Run retains the complete canonical result Bundle');
+select ok((select e.created_at <= c.created_at and c.created_at <= r.created_at from public.event_logs e join public.claims c on c.simulation_id=e.simulation_id join public.reports r on r.simulation_id=e.simulation_id where e.simulation_id=(select id from m1_owned_runs) limit 1), 'Event then Claim then Report persistence order is observable');
+select ok((select symbolic_lens_snapshot = '{"mode":"bounded_fusion","summary":"Optional framing only"}'::jsonb from m1_owned_runs), 'Symbolic Lens is stored as a separate non-causal snapshot');
+select ok((select result_bundle = (select bundle from m1_run_fixture) from m1_owned_runs), 'the immutable Run retains the complete canonical result Bundle');
 
-select set_config('app.m1_run_count', (select count(*)::text from public.simulations where execution_version='formal-account-sandbox-m1-v1'), true);
-select set_config('app.m1_event_count', (select count(*)::text from public.event_logs where simulation_id=(select id from public.simulations where execution_version='formal-account-sandbox-m1-v1')), true);
+select set_config('app.m1_run_count', (select count(*)::text from m1_owned_runs), true);
+select set_config('app.m1_event_count', (select count(*)::text from public.event_logs where simulation_id=(select id from m1_owned_runs)), true);
 set local role service_role;
 select is((select idempotent from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, (select bundle from m1_run_fixture))), true, 'same owner key and content returns an explicit idempotent replay');
 reset role;
-select is((select count(*) from public.simulations where execution_version='formal-account-sandbox-m1-v1'), current_setting('app.m1_run_count')::bigint, 'idempotent replay creates no duplicate Run');
-select is((select count(*) from public.event_logs where simulation_id=(select id from public.simulations where execution_version='formal-account-sandbox-m1-v1')), current_setting('app.m1_event_count')::bigint, 'idempotent replay creates no duplicate Event');
+select is((select count(*) from m1_owned_runs), current_setting('app.m1_run_count')::bigint, 'idempotent replay creates no duplicate Run');
+select is((select count(*) from public.event_logs where simulation_id=(select id from m1_owned_runs)), current_setting('app.m1_event_count')::bigint, 'idempotent replay creates no duplicate Event');
 set local role service_role;
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, jsonb_set((select bundle from m1_run_fixture), '{symbolicLensSnapshot,summary}', '"changed"')) $$,
@@ -156,13 +161,41 @@ select throws_ok(
   'P0001', 'claim_evidence_invalid', 'a Claim with foreign or missing Event evidence aborts the Bundle'
 );
 reset role;
-select is((select count(*) from public.simulations where execution_version='formal-account-sandbox-m1-v1'), current_setting('app.m1_run_count')::bigint, 'a failed Bundle leaves no partial Run');
-select is((select count(*) from public.event_logs where simulation_id=(select id from public.simulations where execution_version='formal-account-sandbox-m1-v1')), current_setting('app.m1_event_count')::bigint, 'a failed Bundle leaves no partial Event');
-select throws_ok($$ update public.simulations set result_bundle=result_bundle where execution_version='formal-account-sandbox-m1-v1' $$, '42501', 'completed_run_immutable', 'a completed formal Run cannot be updated');
-select throws_ok($$ delete from public.simulations where execution_version='formal-account-sandbox-m1-v1' $$, '42501', 'completed_run_immutable', 'a completed formal Run cannot be deleted');
-select throws_ok($$ update public.event_logs set event_payload=event_payload where simulation_id=(select id from public.simulations where execution_version='formal-account-sandbox-m1-v1') $$, '42501', 'completed_run_immutable', 'a completed formal Event cannot be updated');
-select throws_ok($$ delete from public.claims where simulation_id=(select id from public.simulations where execution_version='formal-account-sandbox-m1-v1') $$, '42501', 'completed_run_immutable', 'a completed formal Claim cannot be deleted');
+select is((select count(*) from m1_owned_runs), current_setting('app.m1_run_count')::bigint, 'a failed Bundle leaves no partial Run');
+select is((select count(*) from public.event_logs where simulation_id=(select id from m1_owned_runs)), current_setting('app.m1_event_count')::bigint, 'a failed Bundle leaves no partial Event');
+select throws_ok($$ update public.simulations set result_bundle=result_bundle where user_id='00000000-0000-0000-0000-00000000e401' and execution_version='formal-account-sandbox-m1-v1' $$, '42501', 'completed_run_immutable', 'a completed formal Run cannot be updated');
+select throws_ok($$ delete from public.simulations where user_id='00000000-0000-0000-0000-00000000e401' and execution_version='formal-account-sandbox-m1-v1' $$, '42501', 'completed_run_immutable', 'a completed formal Run cannot be deleted');
+select throws_ok($$ update public.event_logs set event_payload=event_payload where simulation_id=(select id from m1_owned_runs) $$, '42501', 'completed_run_immutable', 'a completed formal Event cannot be updated');
+select throws_ok($$ delete from public.claims where simulation_id=(select id from m1_owned_runs) $$, '42501', 'completed_run_immutable', 'a completed formal Claim cannot be deleted');
 select is(coalesce(nullif(current_setting('app.m1_run_rpc', true), ''), 'off'), 'off', 'the formal writer guard is closed after success and failure paths');
+
+select set_config('app.m1_bundle_hash',(select md5(result_bundle::text) from m1_owned_runs),true);
+select set_config('app.m1_run_id',(select id::text from m1_owned_runs),true);
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000e401',true);
+select set_config('request.jwt.claim.role','authenticated',true);
+set local role authenticated;
+select lives_ok($$ select * from public.append_account_sandbox_feedback_m1((select id from m1_owned_runs),'useful','Clear evidence chain','00000000-0000-4000-8000-000000000430') $$,'owned completed Run accepts append-only feedback');
+select is((select idempotent from public.append_account_sandbox_feedback_m1((select id from m1_owned_runs),'useful','Clear evidence chain','00000000-0000-4000-8000-000000000430')),true,'same feedback key and content replays idempotently');
+select throws_ok($$ select * from public.append_account_sandbox_feedback_m1((select id from m1_owned_runs),'off','Changed content','00000000-0000-4000-8000-000000000430') $$,'P0001','idempotency_key_content_conflict','same feedback key with changed content conflicts');
+reset role;
+select is((select count(*) from public.feedback_logs where user_id='00000000-0000-0000-0000-00000000e401' and version='formal-run-feedback-m1-v1'),1::bigint,'feedback replay creates no duplicate row');
+select throws_ok($$ update public.feedback_logs set comment=comment where user_id='00000000-0000-0000-0000-00000000e401' and version='formal-run-feedback-m1-v1' $$,'42501','formal_feedback_immutable','formal feedback cannot be updated');
+select throws_ok($$ delete from public.feedback_logs where user_id='00000000-0000-0000-0000-00000000e401' and version='formal-run-feedback-m1-v1' $$,'42501','formal_feedback_immutable','formal feedback cannot be deleted');
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000f401',true);
+set local role authenticated;
+select throws_ok($$ select * from public.append_account_sandbox_feedback_m1(current_setting('app.m1_run_id')::uuid,'mixed','','00000000-0000-4000-8000-000000000431') $$,'P0001','run_not_found','another account cannot append feedback to the Run');
+reset role;
+select is((select md5(result_bundle::text) from m1_owned_runs),current_setting('app.m1_bundle_hash'),'feedback does not rewrite the historical Run Bundle');
+select ok((select calibration_snapshot='{}'::jsonb from m1_owned_runs),'historical calibration snapshot stays frozen after later feedback');
+set local role service_role;
+select lives_ok($$ select * from public.persist_account_sandbox_run_m1(
+  '00000000-0000-0000-0000-00000000e401',(select graph_id from m1_run_fixture),'00000000-0000-4000-8000-000000000440',30,
+  jsonb_set(jsonb_set((select bundle from m1_run_fixture),'{causalFingerprint}','"abcdef0123456789abcdef01"'),'{inputSnapshot,calibrationSnapshot}','{"source":"account_feedback","signals":[{"rating":"useful"}]}'::jsonb)
+) $$,'a later owner Run persists beside the historical Run');
+reset role;
+select is((select count(*) from m1_owned_runs),2::bigint,'two immutable Runs coexist for the same account');
+select ok((select calibration_snapshot='{}'::jsonb from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000410') and (select calibration_snapshot#>>'{source}'='account_feedback' from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000440'),'feedback calibration appears only on the later Run');
+select is((select idempotency_key from m1_owned_runs order by created_at desc,id desc limit 1),'00000000-0000-4000-8000-000000000440','History ordering returns the newer Run first');
 
 select * from finish();
 rollback;

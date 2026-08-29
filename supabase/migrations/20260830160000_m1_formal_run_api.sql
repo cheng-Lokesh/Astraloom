@@ -83,3 +83,4 @@ $$;
 
 revoke all on function public.append_account_sandbox_feedback_m1(uuid,text,text,uuid), public.feedback_logs_m1_immutable_guard() from public,anon;
 grant execute on function public.append_account_sandbox_feedback_m1(uuid,text,text,uuid) to authenticated;
+grant select on public.feedback_logs to service_role;
