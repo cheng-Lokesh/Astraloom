@@ -2,10 +2,10 @@
 
 ## Authority and status
 
-**Status: Step D1 independently accepted; Step D2 and D3 code/API gates
-independently accepted with combined rendered browser replay still pending;
-Step E regression and documentation closeout authorized.** This is the normative
-Phase 3 implementation contract. Phase 2 is closed at
+**Status: Step E executable regression is complete, but the combined rendered
+browser replay is BLOCKED by the Codex in-app browser security policy before
+any page interaction. Step D and Phase 3 are not accepted; Phase 4 remains
+unauthorized.** This is the normative Phase 3 implementation contract. Phase 2 is closed at
 `79cc6970d61eb8695b8cdbbbac68de77059f99ea`. Phase 3 does not authorize Phase
 4 or any non-goal listed below.
 
@@ -220,6 +220,35 @@ No D3 browser profile or business data was created. The 375/1280 rendered
 replay for Agents and Graph remains open in the combined Step D gate. Step E
 may execute the aggregate regression and attempt that combined browser gate,
 but neither Step D nor Phase 3 is accepted and Phase 4 remains unauthorized.
+
+### Step E implementation record
+
+Step E added an additive, post-apply migration that removes the only
+`plpgsql_check` diagnostic from the Graph lock writer without modifying an
+already-applied migration. The persistent Graph pgTAP check was first RED
+(one diagnostic for an unread `v_seed` declaration) and then GREEN. The new
+writer retains its `SECURITY INVOKER`, fixed search path, authenticated-user,
+ownership, locking, idempotency, guard-reset, permissions, and zero-write
+failure properties; its Seed ownership check now uses `PERFORM` and `FOUND`.
+
+The non-destructive database suite passed Graph 163/163, Agent 174/174, People
+74/74, and Phase 2 7/7 plus 10/10; all five Phase 3 writers reported zero
+`plpgsql_check` diagnostics and business-data counts were unchanged. Aggregate
+People/Agent/Graph API and controller tests passed 125/125. Full Vitest passed
+551 tests, coverage remained 90.82% statements / 81.21% branches / 95.44%
+functions / 93.52% lines, and lint, type-check, production build (108 static
+pages), both current Cinematic Hero checks, whitespace, and frozen V2 checks
+passed.
+
+The required rendered browser replay was attempted once using only the Codex
+in-app browser and one temporary page. Its first request to
+`http://localhost:3000/` was rejected with the browser-security-policy reason
+that the user had declined permission. No page content, viewport, login,
+network, console, business-data, or UI state was therefore inspected; no
+alternative browser or workaround was used. Consequently Step E, Step D, and
+Phase 3 are **BLOCKED**, and Phase 4 remains unauthorized. See
+`STEP_E_TDD_EVIDENCE.md` for the exact command outcomes, migration hash,
+database counts, and browser fact.
 
 ## Acceptance matrix
 
