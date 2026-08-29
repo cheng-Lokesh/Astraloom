@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+@keyframes formal-status-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.82); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.formal-status-pulse {
+  animation: formal-status-pulse 1.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .formal-status-pulse { animation: none; opacity: 1; }
+}
+
 :root {
   --bg-obsidian: #050505;
   --bg-deep-navy: #07101D;
