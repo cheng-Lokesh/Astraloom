@@ -94,11 +94,11 @@ select * from public.mutate_key_people_phase3((select id from public.seed_contex
 
 select lives_ok($$ select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000101'), '00000000-0000-4000-8000-000000000104', true) $$, 'safe submitted Seed generates an Agent snapshot');
 reset role;
-select is((select count(*) from public.agent_profile_snapshots), 1::bigint, 'safe generation writes one snapshot parent');
-select is((select count(*) from public.agent_profiles where agent_type = 'user_core'), 1::bigint, 'safe generation writes exactly one user core');
-select ok((select count(*) from public.agent_profiles where agent_type = 'user_variant') between 0 and 2, 'safe generation writes at most two variants');
-select is((select count(*) from public.agent_profiles where agent_type = 'npc'), (select count(*) from public.key_people where status = 'confirmed'), 'every confirmed person becomes exactly one NPC');
-select is((select count(*) from public.relation_edges), 0::bigint, 'Step B never writes Edges');
+select is((select count(*) from public.agent_profile_snapshots where user_id = '00000000-0000-0000-0000-00000000a301'), 1::bigint, 'safe generation writes one snapshot parent');
+select is((select count(*) from public.agent_profiles where user_id = '00000000-0000-0000-0000-00000000a301' and agent_type = 'user_core'), 1::bigint, 'safe generation writes exactly one user core');
+select ok((select count(*) from public.agent_profiles where user_id = '00000000-0000-0000-0000-00000000a301' and agent_type = 'user_variant') between 0 and 2, 'safe generation writes at most two variants');
+select is((select count(*) from public.agent_profiles where user_id = '00000000-0000-0000-0000-00000000a301' and agent_type = 'npc'), (select count(*) from public.key_people where user_id = '00000000-0000-0000-0000-00000000a301' and status = 'confirmed'), 'every confirmed person becomes exactly one NPC');
+select is((select count(*) from public.relation_edges where user_id = '00000000-0000-0000-0000-00000000a301'), 0::bigint, 'Step B never writes Edges');
 select ok((select bool_and(snapshot_id is not null and field_sources <> '{}'::jsonb and jsonb_array_length(evidence_refs) > 0) from public.agent_profiles), 'every Agent retains snapshot, provenance, and evidence');
 select is((select count(*) from public.agent_profiles a join public.agent_profile_snapshots s on (a.snapshot_id, a.user_id, a.seed_context_id) = (s.id, s.user_id, s.seed_context_id)), (select count(*) from public.agent_profiles where snapshot_id is not null), 'composite ownership FK holds for every Agent');
 create temporary table phase3_first_replay_identity as
@@ -113,8 +113,8 @@ create temporary table phase3_two_user_baseline as select
 set local role authenticated;
 select lives_ok($$ select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000101'), '00000000-0000-4000-8000-000000000104', true) $$, 'same key and content replays');
 reset role;
-select is((select count(*) from public.agent_profile_snapshots), 1::bigint, 'same-key replay writes no duplicate snapshot');
-select is((select count(*) from public.agent_snapshot_idempotency_receipts), 1::bigint, 'same-key replay writes no duplicate receipt');
+select is((select count(*) from public.agent_profile_snapshots where user_id = '00000000-0000-0000-0000-00000000a301'), 1::bigint, 'same-key replay writes no duplicate snapshot');
+select is((select count(*) from public.agent_snapshot_idempotency_receipts where user_id = '00000000-0000-0000-0000-00000000a301'), 1::bigint, 'same-key replay writes no duplicate receipt');
 select is((select snapshot_id from public.agent_snapshot_idempotency_receipts where idempotency_key = '00000000-0000-4000-8000-000000000104'), (select snapshot_id from phase3_first_replay_identity), 'same key and content returns the original snapshot id');
 select is((select agent_ids from public.agent_snapshot_idempotency_receipts where idempotency_key = '00000000-0000-4000-8000-000000000104'), (select agent_ids from phase3_first_replay_identity), 'same key and content returns the original Agent ids');
 set local role authenticated;
@@ -126,7 +126,7 @@ insert into public.seed_contexts (user_id, user_question, raw_context, status) v
 set local role authenticated;
 select throws_ok($$ select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where user_question = 'draft only'), '00000000-0000-4000-8000-000000000105', false) $$, 'P0001', 'seed_not_found', 'draft and unsubmitted Seed is rejected');
 reset role;
-select is((select count(*) from public.agent_profile_snapshots), 1::bigint, 'draft failure is zero-write');
+select is((select count(*) from public.agent_profile_snapshots where user_id = '00000000-0000-0000-0000-00000000a301'), 1::bigint, 'draft failure is zero-write');
 
 reset role;
 insert into public.consent_events (id, user_id, consent_type, status, source, metadata) values
@@ -136,7 +136,7 @@ set local role authenticated;
 select throws_ok($$ select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000106'), '00000000-0000-4000-8000-000000000107', false) $$, 'P0001', 'safety_blocked', 'English and Unicode high-risk safety derives blocked state');
 reset role;
 select is((select count(*) from public.agent_profile_snapshots where safety_level = 'blocked'), 0::bigint, 'blocked state writes zero Agent snapshots');
-select is((select count(*) from public.relation_edges), 0::bigint, 'blocked state writes zero Edges');
+select is((select count(*) from public.relation_edges where user_id = '00000000-0000-0000-0000-00000000a301'), 0::bigint, 'blocked state writes zero Edges');
 
 -- Fourth RED: two-user isolation, all safety paths, actual privilege denials,
 -- and transaction atomicity. Every fixture remains inside this BEGIN/ROLLBACK.
@@ -229,7 +229,7 @@ reset role;
 select is((select count(*) from public.agent_profiles where snapshot_id = (select snapshot_id from public.agent_snapshot_idempotency_receipts where idempotency_key = '00000000-0000-4000-8000-000000000118')), 1::bigint, 'English downgraded snapshot has exactly one core');
 select is((select count(*) from public.agent_profiles where snapshot_id = (select snapshot_id from public.agent_snapshot_idempotency_receipts where idempotency_key = '00000000-0000-4000-8000-000000000119')), 1::bigint, 'Chinese downgraded snapshot has exactly one core');
 select is((select count(*) from public.agent_profiles where snapshot_id in (select snapshot_id from public.agent_snapshot_idempotency_receipts where idempotency_key in ('00000000-0000-4000-8000-000000000118','00000000-0000-4000-8000-000000000119')) and agent_type in ('user_variant','npc')), 0::bigint, 'downgraded snapshots have no variants or NPCs');
-select is((select count(*) from public.relation_edges), 0::bigint, 'downgraded snapshots write no Edges');
+select is((select count(*) from public.relation_edges where user_id = '00000000-0000-0000-0000-00000000a301'), 0::bigint, 'downgraded snapshots write no Edges');
 select is((select count(*) from public.agent_profile_snapshots where id in (select snapshot_id from public.agent_snapshot_idempotency_receipts where idempotency_key in ('00000000-0000-4000-8000-000000000118','00000000-0000-4000-8000-000000000119')) and safety_level = 'downgraded' and error_code = 'safety_downgraded'), 2::bigint, 'downgraded safety result and error code are stable');
 set local role authenticated;
 select throws_ok($$ select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000116'), '00000000-0000-4000-8000-000000000120', false) $$, 'P0001', 'safety_blocked', 'English blocked Seed writes nothing');
@@ -307,7 +307,7 @@ reset role;
 select is((select count(*) from public.agent_profile_snapshots), (select snapshots from phase3_agent_counts_before), 'constraint failure leaves snapshot count unchanged');
 select is((select count(*) from public.agent_snapshot_idempotency_receipts), (select receipts from phase3_agent_counts_before), 'constraint failure leaves receipt count unchanged');
 select is((select count(*) from public.agent_profiles where snapshot_id is not null), (select agents from phase3_agent_counts_before), 'constraint failure leaves Agent count unchanged');
-select is((select count(*) from public.relation_edges), 0::bigint, 'atomic failure still leaves Edges at zero');
+select is((select count(*) from public.relation_edges where user_id = '00000000-0000-0000-0000-00000000a301'), 0::bigint, 'atomic failure still leaves Edges at zero');
 
 -- Guard-off receipt reads may name only safe columns but must still be hidden
 -- by RLS outside the controlled writer transaction.

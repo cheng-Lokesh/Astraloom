@@ -1,7 +1,11 @@
 # Astraloom Phase 4 / M1 Formal Account Sandbox Loop
 
-Status: implementation contract, starting from
+Status: M1 implementation and local authenticated acceptance complete on
+2026-08-30, starting from
 `productization/phase-3-people-graph@0bbb9a76cb35c0d985e3c643535a28675d7cd192`.
+
+The accepted Phase 4 head is recorded in `M1_ACCEPTANCE_EVIDENCE.md`. M1 stops
+at the formal account Track A loop; no M2 work is included or authorized.
 
 ## Product outcome
 
@@ -115,8 +119,8 @@ All routes use the existing `{ ok, error_code, trace_id }` response family.
 - M1.3 exposes the formal APIs with route tests first.
 - M1.4 changes only the required formal Graph/Running/Result UI surfaces.
 - M1.5 changes formal History/Feedback/Calibration surfaces and contracts.
-- M1.6 adds acceptance evidence/status documentation only after the real local
-  authenticated A/B and anonymous gates pass.
+- M1.6 records acceptance evidence/status after the real local authenticated
+  A/B and anonymous gates pass, and includes only acceptance-discovered test
+  isolation and browser hydration hardening needed for those gates.
 
 Each stage is one commit, is pushed immediately, and stops on a failed gate.
-

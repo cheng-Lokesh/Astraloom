@@ -55,3 +55,17 @@ after an API failure and do not present browser-generated artifacts as an
 account result. Any remaining local flow must be explicitly labelled as a
 draft/demo compatibility path.
 
+## DR-M1-006: Real account data must not invalidate fixture-scoped pgTAP
+
+Accepted on 2026-08-30. Phase 3 pgTAP assertions that describe fixture-owned
+rows are scoped to their fixture owner instead of assuming the entire local
+database is empty. This preserves the test contract after authenticated M1
+acceptance creates legitimate account rows; it does not relax an RLS, grant,
+ownership, immutability, or object-chain assertion.
+
+## DR-M1-007: Client draft recovery begins after hydration
+
+Accepted on 2026-08-30. The intake page may recover its explicitly local draft
+only after the server/client hydration boundary. This prevents divergent first
+markup while retaining local draft compatibility. Formal Running, Result,
+History, and Feedback remain API-only and have no localStorage fallback.

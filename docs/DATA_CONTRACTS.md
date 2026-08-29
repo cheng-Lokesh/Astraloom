@@ -1055,6 +1055,28 @@ Audit event rules:
 - Admin observability pages are read-only and cannot modify generation jobs,
   Claims, EventLogs, Reports, payments, or entitlements.
 
+## Phase 4 formal account sandbox persistence
+
+Phase 4 keeps the existing canonical tables. A formal run is the canonical
+`simulations` row with execution version `formal-account-sandbox-m1-v1`, an
+immutable input snapshot, deterministic seed, schema/runtime versions, Graph
+and Agent snapshot bindings, run phase, failure metadata, calibration snapshot,
+and immutable result bundle. It does not introduce a parallel run or History
+table.
+
+The controlled transaction writes `simulation_ticks`, then `event_logs`, then
+same-run evidence-linked `claims`, then the single `reports` projection, and
+only then marks the simulation completed. Forced failure rolls the transaction
+back. Completed inputs and generated artifacts reject update/delete; replaying
+the same owner/key/content does not duplicate them.
+
+`feedback_logs` is append-only and owner-scoped. Feedback may be summarized
+into the bounded calibration snapshot of a later run, but cannot mutate an old
+Graph, run input, Event, Claim, Report, or result bundle. Owner-scoped compound
+foreign keys, RLS, restricted grants, and controlled `SECURITY INVOKER` RPCs
+prevent cross-owner selection, mutation, deletion, or association. Anonymous
+business-table and protected-RPC access is denied.
+
 ## RLS Requirements
 
 ### Phase 3 formal Key People

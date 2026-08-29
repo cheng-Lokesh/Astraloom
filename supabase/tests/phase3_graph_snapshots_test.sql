@@ -206,8 +206,8 @@ reset role;
 select lives_ok($verify$
   do $check$
   begin
-    if (select count(*) from public.relation_graph_snapshots) <> 1 then raise exception 'expected one Graph parent'; end if;
-    if exists (select 1 from public.relation_graph_snapshots where user_id <> '00000000-0000-0000-0000-00000000c301'::uuid or seed_context_id <> (select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301') or agent_snapshot_id <> (select snapshot_id from public.agent_profiles where seed_context_id = (select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301') order by created_at desc limit 1) or version <> 'phase3-graph-snapshot-v1' or writer_version <> 'phase3-graph-writer-v1' or trace_id is null or length(request_hash) <> 64 or graph_locked or locked_at is not null) then raise exception 'invalid parent provenance or initial lock state'; end if;
+    if (select count(*) from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301') <> 1 then raise exception 'expected one Graph parent'; end if;
+    if exists (select 1 from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301' and (seed_context_id <> (select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301') or agent_snapshot_id <> (select snapshot_id from public.agent_profiles where seed_context_id = (select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301') order by created_at desc limit 1) or version <> 'phase3-graph-snapshot-v1' or writer_version <> 'phase3-graph-writer-v1' or trace_id is null or length(request_hash) <> 64 or graph_locked or locked_at is not null)) then raise exception 'invalid parent provenance or initial lock state'; end if;
   end
   $check$
 $verify$, 'Graph parent is owner/Seed/current-Agent-bound, versioned, traced, hashed, and initially unlocked');
@@ -244,8 +244,8 @@ savepoint graph_unset_guard_probe;
 reset app.phase3_graph_rpc;
 select set_config('app.phase3_graph_probe_edge_id', (select id::text from public.relation_edges order by id limit 1), true);
 select set_config('app.phase3_graph_probe_weights', (select weights::text from public.relation_edges where id = current_setting('app.phase3_graph_probe_edge_id')::uuid), true);
-select throws_ok($$ update public.relation_graph_snapshots set graph_locked = true, locked_at = clock_timestamp() where id = (select id from public.relation_graph_snapshots order by id limit 1) $$, '42501', 'graph_locked', 'an unset Graph RPC guard blocks an owner lock lifecycle update');
-select is((select graph_locked from public.relation_graph_snapshots order by id limit 1), false, 'an unset Graph RPC guard leaves the Graph lifecycle unchanged');
+select throws_ok($$ update public.relation_graph_snapshots set graph_locked = true, locked_at = clock_timestamp() where id = (select id from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301' order by id limit 1) $$, '42501', 'graph_locked', 'an unset Graph RPC guard blocks an owner lock lifecycle update');
+select is((select graph_locked from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301' order by id limit 1), false, 'an unset Graph RPC guard leaves the Graph lifecycle unchanged');
 select throws_ok($$ update public.relation_edges set weights = weights where id = current_setting('app.phase3_graph_probe_edge_id')::uuid $$, '42501', 'graph_snapshot_invalid', 'an unset Graph RPC guard blocks an owner Edge update');
 select is((select weights::text from public.relation_edges where id = current_setting('app.phase3_graph_probe_edge_id')::uuid), current_setting('app.phase3_graph_probe_weights'), 'an unset Graph RPC guard leaves Edge data unchanged');
 rollback to savepoint graph_unset_guard_probe;
@@ -254,7 +254,7 @@ set local role authenticated;
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'same key and canonical content replays the Graph');
 select lives_ok($$ update public.relation_graph_snapshots set graph_locked = true $$, 'direct authenticated Graph update is filtered by the closed RLS guard');
 reset role;
-select is((select graph_locked from public.relation_graph_snapshots limit 1), false, 'browser direct update outside the RPC guard cannot change the Graph');
+select is((select graph_locked from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301' limit 1), false, 'browser direct update outside the RPC guard cannot change the Graph');
 set local role authenticated;
 select * from public.generate_agent_snapshot_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000307', true);
 select throws_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000305') $$, 'P0001', 'idempotency_key_content_conflict', 'same key with a stale or different Agent input conflicts');
@@ -262,16 +262,16 @@ select throws_ok($$ select * from public.lock_relation_graph_phase3((select id f
 select lives_ok($$ select * from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314') $$, 'latest valid Agent snapshot creates a fresh replacement Graph');
 select set_config('app.phase3_graph_prelock_id', (select id::text from public.relation_graph_snapshots where seed_context_id = (select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301') order by created_at desc, id desc limit 1), true);
 select set_config('app.phase3_graph_prelock_edge_count', (select count(*)::text from public.relation_edges where graph_snapshot_id = current_setting('app.phase3_graph_prelock_id')::uuid), true);
-select set_config('app.phase3_graph_prelock_parent_count', (select count(*)::text from public.relation_graph_snapshots), true);
+select set_config('app.phase3_graph_prelock_parent_count', (select count(*)::text from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301'), true);
 select lives_ok($$ select * from public.lock_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000315') $$, 'fresh latest Graph locks atomically');
 select is((select graph ->> 'id' from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')), current_setting('app.phase3_graph_prelock_id'), 'generate replay after lock returns the same Graph parent');
 select is((select graph ->> 'graph_locked' from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')), 'true', 'generate replay after lock preserves the locked lifecycle');
 select ok((select graph ->> 'locked_at' from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')) is not null, 'generate replay after lock preserves locked_at');
 select is((select jsonb_array_length(edges) from public.generate_relation_graph_phase3((select id from public.seed_contexts where submission_key = '00000000-0000-4000-8000-000000000301'), '00000000-0000-4000-8000-000000000314')), current_setting('app.phase3_graph_prelock_edge_count')::integer, 'generate replay after lock returns the complete original Edge set');
 reset role;
-select is((select id::text from public.relation_graph_snapshots where graph_locked), current_setting('app.phase3_graph_prelock_id'), 'locking preserves the generated Graph parent identity');
-select is((select count(*) from public.relation_graph_snapshots), current_setting('app.phase3_graph_prelock_parent_count')::bigint, 'locking does not create a second parent snapshot');
-select is((select count(*) from public.relation_edges where graph_snapshot_id = (select id from public.relation_graph_snapshots where graph_locked)), current_setting('app.phase3_graph_prelock_edge_count')::bigint, 'locking preserves the complete generated Edge set on the same parent');
+select is((select id::text from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301' and graph_locked), current_setting('app.phase3_graph_prelock_id'), 'locking preserves the generated Graph parent identity');
+select is((select count(*) from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301'), current_setting('app.phase3_graph_prelock_parent_count')::bigint, 'locking does not create a second parent snapshot');
+select is((select count(*) from public.relation_edges where graph_snapshot_id = (select id from public.relation_graph_snapshots where user_id = '00000000-0000-0000-0000-00000000c301' and graph_locked)), current_setting('app.phase3_graph_prelock_edge_count')::bigint, 'locking preserves the complete generated Edge set on the same parent');
 select is((select graph_snapshot_id::text from public.relation_graph_idempotency_receipts where idempotency_key = '00000000-0000-4000-8000-000000000315'), current_setting('app.phase3_graph_prelock_id'), 'lock replay receipt binds the same readable Graph parent');
 select lives_ok($verify$
   do $check$

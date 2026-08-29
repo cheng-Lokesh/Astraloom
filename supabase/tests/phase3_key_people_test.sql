@@ -97,10 +97,10 @@ $$, 'submitted owner can persist deterministic candidate extraction');
 
 select is((select count(*) from public.key_people), 2::bigint, 'repeated role mentions produce one manager and one recruiter');
 reset role;
-select is((select count(distinct extraction_fingerprint) from public.key_people), 2::bigint, 'canonical extraction fingerprints are unique');
-select is((select cardinality(person_ids) from public.key_people_idempotency_receipts where operation_kind = 'extract'), 2, 'receipt contains one UUID per unique person');
-select ok((select bool_and(status in ('candidate', 'needs_confirmation')) from public.key_people), 'candidates remain provisional');
-select ok((select version = 'phase3-key-person-v1' and trace_id is not null and field_sources ? 'display_name' from public.key_people limit 1), 'formal provenance is persisted');
+select is((select count(distinct extraction_fingerprint) from public.key_people where user_id = '00000000-0000-0000-0000-00000000c001'), 2::bigint, 'canonical extraction fingerprints are unique');
+select is((select cardinality(person_ids) from public.key_people_idempotency_receipts where user_id = '00000000-0000-0000-0000-00000000c001' and operation_kind = 'extract'), 2, 'receipt contains one UUID per unique person');
+select ok((select bool_and(status in ('candidate', 'needs_confirmation')) from public.key_people where user_id = '00000000-0000-0000-0000-00000000c001'), 'candidates remain provisional');
+select ok((select version = 'phase3-key-person-v1' and trace_id is not null and field_sources ? 'display_name' from public.key_people where user_id = '00000000-0000-0000-0000-00000000c001' limit 1), 'formal provenance is persisted');
 set local role authenticated;
 select set_config('app.phase3_key_people_rpc', 'off', true);
 select is((select count(*) from public.key_people_idempotency_receipts), 0::bigint, 'receipt rows are hidden from direct browser reads outside an RPC');

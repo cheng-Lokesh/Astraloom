@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
@@ -74,7 +74,19 @@ type SubmittedSeedContext = {
   frozenAt: string;
 };
 
+const subscribeToHydration = () => () => undefined;
+
 export default function IntakePage() {
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
+
+  return hydrated ? <HydratedIntakePage /> : null;
+}
+
+function HydratedIntakePage() {
   const [repos] = useState(() => getRepositories());
   const [initialDraft] = useState(() => {
     const result = repos.seedContexts.load();

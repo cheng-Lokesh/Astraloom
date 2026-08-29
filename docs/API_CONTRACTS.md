@@ -480,3 +480,29 @@ Simulation services own state transitions and evidence:
 - `services/simulation/claimBuilder`
 
 LLM output is advisory until converted into validated state by the backend rules.
+
+## Phase 4 formal account sandbox API
+
+All endpoints require the caller's Supabase user session, return the existing
+`{ ok, error_code, trace_id }` family, and scope every lookup by `auth.uid()`.
+Another owner's valid identifier is indistinguishable from a missing object.
+
+- `POST /api/sandbox/runs`: accepts a locked Graph snapshot UUID, a UUID
+  idempotency key, and a `30` or `90` day horizon. It revalidates the complete
+  owned Seed/People/Agent/Graph chain and returns 201 for a new atomic completed
+  bundle or 200 for an identical replay. A reused key with different content is
+  409; unsafe or incomplete input is rejected without completed artifacts.
+- `GET /api/sandbox/runs/:runId`: returns owner-scoped persisted status and
+  phase metadata. Polling is read-only and never creates completion.
+- `GET /api/sandbox/runs/:runId/result`: returns the persisted immutable bundle
+  only after completion; incomplete runs return 409.
+- `GET /api/sandbox/runs?limit=&before=`: returns newest-first account History.
+  The opaque compound cursor binds `(created_at, id)` for stable pagination.
+- `POST /api/sandbox/runs/:runId/feedback`: accepts `useful`, `mixed`, or `off`,
+  an optional bounded comment, and a UUID idempotency key. Feedback is
+  append-only, completed-run-only, and content-bound idempotent.
+
+Malformed input returns 422, unauthenticated requests return 401, owner-hidden
+or missing resources return 404, contract conflicts return 409, and unexpected
+persistence failures return a sanitized 500. Formal browser clients must not
+recover Result, History, completion, or Feedback from localStorage.
