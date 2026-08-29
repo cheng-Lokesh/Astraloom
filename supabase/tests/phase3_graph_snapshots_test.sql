@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(162);
+select plan(163);
 
 -- Step C owns an immutable Graph parent. Existing relation_edges are not a
 -- graph snapshot until every Edge is bound to this parent and its Agent input.
@@ -20,6 +20,7 @@ select has_column('public', 'relation_graph_snapshots', 'trace_id', 'Graph paren
 select has_column('public', 'relation_graph_snapshots', 'writer_version', 'Graph parent records controlled writer version');
 select has_function('public', 'generate_relation_graph_phase3', array['uuid', 'uuid'], 'single controlled Graph generator exists');
 select has_function('public', 'lock_relation_graph_phase3', array['uuid', 'uuid'], 'single controlled Graph lock writer exists');
+select is((select count(*) from plpgsql_check_function_tb('public.lock_relation_graph_phase3(uuid,uuid)'::regprocedure)), 0::bigint, 'Graph lock writer has no plpgsql_check diagnostics');
 select ok(not (select prosecdef from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)')), 'Graph generator is SECURITY INVOKER');
 select ok(not (select prosecdef from pg_proc where oid = to_regprocedure('public.lock_relation_graph_phase3(uuid,uuid)')), 'Graph lock writer is SECURITY INVOKER');
 select is((select proconfig::text from pg_proc where oid = to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)')), '{"search_path=public, extensions"}', 'Graph generator has fixed search path');
