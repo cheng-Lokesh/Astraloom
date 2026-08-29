@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { sandboxFailure,sandboxTrace } from "@/lib/formal-sandbox/http.server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+export async function GET(_request:Request,{params}:{params:Promise<{runId:string}>}){const trace=sandboxTrace("status");try{const{id}= {id:(await params).runId};if(!z.string().uuid().safeParse(id).success)return sandboxFailure(422,"invalid_request",trace);const client=await createSupabaseServerClient();if(!client)return sandboxFailure(500,"persistence_failed",trace);const{data:auth}=await client.auth.getUser();if(!auth.user?.id)return sandboxFailure(401,"unauthenticated",trace);const{data,error}=await client.from("simulations").select("id,seed_context_id,graph_snapshot_id,status,run_phase,time_horizon,created_at,completed_at,error_code,failure_category").eq("id",id).eq("user_id",auth.user.id).eq("execution_version","formal-account-sandbox-m1-v1").maybeSingle();if(error)return sandboxFailure(500,"persistence_failed",trace);if(!data)return sandboxFailure(404,"run_not_found",trace);return NextResponse.json({ok:true,error_code:null,trace_id:trace,run:data});}catch{return sandboxFailure(500,"persistence_failed",trace)}}
