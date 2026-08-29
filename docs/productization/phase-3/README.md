@@ -236,19 +236,20 @@ The non-destructive database suite passed Graph 163/163, Agent 174/174, People
 `plpgsql_check` diagnostics and business-data counts were unchanged. Aggregate
 People/Agent/Graph API and controller tests passed 125/125. Full Vitest passed
 551 tests, coverage remained 90.82% statements / 81.21% branches / 95.44%
-functions / 93.52% lines, and lint, type-check, production build (108 static
-pages), both current Cinematic Hero checks, whitespace, and frozen V2 checks
-passed.
+functions / 93.52% lines, and lint, type-check, the production build (the
+current output listed 182 route entries), both current Cinematic Hero checks,
+whitespace, and frozen V2 checks passed.
 
-The required rendered browser replay was attempted once using only the Codex
-in-app browser and one temporary page. Its first request to
-`http://localhost:3000/` was rejected with the browser-security-policy reason
-that the user had declined permission. No page content, viewport, login,
-network, console, business-data, or UI state was therefore inspected; no
-alternative browser or workaround was used. Consequently Step E, Step D, and
-Phase 3 are **BLOCKED**, and Phase 4 remains unauthorized. See
-`STEP_E_TDD_EVIDENCE.md` for the exact command outcomes, migration hash,
-database counts, and browser fact.
+The required rendered browser replay used only the Codex in-app Browser and
+one temporary page. It rendered the authenticated empty People state at 375px
+and the empty Agents and Graph states at 1280px, then refreshed the Graph page;
+these visible states had no horizontal overflow, visible trace identifier, or
+console error/warning. The account had no confirmed People, Agent snapshot, or
+Graph, so the locked-Graph, re-login, and no-edit replay could not be completed
+without creating business data. No workaround or synthetic record was used.
+Consequently Step E, Step D, and Phase 3 are **BLOCKED**, and Phase 4 remains
+unauthorized. See `STEP_E_TDD_EVIDENCE.md` for exact command outcomes,
+migration hash, database counts, and browser facts.
 
 ## Acceptance matrix
 

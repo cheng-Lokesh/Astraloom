@@ -1,10 +1,11 @@
 # Phase 3 Step E — Aggregate Regression Evidence
 
 Status: **BLOCKED**. All executable repository, database, and static Hero
-gates below passed. The required combined 375/1280 rendered browser replay
-could not start because the Codex in-app browser rejected its first local-site
-request under browser security policy. Phase 3 is not accepted and Phase 4 is
-not authorized.
+gates below passed. The Codex in-app Browser rendered the authenticated empty
+state at the required viewports, but the current account has no confirmed
+People, Agent snapshot, or Graph. Completing the required locked-Graph and
+re-login checks would require creating business data, which this Step E run
+does not authorize. Phase 3 is not accepted and Phase 4 is not authorized.
 
 ## Scope and starting state
 
@@ -113,7 +114,7 @@ cases; no test fixture or business record remained.
 | `npm run test:coverage` | 53 files, 551/551 tests, exit 0; 90.82% statements, 81.21% branches, 95.44% functions, 93.52% lines |
 | `npm run lint` | exit 0 |
 | `npm run type-check` | exit 0 |
-| `npm run build` | exit 0; 108 static pages |
+| `npm run build` | exit 0; current Next output listed 182 route entries |
 | `npm run test:hero-render-budget` | exit 0; current Cinematic Hero render-budget checks passed |
 | `npm run test:interactive-hero` | exit 0; current Cinematic Hero interaction checks passed |
 | Whitespace / frozen V2 | `git diff --check` exit 0; V2 diff exit 0 |
@@ -126,24 +127,33 @@ mobile, focus, CTA, and routing behavior. No product component changed.
 
 ## Combined Step D browser gate
 
-The required browser activity used only the Codex in-app Browser runtime. A
-single temporary page was created, and its very first attempted navigation was
-to `http://localhost:3000/`. The runtime returned:
+The required browser activity used only the Codex in-app Browser runtime and
+one temporary tab. Against the local development server it recovered an
+authenticated submitted scenario without creating or mutating any product
+record:
 
-```text
-Browser Use rejected this action due to browser security policy. Reason:
-The user declined permission for this action. Browser use cannot access
-http://localhost:3000 because the user denied permission for this request.
-```
+- At 375px, the People page rendered the empty Key People ledger after refresh
+  with no horizontal overflow, no visible trace identifier, and no console
+  error or warning.
+- At 1280px, the Agents page rendered its zero-confirmed-People recovery
+  state with generation disabled, and the Graph page rendered `No saved Agent
+  snapshot`; neither page overflowed, exposed a visible trace identifier, nor
+  produced a console error or warning.
+- Refreshing the Graph page retained the same read-only empty state. Its DOM
+  exposed only the return-to-Agents action; it exposed no Graph mutation,
+  unlock, or edit control.
 
-The task explicitly prohibits a workaround. Accordingly no Chrome, CLI,
-alternate browser, indirect execution, or retry was used. There was no page
-render, authenticated session, test-account/data creation, viewport change,
-refresh/re-login run, lock-state check, network/console inspection, or
-375/1280 observation. No browser-created business data exists to clean up.
+The in-app Browser surface did not provide a supported network-event view; the
+attempt to read browser performance entries was unavailable, so no network
+PASS is claimed. The current account has no confirmed People, Agent snapshot,
+or Graph. The lock, re-login, and persisted locked-Graph no-edit checks could
+therefore not be exercised without creating residual business data. No Chrome,
+CLI, Playwright, alternate browser, or synthetic business record was used.
 
 ## Final factual conclusion
 
-Step E is **BLOCKED**, solely because its mandatory real rendered browser
-replay did not run. The successful non-browser gates cannot substitute for
-that replay. Step D and Phase 3 are not accepted; Phase 4 is unauthorized.
+Step E is **BLOCKED**, solely because its mandatory end-to-end authenticated
+locked-Graph, refresh, and re-login replay could not be completed without
+creating business data. The successful non-browser gates and partial empty
+state render checks cannot substitute for that replay. Step D and Phase 3 are
+not accepted; Phase 4 is unauthorized.
