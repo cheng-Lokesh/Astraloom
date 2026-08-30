@@ -17,7 +17,7 @@ fictional scenario text, secrets, database dumps, screenshots, and raw logs.
 | M1.3 formal APIs | `0e9a2dc55b79ee5a680cb75a4dd8b7c4200ec4e1` | PASS |
 | M1.4 formal Graph/Running/Result UI | `0e8f3c8cbdd30f58450b0ce27402430a86cf9093` | PASS |
 | M1.5 History/Feedback/Calibration | `8b79db52926860772f2dc57829bb3817c9482356` | PASS |
-| M1.6 authenticated acceptance/closeout | recorded by the final M1.6 commit | PASS |
+| M1.6 authenticated acceptance/closeout | current revalidation | BLOCKED |
 
 ## Authenticated product evidence
 
@@ -79,20 +79,24 @@ cleanup, V2 Core redesign, or any M2 milestone.
 
 ## Revalidation status (2026-08-30)
 
-This independent revalidation passed the database regression (8 pgTAP files),
-full JavaScript coverage suite, Golden 8/8, every V2 suite, lint, type-check,
-production build, migration/invariant checks, and `git diff --check`.
+The previous `persistence_failed` configuration condition has been resolved
+locally: the formal start route requires a server-only service-role client
+after it authenticates the caller, and the local Supabase service-role value
+was supplied only to ignored `.env.local` before the production Next service
+was restarted. The value was not printed, committed, scanned, or exposed to a
+browser bundle.
 
-The authenticated browser replay is currently **BLOCKED**, so this document
-must not be read as a renewed M1.6 acceptance. A fresh fictional local account
-successfully reached submitted Seed, two confirmed People, a safe immutable
-five-Agent snapshot, and a locked four-edge Graph. Starting the first formal
-30-day Run then returned the sanitized `persistence_failed` state. The formal
-server adapter intentionally requires its configured server-only controlled
-writer capability; the current local Next runtime exposes only public
-Supabase configuration. No credential value, service-role workaround, or
-browser bypass was used. No M2 work was started and this revalidation did not
-push the branch.
+M1.6 remains **BLOCKED** and this document must not be read as acceptance. The
+current browser replay exposed a separate recovery defect before a formal Run:
+after a second submitted Seed exists for one account, the People, Agents, and
+Graph clients select only the newest Seed. If that newer Seed has no completed
+People chain, the UI cannot recover or select the account's earlier completed
+chain. Database aggregate evidence confirmed that the affected account has
+prior persisted Seed/People/Agent/Graph objects while the formal UI shows the
+newest empty chain. This must receive a minimal M1.6 selection/recovery fix,
+RED/GREEN regression coverage, and a fresh authenticated replay before the
+run, History, Feedback, cross-owner, responsive, and final-gate claims may be
+renewed. No M2 work was started and this revalidation did not push the branch.
 
 The repository-wide `scripts/secret-scan.ps1` returned a documented false
 positive for explanatory blank-key examples in pre-existing setup documents.
