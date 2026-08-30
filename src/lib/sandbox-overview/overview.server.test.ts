@@ -196,6 +196,7 @@ describe("My Sandbox overview projection", () => {
       oldCompleted: completedRun,
       currentFeedback: null,
       oldFeedback: true,
+      historyCount: 1,
     }) as never, ownerId);
 
     expect(overview).toMatchObject({
@@ -295,6 +296,7 @@ type CrossChainOptions = {
   oldCompleted: typeof completedRun | null;
   currentFeedback: boolean | null;
   oldFeedback: boolean;
+  historyCount?: number;
 };
 
 function crossChainClient(options: CrossChainOptions) {
@@ -315,8 +317,11 @@ function crossChainClient(options: CrossChainOptions) {
     if (table === "agent_profiles") return { data: null, count: complete.snapshot ? 4 : 0, error: null };
     if (table === "simulations" && has(filters, "status", "completed")) return { data: isCurrentChain(filters) ? complete.currentCompleted : complete.oldCompleted, error: null };
     if (table === "simulations" && filters.some(([name, value]) => name === "status" && Array.isArray(value))) return { data: isCurrentChain(filters) ? complete.currentRunning : complete.oldRunning, error: null };
-    if (table === "simulations") return { data: null, count: 2, error: null };
-    if (table === "feedback_logs") return { data: has(filters, "seed_context_id", currentSeedId) && has(filters, "simulation_id", completedRun.id) && complete.currentFeedback ? { id: "77777777-7777-4777-8777-777777777777" } : complete.oldFeedback ? { id: "88888888-8888-4888-8888-888888888888" } : null, error: null };
+    if (table === "simulations") return { data: null, count: complete.historyCount ?? 2, error: null };
+    if (table === "feedback_logs") {
+      const isCurrentFeedback = has(filters, "seed_context_id", currentSeedId) && has(filters, "simulation_id", completedRun.id);
+      return { data: isCurrentFeedback ? (complete.currentFeedback ? { id: "77777777-7777-4777-8777-777777777777" } : null) : complete.oldFeedback ? { id: "88888888-8888-4888-8888-888888888888" } : null, error: null };
+    }
     return { data: null, error: null };
   };
   return {
