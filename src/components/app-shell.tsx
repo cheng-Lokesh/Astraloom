@@ -13,19 +13,20 @@ type AppShellProps = {
 };
 
 const navItems = [
-  { href: "/app/dashboard", label: "Home" },
-  { href: "/app/start", label: "Start" },
-  { href: "/app/simulation/running", label: "Progress" },
-  { href: "/app/simulation/result", label: "Result" },
+  { href: "/app/dashboard", label: "My Sandbox" },
+  { href: "/app/new/scene", label: "Start" },
+  { href: "/app/new/people", label: "People" },
+  { href: "/app/new/graph", label: "Graph" },
+  { href: "/app/simulation/running", label: "Running" },
+  { href: "/app/archive", label: "History" },
 ] as const;
 
-const mobileFlowItems = navItems.slice(1);
+const mobileFlowItems = navItems;
 
 const moreItems = [
   { href: "/app/archive", label: "History" },
   { href: "/app/settings", label: "Settings" },
   { href: "/app/support", label: "Help" },
-  { href: "/app/new/scene", label: "Details" },
 ] as const;
 
 export function AppShell({ children }: AppShellProps) {
@@ -33,20 +34,11 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="app-cinematic-shell min-h-screen text-[var(--mf-ink)]">
-      <div className="app-cinematic-scene" aria-hidden="true">
-        <div className="app-scene-volume app-scene-volume-a" />
-        <div className="app-scene-volume app-scene-volume-b" />
-        <div className="app-scene-orbit app-scene-orbit-a" />
-        <div className="app-scene-orbit app-scene-orbit-b" />
-        <div className="app-scene-plane" />
-        <div className="app-scene-particles" />
-        <div className="app-scene-scan" />
-      </div>
-      <header className="app-cinematic-header sticky top-0 z-30 border-b border-[rgba(176,224,230,0.14)] bg-[rgba(5,5,5,0.82)] shadow-[0_1px_0_rgba(245,247,250,0.06)_inset] backdrop-blur-2xl">
+      <header className="app-cinematic-header sticky top-0 z-30 border-b border-white/10 bg-[#08090a] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <Link
             href="/app/dashboard"
-            className="group flex min-h-10 min-w-0 items-center gap-3 rounded-md outline-none"
+            className="group flex min-h-10 min-w-0 items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--evidence-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08090a]"
           >
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-[rgba(176,224,230,0.26)] bg-[rgba(176,224,230,0.09)] text-sm font-semibold tracking-tight text-[var(--signal-cyan)] shadow-[0_0_24px_rgba(176,224,230,0.1)] transition group-hover:scale-[1.02]">
               AL
@@ -67,7 +59,7 @@ export function AppShell({ children }: AppShellProps) {
           <div className="flex min-w-0 items-center gap-2 lg:justify-end">
             <nav
               aria-label="Primary"
-              className="hidden min-w-0 items-center gap-1 rounded-md border border-[rgba(176,224,230,0.14)] bg-[rgba(255,255,255,0.045)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.18)] md:flex"
+              className="hidden min-w-0 items-center gap-1 rounded-md border border-white/10 bg-white/[.02] p-1 md:flex"
             >
               {navItems.map((item) => (
                 <NavLink
@@ -82,7 +74,7 @@ export function AppShell({ children }: AppShellProps) {
 
             <nav
               aria-label="Flow"
-              className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-md border border-[rgba(176,224,230,0.14)] bg-[rgba(255,255,255,0.045)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.18)] md:hidden"
+              className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-md border border-white/10 bg-white/[.02] p-1 md:hidden"
             >
               {mobileFlowItems.map((item) => (
                 <NavLink
@@ -98,7 +90,7 @@ export function AppShell({ children }: AppShellProps) {
 
             <MoreMenu pathname={pathname} />
 
-            <div className="shrink-0 rounded-md border border-[rgba(176,224,230,0.14)] bg-[rgba(255,255,255,0.045)] p-1">
+            <div className="shrink-0 rounded-md border border-white/10 bg-white/[.02] p-1">
               <LanguageSwitcher />
             </div>
           </div>
@@ -138,7 +130,7 @@ function NavLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-10 min-w-0 items-center justify-center whitespace-nowrap rounded px-3 py-2 text-center text-sm font-semibold transition-[background-color,color,transform] active:scale-95 ${
+      className={`flex min-h-10 min-w-0 items-center justify-center whitespace-nowrap rounded px-3 py-2 text-center text-sm font-semibold transition-[background-color,color,transform] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] ${
         active
           ? "bg-[rgba(176,224,230,0.12)] text-[var(--signal-cyan)] shadow-[0_0_18px_rgba(176,224,230,0.1)]"
           : "text-[var(--text-secondary)] hover:bg-[rgba(176,224,230,0.08)] hover:text-[var(--text-primary)]"
@@ -152,16 +144,16 @@ function NavLink({
 function MoreMenu({ pathname }: { pathname: string }) {
   return (
     <details className="relative shrink-0">
-      <summary className="flex min-h-10 list-none items-center rounded-md border border-[rgba(176,224,230,0.14)] bg-[rgba(255,255,255,0.045)] px-3 py-2 text-sm font-semibold text-[var(--text-secondary)] shadow-[0_10px_32px_rgba(0,0,0,0.18)] transition-[background-color,color,transform] active:scale-95 hover:bg-[rgba(176,224,230,0.08)] hover:text-[var(--text-primary)] [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-10 list-none items-center rounded-md border border-white/10 bg-white/[.02] px-3 py-2 text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,transform] active:scale-95 hover:bg-white/[.06] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] [&::-webkit-details-marker]:hidden">
         More
       </summary>
-      <div className="absolute right-0 z-50 mt-2 w-48 rounded-md border border-[rgba(176,224,230,0.14)] bg-[rgba(5,11,22,0.96)] p-2 shadow-[0_18px_54px_rgba(0,0,0,0.35)]">
+      <div className="absolute right-0 z-50 mt-2 w-48 rounded-md border border-white/10 bg-[#101113] p-2 shadow-[0_18px_54px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           {moreItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex min-h-10 items-center rounded px-3 py-2 text-sm font-semibold transition-[background-color,color,transform] active:scale-95 ${
+              className={`flex min-h-10 items-center rounded px-3 py-2 text-sm font-semibold transition-[background-color,color,transform] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] ${
                 isActivePath(pathname, item.href)
                   ? "bg-[rgba(176,224,230,0.1)] text-[var(--signal-cyan)]"
                   : "text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)]"
