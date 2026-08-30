@@ -76,3 +76,20 @@ separate future product decision, not part of M1 and not a reason to expand M1.
 M1 ends with the formal account Track A sandbox loop. This branch does not
 start Track B, real AI, Stripe/payment productization, broader writer/admin
 cleanup, V2 Core redesign, or any M2 milestone.
+
+## Revalidation status (2026-08-30)
+
+This independent revalidation passed the database regression (8 pgTAP files),
+full JavaScript coverage suite, Golden 8/8, every V2 suite, lint, type-check,
+production build, migration/invariant checks, and `git diff --check`.
+
+The authenticated browser replay is currently **BLOCKED**, so this document
+must not be read as a renewed M1.6 acceptance. A fresh fictional local account
+successfully reached submitted Seed, two confirmed People, a safe immutable
+five-Agent snapshot, and a locked four-edge Graph. Starting the first formal
+30-day Run then returned the sanitized `persistence_failed` state. The formal
+server adapter intentionally requires its configured server-only controlled
+writer capability; the current local Next runtime exposes only public
+Supabase configuration. No credential value, service-role workaround, or
+browser bypass was used. No M2 work was started and this revalidation did not
+push the branch.
