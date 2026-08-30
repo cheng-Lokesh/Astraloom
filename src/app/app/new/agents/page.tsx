@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { FormalSeedSelector } from "@/components/formal-seed-selector";
@@ -28,19 +28,15 @@ export default function AgentsPage() {
   const [controller] = useState(makeController);
   const [state, setState] = useState<FormalAgentsState>(() => controller.state);
   const [includeParallelSelves, setIncludeParallelSelves] = useState(true);
-  const [requestedSeedId, setRequestedSeedId] = useState<string | undefined>();
-  const [urlReady, setUrlReady] = useState(false);
-  const sync = () => setState({ ...controller.state, people: [...controller.state.people], agents: [...controller.state.agents] });
+  const [requestedSeedId, setRequestedSeedId] = useState<string | undefined>(() =>
+    typeof window === "undefined" ? undefined : new URLSearchParams(window.location.search).get("seed_id") ?? undefined,
+  );
+  const sync = useCallback(() => setState({ ...controller.state, people: [...controller.state.people], agents: [...controller.state.agents] }), [controller]);
   const run = (work: () => Promise<boolean | void>) => runFormalAgentsUiAction(work, sync);
 
   useEffect(() => {
-    setRequestedSeedId(new URLSearchParams(window.location.search).get("seed_id") ?? undefined);
-    setUrlReady(true);
-  }, []);
-  useEffect(() => {
-    if (!urlReady) return;
     void controller.recover(requestedSeedId).then(sync);
-  }, [controller, requestedSeedId, urlReady]);
+  }, [controller, requestedSeedId, sync]);
   const selectSeed = (seedId: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set("seed_id", seedId);

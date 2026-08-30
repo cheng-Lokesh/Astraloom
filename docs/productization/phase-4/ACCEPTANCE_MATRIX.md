@@ -110,7 +110,7 @@ pushed stage commit.
 | A/B and anonymous isolation | PASS: the second account had empty History and received non-enumerating `run_not_found` for the first account's run; anonymous History/Result returned `unauthenticated`. Direct pgTAP covers bidirectional SELECT/DML/link/RPC denial. |
 | Browser contract | PASS: Network/API, visible UI, server behavior, and database counts agreed; formal pages did not fall back to localStorage or show false completion. 375/768/1280 and keyboard/focus/labels/overflow checks passed. Intake draft hydration was hardened and rechecked with zero M1 console errors/warnings. |
 | SQL regression | PASS: 8 pgTAP files, 538 assertions. |
-| JavaScript regression | PASS: 58 files, 568 tests; Golden Cases 8/8. |
+| JavaScript regression | PASS: 58 files, 572 tests; Golden Cases 8/8. |
 | Coverage | PASS: repository coverage 90.85% statements, 81.21% branches, 95.55% functions, 93.52% lines; all V2 threshold suites passed. |
 | Static/production gates | PASS: lint, type-check, production build, and `git diff --check`. |
 | V2 and external boundaries | PASS: no `src/lib/v2/**` change; no real AI, Stripe, Docker lifecycle action, or service-role user-state acceptance. |

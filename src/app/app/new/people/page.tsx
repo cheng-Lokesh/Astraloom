@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { FormalSeedSelector } from "@/components/formal-seed-selector";
@@ -27,19 +27,15 @@ const statusLabel = (status: FormalPerson["status"]) => ({
 export default function PeoplePage() {
   const [controller] = useState(makeController);
   const [state, setState] = useState<FormalPeopleState>(() => controller.state);
-  const [requestedSeedId, setRequestedSeedId] = useState<string | undefined>();
-  const [urlReady, setUrlReady] = useState(false);
-  const sync = () => setState({ ...controller.state, people: [...controller.state.people] });
+  const [requestedSeedId, setRequestedSeedId] = useState<string | undefined>(() =>
+    typeof window === "undefined" ? undefined : new URLSearchParams(window.location.search).get("seed_id") ?? undefined,
+  );
+  const sync = useCallback(() => setState({ ...controller.state, people: [...controller.state.people] }), [controller]);
   const run = async (work: () => Promise<boolean | void>) => { const result = await work(); sync(); return result === true; };
 
   useEffect(() => {
-    setRequestedSeedId(new URLSearchParams(window.location.search).get("seed_id") ?? undefined);
-    setUrlReady(true);
-  }, []);
-  useEffect(() => {
-    if (!urlReady) return;
     void controller.recover(requestedSeedId).then(sync);
-  }, [controller, requestedSeedId, urlReady]);
+  }, [controller, requestedSeedId, sync]);
   const selectSeed = (seedId: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set("seed_id", seedId);
