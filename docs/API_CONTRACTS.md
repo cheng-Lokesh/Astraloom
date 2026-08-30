@@ -519,17 +519,27 @@ Access and caching:
   failure returns a sanitized `persistence_failed` response.
 - The route and response use `no-store`; account state is not shared or
   pre-rendered between users.
+- The standard response envelope includes a fresh `trace_id` for this HTTP
+  response. It is an opaque correlation identifier, not a persisted database
+  row `trace_id`, and is allowed and required by the Phase 4 envelope family.
 
 Projection:
 
+- The current chain is exactly the latest submitted Seed and that Seed's latest
+  Graph snapshot. Current running Run, latest completed Run, Feedback presence,
+  and `next_action` are all constrained to the same owner, execution version,
+  Seed, and Graph. Without a current Graph, none of an account's old Runs can
+  supply current-chain state.
 - Returns only formal Seed presence, confirmed People count, latest immutable
-  Agent count, Graph presence/lock/edge count, running state, bounded History
-  count, Feedback presence, latest completed-Run time/status, and one next
-  action.
+  Agent count, Graph presence/lock/edge count, current-chain running state,
+  current-chain Feedback presence, current-chain latest completed-Run
+  time/status, one next action, and a separate bounded account-History count.
+  Account History can summarize Runs from older chains, but it never drives the
+  current next action.
 - Result and Running links contain an opaque Run identifier for navigation only;
   the dashboard never renders an object UUID. It never returns email,
-  credentials, raw scenario text, trace ids, evidence bodies, or database ids
-  as display fields.
+  credentials, raw scenario text, persisted database trace ids, evidence
+  bodies, or database ids as display fields.
 - The response is Zod-validated before it is returned. Invalid server rows fail
   closed instead of becoming a browser fallback.
 - Life climate, resources, constraints, next-change timing, and Reality detail

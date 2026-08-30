@@ -27,7 +27,12 @@ World State work.
 - All source reads carry the authenticated owner constraint. The projection
   omits sensitive fields and never renders raw database UUIDs.
 - The next action is calculated from the stored Seed, People, Agent, Graph and
-  formal Run chain. Unavailable domains return `not_modeled`.
+  formal Run chain. The current chain is the latest submitted Seed plus that
+  Seed's latest Graph: current Run and Feedback reads bind both identifiers,
+  while the separate account History count never drives next action. Unavailable
+  domains return `not_modeled`.
+- The standard response envelope returns a fresh response `trace_id`; it never
+  projects a database row's persisted trace id, identity, or raw scenario.
 - The dashboard has loading/error/ready states and has no repository or
   localStorage fallback. Navigation has no standalone Result destination.
 
