@@ -93,3 +93,9 @@ writer capability; the current local Next runtime exposes only public
 Supabase configuration. No credential value, service-role workaround, or
 browser bypass was used. No M2 work was started and this revalidation did not
 push the branch.
+
+The repository-wide `scripts/secret-scan.ps1` returned a documented false
+positive for explanatory blank-key examples in pre-existing setup documents.
+A narrowed scan of all Phase 4 additions found no credential, private-key, or
+high-entropy access-token pattern. The script false positive remains a
+non-blocking tooling issue; it was not silenced or altered in this milestone.
