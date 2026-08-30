@@ -47,6 +47,17 @@ function controller(fetcher: FormalGraphFetch, ids = ["88888888-8888-4888-8888-8
 }
 
 describe("FormalGraphController", () => {
+  it("keeps an explicitly selected server Seed through Agent, Graph, and lock recovery", async () => {
+    const fetcher = recoverFetch({ graph, edges: [edge] });
+    const subject = controller(fetcher);
+
+    await subject.recover(seedA);
+
+    expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedA }, snapshot, agents: [core, npc], graph, edges: [edge] });
+    expect(fetcher).toHaveBeenNthCalledWith(2, `/api/agents?seed_id=${seedA}`, { method: "GET" });
+    expect(fetcher).toHaveBeenNthCalledWith(3, `/api/graph?seed_id=${seedA}`, { method: "GET" });
+  });
+
   it("recovers the newest submitted Seed, safe Agent snapshot, and server Graph projection", async () => {
     const fetcher = recoverFetch({ graph, edges: [edge] });
     const subject = controller(fetcher);

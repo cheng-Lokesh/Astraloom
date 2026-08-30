@@ -50,6 +50,17 @@ function controller(fetcher: FormalAgentsFetch, ids = [
 }
 
 describe("FormalAgentsController", () => {
+  it("keeps an explicitly selected server Seed through People and Agent recovery", async () => {
+    const fetcher = recoverFetch({ snapshot, agents: [core] });
+    const subject = controller(fetcher);
+
+    await subject.recover(seedA);
+
+    expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedA }, snapshot, agents: [core] });
+    expect(fetcher).toHaveBeenNthCalledWith(2, `/api/key-people?seed_id=${seedA}`, { method: "GET" });
+    expect(fetcher).toHaveBeenNthCalledWith(3, `/api/agents?seed_id=${seedA}`, { method: "GET" });
+  });
+
   it("recovers the newest submitted Seed, server People, and its latest empty Agent snapshot", async () => {
     const fetcher = recoverFetch();
     const subject = controller(fetcher);

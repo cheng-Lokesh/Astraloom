@@ -59,6 +59,26 @@ function controller(fetcher: FormalPeopleFetch, ids = [
 }
 
 describe("FormalPeopleController", () => {
+  it("recovers an explicitly selected owner-projected Seed instead of replacing it with a newer empty chain", async () => {
+    const fetcher = recoverFetch([{ ...person, status: "confirmed" }]);
+    const subject = controller(fetcher);
+
+    await subject.recover(seedA);
+
+    expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedA }, people: [{ status: "confirmed" }] });
+    expect(fetcher).toHaveBeenNthCalledWith(2, `/api/key-people?seed_id=${seedA}`, { method: "GET" });
+  });
+
+  it("does not probe a requested Seed that is absent from the owner-scoped server projection", async () => {
+    const fetcher = recoverFetch();
+    const subject = controller(fetcher);
+
+    await subject.recover("33333333-3333-4333-8333-333333333333");
+
+    expect(subject.state).toMatchObject({ phase: "ready", seed: { id: seedB } });
+    expect(fetcher).toHaveBeenNthCalledWith(2, `/api/key-people?seed_id=${seedB}`, { method: "GET" });
+  });
+
   it("recovers only the newest formal submitted Seed and its server people", async () => {
     const fetcher = recoverFetch();
     const subject = controller(fetcher);
