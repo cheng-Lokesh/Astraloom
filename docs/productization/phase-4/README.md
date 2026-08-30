@@ -5,7 +5,17 @@ Status: M1 implementation and local authenticated acceptance complete on
 `productization/phase-3-people-graph@0bbb9a76cb35c0d985e3c643535a28675d7cd192`.
 
 The accepted Phase 4 head is recorded in `M1_ACCEPTANCE_EVIDENCE.md`. M1 stops
-at the formal account Track A loop; no M2 work is included or authorized.
+at the formal account Track A loop; no M2 work is included in that acceptance.
+
+## M2.0 follow-up status
+
+M2.0 is an authorized, narrow candidate slice after M1. It replaces only the
+logged-in dashboard and primary navigation with a truthful My Sandbox overview.
+It does not accept the whole second phase, change M1 acceptance, or authorize
+M2.1, M3, a complete digital-life model, Reality Profile, Destiny engine,
+resource model, World State schema, public landing, billing, admin, Simple Mode,
+or V2 Core work. Detailed RED/GREEN and gate evidence is recorded in
+`M2_0_CANDIDATE_EVIDENCE.md` and `../../testing/m2-0-sandbox-overview.tdd.md`.
 
 ## Product outcome
 

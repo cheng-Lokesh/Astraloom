@@ -45,4 +45,14 @@ describe("GET /api/sandbox-overview", () => {
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("sensitive database detail");
   });
+
+  it("fails closed when the server client is unavailable or authentication throws", async () => {
+    state.client = null;
+    expect((await GET()).status).toBe(500);
+
+    state.client = { auth: { getUser: vi.fn().mockRejectedValue(new Error("private auth failure")) } };
+    const response = await GET();
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("private auth failure");
+  });
 });

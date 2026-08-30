@@ -65,6 +65,37 @@ Must not show:
 - Fear-based payment hooks.
 - Chat-first interface as the main product surface.
 
+### My Sandbox dashboard (M2.0 candidate)
+
+The authenticated dashboard is a calm personal life ledger, not an Observatory,
+marketing Hero, or generic card grid. It orients the person, shows the current
+server-backed chain, then provides one next action.
+
+Must show, from the account API only:
+
+- `My Sandbox / 我的沙盘` and a clear personal digital-life framing.
+- Submitted Seed/Reality readiness, confirmed People count, immutable Agent
+  count, Graph lock and edge count, running state, latest completed Run,
+  bounded History, recent Feedback presence, and exactly one next action.
+- Explicit `尚未建模` labels for life climate, resources, constraints, next
+  change, and any Reality detail without an authoritative database field.
+- Loading, anonymous, empty, partial, running, completed, and error states.
+  Error state must not retain or invent a previous local projection.
+
+Must not show:
+
+- `ONLINE`, `LIVE`, `READY`, static recent cases, fake percentages, simulated
+  account status, Career nodes, or a claim that a digital self already exists.
+- Raw IDs, raw scenario text, email, credentials, local repository data, or a
+  localStorage fallback.
+
+Primary navigation must make My Sandbox, Start, People, Graph, Running, and
+History reachable on desktop and mobile. Result is reached from a specific
+Running or History link, never as a no-Run-id primary destination. Every
+interactive target is at least 40px, has visible keyboard focus, uses
+`active:scale-95`, and respects reduced motion by limiting interaction motion to
+transform and opacity.
+
 ### Scene And Question
 
 Must show:

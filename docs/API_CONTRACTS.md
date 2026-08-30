@@ -506,3 +506,37 @@ Malformed input returns 422, unauthenticated requests return 401, owner-hidden
 or missing resources return 404, contract conflicts return 409, and unexpected
 persistence failures return a sanitized 500. Formal browser clients must not
 recover Result, History, completion, or Feedback from localStorage.
+
+### `GET /api/sandbox-overview` (M2.0 candidate)
+
+Purpose: read the signed-in account's smallest truthful My Sandbox projection.
+
+Access and caching:
+
+- Requires the caller's Supabase user session. It accepts no owner, account,
+  Seed, Graph, or Run selector from the browser.
+- Every read is constrained by the authenticated `auth.uid()` owner. A query
+  failure returns a sanitized `persistence_failed` response.
+- The route and response use `no-store`; account state is not shared or
+  pre-rendered between users.
+
+Projection:
+
+- Returns only formal Seed presence, confirmed People count, latest immutable
+  Agent count, Graph presence/lock/edge count, running state, bounded History
+  count, Feedback presence, latest completed-Run time/status, and one next
+  action.
+- Result and Running links contain an opaque Run identifier for navigation only;
+  the dashboard never renders an object UUID. It never returns email,
+  credentials, raw scenario text, trace ids, evidence bodies, or database ids
+  as display fields.
+- The response is Zod-validated before it is returned. Invalid server rows fail
+  closed instead of becoming a browser fallback.
+- Life climate, resources, constraints, next-change timing, and Reality detail
+  currently return explicit `not_modeled`. No repository, localStorage,
+  static-case, or Career-demo value may fill these fields.
+
+`next_action.kind` is exactly one of: `start_intake`, `review_people`,
+`build_agents`, `review_graph`, `start_run`, `open_running`, or
+`open_latest_result` for authenticated users. Anonymous callers receive 401
+rather than an overview projection.
