@@ -192,6 +192,8 @@ describe("My Sandbox overview projection", () => {
       people: 0,
       snapshot: null,
       graph: null,
+      currentRunning: null,
+      oldRunning: null,
       currentCompleted: null,
       oldCompleted: completedRun,
       currentFeedback: null,
