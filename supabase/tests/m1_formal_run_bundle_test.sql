@@ -142,6 +142,7 @@ select ok((select result_bundle = (select bundle from m1_run_fixture) from m1_ow
 
 select set_config('app.m1_run_count', (select count(*)::text from m1_owned_runs), true);
 select set_config('app.m1_event_count', (select count(*)::text from public.event_logs where simulation_id=(select id from m1_owned_runs)), true);
+select set_config('app.m1_first_run_created_at', (select created_at::text from m1_owned_runs), true);
 set local role service_role;
 select is((select idempotent from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, (select bundle from m1_run_fixture))), true, 'same owner key and content returns an explicit idempotent replay');
 reset role;
@@ -195,7 +196,13 @@ select lives_ok($$ select * from public.persist_account_sandbox_run_m1(
 reset role;
 select is((select count(*) from m1_owned_runs),2::bigint,'two immutable Runs coexist for the same account');
 select ok((select calibration_snapshot='{}'::jsonb from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000410') and (select calibration_snapshot#>>'{source}'='account_feedback' from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000440'),'feedback calibration appears only on the later Run');
-select is((select idempotency_key from m1_owned_runs order by created_at desc,id desc limit 1),'00000000-0000-4000-8000-000000000440','History ordering returns the newer Run first');
+select ok(
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260830210000')
+  and (select column_default from information_schema.columns where table_schema='public' and table_name='simulations' and column_name='created_at') = 'clock_timestamp()'
+  and (select created_at > current_setting('app.m1_first_run_created_at')::timestamptz from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000440')
+  and (select idempotency_key from m1_owned_runs order by created_at desc,id desc limit 1) = '00000000-0000-4000-8000-000000000440',
+  'History ordering preserves later Run creation order inside one transaction'
+);
 
 select * from finish();
 rollback;
