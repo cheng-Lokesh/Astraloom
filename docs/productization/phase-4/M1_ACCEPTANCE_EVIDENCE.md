@@ -1,7 +1,7 @@
 # M1 formal account sandbox acceptance evidence
 
-Date: 2026-08-30  
-Branch: `productization/phase-4-account-sandbox-loop`  
+Date: 2026-08-30
+Branch: `productization/phase-4-account-sandbox-loop`
 Canonical start: `0bbb9a76cb35c0d985e3c643535a28675d7cd192`
 
 This record intentionally excludes test identities, credentials, UUIDs,
