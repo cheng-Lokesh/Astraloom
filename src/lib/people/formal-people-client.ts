@@ -85,6 +85,16 @@ function chooseNewestSeed(seedContexts: FormalSeedContext[]) {
   })[0] ?? null;
 }
 
+function selectOwnerSeed(seedContexts: FormalSeedContext[], requestedSeedId?: string) {
+  const requested = z.string().uuid().safeParse(requestedSeedId);
+  if (requested.success) {
+    const selected = seedContexts.find((seed) => seed.id === requested.data);
+    if (selected) return { seed: selected, selectionFallback: false };
+    return { seed: chooseNewestSeed(seedContexts), selectionFallback: true };
+  }
+  return { seed: chooseNewestSeed(seedContexts), selectionFallback: Boolean(requestedSeedId) };
+}
+
 async function jsonBody(response: Response): Promise<unknown> {
   return response.json().catch(() => null);
 }
@@ -113,6 +123,8 @@ export class FormalPeopleController {
   private readonly fetcher: FormalPeopleFetch;
   private readonly newId: () => string;
   private inFlight = false;
+  /** Safe owner-scoped Seed projections from the most recent successful recovery. */
+  availableSeeds: FormalSeedContext[] = [];
 
   state: FormalPeopleState = {
     phase: "loading",
@@ -127,7 +139,7 @@ export class FormalPeopleController {
     this.newId = newId;
   }
 
-  async recover() {
+  async recover(requestedSeedId?: string) {
     const existing = this.state.phase === "ready" ? this.state : null;
     this.state = {
       ...this.state,
@@ -149,11 +161,14 @@ export class FormalPeopleController {
         return;
       }
 
-      const seed = chooseNewestSeed(seedResult.data.seedContexts);
+      const selection = selectOwnerSeed(seedResult.data.seedContexts, requestedSeedId);
+      const seed = selection.seed;
       if (!seed) {
+        this.availableSeeds = [];
         this.state = { phase: "no_seed", seed: null, people: [], notice: null, pendingAction: null };
         return;
       }
+      this.availableSeeds = seedResult.data.seedContexts;
 
       const peopleResponse = await this.fetcher(`/api/key-people?seed_id=${seed.id}`, { method: "GET" });
       if (peopleResponse.status === 401) {
@@ -166,7 +181,7 @@ export class FormalPeopleController {
         return;
       }
 
-      this.state = { phase: "ready", seed, people: peopleResult.data.people, notice: null, pendingAction: null };
+      this.state = { phase: "ready", seed, people: peopleResult.data.people, notice: selection.selectionFallback ? "That saved scenario is not available. Recovered a scenario from your account instead." : null, pendingAction: null };
     } catch {
       this.restoreOrFail(existing, recoveryFailure);
     }

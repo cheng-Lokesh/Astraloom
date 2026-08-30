@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { FormalSeedSelector } from "@/components/formal-seed-selector";
 import { StatusPill } from "@/components/status-pill";
 import { Button, ButtonLink, EmptyState, SurfaceCard } from "@/components/ui-foundation";
 import { FormalPeopleController, type FormalPeopleAction, type FormalPeopleState, type FormalPerson } from "@/lib/people/formal-people-client";
@@ -26,14 +27,25 @@ const statusLabel = (status: FormalPerson["status"]) => ({
 export default function PeoplePage() {
   const [controller] = useState(makeController);
   const [state, setState] = useState<FormalPeopleState>(() => controller.state);
+  const [requestedSeedId, setRequestedSeedId] = useState<string | undefined>();
+  const [urlReady, setUrlReady] = useState(false);
   const sync = () => setState({ ...controller.state, people: [...controller.state.people] });
   const run = async (work: () => Promise<boolean | void>) => { const result = await work(); sync(); return result === true; };
 
   useEffect(() => {
-    void controller.recover().then(() => {
-      setState({ ...controller.state, people: [...controller.state.people] });
-    });
-  }, [controller]);
+    setRequestedSeedId(new URLSearchParams(window.location.search).get("seed_id") ?? undefined);
+    setUrlReady(true);
+  }, []);
+  useEffect(() => {
+    if (!urlReady) return;
+    void controller.recover(requestedSeedId).then(sync);
+  }, [controller, requestedSeedId, urlReady]);
+  const selectSeed = (seedId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("seed_id", seedId);
+    window.history.replaceState(null, "", url);
+    setRequestedSeedId(seedId);
+  };
 
   if (state.phase === "loading") return <AppShell><Loading /></AppShell>;
 
@@ -49,8 +61,8 @@ export default function PeoplePage() {
         </header>
         {state.phase === "unauthenticated" ? <EmptyState className="mt-8" tone="warning" title="Sign in to recover saved people" description="This page shows only Key People saved to your account." action={<ButtonLink href="/login" className="!w-auto px-4 py-3">Go to login</ButtonLink>} /> : null}
         {state.phase === "no_seed" ? <EmptyState className="mt-8" title="No submitted scenario yet" description="Confirm a formal scenario in intake before extracting Key People." action={<ButtonLink href="/app/new/intake" className="!w-auto px-4 py-3">Go to intake</ButtonLink>} /> : null}
-        {state.phase === "failure" ? <EmptyState className="mt-8" tone="warning" title="Saved people could not be recovered" description={state.notice ?? "Please try again."} action={<Button onClick={() => void run(() => controller.recover())} className="!w-auto px-4 py-3">Reload saved people</Button>} /> : null}
-        {state.phase === "ready" ? <Ledger state={state} controller={controller} run={run} /> : null}
+        {state.phase === "failure" ? <EmptyState className="mt-8" tone="warning" title="Saved people could not be recovered" description={state.notice ?? "Please try again."} action={<Button onClick={() => void run(() => controller.recover(requestedSeedId))} className="!w-auto px-4 py-3">Reload saved people</Button>} /> : null}
+        {state.phase === "ready" ? <Ledger state={state} controller={controller} run={run} seeds={controller.availableSeeds} selectSeed={selectSeed} /> : null}
       </section>
     </AppShell>
   );
@@ -60,7 +72,7 @@ function Loading() {
   return <div className="mx-auto max-w-6xl py-10"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Recovering account ledger</p><p className="mt-2 text-sm text-[#62695d]">Loading your latest submitted scenario and saved Key People.</p></div>;
 }
 
-function Ledger({ state, controller, run }: { state: FormalPeopleState; controller: FormalPeopleController; run: (work: () => Promise<boolean | void>) => Promise<boolean> }) {
+function Ledger({ state, controller, run, seeds, selectSeed }: { state: FormalPeopleState; controller: FormalPeopleController; run: (work: () => Promise<boolean | void>) => Promise<boolean>; seeds: typeof controller.availableSeeds; selectSeed: (seedId: string) => void }) {
   const groups = [
     ["Needs review", "Candidates remain provisional until you confirm them.", state.people.filter(review)],
     ["Confirmed for the next step", "These saved people can inform the Agent Profile stage.", state.people.filter((person) => person.status === "confirmed")],
@@ -69,14 +81,14 @@ function Ledger({ state, controller, run }: { state: FormalPeopleState; controll
   const confirmed = groups[1][2];
   return <div id="people-ledger" className="mt-8 space-y-8">
     <div className="flex flex-col gap-4 border-b border-black/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
-      <div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Submitted scenario</p><p className="mt-1 text-sm font-semibold text-[#11150f]">Recovered submitted scenario</p><p className="mt-1 text-sm text-[#62695d]">Scenario text stays private; this page shows its saved Key People ledger only.</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Submitted scenario</p><p className="mt-1 text-sm font-semibold text-[#11150f]">Recovered submitted scenario</p><p className="mt-1 text-sm text-[#62695d]">Scenario text stays private; this page shows its saved Key People ledger only.</p><FormalSeedSelector seeds={seeds} selectedSeedId={state.seed?.id ?? ""} onSelect={selectSeed} /></div>
       <Button variant="secondary" loading={state.pendingAction === "extract"} disabled={state.pendingAction !== null} onClick={() => void run(() => controller.extract())} className="!w-auto shrink-0 px-4 py-3">{state.people.length ? "Refresh candidates" : "Extract Key People"}</Button>
     </div>
-    {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover())} /> : null}
+    {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover(state.seed?.id))} /> : null}
     {!state.people.length ? <EmptyState tone="accent" title="No saved Key People yet" description="Extract candidates from this submitted scenario, then review only what the server returns." action={<Button onClick={() => void run(() => controller.extract())} className="!w-auto px-4 py-3">Extract Key People</Button>} /> : null}
     {groups.map(([title, description, people]) => people.length ? <section key={title}><div className="mb-3 flex items-end justify-between"><div><h2 className="text-xl font-semibold text-[#11150f]">{title}</h2><p className="mt-1 text-sm text-[#62695d]">{description}</p></div><span className="font-mono text-sm text-[#7d8578]">{people.length}</span></div><div className="space-y-3">{people.map((person) => <PersonCard key={person.id} person={person} people={state.people} pending={state.pendingAction} action={(value) => run(() => controller.mutate(value))} />)}</div></section> : null)}
     <Supplement disabled={state.pendingAction !== null} pending={state.pendingAction === "supplement"} action={(value) => run(() => controller.mutate(value))} />
-    <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Next step</p><h2 className="mt-1 text-lg font-semibold text-white">Continue with the saved people you confirmed.</h2><p className="mt-1 text-sm text-white/65">Agent generation remains a separate, deliberate stage.</p></div><ButtonLink href="/app/new/agents" variant={confirmed.length ? "onDark" : "ghostOnDark"} aria-disabled={!confirmed.length} onClick={(event) => { if (!confirmed.length) event.preventDefault(); }} className="!w-auto shrink-0 px-4 py-3">{confirmed.length ? "Continue to Agents" : "Confirm a person first"}</ButtonLink></SurfaceCard>
+    <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Next step</p><h2 className="mt-1 text-lg font-semibold text-white">Continue with the saved people you confirmed.</h2><p className="mt-1 text-sm text-white/65">Agent generation remains a separate, deliberate stage.</p></div><ButtonLink href={`/app/new/agents?seed_id=${state.seed?.id ?? ""}`} variant={confirmed.length ? "onDark" : "ghostOnDark"} aria-disabled={!confirmed.length} onClick={(event) => { if (!confirmed.length) event.preventDefault(); }} className="!w-auto shrink-0 px-4 py-3">{confirmed.length ? "Continue to Agents" : "Confirm a person first"}</ButtonLink></SurfaceCard>
   </div>;
 }
 

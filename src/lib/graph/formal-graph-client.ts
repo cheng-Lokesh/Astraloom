@@ -34,6 +34,15 @@ const lockFailure = "We couldn't lock this Graph snapshot. Your saved ledger has
 function newestSeed(seeds: z.infer<typeof seedSchema>[]) {
   return [...seeds].sort((left, right) => Date.parse(right.submittedAt) - Date.parse(left.submittedAt) || right.id.localeCompare(left.id))[0] ?? null;
 }
+function selectOwnerSeed(seeds: z.infer<typeof seedSchema>[], requestedSeedId?: string) {
+  const requested = z.string().uuid().safeParse(requestedSeedId);
+  if (requested.success) {
+    const selected = seeds.find((seed) => seed.id === requested.data);
+    if (selected) return { seed: selected, selectionFallback: false };
+    return { seed: newestSeed(seeds), selectionFallback: true };
+  }
+  return { seed: newestSeed(seeds), selectionFallback: Boolean(requestedSeedId) };
+}
 function validAgents(snapshot: z.infer<typeof snapshotSchema> | null, agents: FormalGraphAgent[]) {
   if (!snapshot) return agents.length === 0;
   if (!agents.length || agents.some((agent) => agent.snapshot_id !== snapshot.id || agent.safety_level !== snapshot.safety_level)) return false;
@@ -59,12 +68,14 @@ export class FormalGraphController {
   private readonly fetcher: FormalGraphFetch;
   private readonly newId: () => string;
   private inFlight = false;
+  /** Safe owner-scoped Seed projections from the most recent successful recovery. */
+  availableSeeds: z.infer<typeof seedSchema>[] = [];
   state: FormalGraphState = { phase: "loading", seed: null, snapshot: null, agents: [], graph: null, edges: [], notice: null, pendingGeneration: false, pendingLock: false };
   constructor({ fetcher, newId }: { fetcher: FormalGraphFetch; newId: () => string }) { this.fetcher = fetcher; this.newId = newId; }
   get canGenerate() { return this.state.phase === "ready" && !this.inFlight && !this.state.graph?.graph_locked && this.state.agents.some((agent) => agent.agent_type === "npc"); }
   get canLock() { return this.state.phase === "ready" && !this.inFlight && Boolean(this.state.graph && !this.state.graph.graph_locked && this.state.edges.length); }
 
-  async recover() {
+  async recover(requestedSeedId?: string) {
     const existing = ["ready", "blocked", "downgraded"].includes(this.state.phase) ? this.state : null;
     this.state = { ...this.state, phase: "loading", notice: null, pendingGeneration: false, pendingLock: false };
     try {
@@ -72,8 +83,10 @@ export class FormalGraphController {
       if (seedResponse.status === 401) return this.unauthenticated();
       const seeds = seedListSchema.safeParse(await jsonBody(seedResponse));
       if (!seedResponse.ok || !seeds.success) return this.restoreOrFail(existing, recoveryFailure);
-      const seed = newestSeed(seeds.data.seedContexts);
-      if (!seed) { this.state = { phase: "no_seed", seed: null, snapshot: null, agents: [], graph: null, edges: [], notice: null, pendingGeneration: false, pendingLock: false }; return; }
+      const selection = selectOwnerSeed(seeds.data.seedContexts, requestedSeedId);
+      const seed = selection.seed;
+      if (!seed) { this.availableSeeds = []; this.state = { phase: "no_seed", seed: null, snapshot: null, agents: [], graph: null, edges: [], notice: null, pendingGeneration: false, pendingLock: false }; return; }
+      this.availableSeeds = seeds.data.seedContexts;
       const agentsResponse = await this.fetcher(`/api/agents?seed_id=${seed.id}`, { method: "GET" });
       if (agentsResponse.status === 401) return this.unauthenticated();
       const agents = agentsResponseSchema.safeParse(await jsonBody(agentsResponse));
@@ -83,7 +96,7 @@ export class FormalGraphController {
       if (graphResponse.status === 401) return this.unauthenticated();
       const graph = readGraphResponseSchema.safeParse(await jsonBody(graphResponse));
       if (!graphResponse.ok || !graph.success || !validGraph(graph.data.graph, graph.data.edges, agents.data.snapshot, agents.data.agents)) return this.restoreOrFail(existing, recoveryFailure);
-      this.state = { phase: agents.data.snapshot.safety_level === "downgraded" ? "downgraded" : "ready", seed, snapshot: agents.data.snapshot, agents: agents.data.agents, graph: graph.data.graph, edges: graph.data.edges, notice: null, pendingGeneration: false, pendingLock: false };
+      this.state = { phase: agents.data.snapshot.safety_level === "downgraded" ? "downgraded" : "ready", seed, snapshot: agents.data.snapshot, agents: agents.data.agents, graph: graph.data.graph, edges: graph.data.edges, notice: selection.selectionFallback ? "That saved scenario is not available. Recovered a scenario from your account instead." : null, pendingGeneration: false, pendingLock: false };
     } catch { this.restoreOrFail(existing, recoveryFailure); }
   }
   async generate(): Promise<boolean> { return this.mutate("generate"); }

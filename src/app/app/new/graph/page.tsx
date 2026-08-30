@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { FormalSeedSelector } from "@/components/formal-seed-selector";
 import { FormalRunStarter } from "@/components/formal-sandbox/run-starter";
 import { StatusPill } from "@/components/status-pill";
 import { Button, ButtonLink, EmptyState, SurfaceCard } from "@/components/ui-foundation";
@@ -11,31 +12,44 @@ import { FormalGraphController, runFormalGraphUiAction, type FormalGraphEdge, ty
 export default function GraphPage() {
   const [controller] = useState(() => new FormalGraphController({ fetcher: (input, init) => fetch(input, init), newId: () => crypto.randomUUID() }));
   const [state, setState] = useState<FormalGraphState>(controller.state);
+  const [requestedSeedId, setRequestedSeedId] = useState<string | undefined>();
+  const [urlReady, setUrlReady] = useState(false);
   const sync = () => setState({ ...controller.state });
   const run = (work: () => Promise<boolean | void>) => runFormalGraphUiAction(work, sync);
 
   useEffect(() => {
-    void controller.recover().then(() => setState({ ...controller.state }));
-  }, [controller]);
+    setRequestedSeedId(new URLSearchParams(window.location.search).get("seed_id") ?? undefined);
+    setUrlReady(true);
+  }, []);
+  useEffect(() => {
+    if (!urlReady) return;
+    void controller.recover(requestedSeedId).then(sync);
+  }, [controller, requestedSeedId, urlReady]);
+  const selectSeed = (seedId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("seed_id", seedId);
+    window.history.replaceState(null, "", url);
+    setRequestedSeedId(seedId);
+  };
 
   if (state.phase === "loading") return <AppShell><Loading /></AppShell>;
   return <AppShell><main className="mx-auto max-w-6xl py-6 sm:py-10">
     <a href="#graph-ledger" className="sr-only rounded bg-[#11150f] px-4 py-3 text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4">Skip to relationship ledger</a>
-    <Header />
+    <Header seedId={state.seed?.id} />
     {state.phase === "unauthenticated" ? <EmptyState className="mt-8" tone="warning" title="Sign in to recover your saved Graph" description="This page reads only the relationship snapshot saved to your account." action={<ButtonLink href="/login" className="!w-auto px-4 py-3">Go to login</ButtonLink>} /> : null}
     {state.phase === "no_seed" ? <EmptyState className="mt-8" title="No submitted scenario yet" description="Submit a formal scenario in intake before opening the relationship ledger." action={<ButtonLink href="/app/new/intake" className="!w-auto px-4 py-3">Go to intake</ButtonLink>} /> : null}
-    {state.phase === "no_agents" ? <EmptyState className="mt-8" title="No saved Agent snapshot" description="The Graph is generated only from the latest eligible immutable Agent snapshot." action={<ButtonLink href="/app/new/agents" className="!w-auto px-4 py-3">Review Agents</ButtonLink>} /> : null}
-    {state.phase === "failure" ? <EmptyState className="mt-8" tone="warning" title="Saved Graph ledger could not be recovered" description={state.notice ?? "Please try again."} action={<Button onClick={() => void run(() => controller.recover())} className="!w-auto px-4 py-3">Reload Graph ledger</Button>} /> : null}
-    {state.phase === "downgraded" ? <Downgraded state={state} reload={() => void run(() => controller.recover())} /> : null}
-    {state.phase === "safety_downgraded" ? <ReadOnlyHold state={state} reload={() => void run(() => controller.recover())} title="Saved safety boundary prevents Graph writes" description="A safety downgrade stopped this action before any write. The earlier read-only Graph remains available, but generation and locking are disabled until the account ledger is refreshed." /> : null}
-    {state.phase === "stale_agents" ? <ReadOnlyHold state={state} reload={() => void run(() => controller.recover())} title="Saved Agent snapshot needs refresh" description="The Agent snapshot used by this Graph is no longer eligible. The earlier read-only Graph remains available, but generation and locking are disabled until you recover the latest account ledger." /> : null}
-    {state.phase === "blocked" ? <Blocked state={state} reload={() => void run(() => controller.recover())} /> : null}
-    {state.phase === "ready" ? <Ledger state={state} controller={controller} run={run} /> : null}
+    {state.phase === "no_agents" ? <EmptyState className="mt-8" title="No saved Agent snapshot" description="The Graph is generated only from the selected eligible immutable Agent snapshot." action={<ButtonLink href={`/app/new/agents?seed_id=${state.seed?.id ?? ""}`} className="!w-auto px-4 py-3">Review Agents</ButtonLink>} /> : null}
+    {state.phase === "failure" ? <EmptyState className="mt-8" tone="warning" title="Saved Graph ledger could not be recovered" description={state.notice ?? "Please try again."} action={<Button onClick={() => void run(() => controller.recover(requestedSeedId))} className="!w-auto px-4 py-3">Reload Graph ledger</Button>} /> : null}
+    {state.phase === "downgraded" ? <Downgraded state={state} reload={() => void run(() => controller.recover(state.seed?.id))} /> : null}
+    {state.phase === "safety_downgraded" ? <ReadOnlyHold state={state} reload={() => void run(() => controller.recover(state.seed?.id))} title="Saved safety boundary prevents Graph writes" description="A safety downgrade stopped this action before any write. The earlier read-only Graph remains available, but generation and locking are disabled until the account ledger is refreshed." /> : null}
+    {state.phase === "stale_agents" ? <ReadOnlyHold state={state} reload={() => void run(() => controller.recover(state.seed?.id))} title="Saved Agent snapshot needs refresh" description="The Agent snapshot used by this Graph is no longer eligible. The earlier read-only Graph remains available, but generation and locking are disabled until you recover the latest account ledger." /> : null}
+    {state.phase === "blocked" ? <Blocked state={state} reload={() => void run(() => controller.recover(state.seed?.id))} /> : null}
+    {state.phase === "ready" ? <Ledger state={state} controller={controller} run={run} seeds={controller.availableSeeds} selectSeed={selectSeed} /> : null}
   </main></AppShell>;
 }
 
-function Header() {
-  return <header className="border-b border-black/10 pb-6"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Step 4 · Relation Graph</p><h1 className="mt-2 font-[var(--font-display)] text-4xl leading-tight text-[#11150f] sm:text-5xl">Inspect the saved relationship evidence.</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">This is a read-only evidence ledger. The server derives relationship weights from the saved Agent snapshot; this page cannot edit people, nodes, edges, weights, or lock state.</p><ButtonLink href="/app/new/agents" variant="ghost" className="!w-auto mt-4 px-4 py-3">Back to Agents</ButtonLink></header>;
+function Header({ seedId }: { seedId?: string }) {
+  return <header className="border-b border-black/10 pb-6"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Step 4 · Relation Graph</p><h1 className="mt-2 font-[var(--font-display)] text-4xl leading-tight text-[#11150f] sm:text-5xl">Inspect the saved relationship evidence.</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">This is a read-only evidence ledger. The server derives relationship weights from the saved Agent snapshot; this page cannot edit people, nodes, edges, weights, or lock state.</p><ButtonLink href={`/app/new/agents${seedId ? `?seed_id=${seedId}` : ""}`} variant="ghost" className="!w-auto mt-4 px-4 py-3">Back to Agents</ButtonLink></header>;
 }
 function Loading() { return <div className="mx-auto max-w-6xl py-10"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Recovering account ledger</p><p className="mt-2 text-sm text-[#62695d]">Loading the latest submitted scenario, immutable Agent snapshot, and saved Graph.</p></div>; }
 
@@ -50,15 +64,15 @@ function ReadOnlyHold({ state, reload, title, description }: { state: FormalGrap
   return <div className="mt-8 space-y-6"><EmptyState tone="warning" title={title} description={state.notice ?? description} action={<div className="flex flex-wrap gap-3"><Button onClick={reload} variant="secondary" className="!w-auto px-4 py-3">Reload saved ledger</Button><ButtonLink href="/app/new/agents" className="!w-auto px-4 py-3">Review Agents</ButtonLink></div>} />{state.graph && state.edges.length ? <section aria-label="Preserved read-only Graph"><div className="border border-[#d49b4a]/30 bg-[#fff8ed] p-4 text-sm leading-6 text-[#7c5524]"><strong>Previous Graph preserved:</strong> this request performed no write. The saved snapshot remains readable but cannot be generated again or locked in this state.</div><div className="mt-6"><GraphLedger state={state} /></div></section> : null}</div>;
 }
 
-function Ledger({ state, controller, run }: { state: FormalGraphState; controller: FormalGraphController; run: (work: () => Promise<boolean | void>) => Promise<boolean> }) {
+function Ledger({ state, controller, run, seeds, selectSeed }: { state: FormalGraphState; controller: FormalGraphController; run: (work: () => Promise<boolean | void>) => Promise<boolean>; seeds: typeof controller.availableSeeds; selectSeed: (seedId: string) => void }) {
   const graph = state.graph;
   const locked = graph?.graph_locked === true;
   return <section id="graph-ledger" className="mt-8 space-y-8">
-    <section className="grid gap-5 border-b border-black/10 pb-6 lg:grid-cols-[minmax(0,1fr)_340px]"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Submitted scenario</p><p className="mt-1 text-sm font-semibold text-[#11150f]">Latest submitted scenario recovered</p><p className="mt-1 max-w-2xl text-sm leading-6 text-[#62695d]">Only a saved immutable Agent snapshot can be used. Scenario text, trace bodies, and request keys are never shown here.</p></div><SurfaceCard emphasis="dark" className="p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Eligible Agents</p><p className="mt-2 text-3xl font-semibold text-white">{state.agents.length}</p><p className="mt-1 text-sm leading-6 text-white/65">{state.agents.filter((agent) => agent.agent_type === "npc").length} confirmed-person Agent{state.agents.filter((agent) => agent.agent_type === "npc").length === 1 ? "" : "s"} support this Graph.</p></SurfaceCard></section>
-    {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover())} /> : null}
+    <section className="grid gap-5 border-b border-black/10 pb-6 lg:grid-cols-[minmax(0,1fr)_340px]"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Submitted scenario</p><p className="mt-1 text-sm font-semibold text-[#11150f]">Recovered submitted scenario</p><p className="mt-1 max-w-2xl text-sm leading-6 text-[#62695d]">Only a saved immutable Agent snapshot can be used. Scenario text, trace bodies, and request keys are never shown here.</p><FormalSeedSelector seeds={seeds} selectedSeedId={state.seed?.id ?? ""} onSelect={selectSeed} /></div><SurfaceCard emphasis="dark" className="p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Eligible Agents</p><p className="mt-2 text-3xl font-semibold text-white">{state.agents.length}</p><p className="mt-1 text-sm leading-6 text-white/65">{state.agents.filter((agent) => agent.agent_type === "npc").length} confirmed-person Agent{state.agents.filter((agent) => agent.agent_type === "npc").length === 1 ? "" : "s"} support this Graph.</p></SurfaceCard></section>
+    {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover(state.seed?.id))} /> : null}
     {!graph ? <EmptyState tone="accent" title="No Graph snapshot has been saved" description="Generate one server-controlled, read-only Graph from this eligible Agent snapshot. The request contains only the saved scenario selector and a new idempotency key." action={<Button loading={state.pendingGeneration} disabled={!controller.canGenerate} onClick={() => void run(() => controller.generate())} className="!w-auto px-4 py-3" loadingLabel="Generating saved Graph">Generate read-only Graph</Button>} /> : <GraphLedger state={state} />}
     {graph && !locked ? <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Snapshot review</p><h2 className="mt-1 text-lg font-semibold text-white">Lock this complete Graph deliberately.</h2><p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Locking is irreversible for this saved snapshot. To change relationships later, update upstream facts and create a new Graph through the controlled server flow.</p></div><div className="flex shrink-0 flex-wrap gap-3"><Button variant="ghostOnDark" loading={state.pendingGeneration} disabled={!controller.canGenerate} onClick={() => void run(() => controller.generate())} className="!w-auto px-4 py-3" loadingLabel="Generating saved Graph">Generate new version</Button><Button variant="onDark" loading={state.pendingLock} disabled={!controller.canLock} onClick={() => void run(() => controller.lock())} className="!w-auto px-4 py-3" loadingLabel="Locking Graph">Lock Graph snapshot</Button></div></SurfaceCard> : null}
-    {locked ? <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Frozen simulation input</p><h2 className="mt-1 text-lg font-semibold text-white">This Graph snapshot is locked.</h2><p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Its server-derived edges stay readable but cannot be edited or unlocked from this page. A formal Run writes one immutable account Bundle.</p></div><div className="flex shrink-0 flex-col items-start gap-3 sm:items-end"><FormalRunStarter graphId={graph.id} /><ButtonLink href="/app/new/people" variant="ghostOnDark" className="!w-auto px-4 py-3">Update upstream facts</ButtonLink></div></SurfaceCard> : null}
+    {locked ? <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Frozen simulation input</p><h2 className="mt-1 text-lg font-semibold text-white">This Graph snapshot is locked.</h2><p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Its server-derived edges stay readable but cannot be edited or unlocked from this page. A formal Run writes one immutable account Bundle.</p></div><div className="flex shrink-0 flex-col items-start gap-3 sm:items-end"><FormalRunStarter graphId={graph.id} /><ButtonLink href={`/app/new/people?seed_id=${state.seed?.id ?? ""}`} variant="ghostOnDark" className="!w-auto px-4 py-3">Update upstream facts</ButtonLink></div></SurfaceCard> : null}
   </section>;
 }
 

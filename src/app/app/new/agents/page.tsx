@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { FormalSeedSelector } from "@/components/formal-seed-selector";
 import { StatusPill } from "@/components/status-pill";
 import { Button, ButtonLink, EmptyState, SurfaceCard } from "@/components/ui-foundation";
 import { FormalAgentsController, runFormalAgentsUiAction, type FormalAgent, type FormalAgentsState } from "@/lib/agents/formal-agents-client";
@@ -27,29 +28,40 @@ export default function AgentsPage() {
   const [controller] = useState(makeController);
   const [state, setState] = useState<FormalAgentsState>(() => controller.state);
   const [includeParallelSelves, setIncludeParallelSelves] = useState(true);
+  const [requestedSeedId, setRequestedSeedId] = useState<string | undefined>();
+  const [urlReady, setUrlReady] = useState(false);
   const sync = () => setState({ ...controller.state, people: [...controller.state.people], agents: [...controller.state.agents] });
   const run = (work: () => Promise<boolean | void>) => runFormalAgentsUiAction(work, sync);
 
   useEffect(() => {
-    void controller.recover().then(() => {
-      setState({ ...controller.state, people: [...controller.state.people], agents: [...controller.state.agents] });
-    });
-  }, [controller]);
+    setRequestedSeedId(new URLSearchParams(window.location.search).get("seed_id") ?? undefined);
+    setUrlReady(true);
+  }, []);
+  useEffect(() => {
+    if (!urlReady) return;
+    void controller.recover(requestedSeedId).then(sync);
+  }, [controller, requestedSeedId, urlReady]);
+  const selectSeed = (seedId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("seed_id", seedId);
+    window.history.replaceState(null, "", url);
+    setRequestedSeedId(seedId);
+  };
 
   if (state.phase === "loading") return <AppShell><Loading /></AppShell>;
   return <AppShell><section aria-labelledby="agents-title" className="mx-auto max-w-6xl py-6 sm:py-10">
     <a href="#agent-ledger" className="sr-only rounded bg-[#11150f] px-4 py-3 text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4">Skip to saved Agent ledger</a>
-    <Header />
+    <Header seedId={state.seed?.id} />
     {state.phase === "unauthenticated" ? <EmptyState className="mt-8" tone="warning" title="Sign in to recover saved Agents" description="This ledger shows only immutable Agent snapshots saved to your account." action={<ButtonLink href="/login" className="!w-auto px-4 py-3">Go to login</ButtonLink>} /> : null}
     {state.phase === "no_seed" ? <EmptyState className="mt-8" title="No submitted scenario yet" description="Confirm a formal scenario in intake before generating Agents." action={<ButtonLink href="/app/new/intake" className="!w-auto px-4 py-3">Go to intake</ButtonLink>} /> : null}
-    {state.phase === "failure" ? <EmptyState className="mt-8" tone="warning" title="Saved Agent ledger could not be recovered" description={state.notice ?? "Please try again."} action={<Button onClick={() => void run(() => controller.recover())} className="!w-auto px-4 py-3">Reload Agent ledger</Button>} /> : null}
-    {state.phase === "blocked" ? <Blocked state={state} reload={() => void run(() => controller.recover())} /> : null}
-    {state.phase === "ready" ? <Ledger state={state} includeParallelSelves={includeParallelSelves} setIncludeParallelSelves={setIncludeParallelSelves} controller={controller} run={run} /> : null}
+    {state.phase === "failure" ? <EmptyState className="mt-8" tone="warning" title="Saved Agent ledger could not be recovered" description={state.notice ?? "Please try again."} action={<Button onClick={() => void run(() => controller.recover(requestedSeedId))} className="!w-auto px-4 py-3">Reload Agent ledger</Button>} /> : null}
+    {state.phase === "blocked" ? <Blocked state={state} reload={() => void run(() => controller.recover(state.seed?.id))} /> : null}
+    {state.phase === "ready" ? <Ledger state={state} includeParallelSelves={includeParallelSelves} setIncludeParallelSelves={setIncludeParallelSelves} controller={controller} run={run} seeds={controller.availableSeeds} selectSeed={selectSeed} /> : null}
   </section></AppShell>;
 }
 
-function Header() {
-  return <header className="border-b border-black/10 pb-6"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Step 3 · Agent Profiles</p><h1 id="agents-title" className="mt-2 font-[var(--font-display)] text-4xl leading-tight text-[#11150f] sm:text-5xl">Inspect the saved agents behind your scenario.</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">Agent Profiles are immutable, evidence-bounded simulation inputs. They are not statements of fact about another person, and their saved fields cannot be edited here.</p><ButtonLink href="/app/new/people" variant="ghost" className="!w-auto mt-4 px-4 py-3">Back to People</ButtonLink></header>;
+function Header({ seedId }: { seedId?: string }) {
+  return <header className="border-b border-black/10 pb-6"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Step 3 · Agent Profiles</p><h1 id="agents-title" className="mt-2 font-[var(--font-display)] text-4xl leading-tight text-[#11150f] sm:text-5xl">Inspect the saved agents behind your scenario.</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-[#62695d]">Agent Profiles are immutable, evidence-bounded simulation inputs. They are not statements of fact about another person, and their saved fields cannot be edited here.</p><ButtonLink href={`/app/new/people${seedId ? `?seed_id=${seedId}` : ""}`} variant="ghost" className="!w-auto mt-4 px-4 py-3">Back to People</ButtonLink></header>;
 }
 
 function Loading() {
@@ -62,7 +74,7 @@ function Blocked({ state, reload }: { state: FormalAgentsState; reload: () => vo
   return <div className="mt-8 space-y-8"><EmptyState tone="warning" title="Agent generation is blocked" description={state.notice ?? "The saved safety boundary did not permit Agent generation. No snapshot was written."} action={<div className="flex flex-wrap gap-3"><Button onClick={reload} variant="secondary" className="!w-auto px-4 py-3">Reload saved ledger</Button><ButtonLink href="/app/new/people" className="!w-auto px-4 py-3">Return to People</ButtonLink></div>} />{hasPreviousSnapshot && state.snapshot ? <section aria-label="Preserved Agent snapshot"><div className="border border-[#d49b4a]/30 bg-[#fff8ed] p-4 text-sm leading-6 text-[#7c5524]"><strong>Previous version preserved:</strong> safety blocked this new request before any write. The immutable snapshot below remains saved, readable, and unchanged; Graph and further generation stay unavailable in this blocked state.</div><div className="mt-6"><SnapshotLedger snapshot={state.snapshot} agents={state.agents} confirmedCount={confirmedCount} /></div></section> : null}</div>;
 }
 
-function Ledger({ state, includeParallelSelves, setIncludeParallelSelves, controller, run }: { state: FormalAgentsState; includeParallelSelves: boolean; setIncludeParallelSelves: (value: boolean) => void; controller: FormalAgentsController; run: (work: () => Promise<boolean | void>) => Promise<boolean> }) {
+function Ledger({ state, includeParallelSelves, setIncludeParallelSelves, controller, run, seeds, selectSeed }: { state: FormalAgentsState; includeParallelSelves: boolean; setIncludeParallelSelves: (value: boolean) => void; controller: FormalAgentsController; run: (work: () => Promise<boolean | void>) => Promise<boolean>; seeds: typeof controller.availableSeeds; selectSeed: (seedId: string) => void }) {
   const confirmed = useMemo(() => state.people.filter((person) => person.status === "confirmed"), [state.people]);
   const snapshot = state.snapshot;
   const hasSnapshot = snapshot !== null && state.agents.length > 0;
@@ -70,12 +82,12 @@ function Ledger({ state, includeParallelSelves, setIncludeParallelSelves, contro
   const actionLabel = hasSnapshot ? "Generate a new immutable version" : "Generate immutable Agent snapshot";
 
   return <div id="agent-ledger" className="mt-8 space-y-8">
-    <div className="grid gap-5 border-b border-black/10 pb-6 lg:grid-cols-[minmax(0,1fr)_340px]"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Submitted scenario</p><p className="mt-1 text-sm font-semibold text-[#11150f]">Latest submitted scenario recovered</p><p className="mt-1 max-w-2xl text-sm leading-6 text-[#62695d]">Scenario text stays private. The generation boundary receives only the submitted Seed selector and the formal confirmed-People ledger.</p></div><SurfaceCard emphasis="dark" className="p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">People evidence</p><p className="mt-2 text-3xl font-semibold text-white">{confirmed.length}</p><p className="mt-1 text-sm leading-6 text-white/65">confirmed People can enter a new generation. Candidates, merged, and deleted records cannot.</p></SurfaceCard></div>
-    {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover())} /> : null}
-    {!confirmed.length ? <EmptyState tone="warning" title="Confirm at least one person before generating" description="No local or inferred People are substituted. Return to People to confirm the evidence that may enter this Agent snapshot." action={<ButtonLink href="/app/new/people" className="!w-auto px-4 py-3">Review People</ButtonLink>} /> : null}
+    <div className="grid gap-5 border-b border-black/10 pb-6 lg:grid-cols-[minmax(0,1fr)_340px]"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#7d8578]">Submitted scenario</p><p className="mt-1 text-sm font-semibold text-[#11150f]">Recovered submitted scenario</p><p className="mt-1 max-w-2xl text-sm leading-6 text-[#62695d]">Scenario text stays private. The generation boundary receives only the submitted Seed selector and the formal confirmed-People ledger.</p><FormalSeedSelector seeds={seeds} selectedSeedId={state.seed?.id ?? ""} onSelect={selectSeed} /></div><SurfaceCard emphasis="dark" className="p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">People evidence</p><p className="mt-2 text-3xl font-semibold text-white">{confirmed.length}</p><p className="mt-1 text-sm leading-6 text-white/65">confirmed People can enter a new generation. Candidates, merged, and deleted records cannot.</p></SurfaceCard></div>
+    {state.notice ? <Notice notice={state.notice} reload={() => void run(() => controller.recover(state.seed?.id))} /> : null}
+    {!confirmed.length ? <EmptyState tone="warning" title="Confirm at least one person before generating" description="No local or inferred People are substituted. Return to People to confirm the evidence that may enter this Agent snapshot." action={<ButtonLink href={`/app/new/people?seed_id=${state.seed?.id ?? ""}`} className="!w-auto px-4 py-3">Review People</ButtonLink>} /> : null}
     <GenerationPanel hasSnapshot={hasSnapshot} enabled={controller.canGenerate} includeParallelSelves={includeParallelSelves} setIncludeParallelSelves={setIncludeParallelSelves} pending={state.pendingGeneration} actionLabel={actionLabel} onGenerate={() => void run(() => controller.generate(includeParallelSelves))} />
     {hasSnapshot && snapshot ? <SnapshotLedger snapshot={snapshot} agents={state.agents} confirmedCount={confirmed.length} /> : <EmptyState tone="accent" title="No Agent snapshot has been saved" description="When you generate, the server writes one bounded, immutable snapshot. This page never constructs a local Agent draft." />}
-    <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Next step</p><h2 className="mt-1 text-lg font-semibold text-white">Relation Graph uses a saved Agent snapshot.</h2><p className="mt-1 max-w-xl text-sm leading-6 text-white/65">{graphReady ? "This snapshot contains confirmed-person Agents and is ready for the read-only Graph stage." : "Graph becomes available after a non-downgraded saved snapshot includes at least one confirmed-person Agent."}</p></div><ButtonLink href="/app/new/graph" variant={graphReady ? "onDark" : "ghostOnDark"} aria-disabled={!graphReady} onClick={(event) => { if (!graphReady) event.preventDefault(); }} className="!w-auto shrink-0 px-4 py-3">{graphReady ? "Continue to Graph" : "Graph not ready"}</ButtonLink></SurfaceCard>
+    <SurfaceCard emphasis="dark" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Next step</p><h2 className="mt-1 text-lg font-semibold text-white">Relation Graph uses a saved Agent snapshot.</h2><p className="mt-1 max-w-xl text-sm leading-6 text-white/65">{graphReady ? "This snapshot contains confirmed-person Agents and is ready for the read-only Graph stage." : "Graph becomes available after a non-downgraded saved snapshot includes at least one confirmed-person Agent."}</p></div><ButtonLink href={`/app/new/graph?seed_id=${state.seed?.id ?? ""}`} variant={graphReady ? "onDark" : "ghostOnDark"} aria-disabled={!graphReady} onClick={(event) => { if (!graphReady) event.preventDefault(); }} className="!w-auto shrink-0 px-4 py-3">{graphReady ? "Continue to Graph" : "Graph not ready"}</ButtonLink></SurfaceCard>
   </div>;
 }
 
