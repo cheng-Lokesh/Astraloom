@@ -48,7 +48,7 @@ select is((select count(*) from pg_proc p where p.oid in (to_regprocedure('publi
 select ok(not exists (select 1 from pg_proc p where p.oid in (to_regprocedure('public.submit_seed_context_phase2(uuid,jsonb)'), to_regprocedure('public.extract_key_people_phase3(uuid,uuid)'), to_regprocedure('public.mutate_key_people_phase3(uuid,uuid,jsonb)'), to_regprocedure('public.generate_agent_snapshot_phase3(uuid,uuid,boolean)'), to_regprocedure('public.generate_relation_graph_phase3(uuid,uuid)'), to_regprocedure('public.lock_relation_graph_phase3(uuid,uuid)')) and p.prosecdef), 'all protected Phase 2/3 RPCs remain SECURITY INVOKER');
 select cmp_ok((select count(*) from public.seed_contexts), '>=', 16::bigint, 'the existing 16 Seed rows remain present after later account use');
 select cmp_ok((select count(*) from public.consent_events), '>=', 16::bigint, 'the existing 16 Consent rows remain present after later account use');
-select is((select count(*) from supabase_migrations.schema_migrations), 15::bigint, 'the canonical 12 plus all three forward M1 migrations are recorded');
+select is((select count(*) from supabase_migrations.schema_migrations), 16::bigint, 'the canonical migrations plus all forward M1 and M1.6 history-ordering migrations are recorded');
 select ok(exists (select 1 from supabase_migrations.schema_migrations where version = '20260830120000'), 'M1 security migration is recorded in migration history');
 
 select * from finish();
