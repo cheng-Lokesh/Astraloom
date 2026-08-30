@@ -79,24 +79,34 @@ cleanup, V2 Core redesign, or any M2 milestone.
 
 ## Revalidation status (2026-08-30)
 
-The previous `persistence_failed` configuration condition has been resolved
-locally: the formal start route requires a server-only service-role client
-after it authenticates the caller, and the local Supabase service-role value
-was supplied only to ignored `.env.local` before the production Next service
-was restarted. The value was not printed, committed, scanned, or exposed to a
-browser bundle.
+The previous `persistence_failed` configuration condition remains resolved
+locally: the formal start route uses a server-only service-role client only
+after it authenticates the caller. The local value remains ignored, unprinted,
+uncommitted, and absent from browser bundles.
 
-M1.6 remains **BLOCKED** and this document must not be read as acceptance. The
-current browser replay exposed a separate recovery defect before a formal Run:
-after a second submitted Seed exists for one account, the People, Agents, and
-Graph clients select only the newest Seed. If that newer Seed has no completed
-People chain, the UI cannot recover or select the account's earlier completed
-chain. Database aggregate evidence confirmed that the affected account has
-prior persisted Seed/People/Agent/Graph objects while the formal UI shows the
-newest empty chain. This must receive a minimal M1.6 selection/recovery fix,
-RED/GREEN regression coverage, and a fresh authenticated replay before the
-run, History, Feedback, cross-owner, responsive, and final-gate claims may be
-renewed. No M2 work was started and this revalidation did not push the branch.
+The discovered formal Seed recovery defect is fixed and must not be treated as
+the current blocker. RED coverage showed that People, Agents, and Graph
+silently selected a newer submitted Seed even when an earlier owner-scoped Seed
+had the complete saved chain. GREEN coverage now proves that an explicit,
+Zod-validated `seed_id` is matched only against the account's safe
+`/api/seed-context` projection; People, Agents, and Graph all request that
+same Seed, selection persists in the page URL, and an absent or foreign value
+is not probed and safely falls back to the owner's projected list. The UI shows
+a labelled keyboard-accessible scenario selector without revealing scenario
+text or using localStorage.
+
+The same revalidation exposed a separate History-ordering defect: two valid
+formal Runs created in one transaction could share `created_at`, leaving the
+newest-first tie-break dependent on UUID order. RED pgTAP captured it. An
+additive local migration changes only the canonical Run timestamp default to
+`clock_timestamp()`; GREEN pgTAP proves the later Run has a later timestamp and
+History returns it first. Existing migration files and V2 Core remain unchanged.
+
+M1.6 remains **BLOCKED** and this document must not be read as acceptance:
+the full Vitest regression currently fails in pre-existing V2
+Outcome/Calibration and Migration/Async tests, outside this authorized M1.6
+scope. The authenticated browser replay, new account data, and push are
+therefore deferred. No M2 work was started.
 
 The repository-wide `scripts/secret-scan.ps1` returned a documented false
 positive for explanatory blank-key examples in pre-existing setup documents.
