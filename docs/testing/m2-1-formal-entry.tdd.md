@@ -88,6 +88,62 @@ not changed, so authenticated chain replay and network evidence remain for the
 next independent reviewer. This candidate remains local-only and unpushed; it
 does not claim M2.1, the second phase, or Phase 4 PASS.
 
+## Second independent-review FAIL and minimum repair, 2026-08-31
+
+An independent M2.1 review marked the repaired candidate **FAIL** again before
+this repair. The two bounded findings were: formal `/app/new/intake` still
+loaded and saved a browser draft, exposed long-horizon choices, and allowed a
+People action before server confirmation; anonymous `/app/archive` mounted its
+History client and requested History before an authentication boundary. This
+repair changes no schema, API payload contract, RLS, migration, My Sandbox
+overview, formal Run/History/Feedback contract, or `src/lib/v2/**`.
+
+| Stage | Commit | Command | Actual result |
+| --- | --- | --- | --- |
+| Second-repair RED | `ebbc562` | `npm.cmd test -- src/app/m2-1-formal-entry-contract.test.ts` | exit 1, 1 file / 9 tests, 2 intended failures. The required formal Intake and authenticated Archive client modules did not exist. |
+| Second-repair GREEN | `3a42107` | same | exit 0, 1 file / 9 tests. |
+| M2.0 plus M2.1 regression | `3a42107` | `npm.cmd test -- src/lib/sandbox-overview/overview.server.test.ts src/app/api/sandbox-overview/route.test.ts src/app/app/dashboard/page.m2.test.ts src/components/app-shell.m2.test.ts src/app/m2-1-formal-entry-contract.test.ts` | exit 0, 5 files / 37 tests. |
+| Full Vitest | `3a42107` | `npm.cmd test` | exit 0, 63 files / 609 tests, 98.84 seconds. |
+| Repository coverage | `3a42107` | `npm.cmd run test:coverage` | exit 0, 63 files / 609 tests. Statements 90.85%, branches 81.21%, functions 95.55%, lines 93.52%. |
+| Static gates | `3a42107` | `npm.cmd run lint`; `npm.cmd run type-check`; `npm.cmd run build` | every command exit 0. |
+
+### Guarantees added by the repair
+
+- The formal Intake route performs the server-session check before the client
+  form mounts. Anonymous and unconfigured states render a truthful login/setup
+  boundary.
+- The formal client has only the 30- and 90-day Track A values, keeps form
+  values in React state before submission, posts directly to
+  `/api/seed-context` with one fresh UUID idempotency key, does not retry a
+  conflict, retains in-memory input on failure without claiming persistence,
+  and renders the People action only after a server-confirmed Seed response.
+- The former browser-draft intake surface is retained only at the unlinked
+  compatibility route `/intake`; formal CTAs and navigation do not point to it.
+- Archive performs the server-session check before mounting its History client.
+  The authenticated client retains the existing multi-Run History behavior;
+  direct API 401 behavior is unchanged.
+
+### Anonymous production-browser evidence
+
+The production build from `3a42107` was served by this task at
+`http://127.0.0.1:4317` in an isolated Playwright session. Root CTA -> Scene
+CTA -> Intake reached the formal route. Intake rendered the login boundary with
+no Track B value, browser-draft claim, or People action. Archive rendered the
+login boundary; its performance resource list contained zero
+`/api/sandbox/runs` requests, and console capture recorded 0 errors and 0
+warnings. Anonymous Dashboard rendered its login boundary and Running rendered
+its honest no-Run state. At 375, 768, and 1280 CSS pixels,
+`scrollWidth === clientWidth`; no visible interactive target was below 44px;
+Tab focus produced a 3px solid outline. Authentication setup remains outside
+this repair, so authenticated Intake submission and authenticated multi-Run
+Archive replay remain for the next independent review.
+
+pgTAP, Golden, and seven V2 suites are reused from the immediately preceding
+independent GREEN evidence because this repair changes none of their covered
+contracts. This remains a local repair candidate only. It does not mark M2.1,
+the second phase, or Phase 4 PASS, and it has not been pushed, submitted as a
+PR, or merged.
+
 ## Browser and remaining acceptance boundary
 
 The production build was served locally on port 3100. Anonymous browser replay
