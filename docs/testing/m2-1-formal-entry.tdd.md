@@ -20,6 +20,8 @@ the formal overview contract, or changes under `src/lib/v2/**`.
 | Running without a Run id is an honest empty state | same | PASS after GREEN |
 | Missing History timestamps never reveal the Run id | same | PASS after GREEN |
 | Formal navigation has no sample or standalone Result destination | same | PASS after GREEN |
+| Root to Scene to formal Intake never imports, renders, invokes, or links a trial/sample shortcut | `m2-1-formal-entry-contract.test.ts` | PASS after repair GREEN |
+| Formal desktop and mobile navigation targets, including language controls, are at least 44px high | `app-shell.m2.test.ts` | PASS after repair GREEN |
 
 ## TDD checkpoints
 
@@ -36,6 +38,55 @@ the formal overview contract, or changes under `src/lib/v2/**`.
 | Seven V2 scripts | working tree after GREEN | `test:v2:evidence`, `world`, `trajectory`, `analysis`, `claims-reports`, `outcome-calibration`, `migration-async-execution` | exit 0. Test counts: 83, 116, 63, 47, 23, 40, 22. |
 | Lint | working tree after GREEN | `npm.cmd run lint` | exit 0. |
 | Production build | working tree after GREEN | `npm.cmd run build` | exit 0. |
+
+## Independent-review repair, 2026-08-31
+
+An independent M2.1 review marked the candidate **FAIL** before this repair.
+The two scoped findings were: the formal Scene to Intake path still exposed the
+trial/sample component and Career-filled sample text, and formal navigation
+targets were 40px rather than 44px. This repair changed no schema, API, RLS,
+migration, overview contract, formal Run/History/Feedback semantics, or
+`src/lib/v2/**`.
+
+| Stage | Commit | Command | Actual result |
+| --- | --- | --- | --- |
+| Repair RED | `e38c0b3` | `npm.cmd test -- src/app/m2-1-formal-entry-contract.test.ts src/components/app-shell.m2.test.ts` | exit 1, 2 files / 9 tests. The two new assertions failed for `TrialSampleButton`/sample fill in formal Intake and absent `min-h-11` navigation targets. |
+| Repair GREEN | `a3d3af8` | same | exit 0, 2 files / 9 tests. Formal Intake no longer imports, renders, invokes, or links the trial/sample path; formal navigation uses real 44px targets, not overlay hit areas. |
+| Test hygiene | `802aa08` | focused suite, then `npm.cmd run lint` | exit 0. Removed one unused test fixture only. |
+| M2.0 plus M2.1 regression | final candidate | `npm.cmd test -- src/lib/sandbox-overview/overview.server.test.ts src/app/api/sandbox-overview/route.test.ts src/app/app/dashboard/page.m2.test.ts src/components/app-shell.m2.test.ts src/app/m2-1-formal-entry-contract.test.ts` | exit 0, 5 files / 35 tests. |
+| Full Vitest | final candidate | `npm.cmd test` | exit 0, 63 files / 607 tests, 128.84 seconds. |
+| Repository coverage | final candidate | `npm.cmd run test:coverage` | exit 0, 63 files / 607 tests. Statements 90.85%, branches 81.21%, functions 95.55%, lines 93.52%. |
+| Lint, type check, build | final candidate | `npm.cmd run lint`; `npm.cmd run type-check`; `npm.cmd run build` | every command exit 0. |
+| Diff, secret/PII, V2 boundary | final candidate | `git diff --check d2e033a..HEAD`; changed-file scan; `git diff --quiet 0bbb9a76..HEAD -- src/lib/v2` | exit 0, 0 secret/PII hits, and empty V2 diff. |
+
+The repair changed 5 source/test files from the independent-review start:
+`src/app/app/new/intake/page.tsx`, `src/app/m2-1-formal-entry-contract.test.ts`,
+`src/components/app-shell.m2.test.ts`, `src/components/app-shell.tsx`, and
+`src/components/language-switcher.tsx`.
+
+### Repair browser evidence
+
+The final production build was served by this task at `http://127.0.0.1:4307`,
+owned PID `24752`, with startup marker
+`M2_1_REPAIR_HEAD=802aa089aadcc173679ed772612d234847f40763`.
+
+- Public `/` CTA reached `/app/new/scene`, and the Scene CTA reached
+  `/app/new/intake`. The Intake body contained no sample or trial text or
+  control.
+- `/app/start` redirected to `/app/new/scene`; `/app/simulation/running`
+  without a Run id showed the honest Chinese empty state and My Sandbox, Start,
+  and History links, with no raw no-id message or Result CTA.
+- Every visible formal header target measured 44px. The 375, 768, and 1280
+  viewport checks had `scrollWidth === clientWidth`; a 74-character Chinese
+  scenario input also fit at the medium viewport. Keyboard Tab focus produced
+  a visible solid outline.
+- Browser console evidence was 0 errors and 0 warnings on the public, Scene,
+  Intake, and no-id Running checks.
+
+Authentication remains outside this repair. The high-port callback policy was
+not changed, so authenticated chain replay and network evidence remain for the
+next independent reviewer. This candidate remains local-only and unpushed; it
+does not claim M2.1, the second phase, or Phase 4 PASS.
 
 ## Browser and remaining acceptance boundary
 
