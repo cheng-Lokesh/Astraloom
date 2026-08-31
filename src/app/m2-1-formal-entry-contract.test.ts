@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
 
 import { describe, expect, it } from "vitest";
+
+import { FormalIntakeClient } from "./app/new/intake/formal-intake-client";
 
 const root = process.cwd();
 
@@ -82,6 +86,20 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(intake).toContain("crypto.randomUUID()");
     expect(intake).toContain('href="/app/new/people"');
     expect(intake).not.toMatch(/Track B|1_year|3_years|5_years|localStorage|getRepositories|repository-provider|saveLocalDraft|local-first|remains on this device|Confirm people/i);
+  });
+
+  it("renders the formal privacy acknowledgement checkbox as a real 44px keyboard-focusable target", () => {
+    const markup = renderToStaticMarkup(createElement(FormalIntakeClient));
+
+    expect(markup).toMatch(/<input[^>]+type="checkbox"[^>]+style="[^"]*min-height:44px;[^"]*min-width:44px;[^"]*"[^>]*>/);
+    expect(markup).toMatch(/<input[^>]+type="checkbox"[^>]+class="[^"]*focus-visible:outline[^"]*"[^>]*>/);
+  });
+
+  it("projects a completed server Run in natural language without exposing ready as a user-visible state", async () => {
+    const running = await source("src/app/app/simulation/running/page.tsx");
+
+    expect(running).toContain("结果已生成");
+    expect(running).not.toMatch(/Bundle is ready|>ready<|\{phase\}/i);
   });
 
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {
