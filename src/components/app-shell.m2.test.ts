@@ -7,10 +7,10 @@ const root = process.cwd();
 
 describe("My Sandbox navigation contract", () => {
   it("keeps server-backed account routes reachable on desktop and mobile without a Result dead end", async () => {
-    const [source, languageSwitcher] = await Promise.all([
-      readFile(path.join(root, "src/components/app-shell.tsx"), "utf8"),
-      readFile(path.join(root, "src/components/language-switcher.tsx"), "utf8"),
-    ]);
+    const source = await readFile(
+      path.join(root, "src/components/app-shell.tsx"),
+      "utf8",
+    );
 
     for (const expected of [
       'href: "/app/dashboard", label: "My Sandbox"',
