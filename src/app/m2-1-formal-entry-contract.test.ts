@@ -53,6 +53,22 @@ describe("M2.1 formal entry and legacy isolation", () => {
     );
   });
 
+  it("keeps the formal Intake as a server-backed Track A-only component until submission succeeds", async () => {
+    const [page, intake] = await Promise.all([
+      source("src/app/app/new/intake/page.tsx"),
+      source("src/app/app/new/intake/formal-intake-client.tsx"),
+    ]);
+
+    expect(page).toContain("createSupabaseServerClient");
+    expect(page).toContain("登录后继续正式录入");
+    expect(intake).toContain('"30_days"');
+    expect(intake).toContain('"90_days"');
+    expect(intake).toContain('fetch("/api/seed-context"');
+    expect(intake).toContain("crypto.randomUUID()");
+    expect(intake).toContain('href="/app/new/people"');
+    expect(intake).not.toMatch(/Track B|1_year|3_years|5_years|localStorage|getRepositories|repository-provider|saveLocalDraft|local-first|remains on this device|Confirm people/i);
+  });
+
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {
     const running = await source("src/app/app/simulation/running/page.tsx");
 
@@ -70,6 +86,19 @@ describe("M2.1 formal entry and legacy isolation", () => {
 
     expect(archive).toContain("时间不可用");
     expect(archive).not.toContain(":run.id}");
+  });
+
+  it("places the Archive authentication boundary on the server before its History client mounts", async () => {
+    const [page, client] = await Promise.all([
+      source("src/app/app/archive/page.tsx"),
+      source("src/app/app/archive/archive-history-client.tsx"),
+    ]);
+
+    expect(page).toContain("createSupabaseServerClient");
+    expect(page).toContain("登录后查看账户历史");
+    expect(page).toContain("ArchiveHistoryClient");
+    expect(page).not.toMatch(/"use client"|createFormalSandboxClient|useEffect/);
+    expect(client).toContain("createFormalSandboxClient().history(12)");
   });
 
   it("keeps the formal primary navigation free of sample and standalone Result destinations", async () => {
