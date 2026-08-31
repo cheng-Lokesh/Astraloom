@@ -31,6 +31,21 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(start).not.toMatch(/TrialSampleButton|createTrialWorkspace|localStorage/);
   });
 
+  it("sends the public legacy /intake bookmark to the formal scene without rendering legacy navigation or formal-chain CTAs", async () => {
+    const [legacyRoute, legacyIntake, hero, scene] = await Promise.all([
+      source("src/app/intake/page.tsx"),
+      source("src/components/legacy/local-intake-page.tsx"),
+      source("src/components/hero/cinematic-command-hero.tsx"),
+      source("src/app/app/new/scene/page.tsx"),
+    ]);
+
+    expect(legacyRoute).toContain('redirect("/app/new/scene")');
+    expect(legacyRoute).not.toMatch(/LocalIntakePage|AppShell/);
+    expect(legacyIntake).toMatch(/Track B|Confirm people|\/app\/new\/people|Submit formal Track A version/);
+    expect(hero).toContain('href="/app/new/scene"');
+    expect(scene).toContain('href="/app/new/intake"');
+  });
+
   it("offers only the current formal Track A intake from the new-scene route", async () => {
     const scene = await source("src/app/app/new/scene/page.tsx");
 
