@@ -9,13 +9,15 @@ at the formal account Track A loop; no M2 work is included in that acceptance.
 
 ## M2.0 follow-up status
 
-M2.0 is an authorized, narrow candidate slice after M1. It replaces only the
-logged-in dashboard and primary navigation with a truthful My Sandbox overview.
-It does not accept the whole second phase, change M1 acceptance, or authorize
-M2.1, M3, a complete digital-life model, Reality Profile, Destiny engine,
-resource model, World State schema, public landing, billing, admin, Simple Mode,
-or V2 Core work. Detailed RED/GREEN and gate evidence is recorded in
-`M2_0_CANDIDATE_EVIDENCE.md` and `../../testing/m2-0-sandbox-overview.tdd.md`.
+M2.0 is a narrow milestone that passed independent review after M1. It replaces
+only the logged-in dashboard and primary navigation with a truthful My Sandbox
+overview. This does not accept the whole second phase or Phase 4, change M1
+acceptance, or authorize M2.1, M3, a complete digital-life model, Reality
+Profile, Destiny engine, resource model, World State schema, public landing,
+billing, admin, Simple Mode, or V2 Core work. Its evidence-only closeout is not
+pushed; it does not claim local, upstream, and remote are equal. Detailed
+RED/GREEN and gate evidence is recorded in `M2_0_CANDIDATE_EVIDENCE.md` and
+`../../testing/m2-0-sandbox-overview.tdd.md`.
 
 ## Product outcome
 

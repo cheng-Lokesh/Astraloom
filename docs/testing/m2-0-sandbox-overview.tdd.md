@@ -35,27 +35,44 @@ The delegated M2.0 fixed plan defines these journeys:
 | 5 | Primary navigation exposes My Sandbox, Start, People, Graph, Running, and History on mobile and desktop, with focus and press states. | `app-shell.m2.test.ts` |
 | 6 | Old-Seed and old-Graph Runs or Feedback never drive the current chain; account History remains separate. | `overview.server.test.ts` |
 
-## Final-gate note
+## Final independent acceptance
 
-Focused overview/API coverage completed at 91.11% statements, 91.54% branches,
-100% functions, and 100% lines. Repository coverage completed at 90.85%
-statements, 81.21% branches, 95.55% functions, and 93.52% lines. Production
-browser acceptance completed for a fresh anonymous session and a local
-full-chain authenticated session at 375, 768, and 1280 CSS pixels, with 0
-errors / 0 warnings in each checked console.
+M2.0 milestone PASS after independent review. This does not mark the second
+phase or Phase 4 as PASS, and it does not authorize M2.1 or M3.
 
-An initial repository `npm test` run timed out in six V2 cases while the
-task-owned production server/browser load was still active. After those task
-processes were stopped and no configuration, timeout, or V2 source was changed,
-the exact final `npm test` passed: 62 files / 594 tests.
+The final focused command passed 4 files / 27 tests (exit 0), with 89.74%
+focused branch coverage; the overview source reports 89.18% branches. Final
+repository `npm test` passed 62 files / 599 tests (exit 0). Full coverage
+passed with 90.85% statements, 81.21% branches, 95.55% functions, and 93.52%
+lines. pgTAP passed 8 files / 538 assertions; Golden passed 3 tests spanning
+all 8 Golden Cases. All seven original V2 scripts, lint, type-check, production
+build, `git diff --check`, changed-file secret/PII scan, and the V2 diff review
+passed.
+
+Independent browser evidence established that anonymous dashboard rendering
+made no overview request and direct API access returned 401, while an
+authenticated overview returned 200. It also established the two-Seed contract:
+an old completed Run appears only in History when the newer Seed is partial
+(current next action: People); a locked current Graph without a Run directs the
+user to start that current run; after completion and feedback, current
+completed/current feedback are 1/1 and History is 2. At 375, 768, and 1280 CSS
+pixels, there was no horizontal overflow; mobile navigation, keyboard focus,
+and long Chinese content passed, with 0 console errors / 0 warnings.
+
+Final owner-scoped sanitized counts were Seeds 16, People 12, Agents 12,
+Graphs 2, Runs 2, Events 18, Claims 2, Reports 2, and Feedback 2. Every Run
+referenced a locked Graph and every Feedback record referenced a completed Run.
+The larger Seed/People counts are formal paths from independent acceptance
+rounds in one account, not a general product baseline, and do not affect the
+current-chain assertion.
 
 ## Cross-Seed repair evidence
 
 The added RED cases cover an old completed Seed with a new partial Seed, an old
 running Seed with a new locked Graph, an old Graph within the newest Seed,
 current running/completed precedence, and Feedback scoped to the current
-completed Run. The focused GREEN command passed 27 tests. Focused overview/API
-coverage passed with 83.78% statements, 89.18% branches, and 100% functions
-and lines. The overview envelope continues to return a fresh HTTP response
+completed Run. The focused GREEN command passed 27 tests. Final focused branch
+coverage was 89.74%; overview source coverage remains 89.18% branches. The
+overview envelope continues to return a fresh HTTP response
 `trace_id`; it does not project persisted trace ids, identities, or raw
 scenario fields.

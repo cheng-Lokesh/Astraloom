@@ -1,7 +1,9 @@
-# M2.0 My Sandbox candidate evidence
+# M2.0 My Sandbox independent acceptance evidence
 
-Status: candidate only. This document does not mark Phase 4, the second phase,
-or any later M2 slice as PASS.
+Status: **M2.0 milestone PASS after independent review**. This is a narrow
+milestone result only: it does not mark the second phase or Phase 4 as PASS,
+does not start M2.1 or M3, and has not been pushed. Career remains a Golden
+Case, not Astraloom's product identity.
 
 ## Scope
 
@@ -36,30 +38,39 @@ World State work.
 - The dashboard has loading/error/ready states and has no repository or
   localStorage fallback. Navigation has no standalone Result destination.
 
-## Actual candidate evidence
+## Final independent acceptance evidence
 
-- Focused M2 suite: exit 0, 4 files / 22 tests.
-- Focused overview/API coverage: exit 0, 20 tests; statements 91.11%, branches
-  91.54%, functions 100%, lines 100%.
-- pgTAP: exit 0, 8 files / 538 assertions. `npm run test:golden`: exit 0, 3
-  tests. Production `npm run build`: exit 0 after the anonymous browser fix.
-- Final clean `npm test`: exit 0, 62 files / 594 tests. Final
-  `npm run test:coverage`: exit 0, 62 files / 594 tests; statements 90.85%,
-  branches 81.21%, functions 95.55%, lines 93.52%. Final `npm run lint`:
-  exit 0.
-- Browser production check: a fresh anonymous session made no
-  `/api/sandbox-overview` request and had 0 errors / 0 warnings. An existing
-  local authenticated full-chain account received 200 from the endpoint, had
-  0 errors / 0 warnings, and showed only the server-backed counts/statuses.
-  Screenshots were checked at 375, 768, and 1280 CSS pixels; no raw identifier
-  was rendered. The retained evidence files are
-  `output/playwright/m20-anon-{375,768,1280}.png` and
-  `output/playwright/m20-full-{375,768,1280}.png`.
+- The cross-Seed repair checkpoints are RED `5679aba` (five intended failing
+  assertions), GREEN `e576505`, trace-contract documentation `91a6e0b`, and
+  fixture type correction `c7c2f7d`.
+- Focused M2 suite: exit 0, 4 files / 27 tests. Focused branch coverage was
+  89.74%; the overview source coverage remains 89.18% branches.
+- pgTAP: exit 0, 8 files / 538 assertions. `npm test`: exit 0, 62 files / 599
+  tests. Full coverage: exit 0; 90.85% statements, 81.21% branches, 95.55%
+  functions, and 93.52% lines. Golden: exit 0, 3 tests covering all 8 Golden
+  Cases.
+- All seven original V2 scripts exited 0. Lint, type-check, production build,
+  `git diff --check`, changed-file secret/PII scan, and the `src/lib/v2/**`
+  diff review all passed.
+- Independent production-browser evidence: an anonymous dashboard made no
+  overview request and direct API access returned 401; an authenticated
+  overview returned 200. An older completed Seed moved to account History when
+  a newer Seed was partial, whose current next action was People. With a new
+  locked Graph and no Run, the current next action was to start the current
+  run. After the new chain completed and received feedback, current completed
+  and current feedback were each 1 while History was 2. At 375, 768, and 1280
+  CSS pixels there was no horizontal overflow; mobile navigation, keyboard
+  focus, and long Chinese content passed, with 0 console errors and 0 warnings.
+- Final owner-scoped, sanitized database counts were Seeds 16, People 12,
+  Agents 12, Graphs 2, Runs 2, Events 18, Claims 2, Reports 2, and Feedback 2.
+  Every Run referenced a locked Graph and every Feedback record referenced a
+  completed Run. The extra Seed and People records are formal test paths from
+  multiple independent acceptance rounds in one account; they do not affect
+  the current-chain assertions and are not a general product baseline.
 
 ## Gate boundary
 
-An earlier `npm test` exited 1 under concurrent browser/production-server load:
-588/594 tests passed and six V2 timing tests exceeded their fixed limits. After
-stopping the task-owned browser/service processes, the unchanged precise final
-`npm test` exited 0. This evidence is still **M2.0 candidate only**: it does
-not claim Phase 4 PASS, M2.1, M3, or a V2 change, push, PR, or merge.
+This evidence-only closeout changes no production code, tests, configuration,
+migration, or V2 Core. It does not claim local, upstream, and remote are equal;
+the candidate remains unpushed. It does not authorize M2.1, M3, a push, PR, or
+merge, and does not mark the second phase or Phase 4 as PASS.
