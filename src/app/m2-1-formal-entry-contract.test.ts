@@ -39,6 +39,20 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(scene).not.toMatch(/TrialSampleButton|localStorage|Track B|路径 B/);
   });
 
+  it("keeps the public-to-formal Intake path free of sample, trial, and local-result shortcuts", async () => {
+    const [hero, scene, intake] = await Promise.all([
+      source("src/components/hero/cinematic-command-hero.tsx"),
+      source("src/app/app/new/scene/page.tsx"),
+      source("src/app/app/new/intake/page.tsx"),
+    ]);
+
+    expect(hero).toContain('href="/app/new/scene"');
+    expect(scene).toContain('href="/app/new/intake"');
+    expect(intake).not.toMatch(
+      /TrialSampleButton|const sample\b|function useSample\b|Use sample text|Open sample sandbox|Open sample result|createTrialWorkspace|trial.*localStorage|localStorage.*trial/i,
+    );
+  });
+
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {
     const running = await source("src/app/app/simulation/running/page.tsx");
 

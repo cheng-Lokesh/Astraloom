@@ -7,7 +7,10 @@ const root = process.cwd();
 
 describe("My Sandbox navigation contract", () => {
   it("keeps server-backed account routes reachable on desktop and mobile without a Result dead end", async () => {
-    const source = await readFile(path.join(root, "src/components/app-shell.tsx"), "utf8");
+    const [source, languageSwitcher] = await Promise.all([
+      readFile(path.join(root, "src/components/app-shell.tsx"), "utf8"),
+      readFile(path.join(root, "src/components/language-switcher.tsx"), "utf8"),
+    ]);
 
     for (const expected of [
       'href: "/app/dashboard", label: "My Sandbox"',
@@ -23,5 +26,17 @@ describe("My Sandbox navigation contract", () => {
     ]) expect(source).toContain(expected);
 
     expect(source).not.toContain('href: "/app/simulation/result", label: "Result"');
+  });
+
+  it("keeps every formal desktop and mobile navigation target at least 44px high", async () => {
+    const [source, languageSwitcher] = await Promise.all([
+      readFile(path.join(root, "src/components/app-shell.tsx"), "utf8"),
+      readFile(path.join(root, "src/components/language-switcher.tsx"), "utf8"),
+    ]);
+
+    expect(source.match(/min-h-11/g)).toHaveLength(4);
+    expect(languageSwitcher).toContain("min-h-11");
+    expect(source).not.toContain("min-h-10");
+    expect(languageSwitcher).not.toContain("min-h-9");
   });
 });
