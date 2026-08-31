@@ -19,6 +19,24 @@ pushed; it does not claim local, upstream, and remote are equal. Detailed
 RED/GREEN and gate evidence is recorded in `M2_0_CANDIDATE_EVIDENCE.md` and
 `../../testing/m2-0-sandbox-overview.tdd.md`.
 
+## M2.1 formal entry and legacy isolation candidate
+
+M2.1 is a local-only candidate that narrows the public entry and legacy routing
+to the existing formal account path. It changes no Supabase schema, API, RLS,
+migration, overview contract, or `src/lib/v2/**`. The public hero now explains
+the Seed to People to Agents to Graph to Run to History/Feedback path; its
+primary CTA opens `/app/new/scene`, and it has no standalone sample Result
+link. `/app/start` redirects to that same formal Scene route. Scene presents
+the currently available Track A and Reality Intake path only, with no trial
+workspace. Running without a `run_id` is an honest empty state, and History
+uses a non-identifier time placeholder when timestamps are unavailable.
+
+`/app/simple`, `/demo`, and `/app/admin` use an isolated shell without formal
+primary navigation. This candidate does not accept M2.1, the second phase, or
+Phase 4; it has not been pushed. See
+`../../testing/m2-1-formal-entry.tdd.md` for the actual RED/GREEN evidence and
+remaining gate status.
+
 ## Product outcome
 
 Phase 4 connects the submitted account Seed, confirmed People, immutable Agent
