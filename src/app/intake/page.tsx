@@ -1,5 +1,5 @@
-import LocalIntakePage from "@/components/legacy/local-intake-page";
+import { redirect } from "next/navigation";
 
 export default function LegacyIntakePage() {
-  return <LocalIntakePage />;
+  redirect("/app/new/scene");
 }
