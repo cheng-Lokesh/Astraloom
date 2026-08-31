@@ -1,6 +1,57 @@
 "use client";
-import{Suspense,useEffect,useState}from"react";import{useRouter,useSearchParams}from"next/navigation";import{AppShell}from"@/components/app-shell";import{Button,ButtonLink,SurfaceCard}from"@/components/ui-foundation";import{createFormalSandboxClient}from"@/lib/formal-sandbox/client";
-type Phase="loading"|"running"|"ready"|"error";
-export default function RunningPage(){return <AppShell><Suspense fallback={<RunningSurface phase="loading"/>}><RunningController/></Suspense></AppShell>}
-function RunningController(){const params=useSearchParams();const router=useRouter();const runId=params.get("run_id");const[phase,setPhase]=useState<Phase>("loading");const[message,setMessage]=useState("Recovering the persisted Run status.");useEffect(()=>{if(!runId)return;let current=true;void createFormalSandboxClient().status(runId).then(response=>{if(!current)return;if(!response.ok){setPhase("error");setMessage(`Run status is unavailable: ${response.errorCode}.`);return}if(response.data.run.status!=="completed"){setPhase("running");setMessage("The server has not marked this Run complete. No result is shown yet.");return}setPhase("ready");setMessage("The immutable result Bundle is ready.");window.setTimeout(()=>router.replace(`/app/simulation/result?run_id=${runId}`),700)});return()=>{current=false}},[router,runId]);async function retry(){if(!runId)return;setPhase("loading");const response=await createFormalSandboxClient().status(runId);if(!response.ok){setPhase("error");setMessage(`Run status is unavailable: ${response.errorCode}.`)}else if(response.data.run.status==="completed")router.replace(`/app/simulation/result?run_id=${runId}`);else{setPhase("running");setMessage("The server has not marked this Run complete. No result is shown yet.")}}if(!runId)return <RunningSurface phase="error" message="No formal Run id was provided."/>;return <RunningSurface phase={phase} message={message} retry={()=>void retry()}/>}
-function RunningSurface({phase,message="Recovering the persisted Run status.",retry}:{phase:Phase;message?:string;retry?:()=>void}){const active=phase==="loading"||phase==="running";return <section id="main-content" className="mx-auto min-h-[70svh] max-w-5xl py-8 sm:py-14"><p className="font-mono text-[11px] uppercase tracking-[.16em] text-[var(--text-muted)]">Formal account sandbox / Run state</p><div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]"><div><div className="flex items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${active?"formal-status-pulse bg-[var(--evidence-gold)]":phase==="ready"?"bg-[var(--verified-green)]":"bg-[var(--risk-red)]"}`} aria-hidden="true"/><p role="status" aria-live="polite" className="font-mono text-xs uppercase tracking-[.14em] text-[var(--text-secondary)]">{phase}</p></div><h1 className="mt-5 max-w-3xl font-[var(--font-display)] text-4xl leading-[1.08] text-[var(--text-primary)] sm:text-6xl">{phase==="ready"?"Evidence chain sealed.":phase==="error"?"The Run stopped before a result.":"Tracing possible paths."}</h1><p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-secondary)]">{message}</p>{phase==="error"?<div className="mt-7 flex flex-wrap gap-3">{retry?<Button onClick={retry} className="!w-auto px-4 py-3">Retry status</Button>:null}<ButtonLink href="/app/new/graph" variant="secondary" className="!w-auto px-4 py-3">Return to Graph</ButtonLink></div>:null}</div><SurfaceCard emphasis="dark" className="p-5"><p className="font-mono text-[11px] uppercase tracking-[.14em] text-white/45">Completion rule</p><p className="mt-3 text-sm leading-7 text-white/70">This screen reads the account database. It never infers completion from a timer, animation, or browser cache.</p></SurfaceCard></div><ol className="mt-12 grid gap-3 sm:grid-cols-3" aria-label="Formal execution chain">{["Locked Graph","Event-backed Claims","Persisted Report"].map((label,index)=><li key={label} className="border-t border-[rgba(176,224,230,.18)] pt-4"><span className="font-mono text-[10px] text-[var(--evidence-gold)]">0{index+1}</span><p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">{label}</p></li>)}</ol></section>}
+
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import { AppShell } from "@/components/app-shell";
+import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
+import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
+
+type Phase = "loading" | "running" | "ready" | "error";
+
+export default function RunningPage() {
+  return <AppShell><Suspense fallback={<RunningSurface phase="loading" />}><RunningController /></Suspense></AppShell>;
+}
+
+function RunningController() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const runId = params.get("run_id");
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [message, setMessage] = useState("Recovering the persisted Run status.");
+
+  useEffect(() => {
+    if (!runId) return;
+    let current = true;
+    void createFormalSandboxClient().status(runId).then((response) => {
+      if (!current) return;
+      if (!response.ok) { setPhase("error"); setMessage(`Run status is unavailable: ${response.errorCode}.`); return; }
+      if (response.data.run.status !== "completed") { setPhase("running"); setMessage("The server has not marked this Run complete. No result is shown yet."); return; }
+      setPhase("ready");
+      setMessage("The immutable result Bundle is ready.");
+      window.setTimeout(() => router.replace(`/app/simulation/result?run_id=${runId}`), 700);
+    });
+    return () => { current = false; };
+  }, [router, runId]);
+
+  async function retry() {
+    if (!runId) return;
+    setPhase("loading");
+    const response = await createFormalSandboxClient().status(runId);
+    if (!response.ok) { setPhase("error"); setMessage(`Run status is unavailable: ${response.errorCode}.`); }
+    else if (response.data.run.status === "completed") router.replace(`/app/simulation/result?run_id=${runId}`);
+    else { setPhase("running"); setMessage("The server has not marked this Run complete. No result is shown yet."); }
+  }
+
+  if (!runId) return <NoActiveRun />;
+  return <RunningSurface phase={phase} message={message} retry={() => void retry()} />;
+}
+
+function NoActiveRun() {
+  return <section id="main-content" className="mx-auto min-h-[70svh] max-w-5xl py-8 sm:py-14"><p className="font-mono text-[11px] uppercase tracking-[.16em] text-[var(--text-muted)]">我的沙盘 / Running</p><h1 className="mt-5 font-[var(--font-display)] text-4xl leading-[1.08] text-[var(--text-primary)] sm:text-6xl">当前没有正在运行的沙盘</h1><p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-secondary)]">从 My Sandbox 查看你的账户链，开始一段新的正式处境，或回到 History 打开已完成的结果。</p><div className="mt-8 flex flex-wrap gap-3"><ButtonLink href="/app/dashboard" className="!w-auto px-4 py-3">My Sandbox</ButtonLink><ButtonLink href="/app/new/scene" variant="secondary" className="!w-auto px-4 py-3">Start</ButtonLink><ButtonLink href="/app/archive" variant="secondary" className="!w-auto px-4 py-3">History</ButtonLink></div></section>;
+}
+
+function RunningSurface({ phase, message = "Recovering the persisted Run status.", retry }: { phase: Phase; message?: string; retry?: () => void }) {
+  const active = phase === "loading" || phase === "running";
+  return <section id="main-content" className="mx-auto min-h-[70svh] max-w-5xl py-8 sm:py-14"><p className="font-mono text-[11px] uppercase tracking-[.16em] text-[var(--text-muted)]">Formal account sandbox / Run state</p><div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]"><div><div className="flex items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${active ? "formal-status-pulse bg-[var(--evidence-gold)]" : phase === "ready" ? "bg-[var(--verified-green)]" : "bg-[var(--risk-red)]"}`} aria-hidden="true" /><p role="status" aria-live="polite" className="font-mono text-xs uppercase tracking-[.14em] text-[var(--text-secondary)]">{phase}</p></div><h1 className="mt-5 max-w-3xl font-[var(--font-display)] text-4xl leading-[1.08] text-[var(--text-primary)] sm:text-6xl">{phase === "ready" ? "Evidence chain sealed." : phase === "error" ? "The Run stopped before a result." : "Tracing possible paths."}</h1><p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-secondary)]">{message}</p>{phase === "error" ? <div className="mt-7 flex flex-wrap gap-3">{retry ? <Button onClick={retry} className="!w-auto px-4 py-3">Retry status</Button> : null}<ButtonLink href="/app/new/graph" variant="secondary" className="!w-auto px-4 py-3">Return to Graph</ButtonLink></div> : null}</div><SurfaceCard emphasis="dark" className="p-5"><p className="font-mono text-[11px] uppercase tracking-[.14em] text-white/45">Completion rule</p><p className="mt-3 text-sm leading-7 text-white/70">This screen reads the account database. It never infers completion from a timer, animation, or browser cache.</p></SurfaceCard></div></section>;
+}

@@ -87,7 +87,7 @@ export default function AdminPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell navigation="isolated">
       <section className="space-y-6">
         <section className="rounded-lg border border-black/8 bg-white p-6 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">
           <StatusPill tone="planned">Admin/Ops</StatusPill>

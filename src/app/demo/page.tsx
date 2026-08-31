@@ -119,7 +119,7 @@ export default function DemoPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell navigation="isolated">
       <div className="space-y-7">
         <section className="grid gap-6 lg:grid-cols-[390px_minmax(0,1fr)]">
           <div className="rounded-lg border border-black/8 bg-white p-5 shadow-[0_24px_80px_rgba(17,21,15,0.06)]">

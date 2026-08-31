@@ -367,7 +367,7 @@ export default function SimpleModePage() {
   }
 
   return (
-    <AppShell>
+    <AppShell navigation="isolated">
       <div className="space-y-6">
         <SurfaceCard emphasis="strong" className="p-7">
           <StatusPill tone="ready">Simple Mode</StatusPill>

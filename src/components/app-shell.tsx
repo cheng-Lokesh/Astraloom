@@ -10,6 +10,7 @@ import { BRAND_NAME } from "@/lib/brand";
 
 type AppShellProps = {
   children: React.ReactNode;
+  navigation?: "formal" | "isolated";
 };
 
 const navItems = [
@@ -29,12 +30,12 @@ const moreItems = [
   { href: "/app/support", label: "Help" },
 ] as const;
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, navigation = "formal" }: AppShellProps) {
   const pathname = usePathname();
 
   return (
     <div className="app-cinematic-shell min-h-screen text-[var(--mf-ink)]">
-      <header className="app-cinematic-header sticky top-0 z-30 border-b border-white/10 bg-[#08090a] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
+      {navigation === "formal" ? <header className="app-cinematic-header sticky top-0 z-30 border-b border-white/10 bg-[#08090a] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <Link
             href="/app/dashboard"
@@ -95,7 +96,7 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </div>
         </div>
-      </header>
+      </header> : null}
 
       <main
         key="app-shell"

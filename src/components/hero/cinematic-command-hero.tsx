@@ -10,32 +10,32 @@ import { BRAND_NAME } from "@/lib/brand";
 import CommandHologramCanvas from "./command-hologram-canvas";
 
 const statusItems = [
-  "Reality Signals",
-  "Agent Graph",
-  "Event Ledger",
-  "Path Branches",
-  "Destiny Climate",
+  "Seed context",
+  "People confirmation",
+  "Agent snapshots",
+  "Locked graph",
+  "Run and history",
 ];
 
 const focusZones = [
   {
     id: "graph",
-    label: "Agent graph",
-    detail: "People and pressure lines stay visible before any claim is made.",
+    label: "People and Agents",
+    detail: "Confirm the people in your situation before their read-only snapshots are used.",
     x: "62%",
     y: "42%",
   },
   {
     id: "evidence",
-    label: "Evidence ledger",
-    detail: "Every visible signal stays tied to a replayable source.",
+    label: "Graph and Run",
+    detail: "Lock the relationship graph, then begin one account-backed Run.",
     x: "38%",
     y: "58%",
   },
   {
     id: "branches",
-    label: "Path branches",
-    detail: "Possible futures remain plural, with confidence kept in view.",
+    label: "History and Feedback",
+    detail: "Revisit a completed Run and add feedback without rewriting its evidence.",
     x: "69%",
     y: "68%",
   },
@@ -153,11 +153,11 @@ export function CinematicCommandHero() {
     event.preventDefault();
     const root = rootRef.current;
     if (!root) {
-      router.push("/app/start");
+      router.push("/app/new/scene");
       return;
     }
     root.dataset.ignition = "true";
-    window.setTimeout(() => router.push("/app/start"), 560);
+    window.setTimeout(() => router.push("/app/new/scene"), 560);
   };
 
   return (
@@ -199,17 +199,17 @@ export function CinematicCommandHero() {
               <span className="command-brand-mark"><i /></span>
               <span>
                 <strong>{BRAND_NAME}</strong>
-                <small>Scenario Intelligence Observatory</small>
+                <small>个人数字生命沙盘</small>
               </span>
             </Link>
           </header>
 
           <div className="command-narrative">
-            <span>REALITY-FIRST SIMULATION FIELD</span>
-            <h1>Enter the scene before the answer appears.</h1>
+            <span>PERSONAL DIGITAL-LIFE SANDBOX</span>
+            <h1>Start with your situation, then build a path you can revisit.</h1>
             <p>
-              Load a real relationship or decision into a living sandbox, then watch agents,
-              evidence and possible paths separate from guesswork.
+              Astraloom guides one formal account path: Seed, People, Agents, a locked Graph,
+              then a Run you can find again in History and calibrate with Feedback.
             </p>
           </div>
 
@@ -234,7 +234,7 @@ export function CinematicCommandHero() {
             ))}
           </div>
 
-          <aside className="command-status-rail" aria-label="Observatory status">
+          <aside className="command-status-rail" aria-label="Formal account path">
             <ol>
               {statusItems.map((item) => (
                 <li key={item}>
@@ -247,7 +247,7 @@ export function CinematicCommandHero() {
 
           <div className="command-actions">
             <Link
-              href="/app/start"
+              href="/app/new/scene"
               className="command-primary-action"
               onMouseEnter={() => {
                 if (rootRef.current) rootRef.current.dataset.ctaActive = "true";
@@ -263,19 +263,19 @@ export function CinematicCommandHero() {
               }}
               onClick={startIgnition}
             >
-              启动真实推演 <span aria-hidden="true">↗</span>
+              开始我的沙盘 <span aria-hidden="true">↗</span>
             </Link>
-            <Link href="/app/simulation/result" className="command-secondary-action">
-              查看沙盘示例
+            <Link href="/login" className="command-secondary-action">
+              登录后继续
             </Link>
           </div>
 
           <div className="command-boot-line" aria-hidden="true">
-            <span>SOURCE-BACKED</span>
+            <span>FORMAL ACCOUNT PATH</span>
             <i />
-            <span>AGENT GRAPH ONLINE</span>
+            <span>NO SAMPLE RESULT</span>
             <i />
-            <span>PATH BRANCHES LIVE</span>
+            <span>SERVER-BACKED HISTORY</span>
           </div>
           <div className="command-ignition-flash" aria-hidden="true" />
           <span className="command-corner command-corner-a" />
@@ -287,15 +287,15 @@ export function CinematicCommandHero() {
 
       <section className="command-flow" aria-label="Astraloom product method">
         <div className="command-flow-head">
-          <span>REALITY BEFORE FATE</span>
-          <h2>What enters the observatory becomes traceable.</h2>
+          <span>YOUR PATH, KEPT HONEST</span>
+          <h2>Each stage has one clear job before a formal Run begins.</h2>
         </div>
         <div className="command-flow-grid">
           {[
-            ["01", "Reality Signals", "User context is treated as evidence, not decoration."],
-            ["02", "Agent Graph", "People, constraints, pressure and support become a living relation field."],
-            ["03", "Event Ledger", "Every conclusion can be replayed back to a grounded event record."],
-            ["04", "Path Branches", "Several possible paths stay visible without pretending certainty."],
+            ["01", "Seed", "Describe one current situation with the details you choose to provide."],
+            ["02", "People and Agents", "Confirm the important people before immutable Agent snapshots are prepared."],
+            ["03", "Locked Graph and Run", "Review the relationship structure, lock it, and start a formal account Run."],
+            ["04", "History and Feedback", "Return to a completed Run from your account History and add future-facing feedback."],
           ].map(([index, title, body]) => (
             <article key={title}>
               <small>{index}</small>
