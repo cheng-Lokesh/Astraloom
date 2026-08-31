@@ -28,7 +28,9 @@ the Seed to People to Agents to Graph to Run to History/Feedback path; its
 primary CTA opens `/app/new/scene`, and it has no standalone sample Result
 link. `/app/start` redirects to that same formal Scene route. Scene presents
 the currently available Track A and Reality Intake path only, with no trial
-workspace. Running without a `run_id` is an honest empty state, and History
+workspace. The public legacy `/intake` bookmark server-redirects to that same
+Scene route instead of rendering the legacy local intake. Running without a
+`run_id` is an honest empty state, and History
 uses a non-identifier time placeholder when timestamps are unavailable.
 
 `/app/simple`, `/demo`, and `/app/admin` use an isolated shell without formal

@@ -162,3 +162,55 @@ replay also remains unproven because no fixture was created. These browser
 gaps prevent a Phase or second-phase PASS claim. Changed-file secret/PII scan
 and the `src/lib/v2/**` diff must be recorded alongside the final candidate
 commit.
+
+## Third independent-review FAIL and minimum repair, 2026-08-31
+
+An independent M2.1 review marked the candidate **FAIL** a third time before
+this repair. The sole scoped code finding was that the public legacy `/intake`
+route still rendered `LocalIntakePage`, which exposed legacy Track B horizons
+and formal-chain People/submit CTAs through a formal primary shell. This repair
+changes only that public route and its cross-entry contract test. It changes no
+schema, API, RLS, migration, formal Intake auth/submission boundary, Archive
+auth boundary, timeout, coverage threshold, Vitest configuration, or
+`src/lib/v2/**`.
+
+| Stage | Commit | Command | Actual result |
+| --- | --- | --- | --- |
+| Third-repair RED | `7dd06fcc283493592f602f776dd5942bde718513` | `npm.cmd test -- src/app/m2-1-formal-entry-contract.test.ts` | exit 1, 1 file / 10 tests. The new direct `/intake` assertion failed because the route imported and rendered `LocalIntakePage`, not because of setup or compilation. |
+| Third-repair GREEN | `233b2ceb26232d66bec6459982dd36fc5ddabf61` | same | exit 0, 1 file / 10 tests. The legacy public bookmark now uses a server redirect to `/app/new/scene`; the legacy component is no longer rendered by that public route. |
+| M2.0 plus M2.1 regression | `233b2ce` | `npm.cmd test -- src/lib/sandbox-overview/overview.server.test.ts src/app/api/sandbox-overview/route.test.ts src/app/app/dashboard/page.m2.test.ts src/components/app-shell.m2.test.ts src/app/m2-1-formal-entry-contract.test.ts` | exit 0, 5 files / 38 tests. |
+| Seven V2 scripts | clean working tree after GREEN | `npm.cmd run test:v2:evidence`; `world`; `trajectory`; `analysis`; `claims-reports`; `outcome-calibration`; `migration-async-execution` | every command exit 0. Counts: 83, 116, 63, 47, 23, 40, 22. Claims/Reports, Outcome Calibration, and Migration Async did not reproduce the independent review timeout red. |
+| Full Vitest | clean working tree after GREEN | `npm.cmd test` | exit 0, 63 files / 610 tests, 119.13 seconds (test time 80.87 seconds). |
+| Repository coverage | clean working tree after GREEN | `npm.cmd run test:coverage` | exit 0, 63 files / 610 tests, 139.22 seconds (test time 91.64 seconds). Statements 90.85%, branches 81.21%, functions 95.55%, lines 93.52%. |
+| Static gates | clean working tree after GREEN | `npm.cmd run lint`; `npm.cmd run type-check`; `npm.cmd run build` | exit 0 for each. |
+| pgTAP and Golden | local non-reset Supabase / working tree | `npx.cmd --no-install supabase test db --local supabase/tests`; `npm.cmd run test:golden` | exit 0: 8 files / 538 assertions; then 1 file / 3 tests covering all 8 Golden Cases. |
+| Diff, secret/PII, V2 boundary | clean working tree after GREEN | `git diff --check`; changed-file pattern scan; `git diff --quiet 0bbb9a76..HEAD -- src/lib/v2` | exit 0, no changed-file secret/PII match, and empty V2 diff. The repository-wide scanner remains exit 1 solely for pre-existing documented placeholder matches in `SUPABASE_SETUP.md` and `docs/STAGING_BETA.md`; it revealed no credential value and is not treated as a clean full-repository gate. |
+
+### V2 timeout root-cause boundary
+
+No production or test-code root cause was reproduced in the authorized clean
+replay. The original commands passed unchanged, and the existing 15-second
+timeouts remain present in Claims/Reports and Outcome Calibration tests. The
+reported 15/15/5-second failures therefore cannot be attributed to this repair
+without a reproducing independent-review environment; this task makes no V2
+repair or acceptance claim.
+
+### Anonymous production-browser evidence
+
+The production build from `233b2ce` was served only by this task at
+`http://127.0.0.1:4319` (owned startup PID `27624`). In a new anonymous
+Playwright session, Root CTA -> Scene CTA -> `/app/new/intake` reached the
+server login boundary; it created no Seed and showed no People action. A direct
+`/intake` request ended at `/app/new/scene`; its body contained none of Track
+B, 1/3/5-year horizons, `Confirm people`, or `Submit formal Track A version`.
+
+Anonymous Archive rendered its server login boundary. Browser requests
+contained no `/api/sandbox/runs` request, and the console reported 0 errors and
+0 warnings. At 375, 768, and 1280 CSS pixels, horizontal overflow was 0 and no
+visible `a`, `button`, `summary`, or role-button target measured under 44px.
+Tab focus reached an anchor with a computed `3px solid` outline. No login or
+authenticated browser operation was attempted.
+
+This remains an unpushed local **repair candidate** only. It does not mark
+M2.1, the second phase, or Phase 4 as PASS. Fresh independent authenticated
+Intake submission and Archive replay remain for a subsequent reviewer.
