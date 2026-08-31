@@ -39,7 +39,7 @@ export function AppShell({ children, navigation = "formal" }: AppShellProps) {
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <Link
             href="/app/dashboard"
-            className="group flex min-h-10 min-w-0 items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--evidence-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08090a]"
+            className="group flex min-h-11 min-w-0 items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--evidence-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08090a]"
           >
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-[rgba(176,224,230,0.26)] bg-[rgba(176,224,230,0.09)] text-sm font-semibold tracking-tight text-[var(--signal-cyan)] shadow-[0_0_24px_rgba(176,224,230,0.1)] transition group-hover:scale-[1.02]">
               AL
@@ -131,7 +131,7 @@ function NavLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-10 min-w-0 items-center justify-center whitespace-nowrap rounded px-3 py-2 text-center text-sm font-semibold transition-[background-color,color,transform] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] ${
+      className={`flex min-h-11 min-w-0 items-center justify-center whitespace-nowrap rounded px-3 py-2 text-center text-sm font-semibold transition-[background-color,color,transform] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] ${
         active
           ? "bg-[rgba(176,224,230,0.12)] text-[var(--signal-cyan)] shadow-[0_0_18px_rgba(176,224,230,0.1)]"
           : "text-[var(--text-secondary)] hover:bg-[rgba(176,224,230,0.08)] hover:text-[var(--text-primary)]"
@@ -145,7 +145,7 @@ function NavLink({
 function MoreMenu({ pathname }: { pathname: string }) {
   return (
     <details className="relative shrink-0">
-      <summary className="flex min-h-10 list-none items-center rounded-md border border-white/10 bg-white/[.02] px-3 py-2 text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,transform] active:scale-95 hover:bg-white/[.06] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-11 list-none items-center rounded-md border border-white/10 bg-white/[.02] px-3 py-2 text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,transform] active:scale-95 hover:bg-white/[.06] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] [&::-webkit-details-marker]:hidden">
         More
       </summary>
       <div className="absolute right-0 z-50 mt-2 w-48 rounded-md border border-white/10 bg-[#101113] p-2 shadow-[0_18px_54px_rgba(0,0,0,0.35)]">
@@ -154,7 +154,7 @@ function MoreMenu({ pathname }: { pathname: string }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex min-h-10 items-center rounded px-3 py-2 text-sm font-semibold transition-[background-color,color,transform] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] ${
+              className={`flex min-h-11 items-center rounded px-3 py-2 text-sm font-semibold transition-[background-color,color,transform] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] ${
                 isActivePath(pathname, item.href)
                   ? "bg-[rgba(176,224,230,0.1)] text-[var(--signal-cyan)]"
                   : "text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)]"

@@ -35,7 +35,7 @@ describe("My Sandbox navigation contract", () => {
     ]);
 
     expect(source.match(/min-h-11/g)).toHaveLength(4);
-    expect(languageSwitcher).toContain("min-h-11");
+    expect(languageSwitcher.match(/min-h-11/g)).toHaveLength(2);
     expect(source).not.toContain("min-h-10");
     expect(languageSwitcher).not.toContain("min-h-9");
   });

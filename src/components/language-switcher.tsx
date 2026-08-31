@@ -14,7 +14,7 @@ export function LanguageSwitcher() {
     <details className="group relative">
       <summary
         aria-label="Language selector"
-        className="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-md border border-[rgba(84,230,255,0.18)] bg-[rgba(255,255,255,0.055)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-primary)] shadow-[0_10px_32px_rgba(0,0,0,0.16)] transition hover:border-[rgba(84,230,255,0.34)] hover:bg-[rgba(84,230,255,0.08)] [&::-webkit-details-marker]:hidden"
+        className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md border border-[rgba(84,230,255,0.18)] bg-[rgba(255,255,255,0.055)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-primary)] shadow-[0_10px_32px_rgba(0,0,0,0.16)] transition hover:border-[rgba(84,230,255,0.34)] hover:bg-[rgba(84,230,255,0.08)] [&::-webkit-details-marker]:hidden"
       >
         <span className="grid h-5 w-5 place-items-center rounded border border-[rgba(84,230,255,0.2)] text-[10px] text-[var(--signal-cyan)]">
           Ln
@@ -31,7 +31,7 @@ export function LanguageSwitcher() {
               key={option.locale}
               type="button"
               onClick={() => setLocale(option.locale)}
-              className={`flex items-center justify-between rounded px-2.5 py-2 text-left text-xs font-semibold transition ${
+              className={`flex min-h-11 items-center justify-between rounded px-2.5 py-2 text-left text-xs font-semibold transition ${
                 active
                   ? "bg-[rgba(84,230,255,0.12)] text-[var(--signal-cyan)]"
                   : "text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)]"

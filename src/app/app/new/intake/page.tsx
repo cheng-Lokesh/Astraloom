@@ -5,7 +5,6 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@/components/app-shell";
 import { SafetyDowngradeNotice } from "@/components/safety-downgrade-notice";
 import { StatusPill } from "@/components/status-pill";
-import { TrialSampleButton } from "@/components/trial-sample-button";
 import {
   Button,
   ButtonLink,
@@ -22,27 +21,6 @@ import {
 } from "@/lib/seed-context/storage";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { SeedContextDraft, TimeWindow } from "@/types/seed-context";
-
-const sample = {
-  situationSummary:
-    "I am deciding between a higher-paying new role and staying with my current team for a promised promotion. The decision affects my manager relationship, my reputation with the current team, and my ability to keep options open.",
-  question:
-    "Should I accept the new role now, or stay with my current team while asking for a clearer promotion timeline?",
-  recentEvents:
-    "My manager said promotion support is likely but did not give a date. The recruiter asked for an answer next week. A trusted colleague hinted that budget approval may be slower than expected.",
-  people:
-    "Current manager: controls promotion timing. Recruiter: controls offer deadline. Trusted colleague: has internal budget context. Partner: affected by schedule and income changes.",
-  decisionOptions:
-    "Accept the new role. Stay and negotiate a written promotion timeline. Ask both sides for one more week before deciding.",
-  worries:
-    "The promotion promise may stay vague. The new role may be less stable than it sounds. Pushing too hard could weaken trust with the current manager.",
-  forbiddenActions:
-    "Do not burn bridges with the current team. Do not accept vague promises as confirmed evidence. Do not disclose confidential team information.",
-  safetyBoundaries:
-    "Keep communication low-pressure and professional. Do not frame private motives as facts. Avoid legal, financial, or medical advice.",
-  desiredOutput:
-    "Show the main relationship pressure points, event evidence to watch, and low-risk communication options for the next 90 days.",
-};
 
 const timeWindows: Array<[TimeWindow, string, string]> = [
   ["30_days", "30 days", "Track A"],
@@ -328,21 +306,6 @@ function HydratedIntakePage() {
     }
   }
 
-  function useSample() {
-    setSituationSummary(sample.situationSummary);
-    setQuestion(sample.question);
-    setRecentEvents(sample.recentEvents);
-    setPeople(sample.people);
-    setDecisionOptions(sample.decisionOptions);
-    setWorries(sample.worries);
-    setForbiddenActions(sample.forbiddenActions);
-    setSafetyBoundaries(sample.safetyBoundaries);
-    setDesiredOutput(sample.desiredOutput);
-    setTimeWindow("90_days");
-    setPrivacySafetyAck(true);
-    setMessage("Sample loaded. Save it or continue to people confirmation.");
-  }
-
   return (
     <AppShell>
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -528,14 +491,6 @@ function HydratedIntakePage() {
             >
               Save scenario
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={useSample}
-              className="px-5 py-3"
-            >
-              Use sample text
-            </Button>
             <ButtonLink
               href="/app/new/people"
               variant="accent"
@@ -686,9 +641,6 @@ function HydratedIntakePage() {
               The next page can extract people from this richer context after you save.
             </p>
           </div>
-          <TrialSampleButton className="mf-button mf-button-on-dark mt-5 w-full px-4 py-3">
-            Open sample sandbox
-          </TrialSampleButton>
         </aside>
       </section>
     </AppShell>
