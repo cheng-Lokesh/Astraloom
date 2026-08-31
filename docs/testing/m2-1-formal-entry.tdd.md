@@ -29,13 +29,29 @@ the formal overview contract, or changes under `src/lib/v2/**`.
 | GREEN | `7b012797c2624664610a3b37ece1e4cfdeca2519` | same | exit 0, 1 file, 6 tests passed. |
 | M2.0 regression | working tree after GREEN | `npm.cmd test -- src/app/m2-1-formal-entry-contract.test.ts src/lib/sandbox-overview/overview.server.test.ts src/app/api/sandbox-overview/route.test.ts src/app/app/dashboard/page.m2.test.ts src/components/app-shell.m2.test.ts` | exit 0, 5 files, 33 tests passed. |
 | Type check | working tree after GREEN | `npm.cmd run type-check` | exit 0. |
+| Full Vitest | working tree after GREEN | `npm.cmd test` | exit 0, 63 files / 605 tests, 105.22 seconds. |
+| Repository coverage | working tree after GREEN | `npm.cmd run test:coverage` | exit 0, 63 files / 605 tests. Statements 90.85%, branches 81.21%, functions 95.55%, lines 93.52%. |
+| pgTAP | local non-reset Supabase | `npx.cmd --no-install supabase test db --local supabase/tests` | exit 0, 8 files / 538 assertions. |
+| Golden | working tree after GREEN | `npm.cmd run test:golden` | exit 0, 1 file / 3 tests, all eight implemented Golden Cases. |
+| Seven V2 scripts | working tree after GREEN | `test:v2:evidence`, `world`, `trajectory`, `analysis`, `claims-reports`, `outcome-calibration`, `migration-async-execution` | exit 0. Test counts: 83, 116, 63, 47, 23, 40, 22. |
+| Lint | working tree after GREEN | `npm.cmd run lint` | exit 0. |
+| Production build | working tree after GREEN | `npm.cmd run build` | exit 0. |
 
-## Remaining gates
+## Browser and remaining acceptance boundary
 
-The full Vitest, coverage, pgTAP, Golden, seven V2 scripts, lint, build,
-production-browser, secret/PII scan, and V2-diff gates remain unaccepted in
-this candidate record. They must be rerun with complete logs and actual exit
-codes before any acceptance decision. The local runner interrupted front-door
-long commands at its 30 second execution window, and the background full-test
-and lint attempts did not produce an exit code. No success is inferred from
-their startup output.
+The production build was served locally on port 3100. Anonymous browser replay
+confirmed `/app/start` redirected to `/app/new/scene`; the public hero and
+Scene CTA stayed on the formal account path; anonymous Dashboard showed its
+sign-in boundary without local/demo state; and Running without a `run_id`
+showed the honest empty state with My Sandbox, Start, and History links.
+At 375, 768, and 1280 CSS pixels, `scrollWidth` equaled `clientWidth`; the
+observed console had 0 errors and 0 warnings, and observed requests were 200.
+
+The local login page truthfully reported that Auth remains in setup mode and
+will not send email. Therefore a fresh neutral authenticated account, a full
+account chain replay, refresh/re-login, and authenticated network evidence
+remain **BLOCKED by local Auth configuration**. Archive missing-time browser
+replay also remains unproven because no fixture was created. These browser
+gaps prevent a Phase or second-phase PASS claim. Changed-file secret/PII scan
+and the `src/lib/v2/**` diff must be recorded alongside the final candidate
+commit.
