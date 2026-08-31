@@ -1,31 +1,32 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
-import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-type Run = { id: string; status: string; time_horizon?: string; created_at?: string; completed_at?: string | null };
+import { ArchiveHistoryClient } from "./archive-history-client";
 
-function formatRunTime(run: Run) {
-  const timestamp = run.completed_at ?? run.created_at;
-  return timestamp ? new Date(timestamp).toLocaleString() : "时间不可用";
-}
+export const dynamic = "force-dynamic";
 
-export default function ArchivePage() {
-  const [items, setItems] = useState<Run[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
-  const [message, setMessage] = useState("");
-  const load = useCallback(async (before?: string, append = false) => {
-    const response = await createFormalSandboxClient().history(12, before);
-    if (!response.ok) { setPhase("error"); setMessage(`Account History is unavailable: ${response.errorCode}.`); return; }
-    setItems((current) => append ? [...current, ...response.data.items] : response.data.items);
-    setCursor(response.data.next_cursor);
-    setPhase("ready");
-  }, []);
-  useEffect(() => { let current = true; void createFormalSandboxClient().history(12).then((response) => { if (!current) return; if (!response.ok) { setPhase("error"); setMessage(`Account History is unavailable: ${response.errorCode}.`); return; } setItems(response.data.items); setCursor(response.data.next_cursor); setPhase("ready"); }); return () => { current = false; }; }, []);
+export default async function ArchivePage() {
+  const supabase = await createSupabaseServerClient();
+  const { data: auth } = supabase
+    ? await supabase.auth.getUser()
+    : { data: { user: null } };
 
-  return <AppShell><section id="main-content" className="mx-auto max-w-6xl py-8 sm:py-14"><header className="grid gap-6 border-b border-[rgba(176,224,230,.16)] pb-8 lg:grid-cols-[minmax(0,1fr)_18rem]"><div><p className="font-mono text-[11px] uppercase tracking-[.16em] text-[var(--evidence-gold)]">Account History</p><h1 className="mt-4 font-[var(--font-display)] text-4xl leading-[1.08] text-[var(--text-primary)] sm:text-6xl">Every completed Run remains where you left it.</h1><p className="mt-4 max-w-3xl text-base leading-8 text-[var(--text-secondary)]">History reads immutable account records. Opening an older Result never regenerates it, and new feedback cannot rewrite its Events, Claims, or Report.</p></div><SurfaceCard emphasis="dark" className="p-5"><p className="font-mono text-[10px] uppercase tracking-[.14em] text-white/45">Storage boundary</p><p className="mt-3 text-sm leading-7 text-white/70">Supabase account ledger. No browser-local draft is treated as formal History.</p></SurfaceCard></header>{phase === "loading" ? <p role="status" className="mt-8 text-sm text-[var(--text-secondary)]">Loading account History.</p> : null}{phase === "error" ? <div className="mt-8"><p role="alert" className="text-sm text-[var(--risk-red)]">{message}</p><Button onClick={() => void load()} className="mt-4 !w-auto px-4 py-3">Retry History</Button></div> : null}{phase === "ready" && !items.length ? <div className="mt-8 border border-dashed border-white/15 p-6"><h2 className="text-xl font-semibold text-[var(--text-primary)]">No completed formal Runs yet</h2><p className="mt-2 text-sm leading-7 text-[var(--text-secondary)]">Lock a Relation Graph, then start the first account Run.</p><ButtonLink href="/app/new/graph" className="mt-5 !w-auto px-4 py-3">Open Relation Graph</ButtonLink></div> : null}{items.length ? <div className="mt-8"><ol className="divide-y divide-white/10">{items.map((run, index) => <li key={run.id} className="grid gap-4 py-5 sm:grid-cols-[4rem_minmax(0,1fr)_auto] sm:items-center"><span className="font-mono text-xs tabular-nums text-[var(--evidence-gold)]">{String(index + 1).padStart(2, "0")}</span><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-semibold text-[var(--text-primary)]">{run.time_horizon?.replace("_", " ") ?? "Formal Run"}</h2><span className="rounded bg-[rgba(121,242,176,.1)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--verified-green)]">{run.status}</span></div><p className="mt-2 font-mono text-[11px] text-[var(--text-muted)]">{formatRunTime(run)}</p></div><ButtonLink href={`/app/simulation/result?run_id=${run.id}`} variant="secondary" className="!w-auto px-4 py-3">Reopen Result</ButtonLink></li>)}</ol>{cursor ? <Button onClick={() => void load(cursor, true)} variant="secondary" className="mt-6 !w-auto px-4 py-3">Load older Runs</Button> : null}</div> : null}</section></AppShell>;
+  if (!auth.user?.id) {
+    return (
+      <AppShell>
+        <main id="main-content" className="mx-auto w-full max-w-6xl py-12">
+          <section className="border-y border-white/10 py-12">
+            <p className="font-mono text-xs uppercase tracking-[.14em] text-[var(--evidence-gold)]">Account History</p>
+            <h1 className="mt-4 text-3xl font-semibold text-[var(--text-primary)] sm:text-5xl">登录后查看账户历史</h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">History 只读取当前账户已经完成的正式 Run。</p>
+            {supabase ? <Link href="/login" className="mt-6 inline-flex min-h-11 items-center rounded bg-[var(--evidence-gold)] px-4 py-3 text-sm font-semibold text-black transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)]">前往登录</Link> : <p role="alert" className="mt-6 text-sm leading-7 text-[var(--risk-red)]">登录服务尚未配置，暂时不能读取账户历史。</p>}
+          </section>
+        </main>
+      </AppShell>
+    );
+  }
+
+  return <ArchiveHistoryClient timeUnavailableLabel="时间不可用" />;
 }

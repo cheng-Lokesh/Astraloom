@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import LocalIntakePage from "@/components/legacy/local-intake-page";
 
-export default function IntakeRedirectPage() {
-  redirect("/app/new/intake");
+export default function LegacyIntakePage() {
+  return <LocalIntakePage />;
 }
