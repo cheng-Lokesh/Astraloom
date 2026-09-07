@@ -37,8 +37,8 @@ describe("formal sandbox route contracts",()=>{
     const response=await status(new Request("http://local"),context);
     expect(response.status).toBe(404);expect(await response.json()).toEqual(expect.objectContaining({error_code:"run_not_found"}));
   });
-  it("returns 409 until a persisted Bundle is completed",async()=>{
-    state.client=authClient(userId,()=>query({data:{id:runId,status:"running",result_bundle:null},error:null}));
+  it.each(["draft","queued","running","blocked","failed"])("returns 409 from Result until a persisted Bundle is completed (%s)",async(statusValue)=>{
+    state.client=authClient(userId,()=>query({data:{id:runId,status:statusValue,result_bundle:null},error:null}));
     const response=await result(new Request("http://local"),context);
     expect(response.status).toBe(409);expect(await response.json()).toEqual(expect.objectContaining({error_code:"run_not_completed"}));
   });
