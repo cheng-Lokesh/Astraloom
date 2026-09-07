@@ -31,4 +31,12 @@ describe("M2.2 evidence workbench", () => {
     expect(page).toContain("motion-reduce");
     expect(page).toContain("overflow-x-hidden");
   });
+  it("cancels stale Result reads and makes retry visibly loading before the next request", async () => {
+    const page = await source();
+    expect(page).toContain("let active = true");
+    expect(page).toContain("if (!active) return");
+    expect(page).toContain("active = false");
+    expect(page).toContain('setState({ phase: "loading" })');
+    expect(page).toContain("setRetry((value) => value + 1)");
+  });
 });
