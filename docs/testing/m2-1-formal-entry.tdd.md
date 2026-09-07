@@ -334,3 +334,56 @@ No identity, token, cookie, UUID, or business content is recorded here.
 All executable gates listed above remain local evidence only. This is still an
 unpushed **repair candidate**, not an M2.1, second-phase, or Phase 4 PASS
 claim.
+
+## History completed-Run boundary evidence, 2026-09-07
+
+Status: **candidate only**. This record does not mark M2.1, the second phase,
+or Phase 4 as PASS, and it does not publish the candidate.
+
+The prior defect allowed the formal History projection to expose a
+non-completed Run as a Result entry. The repair has two independent boundaries:
+the server limits History to completed formal Runs before cursor and `limit + 1`
+handling, while Archive keeps a client-side completed-only filter for malformed
+or stale payloads. Archive never creates a Result entry for a non-completed
+Run, and displayed History metadata does not render a raw identifier.
+
+| Stage | Commit | Result |
+| --- | --- | --- |
+| RED | `9fc3ca886743a5b6cf5c343cc1b30c8665626b0d` | The completed-Run History boundary was reproduced before production repair. |
+| GREEN | `c29c300ed104806efc16902b11ccc694b6c771d5` | Server completed filtering and Archive malformed-payload defense were added. |
+
+### Executable and boundary evidence
+
+- Focused History, Archive, Result/Running, and M2.1 contract regression:
+  exit 0, 4 files / 34 tests in this evidence pass.
+- The preceding clean candidate gates recorded exit 0 for full Vitest
+  (65 files / 628 tests), coverage (90.85% statements, 81.21% branches,
+  95.55% functions, 93.52% lines), lint, type check, pgTAP (8 files / 538
+  assertions), Golden (3 tests covering 8 implemented cases), and the seven
+  V2 commands (83, 116, 63, 47, 23, 40, and 22 tests). No `src/lib/v2/**`
+  path changed across the scoped repair baseline.
+- The first Windows production-build terminal read was UNKNOWN; an unchanged
+  rebuild subsequently exited 0. This evidence pass also rebuilt the final
+  HEAD before anonymous replay; its terminal detached before returning an exit
+  code, so it is not used as a new build-success claim.
+- `git diff --check` for the scoped repair baseline exited 0. The exact
+  actual-value scan inspected added lines in the scoped range, both checkpoint
+  commit objects, index, and worktree. It found zero email, UUID, JWT,
+  provider-key, Bearer, auth-query, Magic Link, or long-high-entropy values.
+  The earlier one-per-category report did not reproduce even as a field or
+  test-concept match in those inputs: `SCANNER_CONSTRUCTION_ANOMALY_UNREPRODUCIBLE`.
+
+### Anonymous production-browser evidence
+
+An isolated anonymous Node Playwright run used the final local production
+build. Root reached Scene, Scene reached the formal Intake login boundary, and
+the legacy Intake route redirected to Scene. Archive made zero History requests
+and recorded zero console or page errors. Direct anonymous History and Seed API
+reads both returned 401. Running without an identifier showed only the honest
+empty state. At 375, 768, and 1280 CSS pixels, the checked anonymous routes
+had no horizontal overflow. The browser context, exact task-owned production
+process, and port were closed after the run.
+
+No authentication, identity, business row, or credential flow was used. A
+fresh independent authenticated final browser replay remains required. M2.1 is
+not PASS and is not released or pushed.
