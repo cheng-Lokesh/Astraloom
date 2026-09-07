@@ -6,7 +6,8 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import { FormalIntakeClient } from "./app/new/intake/formal-intake-client";
-import { projectRunningPhase } from "./app/simulation/running/page";
+import { projectRunningPhase, readRunningStatus } from "./app/simulation/running/page";
+import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
 
 const root = process.cwd();
 
@@ -109,6 +110,25 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(projectRunningPhase("running")).toMatchObject({ statusLabel: "沙盘运行中", title: "正在梳理可能路径。" });
     expect(projectRunningPhase("completed")).toMatchObject({ statusLabel: "结果已生成", title: "结果已生成" });
     expect(projectRunningPhase("error")).toMatchObject({ statusLabel: "状态暂不可用", title: "暂时无法读取本次沙盘状态。" });
+  });
+
+  it("uses persisted server statuses for both the first status read and a manual reread without treating every non-completed Run as running", async () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const read = async (status: string) => {
+      const fetcher = async () => new Response(JSON.stringify({ ok: true, run: { id: runId, status } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+      return readRunningStatus(runId, createFormalSandboxClient(fetcher));
+    };
+
+    await expect(read("draft")).resolves.toMatchObject({ phase: "draft", statusLabel: "尚未开始运行" });
+    await expect(read("queued")).resolves.toMatchObject({ phase: "queued", statusLabel: "等待运行" });
+    await expect(read("running")).resolves.toMatchObject({ phase: "running", statusLabel: "沙盘运行中" });
+    await expect(read("completed")).resolves.toMatchObject({ phase: "completed", statusLabel: "结果已生成", canOpenResult: true });
+    await expect(read("blocked")).resolves.toMatchObject({ phase: "blocked", statusLabel: "服务端已阻断" });
+    await expect(read("failed")).resolves.toMatchObject({ phase: "failed", statusLabel: "服务端运行失败" });
+    await expect(read("unexpected_future_state")).resolves.toMatchObject({ phase: "error", statusLabel: "状态暂不可用" });
   });
 
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {
