@@ -287,6 +287,15 @@ cleanup beyond this task's no-reset/no-rebuild/no-volume-deletion authority, so
 the task stopped. No Supabase stack start, migration, volume operation, or
 database write was attempted.
 
+The authorized bounded root-cause inspection confirmed that exact target is a
+zero-byte Windows `ReparsePoint` in Docker's `run` directory (created
+2026-08-27, last written 2026-08-30), not a normal file. There was no running
+Docker Desktop/backend process to attribute an open handle to, but both
+`fsutil reparsepoint query` and ACL inspection failed with Windows error 1920
+(the file cannot be accessed by the system). Its link/ACL state is therefore
+not safely known. Per the recovery boundary, it was not renamed, removed, or
+otherwise changed.
+
 This remains an unpushed local repair candidate only. The pgTAP and
 authenticated-browser blocks prevent any M2.1, second-phase, or Phase 4 PASS
 claim.
