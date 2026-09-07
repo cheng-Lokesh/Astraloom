@@ -122,13 +122,21 @@ describe("M2.1 formal entry and legacy isolation", () => {
       return readRunningStatus(runId, createFormalSandboxClient(fetcher));
     };
 
-    await expect(read("draft")).resolves.toMatchObject({ phase: "draft", statusLabel: "尚未开始运行" });
+    let reads = 0;
+    const firstAndManualReread = createFormalSandboxClient(async () => new Response(JSON.stringify({
+      ok: true,
+      run: { id: runId, status: reads++ === 0 ? "draft" : "blocked" },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    await expect(readRunningStatus(runId, firstAndManualReread)).resolves.toMatchObject({ phase: "draft", statusLabel: "尚未开始运行" });
+    await expect(readRunningStatus(runId, firstAndManualReread)).resolves.toMatchObject({ phase: "blocked", statusLabel: "服务端已阻断" });
+
     await expect(read("queued")).resolves.toMatchObject({ phase: "queued", statusLabel: "等待运行" });
     await expect(read("running")).resolves.toMatchObject({ phase: "running", statusLabel: "沙盘运行中" });
     await expect(read("completed")).resolves.toMatchObject({ phase: "completed", statusLabel: "结果已生成", canOpenResult: true });
     await expect(read("blocked")).resolves.toMatchObject({ phase: "blocked", statusLabel: "服务端已阻断" });
     await expect(read("failed")).resolves.toMatchObject({ phase: "failed", statusLabel: "服务端运行失败" });
     await expect(read("unexpected_future_state")).resolves.toMatchObject({ phase: "error", statusLabel: "状态暂不可用" });
+    await expect(readRunningStatus(runId, createFormalSandboxClient(async () => { throw new Error("private transport detail"); }))).resolves.toMatchObject({ phase: "error", statusLabel: "状态暂不可用" });
   });
 
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {
@@ -139,7 +147,7 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(running).toContain('href="/app/new/scene"');
     expect(running).toContain('href="/app/archive"');
     expect(running).toContain("params.get(\"run_id\")");
-    expect(running).toContain("createFormalSandboxClient().status(runId)");
+    expect(running).toContain("readRunningStatus(runId)");
     expect(running).not.toContain("No formal Run id was provided.");
   });
 
