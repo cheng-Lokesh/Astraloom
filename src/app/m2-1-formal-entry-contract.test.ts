@@ -91,7 +91,7 @@ describe("M2.1 formal entry and legacy isolation", () => {
   it("renders the formal privacy acknowledgement checkbox as a real 44px keyboard-focusable target", () => {
     const markup = renderToStaticMarkup(createElement(FormalIntakeClient));
 
-    expect(markup).toMatch(/<input[^>]+type="checkbox"[^>]+style="[^"]*min-height:44px;[^"]*min-width:44px;[^"]*"[^>]*>/);
+    expect(markup).toMatch(/<input[^>]+type="checkbox"[^>]+style="[^"]*min-height:44px;[^"]*min-width:44px"[^>]*>/);
     expect(markup).toMatch(/<input[^>]+type="checkbox"[^>]+class="[^"]*focus-visible:outline[^"]*"[^>]*>/);
   });
 
@@ -99,7 +99,8 @@ describe("M2.1 formal entry and legacy isolation", () => {
     const running = await source("src/app/app/simulation/running/page.tsx");
 
     expect(running).toContain("结果已生成");
-    expect(running).not.toMatch(/Bundle is ready|>ready<|\{phase\}/i);
+    expect(running).not.toMatch(/Bundle is ready|>ready<|>\{phase\}<\/p>/i);
+    expect(running).toContain(">{statusLabel}</p>");
   });
 
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {

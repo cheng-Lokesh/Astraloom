@@ -183,7 +183,13 @@ export function FormalIntakeClient() {
           </fieldset>
 
           <label className="flex gap-3 rounded-md border border-black/8 bg-[#f7f8f4] p-4">
-            <input type="checkbox" checked={privacySafetyAck} onChange={(event) => setPrivacySafetyAck(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#11150f]" />
+            <input
+              type="checkbox"
+              checked={privacySafetyAck}
+              onChange={(event) => setPrivacySafetyAck(event.target.checked)}
+              style={{ minHeight: 44, minWidth: 44 }}
+              className="shrink-0 accent-[#11150f] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#11150f]"
+            />
             <span className="text-sm leading-6 text-[#52594d]">
               我了解提交内容会作为正式处境的证据输入，且该产品不提供专业建议，也不能绕过安全边界。
             </span>
