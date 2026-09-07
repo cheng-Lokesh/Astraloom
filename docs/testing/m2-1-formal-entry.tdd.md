@@ -387,3 +387,64 @@ process, and port were closed after the run.
 No authentication, identity, business row, or credential flow was used. A
 fresh independent authenticated final browser replay remains required. M2.1 is
 not PASS and is not released or pushed.
+
+## Anonymous formal Intake server-redirect repair, 2026-09-07
+
+Status: **repair candidate only**. This entry records an execution repair, not
+an independent acceptance result. It does not mark M2.1, any Phase 4 stage, or
+the product as PASS, and it was not pushed.
+
+### Root cause and TDD checkpoints
+
+`src/app/app/new/intake/page.tsx` already read the server Supabase session, but
+its anonymous branch returned a login-boundary React tree instead of issuing a
+server redirect. Therefore an anonymous production request could render the
+formal-route shell rather than terminate at the login boundary.
+
+| Stage | Commit | Command | Actual result |
+| --- | --- | --- | --- |
+| RED | `29daaed` | `npm.cmd test -- src/app/app/new/intake/page.test.ts` | exit 1; the new server-component test called the real Intake page with an anonymous session and received `IntakeLoginBoundary` instead of Next's redirect signal. |
+| GREEN | `c4e23fb` | `npm.cmd test -- src/app/app/new/intake/page.test.ts src/app/m2-1-formal-entry-contract.test.ts` | exit 0; 2 files / 16 tests. The anonymous server path now emits the real `NEXT_REDIRECT` signal for `/login`; an authenticated server session continues to the formal Intake render path. |
+
+The minimal production change replaces only the anonymous return branch with
+`redirect("/login")`. The existing M2.1 contract was updated to require that
+server boundary. The existing component contract continues to prove the native
+privacy acknowledgement has a 44px by 44px target and visible keyboard focus;
+this repair did not alter that UI.
+
+### Executable evidence
+
+- M2.0/M2.1 regression command: exit 0, 6 files / 44 tests.
+- Full Vitest: exit 0, 66 files / 630 tests.
+- Repository coverage: exit 0; statements 90.85%, branches 81.21%, functions
+  95.55%, lines 93.52%.
+- Lint, type check, and production build: exit 0 for each.
+- pgTAP: exit 0; 8 files / 538 assertions.
+- Golden: exit 0; 3 tests covering the eight implemented Golden Cases.
+- Frozen V2 commands: all exit 0; evidence 83, world 116, trajectory 63,
+  analysis 47, claims/reports 23, outcome/calibration 40, and
+  migration/async-execution 22 tests.
+
+No migration, schema, API, RLS, coverage-threshold, Vitest-configuration, or
+`src/lib/v2/**` change was made.
+
+### Anonymous production-browser evidence
+
+The final production build ran locally on a task-owned high port and was closed
+after the check. A fresh anonymous Playwright session verified these booleans:
+
+- Direct `/app/new/intake` finished at `/login`; no formal Intake form was
+  rendered.
+- Root CTA reached `/app/new/scene`, whose Track A Intake CTA finished at
+  `/login`; legacy `/intake` finished at `/app/new/scene`.
+- Direct anonymous `GET /api/seed-context` and `GET /api/sandbox/runs` each
+  returned 401.
+- Anonymous Archive rendered its login boundary and issued zero
+  `/api/sandbox/runs` requests.
+- Running without a Run id rendered the honest no-active-sandbox state.
+- At 375x812, 768x1024, and 1280x900, the Running empty page had
+  `scrollWidth === clientWidth`.
+
+No login, Magic Link, user, business row, cookie, token, or identity file was
+created or displayed. An independent authenticated browser replay remains
+required before any acceptance decision.
