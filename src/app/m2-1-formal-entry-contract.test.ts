@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import { FormalIntakeClient } from "./app/new/intake/formal-intake-client";
+import { projectRunningPhase } from "./app/simulation/running/page";
 
 const root = process.cwd();
 
@@ -101,6 +102,13 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(running).toContain("结果已生成");
     expect(running).not.toMatch(/Bundle is ready|>ready<|>\{phase\}<\/p>/i);
     expect(running).toContain(">{statusLabel}</p>");
+  });
+
+  it("keeps the loading, running, completed, and unreadable Run projections distinct", () => {
+    expect(projectRunningPhase("loading")).toMatchObject({ statusLabel: "正在读取服务器状态", title: "正在读取服务器状态" });
+    expect(projectRunningPhase("running")).toMatchObject({ statusLabel: "沙盘运行中", title: "正在梳理可能路径。" });
+    expect(projectRunningPhase("completed")).toMatchObject({ statusLabel: "结果已生成", title: "结果已生成" });
+    expect(projectRunningPhase("error")).toMatchObject({ statusLabel: "状态暂不可用", title: "暂时无法读取本次沙盘状态。" });
   });
 
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {
