@@ -27,9 +27,10 @@ function bundle(overrides: Record<string, unknown> = {}) {
     worldSnapshots: [{
       agentDefinitions: [{ id: "definition-self", displayName: "Scenario owner" }, { id: "definition-counterpart", displayName: "Frozen participant" }],
       entities: [{ id: "entity-self", agentDefinitionId: "definition-self" }, { id: "entity-counterpart", agentDefinitionId: "definition-counterpart" }],
+      relations: [{ id: "world-relation", fromEntityId: "entity-self", toEntityId: "entity-counterpart", provenance: { realEvidenceIds: [] as string[] } }],
     }],
     events: [{ id: "world_event_v2_safe_step", eventType: "allocate_resource", actorId: "entity-self", targetEntityIds: ["entity-counterpart"], createdAt: "2026-09-01T00:00:00.000Z", branchId: "baseline" }],
-    claims: [{ id: "claim_v2_safe_claim", statement: "A conditional pattern is worth reviewing.", uncertaintyStatement: "This is a sandbox simulation, not a guarantee.", simulationEventIds: ["world_event_v2_safe_step"] }],
+    claims: [{ id: "claim_v2_safe_claim", statement: "A conditional pattern is worth reviewing.", uncertaintyStatement: "This is a sandbox simulation, not a guarantee.", simulationEventIds: ["world_event_v2_safe_step"], realEvidenceIds: [] as string[] }],
     report: { claimIds: ["claim_v2_safe_claim"] },
     versions: { runtime: "formal-account-sandbox-m1-v1", schema: "formal-run-bundle-m1-v1", trajectory: "trajectory-engine-v2-stage-4" },
     ...overrides,
@@ -82,6 +83,7 @@ describe("formal sandbox result projection", () => {
         { id: "entity-counterpart", agentDefinitionId: "definition-counterpart" },
         { id: "entity-unrelated", agentDefinitionId: "definition-unrelated" },
       ],
+      relations: [],
     }];
 
     const result = projectFormalSandboxResult(input);

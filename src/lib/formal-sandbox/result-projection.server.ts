@@ -5,11 +5,11 @@ const safeText = z.string().trim().min(1).max(2_000);
 const agentSchema = z.object({ id: z.string().min(1), displayName: safeText, actorType: z.enum(["self", "third_party"]), evidenceRefs: z.array(z.string()).min(1) }).passthrough();
 const relationSchema = z.object({ id: z.string().min(1), fromAgentId: z.string().min(1), toAgentId: z.string().min(1), relationshipType: safeText, evidenceRefs: z.array(z.string()).min(1) }).passthrough();
 const eventSchema = z.object({ id: z.string().min(1), eventType: safeText, actorId: z.string().min(1).optional(), targetEntityIds: z.array(z.string().min(1)).optional(), targetRelationIds: z.array(z.string().min(1)).optional() }).passthrough();
-const claimSchema = z.object({ id: z.string().min(1), statement: safeText, uncertaintyStatement: safeText, simulationEventIds: z.array(z.string().min(1)).min(1) }).passthrough();
+const claimSchema = z.object({ id: z.string().min(1), statement: safeText, uncertaintyStatement: safeText, simulationEventIds: z.array(z.string().min(1)).min(1), realEvidenceIds: z.array(z.string().min(1)).optional() }).passthrough();
 const worldSnapshotSchema = z.object({
   agentDefinitions: z.array(z.object({ id: z.string().min(1), displayName: safeText }).passthrough()).max(50),
   entities: z.array(z.object({ id: z.string().min(1), agentDefinitionId: z.string().min(1) }).passthrough()).max(200),
-  relations: z.array(z.object({ id: z.string().min(1), fromEntityId: z.string().min(1), toEntityId: z.string().min(1) }).passthrough()).max(500).optional(),
+  relations: z.array(z.object({ id: z.string().min(1), fromEntityId: z.string().min(1), toEntityId: z.string().min(1), provenance: z.object({ realEvidenceIds: z.array(z.string().min(1)).optional() }).passthrough().optional() }).passthrough()).max(500).optional(),
 }).passthrough();
 const bundleSchema = z.object({ inputSnapshot: z.object({ agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(), sourceBoundary: z.object({ evidenceLedger: z.object({ items: z.array(z.object({ statement: safeText }).passthrough()).max(200) }).passthrough().optional(), assumptionLedger: z.object({ assumptions: z.array(z.object({ statement: safeText }).passthrough()).max(200) }).passthrough().optional() }).passthrough().optional(), worldSnapshots: z.array(worldSnapshotSchema).max(500).optional(), events: z.array(eventSchema).min(1).max(500), claims: z.array(claimSchema).min(1).max(100), report: z.object({ claimIds: z.array(z.string().min(1)).min(1).max(100) }).passthrough() }).passthrough();
 
@@ -45,6 +45,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   }
   const personKeyByEntityId = new Map<string, string>();
   const worldRelationById = new Map<string, { fromPersonKey: string; toPersonKey: string }>();
+  const worldRelations: { fromPersonKey: string; toPersonKey: string; realEvidenceIds: string[] }[] = [];
   for (const snapshot of bundle.worldSnapshots ?? []) {
     for (const entity of snapshot.entities) {
       const personKey = personKeyByDefinitionId.get(entity.agentDefinitionId);
@@ -53,10 +54,19 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     for (const relation of snapshot.relations ?? []) {
       const fromPersonKey = personKeyByEntityId.get(relation.fromEntityId);
       const toPersonKey = personKeyByEntityId.get(relation.toEntityId);
-      if (fromPersonKey && toPersonKey) worldRelationById.set(relation.id, { fromPersonKey, toPersonKey });
+      if (fromPersonKey && toPersonKey) {
+        worldRelationById.set(relation.id, { fromPersonKey, toPersonKey });
+        worldRelations.push({ fromPersonKey, toPersonKey, realEvidenceIds: relation.provenance?.realEvidenceIds ?? [] });
+      }
     }
   }
   const relationshipKeyByEndpoints = new Map(bundle.inputSnapshot.edges.map((edge, index) => [`${personKeyById.get(edge.fromAgentId)}>${personKeyById.get(edge.toAgentId)}`, relationshipKeys[index]!]));
+  const relationshipEvidenceLinks = new Map<string, { relationshipKey: string; participantKeys: string[] }[]>();
+  for (const relation of worldRelations) {
+    const relationshipKey = relationshipKeyByEndpoints.get(`${relation.fromPersonKey}>${relation.toPersonKey}`) ?? relationshipKeyByEndpoints.get(`${relation.toPersonKey}>${relation.fromPersonKey}`);
+    if (!relationshipKey) continue;
+    for (const evidenceId of relation.realEvidenceIds) relationshipEvidenceLinks.set(evidenceId, [...(relationshipEvidenceLinks.get(evidenceId) ?? []), { relationshipKey, participantKeys: [relation.fromPersonKey, relation.toPersonKey] }]);
+  }
   const eventLinks = new Map(bundle.events.map((event) => {
     const eventParticipantKeys = [...new Set([event.actorId, ...(event.targetEntityIds ?? [])].map((id) => id ? personKeyByEntityId.get(id) : undefined).filter((key): key is string => Boolean(key)))];
     const eventParticipantSet = new Set(eventParticipantKeys);
@@ -70,7 +80,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     facts: (bundle.sourceBoundary?.evidenceLedger?.items ?? []).map((fact, index) => ({ key: ordinal("fact", index), statement: fact.statement, boundary: "user_provided_fact" as const })),
     assumptions: (bundle.sourceBoundary?.assumptionLedger?.assumptions ?? []).map((assumption, index) => ({ key: ordinal("assumption", index), statement: assumption.statement, boundary: "system_assumption" as const })),
     steps: bundle.events.map((event, index) => ({ key: eventKeyById.get(event.id)!, order: index + 1, label: event.eventType.replaceAll("_", " "), kind: "sandbox_simulation" as const, boundary: "simulation_step" as const, participantKeys: eventLinks.get(event.id)!.participantKeys, relationshipKeys: eventLinks.get(event.id)!.relationshipKeys })),
-    claims: bundle.claims.map((claim, index) => { const stepKeys = claim.simulationEventIds.map((id) => eventKeyById.get(id)!); const links = claim.simulationEventIds.map((id) => eventLinks.get(id)!); return { key: ordinal("claim", index), statement: claim.statement, uncertainty: claim.uncertaintyStatement, boundary: "conditional_claim" as const, stepKeys, supportingStepKeys: stepKeys, participantKeys: [...new Set(links.flatMap((item) => item.participantKeys))], relationshipKeys: [...new Set(links.flatMap((item) => item.relationshipKeys))] }; }),
+    claims: bundle.claims.map((claim, index) => { const stepKeys = claim.simulationEventIds.map((id) => eventKeyById.get(id)!); const links = claim.simulationEventIds.map((id) => eventLinks.get(id)!); const evidenceLinks = (claim.realEvidenceIds ?? []).flatMap((id) => relationshipEvidenceLinks.get(id) ?? []); return { key: ordinal("claim", index), statement: claim.statement, uncertainty: claim.uncertaintyStatement, boundary: "conditional_claim" as const, stepKeys, supportingStepKeys: stepKeys, participantKeys: [...new Set([...links.flatMap((item) => item.participantKeys), ...evidenceLinks.flatMap((item) => item.participantKeys)])], relationshipKeys: [...new Set([...links.flatMap((item) => item.relationshipKeys), ...evidenceLinks.map((item) => item.relationshipKey)])] }; }),
   };
   return safeResultProjectionSchema.safeParse(projection).data ?? null;
 }
