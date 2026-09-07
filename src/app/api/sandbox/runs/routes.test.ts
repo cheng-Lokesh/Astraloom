@@ -14,7 +14,7 @@ const runId="11111111-1111-4111-8111-111111111111";
 const userId="22222222-2222-4222-8222-222222222222";
 const context={params:Promise.resolve({runId})};
 function authClient(user:string|null,from?:()=>unknown,rpc?:()=>unknown){return{auth:{getUser:vi.fn().mockResolvedValue({data:{user:user?{id:user}:null}})},from:from??vi.fn(),rpc:rpc??vi.fn()}}
-function query(resultValue:Record<string,unknown>){const value={...resultValue};type Builder={select:()=>Builder;eq:()=>Builder;order:()=>Builder;limit:()=>Builder;lt:()=>Builder;or:()=>Builder;maybeSingle:()=>Promise<Record<string,unknown>>;then:PromiseLike<Record<string,unknown>>["then"]};const builder={} as Builder;builder.select=()=>builder;builder.eq=()=>builder;builder.order=()=>builder;builder.limit=()=>builder;builder.lt=()=>builder;builder.or=()=>builder;builder.maybeSingle=async()=>value;builder.then=(resolve,reject)=>Promise.resolve(value).then(resolve,reject);return builder}
+function query(resultValue:Record<string,unknown>,operations?:string[]){const value={...resultValue};type Builder={select:()=>Builder;eq:(column:string,value:unknown)=>Builder;order:(column:string)=>Builder;limit:(value:number)=>Builder;lt:()=>Builder;or:()=>Builder;maybeSingle:()=>Promise<Record<string,unknown>>;then:PromiseLike<Record<string,unknown>>["then"]};const builder={} as Builder;builder.select=()=>builder;builder.eq=(column,value)=>{operations?.push(`eq:${column}:${String(value)}`);return builder};builder.order=(column)=>{operations?.push(`order:${column}`);return builder};builder.limit=(value)=>{operations?.push(`limit:${value}`);return builder};builder.lt=()=>builder;builder.or=()=>builder;builder.maybeSingle=async()=>value;builder.then=(resolve,reject)=>Promise.resolve(value).then(resolve,reject);return builder}
 
 describe("formal sandbox route contracts",()=>{
   beforeEach(()=>{state.start.mockReset();state.service={};state.client=authClient(null)});
@@ -47,6 +47,16 @@ describe("formal sandbox route contracts",()=>{
     state.client=authClient(userId,()=>query({data:items,error:null}));
     const response=await history(new Request("http://local/api/sandbox/runs?limit=1"));const body=await response.json();
     expect(response.status).toBe(200);expect(body.items).toEqual([items[0]]);expect(JSON.parse(Buffer.from(body.next_cursor,"base64url").toString("utf8"))).toEqual([items[0].created_at,items[0].id]);
+  });
+  it("filters History to completed Runs in the database before applying the limit-plus-one page boundary",async()=>{
+    const operations:string[]=[];
+    state.client=authClient(userId,()=>query({data:[],error:null},operations));
+
+    const response=await history(new Request("http://local/api/sandbox/runs?limit=1"));
+
+    expect(response.status).toBe(200);
+    expect(operations).toContain("eq:status:completed");
+    expect(operations.indexOf("eq:status:completed")).toBeLessThan(operations.indexOf("limit:2"));
   });
   it("preserves append-only feedback idempotency and stable 500 errors",async()=>{
     const rpc=vi.fn().mockResolvedValueOnce({data:[{idempotent:true,feedback:{id:runId}}],error:null}).mockResolvedValueOnce({data:null,error:{message:"private sql detail"}});
