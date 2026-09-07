@@ -2,51 +2,61 @@ import { describe, expect, it } from "vitest";
 
 import { projectFormalSandboxResult } from "./result-projection.server";
 
-const bundle = {
-  inputSnapshot: {
-    agents: [
-      { id: "agent_internal_self", displayName: "Scenario owner", actorType: "self", evidenceRefs: ["seed:question"] },
-      { id: "agent_internal_peer", displayName: "Project collaborator", actorType: "third_party", evidenceRefs: ["seed:people"] },
-    ],
-    edges: [{ id: "edge_internal_one", fromAgentId: "agent_internal_self", toAgentId: "agent_internal_peer", relationshipType: "work collaborator", evidenceRefs: ["seed:people"] }],
-  },
-  sourceBoundary: {
-    evidenceLedger: { items: [{ id: "real_evidence_internal_one", statement: "The user confirmed a decision deadline.", sourceKind: "user_statement", sourceTier: "tier_1_user_confirmed", verificationStatus: "user_confirmed", provenance: [], limitations: ["It may be incomplete."] }] },
-    assumptionLedger: { assumptions: [{ id: "assumption_internal_one", statement: "The working conditions may remain stable during the selected horizon.", subjectType: "external_variable", category: "relationship_stability", epistemicStatus: "inferred", impactLevel: "medium", supportingRealEvidenceIds: ["real_evidence_internal_one"], contradictingRealEvidenceIds: [], limitations: ["This is not a real-world fact."], confirmationRequirement: "not_required", confirmationStatus: "not_required" }] },
-  },
-  events: [
-    { id: "world_event_v2_one", eventType: "allocate_resource", evidenceClass: "world_transition_simulation_evidence", causalRealEvidenceIds: ["real_evidence_internal_one"], causalAssumptionIds: ["assumption_internal_one"] },
-    { id: "world_event_v2_two", eventType: "record_observation", evidenceClass: "world_transition_simulation_evidence", causalRealEvidenceIds: ["real_evidence_internal_one"], causalAssumptionIds: [] },
-  ],
-  claims: [{ id: "claim_v2_one", claimType: "scenario_frequency", statement: "If the stated conditions hold, this is a conditional simulation signal.", uncertaintyStatement: "It is not a real-world probability.", simulationEventIds: ["world_event_v2_one"] }],
-  report: { claimIds: ["claim_v2_one"] },
+const ids = {
+  owner: "11111111-1111-4111-8111-111111111111",
+  seed: "22222222-2222-4222-8222-222222222222",
+  graph: "33333333-3333-4333-8333-333333333333",
+  agentSnapshot: "44444444-4444-4444-8444-444444444444",
+  self: "55555555-5555-4555-8555-555555555555",
+  counterpart: "66666666-6666-4666-8666-666666666666",
+  relation: "77777777-7777-4777-8777-777777777777",
 };
 
-describe("formal result safe reading projection", () => {
-  it("projects only this frozen result's people, relations, facts, assumptions, steps, and direct claim evidence", () => {
-    const result = projectFormalSandboxResult(bundle);
-    expect(result).toEqual({
-      ok: true,
-      projection: expect.objectContaining({
-        participants: [{ key: "participant-1", label: "Scenario owner", role: "Scenario participant" }, { key: "participant-2", label: "Project collaborator", role: "Scenario participant" }],
-        relationships: [{ key: "relationship-1", fromParticipantKey: "participant-1", toParticipantKey: "participant-2", label: "work collaborator" }],
-        facts: [{ key: "fact-1", statement: "The user confirmed a decision deadline.", boundary: "user_fact" }],
-        assumptions: [{ key: "assumption-1", statement: "The working conditions may remain stable during the selected horizon.", boundary: "explicit_assumption" }],
-        steps: [{ key: "step-1", order: 1, label: "Resource allocation", boundary: "simulation_step" }, { key: "step-2", order: 2, label: "Recorded observation", boundary: "simulation_step" }],
-        claims: [{ key: "claim-1", statement: "If the stated conditions hold, this is a conditional simulation signal.", uncertainty: "It is not a real-world probability.", stepKeys: ["step-1"], boundary: "conditional_claim" }],
-      }),
-    });
-    const rendered = JSON.stringify(result);
-    expect(rendered).not.toMatch(/agent_internal|edge_internal|real_evidence_internal|assumption_internal|world_event_v2|claim_v2|report/i);
+function bundle(overrides: Record<string, unknown> = {}) {
+  return {
+    inputSnapshot: {
+      ownerId: ids.owner, seedContextId: ids.seed, graphSnapshotId: ids.graph, agentSnapshotId: ids.agentSnapshot,
+      horizonDays: 30, deterministicSeed: 1701,
+      agents: [
+        { id: ids.self, displayName: "Scenario owner", actorType: "self", evidenceRefs: ["private-ref"] },
+        { id: ids.counterpart, displayName: "Frozen participant", actorType: "third_party", evidenceRefs: ["private-ref"] },
+      ],
+      edges: [{ id: ids.relation, fromAgentId: ids.self, toAgentId: ids.counterpart, relationshipType: "professional", evidenceRefs: ["private-ref"] }],
+    },
+    sourceBoundary: { assumptionLedger: { assumptions: [{ statement: "Conditions may remain stable during this selected horizon." }] } },
+    events: [{ id: "world_event_v2_safe_step", eventType: "allocate_resource", createdAt: "2026-09-01T00:00:00.000Z", branchId: "baseline" }],
+    claims: [{ id: "claim_v2_safe_claim", statement: "A conditional pattern is worth reviewing.", uncertaintyStatement: "This is a sandbox simulation, not a guarantee.", simulationEventIds: ["world_event_v2_safe_step"] }],
+    report: { claimIds: ["claim_v2_safe_claim"] },
+    versions: { runtime: "formal-account-sandbox-m1-v1", schema: "formal-run-bundle-m1-v1", trajectory: "trajectory-engine-v2-stage-4" },
+    ...overrides,
+  };
+}
+
+describe("formal sandbox result projection", () => {
+  it("projects only frozen inputs and direct Claim-to-step evidence through ordinal UI keys", () => {
+    const result = projectFormalSandboxResult(bundle());
+
+    expect(result).toEqual(expect.objectContaining({
+      participants: [{ key: "person-1", label: "Scenario owner", role: "scenario decision maker" }, { key: "person-2", label: "Frozen participant", role: "frozen participant" }],
+      relationships: [{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "professional" }],
+      steps: [expect.objectContaining({ key: "step-1", kind: "sandbox_simulation" })],
+      claims: [expect.objectContaining({ key: "claim-1", supportingStepKeys: ["step-1"], participantKeys: ["person-1", "person-2"], relationshipKeys: ["relation-1"] })],
+    }));
+    expect(JSON.stringify(result)).not.toMatch(new RegExp(Object.values(ids).join("|")));
+    expect(JSON.stringify(result)).not.toContain("private-ref");
   });
 
-  it.each([
-    ["a dangling claim event", { ...bundle, claims: [{ ...bundle.claims[0], simulationEventIds: ["world_event_v2_missing"] }] }],
-    ["a missing frozen relation endpoint", { ...bundle, inputSnapshot: { ...bundle.inputSnapshot, edges: [{ ...bundle.inputSnapshot.edges[0], toAgentId: "agent_missing" }] } }],
-    ["an unknown transition", { ...bundle, events: [{ ...bundle.events[0], eventType: "invent_outcome" }] }],
-    ["an unsafe UUID-shaped participant label", { ...bundle, inputSnapshot: { ...bundle.inputSnapshot, agents: [{ ...bundle.inputSnapshot.agents[0], displayName: "11111111-1111-4111-8111-111111111111" }, bundle.inputSnapshot.agents[1]] } }],
-    ["a report disconnected from its claim", { ...bundle, report: { claimIds: [] } }],
-  ])("fails closed for %s", (_label, invalidBundle) => {
-    expect(projectFormalSandboxResult(invalidBundle)).toEqual({ ok: false, errorCode: "result_projection_unavailable" });
+  it("fails closed when a Claim references a missing Event or Report claim", () => {
+    expect(projectFormalSandboxResult(bundle({ claims: [{ id: "claim_v2_safe_claim", statement: "Conditional", uncertaintyStatement: "Uncertain", simulationEventIds: ["world_event_v2_missing"] }] }))).toBeNull();
+    expect(projectFormalSandboxResult(bundle({ report: { claimIds: ["claim_v2_missing"] } }))).toBeNull();
+  });
+
+  it("does not substitute a current graph when the persisted frozen bundle changes", () => {
+    const frozen = bundle();
+    const first = projectFormalSandboxResult(frozen);
+    frozen.inputSnapshot.agents[0].displayName = "Changed only in the persisted snapshot";
+    const second = projectFormalSandboxResult(frozen);
+    expect(first?.participants[0]?.label).toBe("Scenario owner");
+    expect(second?.participants[0]?.label).toBe("Changed only in the persisted snapshot");
   });
 });

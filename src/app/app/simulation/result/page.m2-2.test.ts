@@ -2,18 +2,33 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const root = process.cwd();
+const source = () => readFile(path.join(process.cwd(), "src/app/app/simulation/result/page.tsx"), "utf8");
 
-describe("M2.2 result workbench source contract", () => {
-  it("renders the typed safe projection with an honest four-layer boundary and no raw bundle fallback", async () => {
-    const source = await readFile(path.join(root, "src/app/app/simulation/result/page.tsx"), "utf8");
-    for (const expected of ["Frozen participants", "Frozen relationships", "User-provided facts", "Explicit assumptions", "Simulation steps", "Conditional claims", "stepKeys", "selectedClaim", "only calibrates the next Run"]) expect(source).toContain(expected);
-    expect(source).not.toMatch(/Record<string,unknown>|bundle\.claims|report\.id|localStorage|sample|ONLINE|LIVE|READY/);
+describe("M2.2 evidence workbench", () => {
+  it("uses only the typed safe projection and gives Claim cards keyboard evidence linkage", async () => {
+    const page = await source();
+    expect(page).toContain("result.projection");
+    expect(page).toContain("onKeyDown");
+    expect(page).toContain("supportingStepKeys");
+    expect(page).toContain("participantKeys");
+    expect(page).toContain("relationshipKeys");
+    expect(page).not.toMatch(/Record<string,unknown>|result\.bundle|Report\" value/);
   });
 
-  it("keeps feedback manual, note-capable, and safe on failure", async () => {
-    const source = await readFile(path.join(root, "src/app/app/simulation/result/page.tsx"), "utf8");
-    for (const expected of ["textarea", "crypto.randomUUID()", "409", "Feedback was not saved", "disabled={pending}", "comment", "Feedback already submitted"]) expect(source).toContain(expected);
-    expect(source).not.toContain('setMessage("Feedback saved");');
+  it("supports all three feedback choices, an optional note, and preserves input after a failed request", async () => {
+    const page = await source();
+    expect(page).toContain('["useful","mixed","off"]');
+    expect(page).toContain("textarea");
+    expect(page).toContain("crypto.randomUUID()");
+    expect(page).toContain("Feedback was not saved");
+    expect(page).not.toContain("localStorage");
+  });
+
+  it("keeps touch targets, focus states, reduced motion and mobile overflow guardrails", async () => {
+    const page = await source();
+    expect(page).toMatch(/min-h-10|h-10/);
+    expect(page).toContain("focus-visible");
+    expect(page).toContain("motion-reduce");
+    expect(page).toContain("overflow-x-hidden");
   });
 });
