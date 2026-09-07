@@ -74,14 +74,15 @@ describe("M2.1 formal entry and legacy isolation", () => {
     );
   });
 
-  it("keeps the formal Intake as a server-backed Track A-only component until submission succeeds", async () => {
+  it("keeps the formal Intake server-authenticated and Track A-only until submission succeeds", async () => {
     const [page, intake] = await Promise.all([
       source("src/app/app/new/intake/page.tsx"),
       source("src/app/app/new/intake/formal-intake-client.tsx"),
     ]);
 
     expect(page).toContain("createSupabaseServerClient");
-    expect(page).toContain("登录后继续正式录入");
+    expect(page).toContain('redirect("/login")');
+    expect(page).not.toContain("IntakeLoginBoundary");
     expect(intake).toContain('"30_days"');
     expect(intake).toContain('"90_days"');
     expect(intake).toContain('fetch("/api/seed-context"');
