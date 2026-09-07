@@ -9,6 +9,19 @@ import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
 
 type Phase = "loading" | "running" | "completed" | "error";
 
+export function projectRunningPhase(phase: Phase) {
+  if (phase === "loading") {
+    return { statusLabel: "正在读取服务器状态", title: "正在读取服务器状态" };
+  }
+  if (phase === "running") {
+    return { statusLabel: "沙盘运行中", title: "正在梳理可能路径。" };
+  }
+  if (phase === "completed") {
+    return { statusLabel: "结果已生成", title: "结果已生成" };
+  }
+  return { statusLabel: "状态暂不可用", title: "暂时无法读取本次沙盘状态。" };
+}
+
 export default function RunningPage() {
   return <AppShell><Suspense fallback={<RunningSurface phase="loading" />}><RunningController /></Suspense></AppShell>;
 }
@@ -53,8 +66,7 @@ function NoActiveRun() {
 
 function RunningSurface({ phase, message = "Recovering the persisted Run status.", retry }: { phase: Phase; message?: string; retry?: () => void }) {
   const active = phase === "loading" || phase === "running";
-  const statusLabel = phase === "completed" ? "结果已生成" : phase === "error" ? "状态暂不可用" : active ? "沙盘运行中" : "正在读取服务器状态";
-  const title = phase === "completed" ? "结果已生成" : phase === "error" ? "本次沙盘在生成结果前停止。" : "正在梳理可能路径。";
+  const { statusLabel, title } = projectRunningPhase(phase);
 
   return <section id="main-content" className="mx-auto min-h-[70svh] max-w-5xl py-8 sm:py-14"><p className="font-mono text-[11px] uppercase tracking-[.16em] text-[var(--text-muted)]">Formal account sandbox / Run state</p><div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]"><div><div className="flex items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${active ? "formal-status-pulse bg-[var(--evidence-gold)]" : phase === "completed" ? "bg-[var(--verified-green)]" : "bg-[var(--risk-red)]"}`} aria-hidden="true" /><p role="status" aria-live="polite" className="font-mono text-xs uppercase tracking-[.14em] text-[var(--text-secondary)]">{statusLabel}</p></div><h1 className="mt-5 max-w-3xl font-[var(--font-display)] text-4xl leading-[1.08] text-[var(--text-primary)] sm:text-6xl">{title}</h1><p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-secondary)]">{message}</p>{phase === "error" ? <div className="mt-7 flex flex-wrap gap-3">{retry ? <Button onClick={retry} className="!w-auto px-4 py-3">重试读取状态</Button> : null}<ButtonLink href="/app/new/graph" variant="secondary" className="!w-auto px-4 py-3">返回关系图</ButtonLink></div> : null}</div><SurfaceCard emphasis="dark" className="p-5"><p className="font-mono text-[11px] uppercase tracking-[.14em] text-white/45">Completion rule</p><p className="mt-3 text-sm leading-7 text-white/70">This screen reads the account database. It never infers completion from a timer, animation, or browser cache.</p></SurfaceCard></div></section>;
 }
