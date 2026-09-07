@@ -66,7 +66,7 @@ The repair changed 5 source/test files from the independent-review start:
 
 ### Repair browser evidence
 
-The final production build was served by this task at `http://127.0.0.1:4307`,
+The final production build was served by this task at `<local-app-origin>`,
 owned PID `24752`, with startup marker
 `M2_1_REPAIR_HEAD=802aa089aadcc173679ed772612d234847f40763`.
 
@@ -126,7 +126,7 @@ overview, formal Run/History/Feedback contract, or `src/lib/v2/**`.
 ### Anonymous production-browser evidence
 
 The production build from `3a42107` was served by this task at
-`http://127.0.0.1:4317` in an isolated Playwright session. Root CTA -> Scene
+`<local-app-origin>` in an isolated Playwright session. Root CTA -> Scene
 CTA -> Intake reached the formal route. Intake rendered the login boundary with
 no Track B value, browser-draft claim, or People action. Archive rendered the
 login boundary; its performance resource list contained zero
@@ -198,7 +198,7 @@ repair or acceptance claim.
 ### Anonymous production-browser evidence
 
 The production build from `233b2ce` was served only by this task at
-`http://127.0.0.1:4319` (owned startup PID `27624`). In a new anonymous
+`<local-app-origin>` (task-owned process). In a new anonymous
 Playwright session, Root CTA -> Scene CTA -> `/app/new/intake` reached the
 server login boundary; it created no Seed and showed no People action. A direct
 `/intake` request ended at `/app/new/scene`; its body contained none of Track
@@ -255,7 +255,7 @@ that a Run stopped.
 ### Final anonymous production-browser evidence
 
 The final production build was served by this task at
-`http://127.0.0.1:4325`. A new anonymous Playwright session confirmed Root CTA
+`<local-app-origin>`. A new anonymous Playwright session confirmed Root CTA
 to Scene to formal Intake. Formal Intake rendered its server login boundary and
 provided neither a formal submission nor a People action. Anonymous Archive
 rendered its login boundary; its request listing had zero
