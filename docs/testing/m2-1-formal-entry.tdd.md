@@ -299,3 +299,38 @@ otherwise changed.
 This remains an unpushed local repair candidate only. The pgTAP and
 authenticated-browser blocks prevent any M2.1, second-phase, or Phase 4 PASS
 claim.
+
+### Recovery continuation and scoped authenticated recheck
+
+The preceding blocked record is historical. Under subsequent, explicitly
+bounded recovery authority, the exact inaccessible Docker runtime directory
+`C:/Users/clf04/AppData/Local/Docker/run` was renamed non-recursively to the
+unique sibling `run.astraloom-recovery-20260907142021`; it remains preserved as
+a recoverable backup. No Docker configuration, WSL/VHD, volume, migration, or
+application data was removed. Docker Desktop then reached Engine 29.6.2 and
+the already-existing local Supabase stack became healthy. The unchanged command
+`SUPABASE_TELEMETRY_DISABLED=1 npx.cmd --no-install supabase test db --local
+supabase/tests` then exited 0: 8 files / 538 assertions.
+
+One disposable local Auth identity was used only to recheck the two scoped UI
+claims; no Intake or other business data was submitted. On the authenticated
+formal Intake screen, the native privacy checkbox measured 44px by 44px in the
+browser. Its enclosing semantic label remained present, Space toggled and
+restored its checked state, and keyboard focus produced a visible outline.
+On authenticated Running without a Run id, the honest no-active-sandbox state
+was present and neither `ready` nor `Bundle is ready` was visible. The
+completed projection remains proven by the focused fixture/source contract:
+`projectRunningPhase("completed")` projects `结果已生成`, while the rendered
+status binds to `statusLabel` and rejects raw `ready` / `Bundle is ready`
+copy. This is intentionally not a fabricated completed Run browser replay.
+
+After the check, the disposable browser cookie, local storage, and session
+storage were cleared and its session closed. The exact temporary inbucket
+message was deleted (HTTP 200); the temporary Auth user query returned 0; and
+the temporary identity state file was individually cleared and rechecked at
+0 bytes. Playwright transient logs/snapshots were removed from the worktree.
+No identity, token, cookie, UUID, or business content is recorded here.
+
+All executable gates listed above remain local evidence only. This is still an
+unpushed **repair candidate**, not an M2.1, second-phase, or Phase 4 PASS
+claim.
