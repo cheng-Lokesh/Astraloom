@@ -73,7 +73,7 @@ export default function RunningPage() {
   return <AppShell><Suspense fallback={<RunningSurface phase="loading" />}><RunningController /></Suspense></AppShell>;
 }
 
-function RunningController() {
+export function RunningController() {
   const params = useSearchParams();
   const router = useRouter();
   const runId = params.get("run_id");

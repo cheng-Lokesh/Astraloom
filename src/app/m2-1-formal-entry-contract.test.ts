@@ -136,6 +136,10 @@ describe("M2.1 formal entry and legacy isolation", () => {
     await expect(read("blocked")).resolves.toMatchObject({ phase: "blocked", statusLabel: "服务端已阻断" });
     await expect(read("failed")).resolves.toMatchObject({ phase: "failed", statusLabel: "服务端运行失败" });
     await expect(read("unexpected_future_state")).resolves.toMatchObject({ phase: "error", statusLabel: "状态暂不可用" });
+    const httpFailure = await readRunningStatus(runId, createFormalSandboxClient(async () => new Response(JSON.stringify({ ok: false, error_code: "private_transport_detail", trace_id: "trace" }), { status: 500, headers: { "content-type": "application/json" } })));
+    expect(httpFailure).toMatchObject({ phase: "error", statusLabel: "状态暂不可用" });
+    expect(httpFailure.message).not.toContain("private_transport_detail");
+    await expect(readRunningStatus(runId, createFormalSandboxClient(async () => new Response(JSON.stringify({ ok: true, run: { id: runId } }), { status: 200, headers: { "content-type": "application/json" } })))).resolves.toMatchObject({ phase: "error", statusLabel: "状态暂不可用" });
     await expect(readRunningStatus(runId, createFormalSandboxClient(async () => { throw new Error("private transport detail"); }))).resolves.toMatchObject({ phase: "error", statusLabel: "状态暂不可用" });
   });
 
