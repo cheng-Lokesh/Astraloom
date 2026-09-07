@@ -277,6 +277,16 @@ Link, cookie, token, UUID, business row, or temporary identity file was
 created; therefore no user data cleanup action was needed. Unit/component
 contracts do not replace this authenticated browser gate.
 
+The task made one authorized, non-destructive environment-recovery attempt:
+Docker Desktop was present but stopped, so it was launched in the background.
+Its backend then exited before the Linux engine came online. The contemporaneous
+Docker backend log reports failure to remove the existing
+`C:/Users/clf04/AppData/Local/Docker/run/dockerInference` Unix listener path,
+followed by service exit status 150. Repairing that runtime state would require
+cleanup beyond this task's no-reset/no-rebuild/no-volume-deletion authority, so
+the task stopped. No Supabase stack start, migration, volume operation, or
+database write was attempted.
+
 This remains an unpushed local repair candidate only. The pgTAP and
 authenticated-browser blocks prevent any M2.1, second-phase, or Phase 4 PASS
 claim.
