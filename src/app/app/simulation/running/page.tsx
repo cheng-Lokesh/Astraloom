@@ -91,8 +91,16 @@ export function RunningController() {
   }, [router, runId]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!runId) return;
+    let current = true;
+    void readRunningStatus(runId).then((resolution) => {
+      if (!current) return;
+      setPhase(resolution.phase);
+      setMessage(resolution.message);
+      if (resolution.canOpenResult) router.replace(`/app/simulation/result?run_id=${runId}`);
+    });
+    return () => { current = false; };
+  }, [router, runId]);
 
   if (!runId) return <NoActiveRun />;
   return <RunningSurface phase={phase} message={message} retry={() => void refresh()} />;
