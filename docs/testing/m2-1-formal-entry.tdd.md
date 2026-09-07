@@ -448,3 +448,73 @@ after the check. A fresh anonymous Playwright session verified these booleans:
 No login, Magic Link, user, business row, cookie, token, or identity file was
 created or displayed. An independent authenticated browser replay remains
 required before any acceptance decision.
+
+## M2.1 final milestone closeout, 2026-09-07
+
+Status: **M2.1 milestone PASS after the final independent authenticated
+recheck.** This is a narrow M2.1 decision only. It does **not** mark the
+second phase or Phase 4 as PASS; M2.2 has not started. The candidate remains
+local-only: no push, PR, or merge is authorized by this record.
+
+### Decision basis
+
+The final repair chain is `29daaed` (RED), `c4e23fb` (GREEN), and `ce3bd8e`
+(anonymous redirect evidence). The anonymous server branch redirects to login;
+an authenticated server session alone renders Formal Intake. Root, Scene, the
+legacy Intake entry, anonymous API access, Archive, and Running all retain
+their corresponding honest server boundary or empty state. The final anonymous
+checks covered 375, 768, and 1280 CSS-pixel viewports.
+
+At the final HEAD, the focused regression passed with 44 tests; full Vitest
+passed with 66 files and 630 tests. Coverage was 90.85% statements, 81.21%
+branches, 95.55% functions, and 93.52% lines. Lint, type check, production
+build, and `git diff --check` each exited 0. pgTAP passed 8 files / 538
+assertions; Golden passed 3 tests covering 8 implemented Golden Cases; and all
+seven frozen V2 suites exited 0 with counts 83, 116, 63, 47, 23, 40, and 22.
+`src/lib/v2/**` has no diff relative to either the upstream Phase 4 branch or
+`0bbb9a76`.
+
+An independent new-diff review also passed: 8 files / 45 tests, diff check,
+lint, type check, and build all exited 0. It independently confirmed the
+server-session redirect, authenticated branch, and continuing Formal Intake
+wiring.
+
+### Final authenticated recheck
+
+A single controlled authentication recheck passed the complete PKCE and Magic
+Link loopback-allowlist path, including callback and next-path validation. It
+then confirmed Formal Intake, the native acknowledgement target at least 44 by
+44 CSS pixels, semantic label, Space toggle, visible focus, and no horizontal
+overflow at 375, 768, and 1280 CSS pixels. History returned 200 only for its
+honest empty state without raw identifiers; Running returned 200 only for its
+honest empty state without raw identifiers; console and page errors were both
+zero.
+
+The recheck did not submit Intake, Seed, Run, or Feedback data. Its one
+temporary authentication difference was precisely removed: user, session, and
+mail collections returned to their recorded baselines. Task-owned browser,
+server, and temporary artifacts were also removed. No identity, token, cookie,
+message content, or raw identifier is retained in this evidence.
+
+Earlier authenticated-script BLOCKED or FAIL outcomes are retained above as
+historical context only. Their confirmed causes were `TEST_HARNESS` defects:
+incomplete message-list reading, a string-based loopback alias comparison,
+Windows `EINVAL`, or an unsuitable baseline-read method. They are not product
+failures and are superseded as admission evidence by the final successful
+recheck.
+
+### Closeout integrity and publication boundary
+
+The sensitive-shape scan of the closeout change found zero files containing an
+email, JWT, provider key, Bearer credential, or authentication-query value.
+UUID-shaped values found only in test fixtures were classified as non-secret;
+no real identity or credential was found. The scan reports categories and file
+counts only, never values.
+
+At closeout, HEAD is `ce3bd8efb245c49fb3983a6a8f480c44b59f65e2` on
+`productization/phase-4-account-sandbox-loop`; the tracked remote remains
+`78bc36cdc1b87b5fcf4ac8c879a7bb8baf4a1e8b`. The remote is an ancestor of
+HEAD, with `ahead 32 / behind 0`; the worktree was clean before this
+evidence-only update. This record does not publish the candidate. A later
+docs-only local commit may advance local HEAD, while the remote remains at the
+stated unpublished SHA until an explicitly authorized push.
