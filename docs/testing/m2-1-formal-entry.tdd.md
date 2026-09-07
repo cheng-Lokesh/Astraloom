@@ -214,3 +214,69 @@ authenticated browser operation was attempted.
 This remains an unpushed local **repair candidate** only. It does not mark
 M2.1, the second phase, or Phase 4 as PASS. Fresh independent authenticated
 Intake submission and Archive replay remain for a subsequent reviewer.
+
+## Fourth independent-review FAIL and final minimum repair, 2026-09-07
+
+Status: **repair candidate only**. This fourth repair does not mark M2.1, the
+second phase, or Phase 4 as PASS. No push, PR, merge, schema/API/RLS/migration,
+timeout, coverage threshold, Vitest configuration, or `src/lib/v2/**` change
+occurred.
+
+The independent review found two user-visible gaps: the authenticated formal
+Intake privacy acknowledgement used a 16px native checkbox, and completed Runs
+were projected as `ready` with "Bundle is ready." The minimum repair makes the
+native checkbox itself a 44px by 44px keyboard-focusable control while retaining
+the enclosing accessible label and checked state. It keeps the server's
+`completed` status as the completion authority but projects it as
+"结果已生成" / "服务端已完成本次沙盘运行，结果已生成。" It neither alters
+server enums nor synthesizes completion.
+
+An acceptance follow-up also found that the first completed-copy repair treated
+`loading` as `running` and described an unreadable status as a stopped Run. A
+second, focused RED/GREEN checkpoint extracted a four-state user projection:
+loading reads as "正在读取服务器状态", running as "沙盘运行中", completed as
+"结果已生成", and an unreadable state as "状态暂不可用" without asserting
+that a Run stopped.
+
+| Stage | Commit | Command | Actual result |
+| --- | --- | --- | --- |
+| Fourth-repair RED | `ed8867c1d5e8b967341a7222ab5b347a3d5201a4` | `npm.cmd test -- src/app/m2-1-formal-entry-contract.test.ts` | exit 1, 1 file / 12 tests; the 44px layout/focus assertion and completed natural-language/no-raw-ready assertion failed for the intended current behavior. |
+| Fourth-repair GREEN | `9b8f71da4ddc639cc5c3de84f57defb9bd073268` | same | exit 0, 1 file / 12 tests. |
+| Projection RED | `ec2a271e1a3a789e404faf0b783685e123ae6c52` | same | exit 1, 1 file / 13 tests; the required behavioral projection function was absent, so no testable distinction protected loading/running/completed/error. |
+| Projection GREEN | `f7422190c707b052c38b340cb2ba23e222486f41` | same | exit 0, 1 file / 13 tests. |
+| M2.0 plus M2.1 regression | `f742219` | `npm.cmd test -- src/lib/sandbox-overview/overview.server.test.ts src/app/api/sandbox-overview/route.test.ts src/app/app/dashboard/page.m2.test.ts src/components/app-shell.m2.test.ts src/app/m2-1-formal-entry-contract.test.ts` | exit 0, 5 files / 41 tests. |
+| Full Vitest | `f742219` | `npm.cmd test` | exit 0, 63 files / 613 tests, 64.31 seconds. |
+| Repository coverage | `f742219` | `npm.cmd run test:coverage` | exit 0. Statements 90.85%, branches 81.21%, functions 95.55%, lines 93.52%. |
+| Lint, type check, production build | `f742219` | `npm.cmd run lint`; `npm.cmd run type-check`; `npm.cmd run build` | exit 0 for each. |
+| Golden | `f742219` | `npm.cmd run test:golden` | exit 0, 1 file / 3 tests covering all eight implemented Golden Cases. |
+| Seven V2 scripts | `f742219` | `test:v2:evidence`, `world`, `trajectory`, `analysis`, `claims-reports`, `outcome-calibration`, `migration-async-execution` | exit 0. Counts: 83, 116, 63, 47, 23, 40, 22. |
+| pgTAP | local environment | `SUPABASE_TELEMETRY_DISABLED=1 npx.cmd --no-install supabase test db --local supabase/tests` | **BLOCKED**, exit 1 before assertions: Docker Desktop's Linux engine was offline and `127.0.0.1:54322` refused the connection. No reset, rebuild, volume cleanup, or database mutation was attempted. |
+
+### Final anonymous production-browser evidence
+
+The final production build was served by this task at
+`http://127.0.0.1:4325`. A new anonymous Playwright session confirmed Root CTA
+to Scene to formal Intake. Formal Intake rendered its server login boundary and
+provided neither a formal submission nor a People action. Anonymous Archive
+rendered its login boundary; its request listing had zero
+`/api/sandbox/runs` entries and console capture had 0 errors / 0 warnings.
+Running without a Run id showed the Chinese no-active-sandbox state, not a
+fabricated run result.
+
+At 375x812, 768x1024, and 1280x900 CSS pixels on the production Running empty
+state, `scrollWidth === clientWidth` (375, 768, and 1280 respectively), and
+the visible `a`, `button`, and `summary` targets had zero dimensions below
+44px. Keyboard Tab focused an anchor with a computed 3px solid outline.
+
+### Authenticated boundary
+
+The scoped authenticated Intake 44px measurement and completed-Run browser
+copy replay are **BLOCKED**. Docker Desktop's engine was unavailable, so local
+Supabase Auth and database services could not be reached. No account, Magic
+Link, cookie, token, UUID, business row, or temporary identity file was
+created; therefore no user data cleanup action was needed. Unit/component
+contracts do not replace this authenticated browser gate.
+
+This remains an unpushed local repair candidate only. The pgTAP and
+authenticated-browser blocks prevent any M2.1, second-phase, or Phase 4 PASS
+claim.
