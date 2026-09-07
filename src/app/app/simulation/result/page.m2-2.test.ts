@@ -7,7 +7,7 @@ const source = () => readFile(path.join(process.cwd(), "src/app/app/simulation/r
 describe("M2.2 evidence workbench", () => {
   it("uses only the typed safe projection and gives Claim cards keyboard evidence linkage", async () => {
     const page = await source();
-    expect(page).toContain("result.projection");
+    expect(page).toContain("result.data.projection");
     expect(page).toContain("onKeyDown");
     expect(page).toContain("supportingStepKeys");
     expect(page).toContain("participantKeys");

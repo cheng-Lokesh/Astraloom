@@ -42,6 +42,13 @@ describe("formal sandbox route contracts",()=>{
     const response=await result(new Request("http://local"),context);
     expect(response.status).toBe(409);expect(await response.json()).toEqual(expect.objectContaining({error_code:"run_not_completed"}));
   });
+  it("returns only a validated safe projection for a completed Result",async()=>{
+    const bundle={inputSnapshot:{agents:[{id:"agent_internal",displayName:"Scenario owner",actorType:"self",evidenceRefs:["seed"]}],edges:[]},sourceBoundary:{evidenceLedger:{items:[{id:"real_internal",statement:"A confirmed fact.",sourceKind:"user_statement",sourceTier:"tier_1_user_confirmed",verificationStatus:"user_confirmed",provenance:[],limitations:[]}]},assumptionLedger:{assumptions:[]}},events:[{id:"world_event_v2_one",eventType:"record_observation",evidenceClass:"world_transition_simulation_evidence",causalRealEvidenceIds:["real_internal"],causalAssumptionIds:[]}],claims:[{id:"claim_v2_one",claimType:"scenario_frequency",statement:"A conditional signal.",uncertaintyStatement:"Not a probability.",simulationEventIds:["world_event_v2_one"]}],report:{claimIds:["claim_v2_one"]}};
+    state.client=authClient(userId,()=>query({data:{id:runId,status:"completed",result_bundle:bundle,completed_at:"2026-09-08T00:00:00.000Z"},error:null}));
+    const response=await result(new Request("http://local"),context);const body=await response.json();
+    expect(response.status).toBe(200);expect(body).toEqual(expect.objectContaining({ok:true,projection:expect.objectContaining({claims:[expect.objectContaining({key:"claim-1",stepKeys:["step-1"]})]})}));expect(body).not.toHaveProperty("run_id");
+    expect(JSON.stringify(body)).not.toMatch(/agent_internal|real_internal|world_event_v2|claim_v2|result_bundle/i);
+  });
   it("paginates History in descending order with an opaque timestamp cursor",async()=>{
     const items=[{id:runId,created_at:"2026-08-30T02:00:00.000Z"},{id:"33333333-3333-4333-8333-333333333333",created_at:"2026-08-30T01:00:00.000Z"}];
     state.client=authClient(userId,()=>query({data:items,error:null}));
