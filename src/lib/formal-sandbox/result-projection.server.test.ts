@@ -59,4 +59,30 @@ describe("formal sandbox result projection", () => {
     expect(first?.participants[0]?.label).toBe("Scenario owner");
     expect(second?.participants[0]?.label).toBe("Changed only in the persisted snapshot");
   });
+
+  it("links a Claim only to the frozen people and relation touched by its supporting Events", () => {
+    const unrelatedAgent = "88888888-8888-4888-8888-888888888888";
+    const unrelatedRelation = "99999999-9999-4999-8999-999999999999";
+    const input = bundle();
+    input.inputSnapshot.agents.push({ id: unrelatedAgent, displayName: "Unrelated observer", actorType: "third_party", evidenceRefs: ["private-ref"] });
+    input.inputSnapshot.edges.push({ id: unrelatedRelation, fromAgentId: ids.self, toAgentId: unrelatedAgent, relationshipType: "unrelated", evidenceRefs: ["private-ref"] });
+    input.events = [{ id: "world_event_v2_safe_step", eventType: "allocate_resource", actorId: "entity-self", targetEntityIds: ["entity-counterpart"] }];
+    input.worldSnapshots = [{
+      agentDefinitions: [
+        { id: "definition-self", displayName: "Scenario owner" },
+        { id: "definition-counterpart", displayName: "Frozen participant" },
+        { id: "definition-unrelated", displayName: "Unrelated observer" },
+      ],
+      entities: [
+        { id: "entity-self", agentDefinitionId: "definition-self" },
+        { id: "entity-counterpart", agentDefinitionId: "definition-counterpart" },
+        { id: "entity-unrelated", agentDefinitionId: "definition-unrelated" },
+      ],
+    }];
+
+    const result = projectFormalSandboxResult(input);
+
+    expect(result?.claims[0]?.participantKeys).toEqual(["person-1", "person-2"]);
+    expect(result?.claims[0]?.relationshipKeys).toEqual(["relation-1"]);
+  });
 });

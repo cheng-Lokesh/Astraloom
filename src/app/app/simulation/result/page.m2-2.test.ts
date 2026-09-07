@@ -39,4 +39,12 @@ describe("M2.2 evidence workbench", () => {
     expect(page).toContain('setState({ phase: "loading" })');
     expect(page).toContain("setRetry((value) => value + 1)");
   });
+
+  it("renders user facts and system assumptions as visible boundaries", async () => {
+    const page = await source();
+    expect(page).toContain("User-provided facts");
+    expect(page).toContain("System assumptions");
+    expect(page).toContain("projection.facts.map");
+    expect(page).toContain("projection.assumptions.map");
+  });
 });
