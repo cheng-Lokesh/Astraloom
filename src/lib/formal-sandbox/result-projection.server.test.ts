@@ -173,6 +173,31 @@ describe("formal sandbox result projection", () => {
     expect(projectFormalSandboxResult(input)).toBeNull();
   });
 
+  it("fails closed when a repeated World Relation keeps its endpoints but changes provenance", () => {
+    const input = bundle();
+    input.sourceBoundary.evidenceLedger.items = [
+      { id: "real-evidence-one", statement: "First fact." },
+      { id: "real-evidence-two", statement: "Second fact." },
+    ];
+    input.worldSnapshots[0].relations[0].provenance.realEvidenceIds = ["real-evidence-one"];
+    input.worldSnapshots.push({
+      agentDefinitions: structuredClone(input.worldSnapshots[0].agentDefinitions),
+      entities: structuredClone(input.worldSnapshots[0].entities),
+      relations: [{ ...structuredClone(input.worldSnapshots[0].relations[0]), provenance: { realEvidenceIds: ["real-evidence-two"] } }],
+    });
+
+    expect(projectFormalSandboxResult(input)).toBeNull();
+  });
+
+  it.each([
+    ["frozen Agent", (input: ReturnType<typeof bundle>) => { input.inputSnapshot.agents[0].evidenceRefs.push("private-ref"); }],
+    ["frozen Relation", (input: ReturnType<typeof bundle>) => { input.inputSnapshot.edges[0].evidenceRefs.push("private-ref"); }],
+  ])("fails closed for duplicate %s evidence references", (_label, mutate) => {
+    const input = bundle();
+    mutate(input);
+    expect(projectFormalSandboxResult(input)).toBeNull();
+  });
+
   it.each([
     ["Report Claim", (input: ReturnType<typeof bundle>) => {
       input.claims.push({ ...input.claims[0], id: "claim_v2_second_claim" });
