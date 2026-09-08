@@ -187,7 +187,9 @@ export async function readSandboxOverview(supabase: SupabaseClient, ownerId: str
   const snapshot = snapshotRecord ? snapshotSchema.parse(snapshotRecord) : null;
   const graph = graphRecord ? graphSchema.parse(graphRecord) : null;
   if (graph?.agent_snapshot_id && graph.agent_snapshot_id !== snapshot?.id) throw new Error("sandbox_overview_projection_invalid");
-  const { data: edgeRows, count: edgeCount, error: edgesError } = graph ? await supabase.from("relation_edges").select("id,seed_context_id,graph_snapshot_id,agent_snapshot_id,from_agent_id,to_agent_id,relationship_type", { count: "exact" }).eq("user_id", ownerId).eq("seed_context_id", seed.id).eq("agent_snapshot_id", snapshot?.id ?? "00000000-0000-4000-8000-000000000000").eq("graph_snapshot_id", graph.id).order("created_at").order("id") : { data: [], count: 0, error: null };
+  const { data: edgeRows, count: edgeCount, error: edgesError } = graph && snapshot
+    ? await supabase.from("relation_edges").select("id,seed_context_id,graph_snapshot_id,agent_snapshot_id,from_agent_id,to_agent_id,relationship_type", { count: "exact" }).eq("user_id", ownerId).eq("seed_context_id", seed.id).eq("agent_snapshot_id", snapshot.id).eq("graph_snapshot_id", graph.id).order("created_at").order("id")
+    : { data: [], count: 0, error: null };
   if (edgesError) throw new Error("graph_edges_overview_read_failed");
   const { data: agentRows, count: immutableAgentsCount, error: agentsError } = snapshot ? await supabase.from("agent_profiles").select("id,seed_context_id,snapshot_id,display_name,relationship_to_user,agent_type", { count: "exact" }).eq("user_id", ownerId).eq("seed_context_id", seed.id).eq("snapshot_id", snapshot.id).order("created_at").order("id") : { data: [], count: 0, error: null };
   if (agentsError) throw new Error("agents_overview_read_failed");
