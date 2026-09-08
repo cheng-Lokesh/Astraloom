@@ -161,6 +161,30 @@ describe("My Sandbox overview projection", () => {
     });
   });
 
+  it("does not query relation edges when a Graph has no current Agent snapshot", async () => {
+    const queried: string[] = [];
+    const client = {
+      from(table: string) {
+        queried.push(table);
+        const builder = {
+          select: () => builder, eq: () => builder, not: () => builder, in: () => builder, order: () => builder, limit: () => builder,
+          maybeSingle: async () => {
+            if (table === "seed_contexts") return { data: { id: "22222222-2222-4222-8222-222222222222", status: "submitted" }, error: null };
+            if (table === "relation_graph_snapshots") return { data: { id: "44444444-4444-4444-8444-444444444444", graph_locked: true }, error: null };
+            return { data: null, error: null };
+          },
+          then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve({ data: null, count: table === "key_people" ? 2 : 0, error: null }).then(resolve, reject),
+        };
+        return builder;
+      },
+    };
+
+    await expect(readSandboxOverview(client as never, "11111111-1111-4111-8111-111111111111")).resolves.toMatchObject({
+      agents: { immutableCount: 0 }, graph: { exists: true, locked: true, edgeCount: 0 }, relations: { total: 0, items: [] }, nextAction: { kind: "build_agents" },
+    });
+    expect(queried).not.toContain("relation_edges");
+  });
+
   it("maps a server-confirmed running Run to its opaque recovery path", async () => {
     const seedId = "22222222-2222-4222-8222-222222222222";
     const runId = "55555555-5555-4555-8555-555555555555";
