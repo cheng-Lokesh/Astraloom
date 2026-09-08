@@ -212,3 +212,61 @@ This evidence does not replace authenticated browser replay. A new independent
 task must still verify Run switching, late-response isolation, retry loading,
 keyboard linkage, mobile overflow, console/network behavior, and the no-ID
 rendering boundary in a real browser before any M2.2 acceptance decision.
+
+## 2026-09-08 second limited repair after independent FAIL
+
+Status: **local repair candidate only; M2.2 remains not PASS**. This second
+repair addresses only the three findings from the second independent review.
+It does not replace the reserved independent browser final acceptance.
+
+### TDD checkpoints
+
+| Checkpoint | Commit | Executed evidence |
+| --- | --- | --- |
+| Second-review RED | `fad3f37` | Focused command exit 1: the three projection counterexamples failed, and the real component test suite failed to import because the testable component/controller boundary did not yet exist. |
+| Second-review GREEN | `a9f670e` | The same projection, component, request-gate, client, and route surface passed: 5 files / 53 tests, exit 0. |
+
+The projection now compares a repeated World Relation identity using its
+directed endpoints plus the complete canonicalized provenance object. Object
+key order and the provenance reference-set order are normalized; a later
+snapshot with different evidence or other provenance cannot overwrite an
+earlier relation. Frozen Agent and frozen Relation `evidenceRefs` must also be
+unique.
+
+The former `page.m2-2.test.ts` source-file reads and string assertions were
+removed. The replacement tests render the real React Result components to
+observable HTML and execute the real feedback reducer, keyboard activation
+controller, Result request-generation gate, and Run-bound Result surface. They
+cover the safe projection, fact/assumption/simulation/conclusion ledgers,
+Claim keyboard linkage and direct highlighting, all three feedback ratings,
+note retention after failure, 40px/focus/reduced-motion/overflow contracts,
+empty Run selection, A-to-B stale projection suppression, and retry request
+generation.
+
+### Current evidence after the second repair
+
+- Read-only real-bundle compatibility: 12 rows / 12 parsed / 12 frozen-input
+  matches, with 54 participants and 42 relations; exit 0. The temporary harness
+  was removed and created no identity or business data.
+- Focused GREEN: 5 files / 53 tests, exit 0.
+- Affected M2.0/M2.1/M2.2: 10 files / 95 tests, exit 0.
+- Full Vitest: 70 files / 672 tests, exit 0.
+- Full coverage: 70 files / 672 tests, exit 0; statements 90.85%, branches
+  81.21%, functions 95.55%, lines 93.52%.
+- Full ESLint, type check, and production build: each exit 0.
+- pgTAP: 8 files / 538 planned / 538 ok / 0 not-ok, exit 0.
+- Golden: 1 file / 3 tests covering 8 cases, exit 0.
+- Frozen V2 suites: 83 / 116 / 63 / 47 / 23 / 40 / 22 tests; every command
+  exit 0 with configured coverage thresholds enforced.
+- `git diff --check`: exit 0; `src/lib/v2/**` diff from `b299e7d`: empty.
+
+### Current scan and remaining boundary
+
+The added-line scan from authorized upstream `b299e7d` found 0 actionable
+secret assignments, email literals, or local origins. Twelve UUID-shaped lines
+remain confined to static test fixtures; non-test and actionable UUID findings
+are 0.
+
+Authenticated browser replay was intentionally not run in this executor task.
+The candidate therefore waits for a new independent browser final acceptance
+before any M2.2 decision.
