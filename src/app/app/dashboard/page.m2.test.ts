@@ -1,21 +1,29 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-const root = process.cwd();
+import { SandboxLedger } from "./sandbox-dashboard-client";
 
-describe("My Sandbox dashboard source contract", () => {
-  it("uses the server overview and never restores a local Observatory", async () => {
-    const page = await readFile(path.join(root, "src/app/app/dashboard/page.tsx"), "utf8");
-    const source = await readFile(path.join(root, "src/app/app/dashboard/sandbox-dashboard-client.tsx"), "utf8");
+describe("My Sandbox dashboard behavior", () => {
+  it("renders current people, ordinal relations, model boundaries and one current-chain action", () => {
+    const html = renderToStaticMarkup(createElement(SandboxLedger, { overview: {
+      authenticated: true,
+      seed: { state: "submitted" }, reality: { state: "not_modeled" },
+      people: { confirmedCount: 2, items: [{ key: "person-1", label: "Scenario owner", role: "self" }, { key: "person-2", label: "Current collaborator", role: "collaborator" }] },
+      agents: { immutableCount: 2 },
+      graph: { exists: true, locked: true, edgeCount: 1, relations: [{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "collaboration" }] },
+      running: { exists: false, href: null }, latestCompletedRun: { status: "completed", completedAt: "2026-09-08T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque" },
+      history: { count: 1 }, feedback: { exists: true }, lifeClimate: { state: "not_modeled" }, resources: { state: "not_modeled" }, constraints: { state: "not_modeled" }, nextChange: { state: "not_modeled" },
+      nextAction: { kind: "start_next_run", href: "/app/new/graph" },
+    } }));
 
-    expect(page).toContain("createSupabaseServerClient");
-    expect(page).toContain("登录后查看我的沙盘");
-    expect(source).toContain("/api/sandbox-overview");
-    expect(source).not.toMatch(/getRepositories|localStorage|Recent cases|Career|ONLINE|LIVE|READY/);
-    expect(source).toContain("尚未建模");
-    expect(source).toContain("role=\"status\"");
-    expect(source).toContain("role=\"alert\"");
+    expect(html).toContain("当前人物");
+    expect(html).toContain("Scenario owner");
+    expect(html).toContain("当前关系");
+    expect(html).toContain("person-1");
+    expect(html).toContain("尚未建模");
+    expect(html).toContain("开始下一次 Run");
+    expect(html.match(/href="\/app\/new\/graph"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
   });
 });

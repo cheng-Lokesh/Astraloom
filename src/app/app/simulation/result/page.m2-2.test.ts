@@ -75,6 +75,30 @@ describe("M2.2 Result components and controllers", () => {
     expect(failed.comment).toBe("Keep this note");
   });
 
+  it("shows a clear My Sandbox next-step CTA only after feedback succeeds", () => {
+    const succeeded = feedbackReducer(initialFeedbackState, { type: "save_succeeded", rating: "useful" });
+    const failed = feedbackReducer({ ...initialFeedbackState, comment: "Keep this note" }, { type: "save_failed" });
+    const successHtml = renderToStaticMarkup(createElement(FeedbackPanel, { state: succeeded, onCommentChange: noAction, onSave: noAction }));
+    const failureHtml = renderToStaticMarkup(createElement(FeedbackPanel, { state: failed, onCommentChange: noAction, onSave: noAction }));
+
+    expect(successHtml).toContain('href="/app/dashboard"');
+    expect(successHtml).toContain("回到 My Sandbox 查看下一步");
+    expect(failureHtml).not.toContain('href="/app/dashboard"');
+    expect(failureHtml).toContain("Keep this note");
+  });
+
+  it("shows My Sandbox as the primary next step only after feedback succeeds", () => {
+    const succeeded = feedbackReducer(initialFeedbackState, { type: "save_succeeded", rating: "useful" });
+    const failed = feedbackReducer(initialFeedbackState, { type: "save_failed" });
+    const successHtml = renderToStaticMarkup(createElement(FeedbackPanel, { state: succeeded, onCommentChange: noAction, onSave: noAction }));
+    const failureHtml = renderToStaticMarkup(createElement(FeedbackPanel, { state: failed, onCommentChange: noAction, onSave: noAction }));
+
+    expect(successHtml).toContain('href="/app/dashboard"');
+    expect(successHtml).toContain("回到 My Sandbox");
+    expect(failureHtml).not.toContain('href="/app/dashboard"');
+    expect(failureHtml).toContain("Feedback was not saved");
+  });
+
   it("renders observable touch, focus, reduced-motion and overflow contracts", () => {
     const html = renderToStaticMarkup(workbench());
 

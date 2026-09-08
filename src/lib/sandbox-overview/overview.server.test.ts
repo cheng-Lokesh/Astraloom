@@ -30,6 +30,7 @@ describe("My Sandbox overview projection", () => {
     [source({ graph: { exists: true, locked: false, edgeCount: 3 } }), "review_graph"],
     [source({ runningRun: { href: "/app/simulation/running?run_id=opaque" } }), "open_running"],
     [source({ latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" } }), "open_latest_result"],
+    [source({ latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" }, hasFeedback: true }), "start_next_run"],
     [source(), "start_run"],
   ])("computes the one truthful next action: %s", (input, expected) => {
     expect(buildSandboxOverview(input).nextAction.kind).toBe(expected);
@@ -262,8 +263,53 @@ describe("My Sandbox overview projection", () => {
     expect(completed).toMatchObject({
       latestCompletedRun: { status: "completed" },
       feedback: { exists: true },
-      nextAction: { kind: "open_latest_result" },
+      nextAction: { kind: "start_next_run" },
     });
+  });
+
+  it("projects at most five safe current-snapshot people and relations with ordinal-only endpoints", async () => {
+    const overview = await readSandboxOverview(summaryClient() as never, ownerId);
+
+    expect(overview.people).toMatchObject({
+      confirmedCount: 2,
+      total: 6,
+      items: [
+        { key: "person-1", label: "You", relationship: "self", kind: "user_core" },
+        { key: "person-2", label: "Project lead", relationship: "manager", kind: "npc" },
+      ],
+    });
+    expect(overview.people.items).toHaveLength(5);
+    expect(overview.relations).toEqual({
+      total: 2,
+      items: [
+        { key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "professional" },
+      ],
+    });
+    const serialized = JSON.stringify(overview);
+    expect(serialized).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+    expect(serialized).not.toContain("old-seed-person");
+    expect(serialized).not.toContain("private-evidence-ref");
+    expect(serialized).not.toContain("raw scenario must stay server-side");
+  });
+
+  it("fails closed when a current-Graph relation endpoint is absent from the current immutable Agent snapshot", async () => {
+    await expect(readSandboxOverview(summaryClient({ dangling: true }) as never, ownerId)).rejects.toThrow();
+  });
+
+  it("keeps the seven pre-run and run-state actions unique, then advances feedback to a calibrated next Run", () => {
+    const cases: Array<[SandboxOverviewSource, SandboxOverview["nextAction"]["kind"]]> = [
+      [source({ seed: null }), "start_intake"],
+      [source({ confirmedPeopleCount: 0 }), "review_people"],
+      [source({ immutableAgentsCount: 0 }), "build_agents"],
+      [source({ graph: { exists: false, locked: false, edgeCount: 0 } }), "review_graph"],
+      [source(), "start_run"],
+      [source({ runningRun: { href: "/app/simulation/running?run_id=opaque" } }), "open_running"],
+      [source({ latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" } }), "open_latest_result"],
+    ];
+
+    expect(cases.map(([input]) => buildSandboxOverview(input).nextAction.kind)).toEqual(cases.map(([, kind]) => kind));
+    expect(new Set(cases.map(([, kind]) => kind)).size).toBe(7);
+    expect(buildSandboxOverview(source({ latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" }, hasFeedback: true })).nextAction).toEqual({ kind: "start_next_run", href: "/app/new/graph" });
   });
 
   it("recognizes feedback only for the latest completed Run on the current chain", async () => {
@@ -278,6 +324,53 @@ describe("My Sandbox overview projection", () => {
 
     expect(overview.feedback).toEqual({ exists: false });
     expect(overview.history).toEqual({ count: 2 });
+  });
+
+  it("starts a new current-Graph Run after the current completed Run already has feedback", () => {
+    const overview = buildSandboxOverview(source({
+      latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" },
+      hasFeedback: true,
+    }));
+
+    expect(overview.nextAction).toEqual({ kind: "start_next_run", href: "/app/new/graph" });
+  });
+
+  it("keeps a completed current Run without feedback pointed at its Result", () => {
+    const overview = buildSandboxOverview(source({
+      latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" },
+      hasFeedback: false,
+    }));
+
+    expect(overview.nextAction.kind).toBe("open_latest_result");
+  });
+
+  it("projects at most five safe current Agent and Relation summaries with ordinal endpoints", async () => {
+    const overview = await readSandboxOverview(summaryClient() as never, ownerId);
+    const serialized = JSON.stringify(overview);
+
+    expect(overview.people.items).toEqual([
+      { key: "person-1", label: "Scenario owner", role: "self" },
+      { key: "person-2", label: "Current collaborator", role: "collaborator" },
+      { key: "person-3", label: "Current manager", role: "manager" },
+      { key: "person-4", label: "Current peer", role: "peer" },
+      { key: "person-5", label: "Current sponsor", role: "sponsor" },
+    ]);
+    expect(overview.graph.relations).toEqual([
+      { key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "collaboration" },
+      { key: "relation-2", fromPersonKey: "person-2", toPersonKey: "person-3", label: "reporting" },
+    ]);
+    expect(serialized).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
+    expect(serialized).not.toMatch(/evidence_refs|raw_context|user_question|scenario|trace_id|email|token|secret/i);
+  });
+
+  it("fails closed when a current relation endpoint is absent from the current immutable Agent snapshot", async () => {
+    await expect(readSandboxOverview(summaryClient({ danglingRelation: true }) as never, ownerId))
+      .rejects.toThrow("sandbox_overview_projection_invalid");
+  });
+
+  it("fails closed when the latest Graph does not bind the latest immutable Agent snapshot", async () => {
+    await expect(readSandboxOverview(summaryClient({ conflictingSnapshot: true }) as never, ownerId))
+      .rejects.toThrow("sandbox_overview_projection_invalid");
   });
 });
 
@@ -338,6 +431,99 @@ function crossChainClient(options: CrossChainOptions) {
         limit: () => builder,
         maybeSingle: async () => response(table, filters),
         then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(response(table, filters)).then(resolve, reject),
+      };
+      return builder;
+    },
+  };
+}
+
+function summaryClient(options: { dangling?: boolean } = {}) {
+  const people = [
+    { id: "10000000-0000-4000-8000-000000000001", seed_context_id: currentSeedId, snapshot_id: currentSnapshotId, agent_type: "user_core", display_name: "You", relationship_to_user: "self" },
+    { id: "10000000-0000-4000-8000-000000000002", seed_context_id: currentSeedId, snapshot_id: currentSnapshotId, agent_type: "npc", display_name: "Project lead", relationship_to_user: "manager" },
+    { id: "10000000-0000-4000-8000-000000000003", seed_context_id: currentSeedId, snapshot_id: currentSnapshotId, agent_type: "user_variant", display_name: "Careful self", relationship_to_user: "self variant" },
+    { id: "10000000-0000-4000-8000-000000000004", seed_context_id: currentSeedId, snapshot_id: currentSnapshotId, agent_type: "user_variant", display_name: "Decisive self", relationship_to_user: "self variant" },
+    { id: "10000000-0000-4000-8000-000000000005", seed_context_id: currentSeedId, snapshot_id: currentSnapshotId, agent_type: "npc", display_name: "Collaborator", relationship_to_user: "peer" },
+    { id: "10000000-0000-4000-8000-000000000006", seed_context_id: currentSeedId, snapshot_id: currentSnapshotId, agent_type: "npc", display_name: "Advisor", relationship_to_user: "advisor" },
+  ];
+  const edges = [
+    { id: "20000000-0000-4000-8000-000000000001", seed_context_id: currentSeedId, graph_snapshot_id: currentGraphId, agent_snapshot_id: currentSnapshotId, from_agent_id: people[0]!.id, to_agent_id: people[1]!.id, relationship_type: "professional" },
+    { id: "20000000-0000-4000-8000-000000000002", seed_context_id: currentSeedId, graph_snapshot_id: currentGraphId, agent_snapshot_id: currentSnapshotId, from_agent_id: people[0]!.id, to_agent_id: options.dangling ? "30000000-0000-4000-8000-000000000001" : people[5]!.id, relationship_type: "support" },
+  ];
+  const has = (filters: Array<[string, unknown]>, name: string, value: unknown) => filters.some(([key, actual]) => key === name && actual === value);
+  return {
+    from(table: string) {
+      const filters: Array<[string, unknown]> = [];
+      let head = false;
+      const response = () => {
+        if (table === "seed_contexts") return { data: { id: currentSeedId, status: "submitted" }, error: null };
+        if (table === "key_people") return { data: null, count: 2, error: null };
+        if (table === "agent_profile_snapshots") return { data: { id: currentSnapshotId }, error: null };
+        if (table === "relation_graph_snapshots") return { data: { id: currentGraphId, agent_snapshot_id: currentSnapshotId, graph_locked: true }, error: null };
+        if (table === "agent_profiles") return has(filters, "seed_context_id", currentSeedId) && has(filters, "snapshot_id", currentSnapshotId) ? { data: head ? null : people, count: people.length, error: null } : { data: [{ display_name: "old-seed-person", evidence_refs: ["private-evidence-ref"], raw_scenario: "raw scenario must stay server-side" }], count: 1, error: null };
+        if (table === "relation_edges") return has(filters, "seed_context_id", currentSeedId) && has(filters, "graph_snapshot_id", currentGraphId) ? { data: head ? null : edges, count: edges.length, error: null } : { data: [], count: 0, error: null };
+        if (table === "simulations") return { data: null, count: 0, error: null };
+        if (table === "feedback_logs") return { data: null, error: null };
+        return { data: null, error: null };
+      };
+      const builder = {
+        select: (_columns?: string, settings?: { head?: boolean }) => { head = settings?.head ?? false; return builder; },
+        eq: (name: string, value: unknown) => { filters.push([name, value]); return builder; },
+        not: () => builder,
+        in: (name: string, value: unknown) => { filters.push([name, value]); return builder; },
+        order: () => builder,
+        limit: () => builder,
+        maybeSingle: async () => response(),
+        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(response()).then(resolve, reject),
+      };
+      return builder;
+    },
+  };
+}
+
+function summaryClient(options: { danglingRelation?: boolean; conflictingSnapshot?: boolean } = {}) {
+  const ids = {
+    seed: currentSeedId,
+    snapshot: currentSnapshotId,
+    graph: currentGraphId,
+    agents: [
+      "90000000-0000-4000-8000-000000000001",
+      "90000000-0000-4000-8000-000000000002",
+      "90000000-0000-4000-8000-000000000003",
+      "90000000-0000-4000-8000-000000000004",
+      "90000000-0000-4000-8000-000000000005",
+      "90000000-0000-4000-8000-000000000006",
+    ],
+  };
+  const agents = [
+    { id: ids.agents[0], display_name: "Scenario owner", relationship_to_user: "self", agent_type: "user_core" },
+    { id: ids.agents[1], display_name: "Current collaborator", relationship_to_user: "collaborator", agent_type: "npc" },
+    { id: ids.agents[2], display_name: "Current manager", relationship_to_user: "manager", agent_type: "npc" },
+    { id: ids.agents[3], display_name: "Current peer", relationship_to_user: "peer", agent_type: "npc" },
+    { id: ids.agents[4], display_name: "Current sponsor", relationship_to_user: "sponsor", agent_type: "npc" },
+    { id: ids.agents[5], display_name: "Sixth hidden person", relationship_to_user: "peer", agent_type: "npc" },
+  ];
+  const edges = [
+    { id: "91000000-0000-4000-8000-000000000001", from_agent_id: ids.agents[0], to_agent_id: ids.agents[1], relationship_type: "collaboration" },
+    { id: "91000000-0000-4000-8000-000000000002", from_agent_id: ids.agents[1], to_agent_id: ids.agents[2], relationship_type: "reporting" },
+    ...(options.danglingRelation ? [{ id: "91000000-0000-4000-8000-000000000003", from_agent_id: ids.agents[0], to_agent_id: "92000000-0000-4000-8000-000000000001", relationship_type: "dangling" }] : []),
+  ];
+  const response = (table: string) => {
+    if (table === "seed_contexts") return { data: { id: ids.seed, status: "submitted" }, error: null };
+    if (table === "key_people") return { data: null, count: 5, error: null };
+    if (table === "agent_profile_snapshots") return { data: { id: ids.snapshot }, error: null };
+    if (table === "relation_graph_snapshots") return { data: { id: ids.graph, agent_snapshot_id: options.conflictingSnapshot ? "93000000-0000-4000-8000-000000000001" : ids.snapshot, graph_locked: true }, error: null };
+    if (table === "agent_profiles") return { data: agents, count: agents.length, error: null };
+    if (table === "relation_edges") return { data: edges, count: edges.length, error: null };
+    if (table === "simulations") return { data: null, count: 0, error: null };
+    return { data: null, error: null };
+  };
+  return {
+    from(table: string) {
+      const builder = {
+        select: () => builder, eq: () => builder, not: () => builder, in: () => builder,
+        order: () => builder, limit: () => builder, maybeSingle: async () => response(table),
+        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(response(table)).then(resolve, reject),
       };
       return builder;
     },
