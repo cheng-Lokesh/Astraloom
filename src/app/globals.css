@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+/* Observational Deep-Field design tokens from the supplied frontend package. */
+:root {
+  --bg-observatory-base: 222 28% 5%;
+  --bg-observatory-surface: 220 23% 8%;
+  --bg-observatory-raised: 218 20% 12%;
+  --bg-observatory-overlay: 217 19% 17%;
+  --border-subtle: 217 19% 15%;
+  --border-medium: 217 19% 22%;
+  --border-bright: 217 19% 36%;
+  --lens-reality: 210 40% 96%;
+  --lens-simulation: 38 92% 50%;
+  --lens-symbolic: 258 90% 66%;
+  --lens-inferred: 199 89% 48%;
+  --edge-trust: 160 84% 39%;
+  --edge-hostility: 0 84% 60%;
+  --edge-dependency: 217 91% 60%;
+  --edge-gap: 215 16% 47%;
+  --risk-l1: 160 84% 39%;
+  --risk-l2: 38 92% 50%;
+  --risk-l3: 0 84% 60%;
+  --duration-instant: 100ms;
+  --duration-tactical: 200ms;
+  --duration-deliberate: 400ms;
+  --duration-flow: 800ms;
+  --ease-astral: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 @keyframes formal-status-pulse {
   0%, 100% { opacity: 0.45; transform: scale(0.82); }
   50% { opacity: 1; transform: scale(1); }
@@ -100,8 +127,57 @@ html[data-zh-font="song"] {
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-observatory-base: hsl(var(--bg-observatory-base));
+  --color-observatory-surface: hsl(var(--bg-observatory-surface));
+  --color-observatory-raised: hsl(var(--bg-observatory-raised));
+  --color-observatory-overlay: hsl(var(--bg-observatory-overlay));
+  --color-observatory-subtle: hsl(var(--border-subtle));
+  --color-lens-reality: hsl(var(--lens-reality));
+  --color-lens-simulation: hsl(var(--lens-simulation));
+  --color-lens-symbolic: hsl(var(--lens-symbolic));
+  --color-lens-inferred: hsl(var(--lens-inferred));
+  --color-edge-trust: hsl(var(--edge-trust));
+  --color-edge-hostility: hsl(var(--edge-hostility));
+  --color-edge-dependency: hsl(var(--edge-dependency));
+  --color-edge-gap: hsl(var(--edge-gap));
+  --color-risk-l1: hsl(var(--risk-l1));
+  --color-risk-l2: hsl(var(--risk-l2));
+  --color-risk-l3: hsl(var(--risk-l3));
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+.observatory-grid {
+  background-image: radial-gradient(circle, hsl(var(--border-medium) / 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.observatory-input {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid hsl(var(--border-medium));
+  border-radius: 0.5rem;
+  background: hsl(var(--bg-observatory-base));
+  padding: 0.7rem 0.8rem;
+  color: hsl(var(--text-primary));
+  transition-property: border-color, box-shadow;
+  transition-duration: var(--duration-tactical);
+}
+
+.observatory-input::placeholder {
+  color: hsl(var(--text-muted));
+}
+
+.observatory-input:focus-visible {
+  border-color: hsl(var(--lens-simulation));
+  box-shadow: 0 0 0 3px hsl(var(--lens-simulation) / 0.18);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none !important;
+  }
 }
 
 body {
