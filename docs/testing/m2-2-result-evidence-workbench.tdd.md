@@ -125,3 +125,90 @@ accepts a World-to-frozen-Agent association only when the frozen display name is
 unique. Ambiguous names fail closed by omitting the relation linkage rather than
 guessing. A future separately authorized bundle-version change should add an
 explicit cross-ledger binding; this M2.2 repair does not alter the frozen V2 core.
+
+## 2026-09-08 limited repair candidate after independent FAIL
+
+Status: **local repair candidate only; M2.2 is not PASS**. Browser final
+acceptance remains reserved for a new independent task. This repair created no
+identity or business data and did not change `src/lib/v2/**`.
+
+The independent final review measured the pre-repair candidate at **69 files /
+642 tests**. The earlier **69 files / 638 tests** entry above is retained as
+historical candidate evidence, not the current result. After this repair added
+26 executable tests, the current full result is **70 files / 668 tests**.
+
+### TDD checkpoints
+
+| Checkpoint | Commit | Executed evidence |
+| --- | --- | --- |
+| Strict-reference and Run-generation RED | `1e070c5` | Focused command exit 1: 22 projection counterexamples failed for the intended gaps, and the executable request-generation suite failed because the gate did not yet exist. |
+| Minimal GREEN | `22aaa40` | The same affected surface plus route/client coverage passed: 5 files / 49 tests, exit 0. |
+
+The projection now rejects duplicate frozen Agent or Relation ids, duplicate
+directed frozen edge endpoints, conflicting repeated World Definition, Entity,
+or Relation identities, duplicate within-snapshot Definition/Entity/Relation
+rows or Relation endpoints, dangling World and Event references, duplicate
+Event/Claim/Report references, and dangling or duplicate real-evidence
+references. Event actors are resolved through their real V2 Agent Definition
+ids. Explicitly targeted World Relations select the same directed frozen edge
+first and use a reverse edge only when that is the sole frozen match; inferred
+endpoint linkage is omitted when opposite directed edges make the relation
+ambiguous. No all-relations highlight fallback was added.
+
+Result loading is now content-bound to both `run_id` and a monotonically
+increasing request generation. A changed Run renders loading before any prior
+projection can be selected, late responses from a prior Run or retry are
+ignored, and retry creates a new loading generation. No ESLint suppression was
+added.
+
+### Read-only real-bundle compatibility
+
+A temporary test harness read the existing local database without writing and
+was removed immediately afterward. It returned only aggregate evidence:
+
+- completed formal bundles: 12;
+- strict projections parsed: 12;
+- persisted Run input snapshots exactly matching bundle input snapshots: 12;
+- projected frozen participants / relations: 54 / 42;
+- command exit: 0.
+
+Ambiguous frozen display names remain accepted only as display rows; their
+World linkage is omitted rather than guessed. Projection output continues to
+use ordinal UI keys and does not expose UUIDs, raw evidence references, or the
+current Graph.
+
+### Current executable evidence
+
+- Focused M2.2 GREEN: 5 files / 49 tests, exit 0.
+- Affected M2.0/M2.1/M2.2 regression: 10 files / 91 tests, exit 0.
+- Full Vitest: 70 files / 668 tests, exit 0.
+- Full coverage: 70 files / 668 tests, exit 0; statements 90.85%, branches
+  81.21%, functions 95.55%, lines 93.52%.
+- Full ESLint: exit 0.
+- Type check (`next typegen && tsc --noEmit`): exit 0.
+- Production build: exit 0.
+- pgTAP: the historical `npx --no-install` wrapper exited 1 before SQL because
+  its local CLI package was unavailable. The same eight local pgTAP SQL files
+  were then executed directly against the running non-reset Supabase Postgres:
+  538 planned / 538 ok / 0 not-ok, every file exit 0, aggregate exit 0.
+- Golden: 1 file / 3 tests covering all 8 implemented cases, exit 0.
+- Frozen V2 suites: Evidence 83, World 116, Trajectory 63, Analysis 47,
+  Claims/Reports 23, Outcome/Calibration 40, Migration/Async 22; every command
+  exit 0 with its configured coverage thresholds enforced.
+- `git diff --check`: exit 0 before both code checkpoints.
+
+### Secret and PII scan
+
+All added lines from authorized upstream `b299e7d` through the GREEN candidate
+were scanned without printing match values. Actionable secret assignments,
+email literals, and local origins each matched 0 added lines. UUID-shaped
+literals matched 12 added lines; manual path and context classification found
+all 12 only in static test fixtures, 0 in non-test files, and 0 actionable
+findings.
+
+### Remaining acceptance boundary
+
+This evidence does not replace authenticated browser replay. A new independent
+task must still verify Run switching, late-response isolation, retry loading,
+keyboard linkage, mobile overflow, console/network behavior, and the no-ID
+rendering boundary in a real browser before any M2.2 acceptance decision.
