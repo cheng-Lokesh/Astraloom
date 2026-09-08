@@ -4,7 +4,7 @@
 
 ![Astraloom 沉浸式情景智能主页](docs/assets/astraloom-overview.png)
 
-<p align="center"><sub>真实运行界面 · 现实信号、多智能体关系与情景分支进入同一观察场</sub></p>
+<p align="center"><sub>当前正式产品分支实机界面 · Graph and Run 交互状态</sub></p>
 
 ## 项目概览
 
@@ -45,8 +45,6 @@ flowchart LR
 - **完整产品链路**：包含现实信息采集、澄清、人物与关系、运行过程、结果、历史和反馈闭环。
 
 ## 结果层：让结论可以被检查
-
-![Astraloom 情景路径与证据回放](docs/assets/astraloom-product-demo-v1.png)
 
 结果页将不同路径的压力、机会窗口、置信区间和下一观察信号并置，同时保留从现实材料到结论的证据回放。对用户而言，真正有价值的不是一个“答案”，而是知道答案基于什么、哪里仍然未知、下一步应观察什么。
 
