@@ -82,7 +82,7 @@ describe("formal sandbox result projection", () => {
     const input = bundle();
     input.inputSnapshot.agents.push({ id: unrelatedAgent, displayName: "Unrelated observer", actorType: "third_party", evidenceRefs: ["private-ref"] });
     input.inputSnapshot.edges.push({ id: unrelatedRelation, fromAgentId: ids.self, toAgentId: unrelatedAgent, relationshipType: "unrelated", evidenceRefs: ["private-ref"] });
-    input.events = [{ id: "world_event_v2_safe_step", eventType: "allocate_resource", actorId: "entity-self", targetEntityIds: ["entity-counterpart"], createdAt: "2026-09-01T00:00:00.000Z", branchId: "baseline" }];
+    input.events = [{ id: "world_event_v2_safe_step", eventType: "allocate_resource", actorId: "definition-self", targetEntityIds: ["entity-counterpart"], targetRelationIds: [], createdAt: "2026-09-01T00:00:00.000Z", branchId: "baseline" }];
     input.worldSnapshots = [{
       agentDefinitions: [
         { id: "definition-self", displayName: "Scenario owner" },
@@ -105,7 +105,7 @@ describe("formal sandbox result projection", () => {
 
   it("links a Claim to a frozen relation through shared real-evidence provenance", () => {
     const input = bundle();
-    input.events = [{ id: "world_event_v2_safe_step", eventType: "allocate_resource", actorId: "definition-self", targetEntityIds: [], createdAt: "2026-09-01T00:00:00.000Z", branchId: "baseline" }];
+    input.events = [{ id: "world_event_v2_safe_step", eventType: "allocate_resource", actorId: "definition-self", targetEntityIds: [], targetRelationIds: [], createdAt: "2026-09-01T00:00:00.000Z", branchId: "baseline" }];
     input.claims[0].realEvidenceIds = ["real-evidence-direct"];
     input.sourceBoundary = { evidenceLedger: { items: [{ id: "real-evidence-direct", statement: "A direct user-provided fact." }] }, assumptionLedger: { assumptions: [] } };
     input.worldSnapshots[0].relations = [{ id: "world-relation", fromEntityId: "entity-self", toEntityId: "entity-counterpart", provenance: { realEvidenceIds: ["real-evidence-direct"] } }];
