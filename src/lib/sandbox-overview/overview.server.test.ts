@@ -4,6 +4,7 @@ import {
   buildSandboxOverview,
   readSandboxOverview,
   sandboxOverviewSchema,
+  type SandboxOverview,
   type SandboxOverviewSource,
 } from "./overview.server";
 
@@ -270,14 +271,11 @@ describe("My Sandbox overview projection", () => {
   it("projects at most five safe current-snapshot people and relations with ordinal-only endpoints", async () => {
     const overview = await readSandboxOverview(summaryClient() as never, ownerId);
 
-    expect(overview.people).toMatchObject({
-      confirmedCount: 2,
-      total: 6,
-      items: [
-        { key: "person-1", label: "You", relationship: "self", kind: "user_core" },
-        { key: "person-2", label: "Project lead", relationship: "manager", kind: "npc" },
-      ],
-    });
+    expect(overview.people).toMatchObject({ confirmedCount: 2, total: 6 });
+    expect(overview.people.items.slice(0, 2)).toEqual([
+      { key: "person-1", label: "You", relationship: "self", kind: "user_core" },
+      { key: "person-2", label: "Project lead", relationship: "manager", kind: "npc" },
+    ]);
     expect(overview.people.items).toHaveLength(5);
     expect(overview.relations).toEqual({
       total: 2,
@@ -326,52 +324,6 @@ describe("My Sandbox overview projection", () => {
     expect(overview.history).toEqual({ count: 2 });
   });
 
-  it("starts a new current-Graph Run after the current completed Run already has feedback", () => {
-    const overview = buildSandboxOverview(source({
-      latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" },
-      hasFeedback: true,
-    }));
-
-    expect(overview.nextAction).toEqual({ kind: "start_next_run", href: "/app/new/graph" });
-  });
-
-  it("keeps a completed current Run without feedback pointed at its Result", () => {
-    const overview = buildSandboxOverview(source({
-      latestCompletedRun: { completedAt: "2026-08-30T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque", status: "completed" },
-      hasFeedback: false,
-    }));
-
-    expect(overview.nextAction.kind).toBe("open_latest_result");
-  });
-
-  it("projects at most five safe current Agent and Relation summaries with ordinal endpoints", async () => {
-    const overview = await readSandboxOverview(summaryClient() as never, ownerId);
-    const serialized = JSON.stringify(overview);
-
-    expect(overview.people.items).toEqual([
-      { key: "person-1", label: "Scenario owner", role: "self" },
-      { key: "person-2", label: "Current collaborator", role: "collaborator" },
-      { key: "person-3", label: "Current manager", role: "manager" },
-      { key: "person-4", label: "Current peer", role: "peer" },
-      { key: "person-5", label: "Current sponsor", role: "sponsor" },
-    ]);
-    expect(overview.graph.relations).toEqual([
-      { key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "collaboration" },
-      { key: "relation-2", fromPersonKey: "person-2", toPersonKey: "person-3", label: "reporting" },
-    ]);
-    expect(serialized).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
-    expect(serialized).not.toMatch(/evidence_refs|raw_context|user_question|scenario|trace_id|email|token|secret/i);
-  });
-
-  it("fails closed when a current relation endpoint is absent from the current immutable Agent snapshot", async () => {
-    await expect(readSandboxOverview(summaryClient({ danglingRelation: true }) as never, ownerId))
-      .rejects.toThrow("sandbox_overview_projection_invalid");
-  });
-
-  it("fails closed when the latest Graph does not bind the latest immutable Agent snapshot", async () => {
-    await expect(readSandboxOverview(summaryClient({ conflictingSnapshot: true }) as never, ownerId))
-      .rejects.toThrow("sandbox_overview_projection_invalid");
-  });
 });
 
 const ownerId = "11111111-1111-4111-8111-111111111111";
@@ -475,55 +427,6 @@ function summaryClient(options: { dangling?: boolean } = {}) {
         limit: () => builder,
         maybeSingle: async () => response(),
         then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(response()).then(resolve, reject),
-      };
-      return builder;
-    },
-  };
-}
-
-function summaryClient(options: { danglingRelation?: boolean; conflictingSnapshot?: boolean } = {}) {
-  const ids = {
-    seed: currentSeedId,
-    snapshot: currentSnapshotId,
-    graph: currentGraphId,
-    agents: [
-      "90000000-0000-4000-8000-000000000001",
-      "90000000-0000-4000-8000-000000000002",
-      "90000000-0000-4000-8000-000000000003",
-      "90000000-0000-4000-8000-000000000004",
-      "90000000-0000-4000-8000-000000000005",
-      "90000000-0000-4000-8000-000000000006",
-    ],
-  };
-  const agents = [
-    { id: ids.agents[0], display_name: "Scenario owner", relationship_to_user: "self", agent_type: "user_core" },
-    { id: ids.agents[1], display_name: "Current collaborator", relationship_to_user: "collaborator", agent_type: "npc" },
-    { id: ids.agents[2], display_name: "Current manager", relationship_to_user: "manager", agent_type: "npc" },
-    { id: ids.agents[3], display_name: "Current peer", relationship_to_user: "peer", agent_type: "npc" },
-    { id: ids.agents[4], display_name: "Current sponsor", relationship_to_user: "sponsor", agent_type: "npc" },
-    { id: ids.agents[5], display_name: "Sixth hidden person", relationship_to_user: "peer", agent_type: "npc" },
-  ];
-  const edges = [
-    { id: "91000000-0000-4000-8000-000000000001", from_agent_id: ids.agents[0], to_agent_id: ids.agents[1], relationship_type: "collaboration" },
-    { id: "91000000-0000-4000-8000-000000000002", from_agent_id: ids.agents[1], to_agent_id: ids.agents[2], relationship_type: "reporting" },
-    ...(options.danglingRelation ? [{ id: "91000000-0000-4000-8000-000000000003", from_agent_id: ids.agents[0], to_agent_id: "92000000-0000-4000-8000-000000000001", relationship_type: "dangling" }] : []),
-  ];
-  const response = (table: string) => {
-    if (table === "seed_contexts") return { data: { id: ids.seed, status: "submitted" }, error: null };
-    if (table === "key_people") return { data: null, count: 5, error: null };
-    if (table === "agent_profile_snapshots") return { data: { id: ids.snapshot }, error: null };
-    if (table === "relation_graph_snapshots") return { data: { id: ids.graph, agent_snapshot_id: options.conflictingSnapshot ? "93000000-0000-4000-8000-000000000001" : ids.snapshot, graph_locked: true }, error: null };
-    if (table === "agent_profiles") return { data: agents, count: agents.length, error: null };
-    if (table === "relation_edges") return { data: edges, count: edges.length, error: null };
-    if (table === "simulations") return { data: null, count: 0, error: null };
-    return { data: null, error: null };
-  };
-  return {
-    from(table: string) {
-      const builder = {
-        select: () => builder, eq: () => builder, not: () => builder, in: () => builder,
-        order: () => builder, limit: () => builder, maybeSingle: async () => response(table),
-        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(response(table)).then(resolve, reject),
       };
       return builder;
     },

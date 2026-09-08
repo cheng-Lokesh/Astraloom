@@ -7,8 +7,8 @@ import { createFormalSandboxClient, type FormalSandboxResultProjection } from "@
 import type { ResultRequestState } from "@/lib/formal-sandbox/result-request-gate";
 
 type Rating = "useful" | "mixed" | "off";
-export type FeedbackState = { rating: Rating | null; comment: string; message: string };
-export const initialFeedbackState: FeedbackState = { rating: null, comment: "", message: "" };
+export type FeedbackState = { rating: Rating | null; comment: string; message: string; saved: boolean };
+export const initialFeedbackState: FeedbackState = { rating: null, comment: "", message: "", saved: false };
 export type FeedbackAction =
   | { type: "comment_changed"; comment: string }
   | { type: "save_started" }
@@ -17,9 +17,9 @@ export type FeedbackAction =
 
 export function feedbackReducer(state: FeedbackState, action: FeedbackAction): FeedbackState {
   if (action.type === "comment_changed") return { ...state, comment: action.comment };
-  if (action.type === "save_started") return { ...state, message: "" };
-  if (action.type === "save_succeeded") return { ...state, rating: action.rating, message: "Feedback saved as input for a later Run." };
-  return { ...state, message: "Feedback was not saved. Your selection and note are still here." };
+  if (action.type === "save_started") return { ...state, message: "", saved: false };
+  if (action.type === "save_succeeded") return { ...state, rating: action.rating, message: "Feedback saved as input for a later Run.", saved: true };
+  return { ...state, message: "Feedback was not saved. Your selection and note are still here.", saved: false };
 }
 
 export function activateClaimFromKeyboard(key: string, claimKey: string, choose: (key: string) => void) {
@@ -29,7 +29,7 @@ export function activateClaimFromKeyboard(key: string, claimKey: string, choose:
 }
 
 export function FeedbackPanel({ state, onCommentChange, onSave }: { state: FeedbackState; onCommentChange: (comment: string) => void; onSave: (rating: Rating) => void }) {
-  return <SurfaceCard className="mt-8 p-5"><h2>Calibrate a later Run</h2><textarea value={state.comment} onChange={(event) => onCommentChange(event.target.value)} maxLength={2000} className="mt-3 min-h-24 w-full focus-visible:outline focus-visible:outline-2" placeholder="Optional short note" /> <div className="mt-3 flex gap-2">{(["useful", "mixed", "off"] as const).map((value) => <button key={value} type="button" onClick={() => onSave(value)} aria-pressed={state.rating === value} className="min-h-10 px-3 focus-visible:outline focus-visible:outline-2 active:scale-95 motion-reduce:transition-none">{value}</button>)}</div>{state.message ? <p role="status">{state.message}</p> : null}</SurfaceCard>;
+  return <SurfaceCard className="mt-8 p-5"><h2>Calibrate a later Run</h2><textarea value={state.comment} onChange={(event) => onCommentChange(event.target.value)} maxLength={2000} className="mt-3 min-h-24 w-full focus-visible:outline focus-visible:outline-2" placeholder="Optional short note" /> <div className="mt-3 flex gap-2">{(["useful", "mixed", "off"] as const).map((value) => <button key={value} type="button" onClick={() => onSave(value)} aria-pressed={state.rating === value} className="min-h-10 px-3 focus-visible:outline focus-visible:outline-2 active:scale-95 motion-reduce:transition-none">{value}</button>)}</div>{state.message ? <p role="status">{state.message}</p> : null}{state.saved ? <ButtonLink href="/app/dashboard" className="mt-5">回到 My Sandbox 查看下一步</ButtonLink> : null}</SurfaceCard>;
 }
 
 export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseClaim, feedbackState, onCommentChange, onSaveFeedback }: { projection: FormalSandboxResultProjection; selectedClaimKey: string | null; onChooseClaim: (key: string) => void; feedbackState: FeedbackState; onCommentChange: (comment: string) => void; onSaveFeedback: (rating: Rating) => void }) {

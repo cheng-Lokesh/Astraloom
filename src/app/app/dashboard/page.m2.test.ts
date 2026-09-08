@@ -9,9 +9,9 @@ describe("My Sandbox dashboard behavior", () => {
     const html = renderToStaticMarkup(createElement(SandboxLedger, { overview: {
       authenticated: true,
       seed: { state: "submitted" }, reality: { state: "not_modeled" },
-      people: { confirmedCount: 2, items: [{ key: "person-1", label: "Scenario owner", role: "self" }, { key: "person-2", label: "Current collaborator", role: "collaborator" }] },
+      people: { confirmedCount: 2, total: 2, items: [{ key: "person-1", label: "Scenario owner", relationship: "self", kind: "user_core" }, { key: "person-2", label: "Current collaborator", relationship: "collaborator", kind: "npc" }] },
       agents: { immutableCount: 2 },
-      graph: { exists: true, locked: true, edgeCount: 1, relations: [{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "collaboration" }] },
+      graph: { exists: true, locked: true, edgeCount: 1 }, relations: { total: 1, items: [{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "collaboration" }] },
       running: { exists: false, href: null }, latestCompletedRun: { status: "completed", completedAt: "2026-09-08T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque" },
       history: { count: 1 }, feedback: { exists: true }, lifeClimate: { state: "not_modeled" }, resources: { state: "not_modeled" }, constraints: { state: "not_modeled" }, nextChange: { state: "not_modeled" },
       nextAction: { kind: "start_next_run", href: "/app/new/graph" },
