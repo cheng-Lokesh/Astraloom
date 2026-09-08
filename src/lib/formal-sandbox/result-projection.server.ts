@@ -10,7 +10,7 @@ const claimSchema = z.object({ id: reference, statement: safeText, uncertaintySt
 const worldSnapshotSchema = z.object({
   agentDefinitions: z.array(z.object({ id: reference, displayName: safeText }).passthrough()).max(50),
   entities: z.array(z.object({ id: reference, agentDefinitionId: reference.optional() }).passthrough()).max(200),
-  relations: z.array(z.object({ id: reference, fromEntityId: reference, toEntityId: reference, provenance: z.object({ realEvidenceIds: z.array(reference).optional() }).passthrough().optional() }).passthrough()).max(500).optional(),
+  relations: z.array(z.object({ id: reference, fromEntityId: reference, toEntityId: reference, provenance: z.object({ realEvidenceIds: z.array(reference).optional(), assumptionIds: z.array(reference).optional(), provisional: z.boolean().optional(), visible: z.literal(true).optional() }).passthrough().optional() }).passthrough()).max(500).optional(),
 }).passthrough();
 const bundleSchema = z.object({
   inputSnapshot: z.object({ agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
@@ -35,6 +35,16 @@ export type SafeResultProjection = z.infer<typeof safeResultProjectionSchema>;
 const unique = (values: readonly string[]) => new Set(values).size === values.length;
 const directed = (from: string, to: string) => `${from}>${to}`;
 const undirected = (left: string, right: string) => [left, right].sort().join("<>");
+const canonicalValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, canonicalValue(item)]));
+  return value;
+};
+const provenanceSignature = (value: Record<string, unknown> | undefined) => JSON.stringify(canonicalValue({
+  ...(value ?? {}),
+  realEvidenceIds: [...((value?.realEvidenceIds as string[] | undefined) ?? [])].sort(),
+  assumptionIds: [...((value?.assumptionIds as string[] | undefined) ?? [])].sort(),
+}));
 
 export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjection | null {
   const parsed = bundleSchema.safeParse(rawBundle);
@@ -45,7 +55,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const edgeIds = bundle.inputSnapshot.edges.map((item) => item.id);
   const frozenEndpoints = bundle.inputSnapshot.edges.map((edge) => directed(edge.fromAgentId, edge.toAgentId));
   const agentIdSet = new Set(agentIds);
-  if (!unique(agentIds) || !unique(edgeIds) || !unique(frozenEndpoints) || bundle.inputSnapshot.edges.some((edge) => !agentIdSet.has(edge.fromAgentId) || !agentIdSet.has(edge.toAgentId) || edge.fromAgentId === edge.toAgentId)) return null;
+  if (!unique(agentIds) || !unique(edgeIds) || !unique(frozenEndpoints) || bundle.inputSnapshot.agents.some((agent) => !unique(agent.evidenceRefs)) || bundle.inputSnapshot.edges.some((edge) => !unique(edge.evidenceRefs) || !agentIdSet.has(edge.fromAgentId) || !agentIdSet.has(edge.toAgentId) || edge.fromAgentId === edge.toAgentId)) return null;
 
   const evidenceItems = bundle.sourceBoundary?.evidenceLedger?.items ?? [];
   const evidenceIds = evidenceItems.map((item) => item.id);
@@ -61,7 +71,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
 
   const definitionDisplayById = new Map<string, string>();
   const entityDefinitionById = new Map<string, string | undefined>();
-  const worldRelationEndpointsById = new Map<string, { fromEntityId: string; toEntityId: string; realEvidenceIds: string[] }>();
+  const worldRelationEndpointsById = new Map<string, { fromEntityId: string; toEntityId: string; realEvidenceIds: string[]; provenanceSignature: string }>();
   for (const snapshot of bundle.worldSnapshots ?? []) {
     const definitionIds = snapshot.agentDefinitions.map((item) => item.id);
     const entityIds = snapshot.entities.map((item) => item.id);
@@ -86,9 +96,10 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     for (const relation of relations) {
       const realEvidenceIds = relation.provenance?.realEvidenceIds ?? [];
       if (!unique(realEvidenceIds) || realEvidenceIds.some((id) => !evidenceIdSet.has(id))) return null;
+      const normalizedProvenance = provenanceSignature(relation.provenance);
       const previous = worldRelationEndpointsById.get(relation.id);
-      if (previous && (previous.fromEntityId !== relation.fromEntityId || previous.toEntityId !== relation.toEntityId)) return null;
-      worldRelationEndpointsById.set(relation.id, { fromEntityId: relation.fromEntityId, toEntityId: relation.toEntityId, realEvidenceIds });
+      if (previous && (previous.fromEntityId !== relation.fromEntityId || previous.toEntityId !== relation.toEntityId || previous.provenanceSignature !== normalizedProvenance)) return null;
+      worldRelationEndpointsById.set(relation.id, { fromEntityId: relation.fromEntityId, toEntityId: relation.toEntityId, realEvidenceIds, provenanceSignature: normalizedProvenance });
     }
   }
 
