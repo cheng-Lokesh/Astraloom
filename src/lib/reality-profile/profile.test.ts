@@ -155,6 +155,32 @@ describe("Reality Profile", () => {
     expect(projection.world.externalVariables).toEqual([{ label: "市场需求", classification: "assumption", evidenceSummary: "尚未外部核实" }]);
   });
 
+  it("keeps long-horizon life-model domains explicit and separately classified", () => {
+    const draft = realityProfileDraftSchema.parse({
+      ...createEmptyRealityProfileDraft(4),
+      lifeModelDomains: {
+        version: 1,
+        identity: [{ value: "正在照护家庭", classification: "fact", evidenceSummary: "本人确认的当前责任" }],
+        career: [{ value: "考虑管理路线", classification: "assumption", evidenceSummary: "尚未作出决定" }],
+        wealth: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+        relationships: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+        environment: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+        lifeStage: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+      },
+    });
+
+    const projection = buildRealityWorldProjection(draft, { graphLocked: false, latestRunEvent: null });
+
+    expect(projection.reality.facts).toContainEqual({ label: "身份结构：正在照护家庭", evidenceSummary: "本人确认的当前责任" });
+    expect(projection.reality.assumptions).toContainEqual({ label: "职业结构：考虑管理路线", evidenceSummary: "尚未作出决定" });
+    expect(projection.reality.unknowns).toEqual(expect.arrayContaining([
+      { label: "财富结构" }, { label: "关系生态" }, { label: "城市与生活环境" }, { label: "人生阶段" },
+    ]));
+    expect(projection.reality.dimensions).toContainEqual({ label: "身份结构", facts: 1, assumptions: 0, unknowns: 0 });
+    expect(projection.reality.dimensions).toContainEqual({ label: "职业结构", facts: 0, assumptions: 1, unknowns: 0 });
+    expect(projection.reality.dimensions).toContainEqual({ label: "财富结构", facts: 0, assumptions: 0, unknowns: 1 });
+  });
+
   it("keeps legacy resource prose unmodeled while accepting explicit typed world inputs", () => {
     const legacy = realityProfileDraftSchema.parse({
       ...createEmptyRealityProfileDraft(),
