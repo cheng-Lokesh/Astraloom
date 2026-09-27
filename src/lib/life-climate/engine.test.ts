@@ -82,6 +82,7 @@ describe("buildLifeClimateRun", () => {
     expect(result.events).toHaveLength(1);
     expect(result.claims).toHaveLength(1);
     expect(result.claims[0].evidenceEventIds).toEqual([result.events[0].id]);
+    expect(result.report.claimIds).toEqual([result.claims[0].id]);
     expect(result.events[0]).toMatchObject({ periodIndex: 1, pathId: "alternative", source: "user_assumption" });
     expect(result.claims[0].uncertainty).toMatch(/条件|模拟|未建模/);
   });
