@@ -14,6 +14,7 @@ vi.mock("@/lib/supabase/service-role.server", () => ({ getServiceRoleSupabaseCli
 
 import { GET, POST } from "./route";
 import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
+import { buildLifeClimateRun } from "@/lib/life-climate/engine";
 
 const userId = "22222222-2222-4222-8222-222222222222";
 const seedId = "33333333-3333-4333-8333-333333333333";
@@ -56,7 +57,7 @@ const change = {
   startPeriod: 2,
   newState: "尝试四天工作制",
   evidenceSummary: "本人设定的备选路径假设",
-};
+} as const;
 
 describe("Track B life-climate runs route", () => {
   beforeEach(() => {
@@ -96,7 +97,12 @@ describe("Track B life-climate runs route", () => {
     state.client = authClient(userId);
     state.tables.seed_contexts = { data: { id: seedId }, error: null };
     state.tables.reality_profiles = { data: profileRow(), error: null };
-    state.rpc.mockResolvedValue({ data: [{ id: runId, idempotent: false, created_at: "2026-09-28T00:00:00.000Z", result_bundle: { version: "life-climate-b1-v1" } }], error: null });
+    const resultBundle = buildLifeClimateRun(createEmptyRealityProfileDraft(7), {
+      horizon: "1_year",
+      profileRevision: 7,
+      change,
+    });
+    state.rpc.mockResolvedValue({ data: [{ id: runId, idempotent: false, created_at: "2026-09-28T00:00:00.000Z", result_bundle: resultBundle }], error: null });
 
     const response = await POST(new Request("http://local/api/life-climate/runs", {
       method: "POST",
