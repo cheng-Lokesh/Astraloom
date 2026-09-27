@@ -351,4 +351,47 @@ describe("formal sandbox result projection", () => {
     expect(result?.steps[0]?.participantKeys).toEqual([]);
     expect(result?.steps[0]?.relationshipKeys).toEqual([]);
   });
+
+  it("projects explicit structured resources and simulated changes without exposing World IDs", () => {
+    const input = bundle();
+    Object.assign(input.worldSnapshots[0], {
+      resources: [{ id: "world-resource-internal-id", resourceType: "time", label: "每周可投入时间", available: 5, unit: "小时", min: 2, max: 8 }],
+    });
+    input.inputSnapshot.realityProfileSnapshot.profile.worldInputs.resources = [{
+      key: "weekly-focus",
+      label: "每周可投入时间",
+      resourceType: "time",
+      available: 8,
+      unit: "小时",
+      minimum: 2,
+      maximum: 8,
+      usePerTick: 1,
+      classification: "assumption",
+      evidenceSummary: "本人明确设定的模拟参数",
+    }];
+    input.inputSnapshot.realityProfileSnapshot.profile.worldInputs.constraints = [{
+      key: "focus-deadline",
+      label: "阶段时间边界",
+      resourceKey: "weekly-focus",
+      rule: { kind: "before_time", value: "2026-10-01T00:00:00.000Z" },
+      classification: "fact",
+      evidenceSummary: "本人记录的时间限制",
+    }];
+
+    const result = projectFormalSandboxResult(input);
+    expect(result?.realityProfile.structuredResources).toEqual([expect.objectContaining({ key: "resource-1", available: 8, classification: "assumption" })]);
+    expect(result?.realityProfile.structuredConstraints).toEqual([expect.objectContaining({ key: "constraint-1", resourceLabel: "每周可投入时间" })]);
+    expect(result?.resourceChanges).toEqual([{
+      key: "change-1",
+      pathKey: "path-1",
+      label: "每周可投入时间",
+      before: 8,
+      after: 5,
+      unit: "小时",
+      minimum: 2,
+      maximum: 8,
+      boundary: "simulation_change",
+    }]);
+    expect(JSON.stringify(result)).not.toContain("world-resource-internal-id");
+  });
 });
