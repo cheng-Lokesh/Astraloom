@@ -82,9 +82,14 @@ Must show, from the account API only:
 - A Reality Profile ledger that visibly separates `事实`, `假设`, and `未知项`.
 
 - Authenticated users can open `/app/reality-profile` from My Sandbox, review
-  life climate, resources, and constraints individually, label each as fact,
-  assumption, or explicitly unknown, and save with recoverable error and
-  conflict feedback. The page must not show raw scenario text, evidence URLs,
+  life climate, resources, and constraints individually, and add or remove
+  entries for goals, values, life themes, pressures, and external variables.
+  Each entry is independently labeled as fact, assumption, or explicitly
+  unknown. All five new dimensions begin unknown and are never inferred without
+  user input. Saving keeps recoverable error and conflict feedback. My Sandbox
+  names these dimensions, shows their fact/assumption/unknown counts, explains
+  their role in completing the digital-life model, and links to the editor.
+  The page must not show raw scenario text, evidence URLs,
   IDs, trace data, or diagnostic/deterministic wording.
   Facts must name their safe account-backed basis; absent persisted assumptions
   stay empty rather than being inferred. A World State panel may show only the

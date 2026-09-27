@@ -15,12 +15,16 @@ Social Simulation:
 
 ### Account Reality Profile (current formal chain)
 
-`reality_profiles` stores one owner-scoped, revisioned profile per formal Seed.
-It has separate, typed value/classification/evidence-summary columns for life
-climate, resources, and constraints. A field is exactly `fact`, `assumption`,
-or `unknown`; unknown has no value and is explicitly shown as unknown. This is
-user-confirmed input, not a simulation ledger or a place for raw scenarios,
-evidence references, trace keys, or inferred personal attributes. World State
+`reality_profiles` stores one owner-scoped, revisioned profile per current
+formal Seed. It has separate typed value/classification/evidence-summary
+columns for life climate, resources, and constraints, plus bounded JSON arrays
+for goals, values, life themes, pressures, and external variables. Each array
+item independently carries its value, classification, and safe evidence
+summary; every new dimension starts with one explicit unknown item. A field is
+exactly `fact`, `assumption`, or `unknown`; unknown has no value and is
+explicitly shown as unknown. These are user-authored inputs, not a simulation
+ledger or a place for raw scenarios, evidence references, trace keys, or
+inferred personal attributes. World State
 is a projection of this profile plus the current locked Graph and controlled
 Run events; it never creates a Change Node without such an event.
 

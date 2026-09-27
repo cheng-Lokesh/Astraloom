@@ -46,6 +46,8 @@ describe("My Sandbox overview projection", () => {
     expect(overview.nextChange).toEqual({ state: "not_modeled" });
     expect(overview.reality.unknowns).toEqual([
       { label: "人生气候" }, { label: "资源" }, { label: "约束" },
+      { label: "目标" }, { label: "价值观" }, { label: "人生主题" },
+      { label: "压力" }, { label: "外部变量" },
     ]);
   });
 

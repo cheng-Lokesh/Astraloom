@@ -22,9 +22,11 @@ Each non-static API must include:
   newest submitted/frozen Seed profile. It returns `401` without a session,
   `409` when no formal Seed exists, and never accepts an owner or Seed
   identifier from the request.
-- `PUT /api/reality-profile` accepts the typed three-field profile and its
-  revision. It validates with Zod, scopes storage to the current formal Seed,
-  and uses the revision as an optimistic concurrency guard. A conflicting
+- `PUT /api/reality-profile` accepts the three scalar Reality fields and five
+  bounded item lists (goals, values, life themes, pressures, and external
+  variables), each with its own fact/assumption/unknown classification and
+  safe evidence summary. It validates with Zod, scopes storage to the current
+  submitted Seed, and uses the revision as an optimistic concurrency guard. A conflicting
   update returns `409`; invalid or malformed input returns `400` without
   persistence. Both endpoints return a correlation `trace_id`; the page does
   not render it or return row identifiers.
@@ -557,9 +559,10 @@ Projection:
   closed instead of becoming a browser fallback.
 - The Reality Profile ledger returns separate facts, assumptions, and
   unknowns from the current owner's persisted formal-Seed profile. Life
-  climate, resources, and constraints each carry their own user-selected
-  classification and safe evidence summary. No repository, localStorage,
-  static-case, or Career-demo value may fill these fields.
+  climate, resources, constraints, and every item in the five new dimensions
+  carry their own user-selected classification and safe evidence summary.
+  New dimensions default to explicitly unknown; no repository, localStorage,
+  static-case, Seed narrative, or Career-demo value may fill these fields.
 - The safe World State returns only a current-chain stage and up to three
   allowlisted Event type labels from the current completed formal Run. Each
   Change Node has the fixed evidence summary "来自当前正式运行的受控模拟事件";
