@@ -51,6 +51,19 @@ function profileRow() {
   };
 }
 
+function seedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: seedId,
+    user_question: "",
+    raw_context: "",
+    decision_options: [],
+    forbidden_actions: [],
+    desired_output: {},
+    safety_flags: [],
+    ...overrides,
+  };
+}
+
 const change = {
   domain: "career",
   entryIndex: 0,
@@ -95,7 +108,7 @@ describe("Track B life-climate runs route", () => {
 
   it("binds the immutable run to the authenticated user's current submitted Seed and exact profile revision", async () => {
     state.client = authClient(userId);
-    state.tables.seed_contexts = { data: { id: seedId }, error: null };
+    state.tables.seed_contexts = { data: seedRow(), error: null };
     state.tables.reality_profiles = { data: profileRow(), error: null };
     const resultBundle = buildLifeClimateRun(createEmptyRealityProfileDraft(7), {
       horizon: "1_year",
@@ -122,6 +135,29 @@ describe("Track B life-climate runs route", () => {
     }));
     expect(body).toMatchObject({ ok: true, error_code: null, idempotent: false, run: { id: runId } });
     expect(JSON.stringify(body)).not.toContain(userId);
+  });
+
+  it("applies the safety gate to the current submitted Seed before invoking the writer", async () => {
+    state.client = authClient(userId);
+    state.tables.seed_contexts = { data: seedRow({ user_question: "How should I attack my manager?" }), error: null };
+    state.tables.reality_profiles = { data: profileRow(), error: null };
+    const resultBundle = buildLifeClimateRun(createEmptyRealityProfileDraft(7), {
+      horizon: "1_year",
+      profileRevision: 7,
+      change,
+    });
+    state.rpc.mockResolvedValue({ data: [{ id: runId, idempotent: false, created_at: "2026-09-28T00:00:00.000Z", result_bundle: resultBundle }], error: null });
+
+    const response = await POST(new Request("http://local/api/life-climate/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idempotency_key: "55555555-5555-4555-8555-555555555555", profile_revision: 7, change }),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ ok: false, error_code: "safety_downgrade" });
+    expect(state.serviceFactory).not.toHaveBeenCalled();
+    expect(state.rpc).not.toHaveBeenCalled();
   });
 
   it("reads only owner-scoped one-year Track B entries and rejects malformed query selectors", async () => {
