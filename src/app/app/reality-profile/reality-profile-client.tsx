@@ -6,6 +6,7 @@ import {
   createUnknownRealityProfileField,
   type RealityProfileDraft,
   type RealityProfileField,
+  type RealityProfileWorldInputs,
 } from "@/lib/reality-profile/profile";
 
 type ScalarKey = "lifeClimate" | "resources" | "constraints";
@@ -48,6 +49,10 @@ export function RealityProfileClient() {
     setProfile(current => ({ ...current, [key]: current[key].map((item, itemIndex) => itemIndex === index ? field : item) }));
   };
 
+  const updateWorldInputs = (worldInputs: RealityProfileWorldInputs) => {
+    setProfile(current => ({ ...current, worldInputs }));
+  };
+
   const addListItem = (key: ListKey) => {
     setProfile(current => current[key].length >= 8 ? current : { ...current, [key]: [...current[key], createUnknownRealityProfileField()] });
   };
@@ -78,12 +83,13 @@ export function RealityProfileClient() {
   return <main id="main-content" className="mx-auto w-full max-w-4xl py-7 sm:py-12">
     <p className="font-mono text-xs uppercase tracking-[.14em] text-[var(--evidence-gold)]">Reality Profile / 当前正式链</p>
     <h1 className="mt-4 text-3xl font-semibold text-[var(--text-primary)] sm:text-5xl">复核现实资料，而让系统保留不确定。</h1>
-    <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">逐条记录目标、价值观、人生主题、压力与外部变量。每条都由你标记为事实、假设或明确未知；没有你的输入时，系统不会推断或补写。</p>
+    <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">逐条记录目标、价值观、人生主题、压力与外部变量。每条都由你标记为事实、假设或明确未知；自由描述不会被自动转成数值，只有你在下方明确填写的结构化资源和模拟规则才会进入世界模型。</p>
     <div className="mt-8 space-y-6">
       {(Object.keys(scalarLabels) as ScalarKey[]).map(key => <section key={key} className="border-y border-white/10 py-5">
         <h2 className="text-xl font-semibold text-[var(--text-primary)]">{scalarLabels[key]}</h2>
         <FieldEditor title={scalarLabels[key]} field={profile[key]} disabled={!ready} onChange={field => updateScalar(key, field)} />
       </section>)}
+      <WorldInputsEditor inputs={profile.worldInputs} disabled={!ready} onChange={updateWorldInputs} />
       {(Object.keys(listLabels) as ListKey[]).map(key => <section key={key} className="border-y border-white/10 py-5">
         <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold text-[var(--text-primary)]">{listLabels[key]}</h2><p className="mt-1 text-sm leading-6 text-[var(--text-muted)]">每条单独标记事实、假设或未知。</p></div><button type="button" disabled={!ready || profile[key].length >= 8} onClick={() => addListItem(key)} className="inline-flex min-h-11 items-center border border-white/15 px-4 text-sm font-semibold text-[var(--text-primary)] transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-50">新增{listLabels[key]}</button></div>
         <div className="mt-4 space-y-5">{profile[key].map((field, index) => <div key={`${key}-${index}`} className="border-t border-white/10 pt-4">
@@ -95,6 +101,91 @@ export function RealityProfileClient() {
     <button type="button" disabled={!ready} onClick={() => void save()} className="mt-7 min-h-11 rounded bg-[var(--evidence-gold)] px-5 py-3 text-sm font-semibold text-black transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-50">保存当前正式链资料</button>
     <p role="status" className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{status}</p>
   </main>;
+}
+
+type WorldResourceInput = RealityProfileWorldInputs["resources"][number];
+type WorldConstraintInput = RealityProfileWorldInputs["constraints"][number];
+
+function nextWorldInputKey(prefix: string, keys: string[]) {
+  let index = 1;
+  while (keys.includes(`${prefix}-${index}`)) index += 1;
+  return `${prefix}-${index}`;
+}
+
+function localDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function isoDateTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function WorldInputsEditor({ inputs, disabled, onChange }: { inputs: RealityProfileWorldInputs; disabled: boolean; onChange: (inputs: RealityProfileWorldInputs) => void }) {
+  const updateResource = (index: number, update: Partial<WorldResourceInput>) => {
+    onChange({ ...inputs, resources: inputs.resources.map((resource, itemIndex) => itemIndex === index ? { ...resource, ...update } : resource) });
+  };
+  const updateConstraint = (index: number, update: Partial<WorldConstraintInput>) => {
+    onChange({ ...inputs, constraints: inputs.constraints.map((constraint, itemIndex) => itemIndex === index ? { ...constraint, ...update } : constraint) });
+  };
+  const addResource = () => {
+    if (inputs.resources.length >= 8) return;
+    const key = nextWorldInputKey("resource", inputs.resources.map(resource => resource.key));
+    onChange({ ...inputs, resources: [...inputs.resources, { key, label: "", resourceType: "time", available: 0, unit: "", minimum: 0, maximum: 0, usePerTick: null, classification: "assumption", evidenceSummary: "" }] });
+  };
+  const removeResource = (key: string) => {
+    onChange({
+      ...inputs,
+      resources: inputs.resources.filter(resource => resource.key !== key),
+      constraints: inputs.constraints.filter(constraint => constraint.resourceKey !== key),
+    });
+  };
+  const addConstraint = () => {
+    if (inputs.resources.length === 0 || inputs.constraints.length >= 8) return;
+    const key = nextWorldInputKey("constraint", inputs.constraints.map(constraint => constraint.key));
+    onChange({ ...inputs, constraints: [...inputs.constraints, { key, label: "", resourceKey: inputs.resources[0]!.key, rule: { kind: "before_time", value: "" }, classification: "fact", evidenceSummary: "" }] });
+  };
+
+  return <section className="border-y border-white/10 py-5">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 className="text-xl font-semibold text-[var(--text-primary)]">用于推演的结构化资源</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">仅录入有明确数值、单位和依据的项目。自由文本资源与限制保持为背景描述，不会被猜成模型参数。</p>
+      </div>
+      <button type="button" disabled={disabled || inputs.resources.length >= 8} onClick={addResource} className="inline-flex min-h-11 items-center border border-white/15 px-4 text-sm font-semibold text-[var(--text-primary)] transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-50">新增结构化资源</button>
+    </div>
+    {inputs.resources.length === 0 ? <p className="mt-4 border border-dashed border-white/15 p-4 text-sm leading-6 text-[var(--text-secondary)]">尚无明确的结构化资源。需要至少一项资源并设定每次受控行动的变化量，正式 Run 才会构造对应的 World State；不会用默认的虚构容量代替。</p> : null}
+    <div className="mt-4 space-y-5">{inputs.resources.map((resource, index) => <article key={resource.key} className="border-t border-white/10 pt-4">
+      <div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[var(--text-primary)]">资源 {index + 1}</h3><button type="button" disabled={disabled} onClick={() => removeResource(resource.key)} aria-label={`移除资源 ${index + 1}`} className="inline-flex min-h-10 items-center px-3 text-sm text-[var(--text-secondary)] transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-40">移除</button></div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="text-sm text-[var(--text-secondary)]">资源名称<input aria-label={`资源 ${index + 1} 名称`} disabled={disabled} value={resource.label} onChange={event => updateResource(index, { label: event.target.value })} maxLength={80} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" placeholder="例如：每周可投入时间" /></label>
+        <label className="text-sm text-[var(--text-secondary)]">资源类型<select aria-label={`资源 ${index + 1} 类型`} disabled={disabled} value={resource.resourceType} onChange={event => updateResource(index, { resourceType: event.target.value as WorldResourceInput["resourceType"] })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]"><option value="time">时间</option><option value="budget">预算</option><option value="position_availability">岗位/机会名额</option><option value="information">信息</option></select></label>
+        <label className="text-sm text-[var(--text-secondary)]">资料类别<select aria-label={`资源 ${index + 1} 资料类别`} disabled={disabled} value={resource.classification} onChange={event => updateResource(index, { classification: event.target.value as WorldResourceInput["classification"] })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]"><option value="fact">事实</option><option value="assumption">模拟假设</option></select></label>
+        <label className="text-sm text-[var(--text-secondary)]">单位<input aria-label={`资源 ${index + 1} 单位`} disabled={disabled} value={resource.unit} onChange={event => updateResource(index, { unit: event.target.value })} maxLength={32} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" placeholder="例如：小时、元" /></label>
+        <label className="text-sm text-[var(--text-secondary)]">当前可用数值<input aria-label={`资源 ${index + 1} 当前数值`} type="number" min="0" max="1000000" step="any" disabled={disabled} value={resource.available} onChange={event => updateResource(index, { available: Number(event.target.value) })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" /></label>
+        <label className="text-sm text-[var(--text-secondary)]">最低保留<input aria-label={`资源 ${index + 1} 最低保留`} type="number" min="0" max="1000000" step="any" disabled={disabled} value={resource.minimum} onChange={event => updateResource(index, { minimum: Number(event.target.value) })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" /></label>
+        <label className="text-sm text-[var(--text-secondary)]">最高边界<input aria-label={`资源 ${index + 1} 最高边界`} type="number" min="0" max="1000000" step="any" disabled={disabled} value={resource.maximum} onChange={event => updateResource(index, { maximum: Number(event.target.value) })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" /></label>
+        <label className="text-sm text-[var(--text-secondary)]">每次受控行动的资源变化量<input aria-label={`资源 ${index + 1} 每次受控行动的资源变化量`} type="number" min="0.000001" max="1000000" step="any" disabled={disabled} value={resource.usePerTick ?? ""} onChange={event => updateResource(index, { usePerTick: event.target.value === "" ? null : Number(event.target.value) })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" placeholder="留空表示不执行资源变化" /></label>
+      </div>
+      <label className="mt-4 block text-sm text-[var(--text-secondary)]">安全证据摘要<input aria-label={`资源 ${index + 1} 安全证据摘要`} disabled={disabled} value={resource.evidenceSummary} onChange={event => updateResource(index, { evidenceSummary: event.target.value })} maxLength={160} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" placeholder="写明来源；不要粘贴原始隐私材料" /></label>
+    </article>)}</div>
+    <div className="mt-7 flex flex-wrap items-end justify-between gap-3 border-t border-white/10 pt-5">
+      <div><h3 className="text-base font-semibold text-[var(--text-primary)]">明确时间限制</h3><p className="mt-1 text-sm text-[var(--text-muted)]">截止时间会冻结进 Run，并约束对应资源的后续变化。</p></div>
+      <button type="button" disabled={disabled || inputs.resources.length === 0 || inputs.constraints.length >= 8} onClick={addConstraint} className="inline-flex min-h-11 items-center border border-white/15 px-4 text-sm font-semibold text-[var(--text-primary)] transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-50">新增时间限制</button>
+    </div>
+    <div className="mt-4 space-y-4">{inputs.constraints.map((constraint, index) => <article key={constraint.key} className="grid gap-4 border-t border-white/10 pt-4 md:grid-cols-2">
+      <label className="text-sm text-[var(--text-secondary)]">限制名称<input aria-label={`限制 ${index + 1} 名称`} disabled={disabled} value={constraint.label} onChange={event => updateConstraint(index, { label: event.target.value })} maxLength={80} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" placeholder="例如：合同确认截止" /></label>
+      <label className="text-sm text-[var(--text-secondary)]">约束资源<select aria-label={`限制 ${index + 1} 约束资源`} disabled={disabled || inputs.resources.length === 0} value={constraint.resourceKey} onChange={event => updateConstraint(index, { resourceKey: event.target.value })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]">{inputs.resources.map(resource => <option key={resource.key} value={resource.key}>{resource.label || `资源 ${inputs.resources.indexOf(resource) + 1}`}</option>)}</select></label>
+      <label className="text-sm text-[var(--text-secondary)]">截止时间<input aria-label={`限制 ${index + 1} 截止时间`} type="datetime-local" disabled={disabled} value={localDateTime(constraint.rule.value)} onChange={event => updateConstraint(index, { rule: { kind: "before_time", value: isoDateTime(event.target.value) } })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" /></label>
+      <label className="text-sm text-[var(--text-secondary)]">资料类别<select aria-label={`限制 ${index + 1} 资料类别`} disabled={disabled} value={constraint.classification} onChange={event => updateConstraint(index, { classification: event.target.value as WorldConstraintInput["classification"] })} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]"><option value="fact">事实</option><option value="assumption">模拟假设</option></select></label>
+      <label className="text-sm text-[var(--text-secondary)] md:col-span-2">安全证据摘要<input aria-label={`限制 ${index + 1} 安全证据摘要`} disabled={disabled} value={constraint.evidenceSummary} onChange={event => updateConstraint(index, { evidenceSummary: event.target.value })} maxLength={160} className="mt-2 block min-h-11 w-full border border-white/15 bg-black/20 px-3 text-[var(--text-primary)]" placeholder="写明来源；不要粘贴原始隐私材料" /></label>
+      <button type="button" disabled={disabled} onClick={() => onChange({ ...inputs, constraints: inputs.constraints.filter((_, itemIndex) => itemIndex !== index) })} className="min-h-10 justify-self-start px-3 text-sm text-[var(--text-secondary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-40">移除此时间限制</button>
+    </article>)}</div>
+    <p className="mt-5 border-l-2 border-[var(--evidence-gold)] pl-3 text-sm leading-6 text-[var(--text-secondary)]">“每次受控行动的资源变化量”是你明确填写的模拟规则，不是系统对现实的预测。留空时资源只作为冻结的 World State 输入，不会被假定发生变化。</p>
+  </section>;
 }
 
 function FieldEditor({ title, field, disabled, onChange }: { title: string; field: RealityProfileField; disabled: boolean; onChange: (field: RealityProfileField) => void }) {
