@@ -76,6 +76,8 @@ describe("formal sandbox result projection", () => {
         { key: "unknown-3", label: "人生主题" },
         { key: "unknown-4", label: "外部变量" },
       ],
+      structuredResources: [],
+      structuredConstraints: [],
     });
     expect(JSON.stringify(result)).not.toMatch(new RegExp(`${ids.owner}|${ids.seed}|${realityProfileSnapshot.profileId}|private-profile-evidence-ref|Private raw scenario|secret credential`));
   });
@@ -132,7 +134,7 @@ describe("formal sandbox result projection", () => {
     expect(realityProfileSnapshot).toBeDefined();
     const legacy = { ...current, inputSnapshot: legacyInputSnapshot };
     const result = projectFormalSandboxResult(legacy);
-    expect(result?.realityProfile).toEqual({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [] });
+    expect(result?.realityProfile).toEqual({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [] });
   });
 
   it("projects only frozen inputs and direct Claim-to-step evidence through ordinal UI keys", () => {
@@ -356,6 +358,7 @@ describe("formal sandbox result projection", () => {
     const input = bundle();
     Object.assign(input.worldSnapshots[0], {
       resources: [{ id: "world-resource-internal-id", resourceType: "time", label: "每周可投入时间", available: 5, unit: "小时", min: 2, max: 8 }],
+      constraints: [{ id: "world-constraint-internal-id", constraintType: "deadline", target: { type: "resource", id: "world-resource-internal-id" }, rule: { kind: "before_time", value: "2026-10-01T00:00:00.000Z" } }],
     });
     input.inputSnapshot.realityProfileSnapshot.profile.worldInputs.resources = [{
       key: "weekly-focus",
@@ -393,5 +396,6 @@ describe("formal sandbox result projection", () => {
       boundary: "simulation_change",
     }]);
     expect(JSON.stringify(result)).not.toContain("world-resource-internal-id");
+    expect(JSON.stringify(result)).not.toContain("weekly-focus");
   });
 });

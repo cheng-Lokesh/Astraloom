@@ -13,6 +13,18 @@ const realityProfileSnapshotSchema = z.object({
   revision: z.number().int().nonnegative(),
   profile: realityProfileDraftSchema,
 }).strict();
+const structuredResourceSchema = z.object({
+  key: z.string().regex(/^resource-[1-9]\d*$/),
+  label: safeText,
+  resourceType: z.enum(["time", "budget", "position_availability", "information"]),
+  available: z.number().finite().min(0),
+  unit: safeText,
+  minimum: z.number().finite().min(0),
+  maximum: z.number().finite().min(0),
+  usePerTick: z.number().finite().positive().nullable(),
+  classification: z.enum(["fact", "assumption"]),
+  evidenceSummary: safeText,
+}).strict();
 const profileFactSchema = z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), label: safeText, statement: safeText, evidenceSummary: safeText }).strict();
 const profileAssumptionSchema = z.object({ key: z.string().regex(/^assumption-[1-9]\d*$/), label: safeText, statement: safeText, evidenceSummary: safeText }).strict();
 const profileUnknownSchema = z.object({ key: z.string().regex(/^unknown-[1-9]\d*$/), label: safeText }).strict();
@@ -24,6 +36,8 @@ const worldSnapshotSchema = z.object({
   agentDefinitions: z.array(z.object({ id: reference, displayName: safeText }).passthrough()).max(50),
   entities: z.array(z.object({ id: reference, agentDefinitionId: reference.optional() }).passthrough()).max(200),
   relations: z.array(z.object({ id: reference, fromEntityId: reference, toEntityId: reference, provenance: z.object({ realEvidenceIds: z.array(reference).optional(), assumptionIds: z.array(reference).optional(), provisional: z.boolean().optional(), visible: z.literal(true).optional() }).passthrough().optional() }).passthrough()).max(500).optional(),
+  resources: z.array(z.object({ id: reference, resourceType: z.enum(["time", "budget", "position_availability", "information"]), label: safeText, available: z.number().finite().min(0), unit: safeText, min: z.number().finite().min(0), max: z.number().finite().min(0) }).passthrough()).max(8).optional(),
+  constraints: z.array(z.object({ id: reference, constraintType: z.literal("deadline"), target: z.object({ type: z.literal("resource"), id: reference }).strict(), rule: z.object({ kind: z.literal("before_time"), value: z.string().datetime({ offset: true }) }).strict() }).passthrough()).max(8).optional(),
 }).passthrough();
 const bundleSchema = z.object({
   inputSnapshot: z.object({ ownerId: z.string().uuid().optional(), seedContextId: z.string().uuid().optional(), realityProfileSnapshot: realityProfileSnapshotSchema.optional(), agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
@@ -45,7 +59,27 @@ export const safeResultProjectionSchema = z.object({
     facts: z.array(profileFactSchema),
     assumptions: z.array(profileAssumptionSchema),
     unknowns: z.array(profileUnknownSchema),
+    structuredResources: z.array(structuredResourceSchema).max(8),
+    structuredConstraints: z.array(z.object({
+      key: z.string().regex(/^constraint-[1-9]\d*$/),
+      label: safeText,
+      resourceLabel: safeText,
+      rule: z.object({ kind: z.literal("before_time"), value: z.string().datetime({ offset: true }) }).strict(),
+      classification: z.enum(["fact", "assumption"]),
+      evidenceSummary: safeText,
+    }).strict()).max(8),
   }).strict(),
+  resourceChanges: z.array(z.object({
+    key: z.string().regex(/^change-[1-9]\d*$/),
+    pathKey: z.string().regex(/^path-[1-9]\d*$/),
+    label: safeText,
+    before: z.number().finite().min(0),
+    after: z.number().finite().min(0),
+    unit: safeText,
+    minimum: z.number().finite().min(0),
+    maximum: z.number().finite().min(0),
+    boundary: z.literal("simulation_change"),
+  }).strict()).max(500),
   steps: z.array(z.object({ key: z.string().regex(/^step-[1-9]\d*$/), order: z.number().int().positive(), label: safeText, kind: z.literal("sandbox_simulation"), boundary: z.literal("simulation_step"), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
   claims: z.array(z.object({ key: z.string().regex(/^claim-[1-9]\d*$/), statement: safeText, uncertainty: safeText, boundary: z.literal("conditional_claim"), stepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), supportingStepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
 }).strict();
@@ -77,14 +111,36 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   }
   const realityProfile = profileSnapshot ? (() => {
     const entries = listRealityProfileEntries(profileSnapshot.profile);
+    const worldInputs = profileSnapshot.profile.worldInputs;
+    const resourceLabelByKey = new Map(worldInputs.resources.map((resource) => [resource.key, resource.label]));
     return {
       status: "frozen" as const,
       revision: profileSnapshot.revision,
       facts: entries.filter(({ field }) => field.classification === "fact").map(({ label, field }, index) => ({ key: ordinal("fact", index), label, statement: field.value, evidenceSummary: field.evidenceSummary })),
       assumptions: entries.filter(({ field }) => field.classification === "assumption").map(({ label, field }, index) => ({ key: ordinal("assumption", index), label, statement: field.value, evidenceSummary: field.evidenceSummary })),
       unknowns: entries.filter(({ field }) => field.classification === "unknown").map(({ label }, index) => ({ key: ordinal("unknown", index), label })),
+      structuredResources: worldInputs.resources.map((resource, index) => ({
+        key: ordinal("resource", index),
+        label: resource.label,
+        resourceType: resource.resourceType,
+        available: resource.available,
+        unit: resource.unit,
+        minimum: resource.minimum,
+        maximum: resource.maximum,
+        usePerTick: resource.usePerTick,
+        classification: resource.classification,
+        evidenceSummary: resource.evidenceSummary,
+      })),
+      structuredConstraints: worldInputs.constraints.map((constraint, index) => ({
+        key: ordinal("constraint", index),
+        label: constraint.label,
+        resourceLabel: resourceLabelByKey.get(constraint.resourceKey)!,
+        rule: constraint.rule,
+        classification: constraint.classification,
+        evidenceSummary: constraint.evidenceSummary,
+      })),
     };
-  })() : { status: "not_recorded" as const, revision: null, facts: [], assumptions: [], unknowns: [] };
+  })() : { status: "not_recorded" as const, revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [] };
 
   const agentIds = bundle.inputSnapshot.agents.map((item) => item.id);
   const edgeIds = bundle.inputSnapshot.edges.map((item) => item.id);
@@ -117,13 +173,38 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const definitionDisplayById = new Map<string, string>();
   const entityDefinitionById = new Map<string, string | undefined>();
   const worldRelationEndpointsById = new Map<string, { fromEntityId: string; toEntityId: string; realEvidenceIds: string[]; provenanceSignature: string }>();
+  const worldResourceShapeById = new Map<string, string>();
+  const frozenWorldResources = profileSnapshot?.profile.worldInputs.resources ?? [];
+  const frozenWorldConstraints = profileSnapshot?.profile.worldInputs.constraints ?? [];
   for (const snapshot of bundle.worldSnapshots ?? []) {
     const definitionIds = snapshot.agentDefinitions.map((item) => item.id);
     const entityIds = snapshot.entities.map((item) => item.id);
     const relations = snapshot.relations ?? [];
     const relationIds = relations.map((item) => item.id);
     const relationEndpoints = relations.map((item) => directed(item.fromEntityId, item.toEntityId));
-    if (!unique(definitionIds) || !unique(entityIds) || !unique(relationIds) || !unique(relationEndpoints)) return null;
+    const resources = snapshot.resources ?? [];
+    const resourceIds = resources.map((item) => item.id);
+    const constraints = snapshot.constraints ?? [];
+    const constraintIds = constraints.map((item) => item.id);
+    if (!unique(definitionIds) || !unique(entityIds) || !unique(relationIds) || !unique(relationEndpoints) || !unique(resourceIds) || !unique(constraintIds)) return null;
+    if (frozenWorldResources.length > 0) {
+      if (resources.length !== frozenWorldResources.length || constraints.length !== frozenWorldConstraints.length) return null;
+      for (let index = 0; index < frozenWorldResources.length; index += 1) {
+        const frozen = frozenWorldResources[index]!;
+        const modeled = resources[index]!;
+        if (modeled.label !== frozen.label || modeled.resourceType !== frozen.resourceType || modeled.unit !== frozen.unit || modeled.min !== frozen.minimum || modeled.max !== frozen.maximum || modeled.available < modeled.min || modeled.available > modeled.max) return null;
+        const signature = JSON.stringify([modeled.label, modeled.resourceType, modeled.unit, modeled.min, modeled.max]);
+        const previous = worldResourceShapeById.get(modeled.id);
+        if (previous && previous !== signature) return null;
+        worldResourceShapeById.set(modeled.id, signature);
+      }
+      for (const frozen of frozenWorldConstraints) {
+        const resourceIndex = frozenWorldResources.findIndex((resource) => resource.key === frozen.resourceKey);
+        const modeledResource = resources[resourceIndex];
+        const modeledConstraint = constraints.find((item) => item.target.id === modeledResource?.id && item.rule.value === frozen.rule.value);
+        if (!modeledConstraint || modeledConstraint.rule.kind !== frozen.rule.kind) return null;
+      }
+    }
     const localDefinitionIds = new Set(definitionIds);
     const localEntityIds = new Set(entityIds);
     if (snapshot.entities.some((entity) => entity.agentDefinitionId !== undefined && !localDefinitionIds.has(entity.agentDefinitionId))) return null;
@@ -205,6 +286,23 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     return [event.id, { participantKeys: eventParticipantKeys, relationshipKeys: [...new Set([...targetedRelations, ...inferredRelations])] }] as const;
   }));
 
+  const resourceChanges = (bundle.worldSnapshots ?? []).flatMap((snapshot, pathIndex) =>
+    frozenWorldResources.flatMap((frozen, resourceIndex) => {
+      const resource = snapshot.resources?.[resourceIndex];
+      if (!resource) return [];
+      return [{
+        key: ordinal("change", pathIndex * frozenWorldResources.length + resourceIndex),
+        pathKey: ordinal("path", pathIndex),
+        label: frozen.label,
+        before: frozen.available,
+        after: resource.available,
+        unit: frozen.unit,
+        minimum: frozen.minimum,
+        maximum: frozen.maximum,
+        boundary: "simulation_change" as const,
+      }];
+    }),
+  );
   const projection = {
     participants: bundle.inputSnapshot.agents.map((agent, index) => ({ key: participantKeys[index]!, label: agent.displayName, role: agent.actorType === "self" ? "scenario decision maker" as const : "frozen participant" as const })),
     relationships: bundle.inputSnapshot.edges.map((edge, index) => ({ key: relationshipKeys[index]!, fromPersonKey: personKeyById.get(edge.fromAgentId)!, toPersonKey: personKeyById.get(edge.toAgentId)!, label: edge.relationshipType })),
@@ -215,6 +313,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     })),
     assumptions: visibleRunAssumptions.map((assumption, index) => ({ key: ordinal("assumption", index), statement: assumption.statement, boundary: "system_assumption" as const })),
     realityProfile,
+    resourceChanges,
     steps: bundle.events.map((event, index) => ({ key: eventKeyById.get(event.id)!, order: index + 1, label: event.eventType.replaceAll("_", " "), kind: "sandbox_simulation" as const, boundary: "simulation_step" as const, participantKeys: eventLinks.get(event.id)!.participantKeys, relationshipKeys: eventLinks.get(event.id)!.relationshipKeys })),
     claims: bundle.claims.map((claim, index) => {
       const stepKeys = claim.simulationEventIds.map((id) => eventKeyById.get(id)!);

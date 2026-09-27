@@ -27,7 +27,10 @@ const projection: FormalSandboxResultProjection = {
     facts: [{ key: "fact-1", label: "人生气候", statement: "当前生活节奏正在调整", evidenceSummary: "本人在 Reality Profile 中记录" }],
     assumptions: [{ key: "assumption-1", label: "资源", statement: "下月可能有项目变化", evidenceSummary: "本人明确提交的待验证假设" }],
     unknowns: [{ key: "unknown-1", label: "约束" }],
+    structuredResources: [],
+    structuredConstraints: [],
   },
+  resourceChanges: [],
   steps: [{ key: "step-1", order: 1, label: "record observation", kind: "sandbox_simulation", boundary: "simulation_step", participantKeys: ["person-1", "person-2"], relationshipKeys: ["relation-1"] }],
   claims: [{ key: "claim-1", statement: "Conditional conclusion", uncertainty: "Not a guarantee", boundary: "conditional_claim", stepKeys: ["step-1"], supportingStepKeys: ["step-1"], participantKeys: ["person-1", "person-2"], relationshipKeys: ["relation-1"] }],
 };
