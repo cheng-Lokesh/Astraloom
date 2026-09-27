@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
+import { listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import {
   AGENT_WORLD_ENGINE_VERSION_V2,
@@ -52,6 +53,13 @@ const inputSchema = z.object({
   seedContextId: z.string().uuid(),
   graphSnapshotId: z.string().uuid(),
   agentSnapshotId: z.string().uuid(),
+  realityProfileSnapshot: z.object({
+    ownerId: z.string().uuid(),
+    seedContextId: z.string().uuid(),
+    profileId: z.string().uuid().nullable(),
+    revision: z.number().int().nonnegative(),
+    profile: realityProfileDraftSchema,
+  }).strict(),
   horizonDays: z.union([z.literal(30), z.literal(90)]),
   deterministicSeed: z.number().int().positive().max(2_000_000_000),
   startedAt: z.string().datetime({ offset: true }),
@@ -65,6 +73,13 @@ const inputSchema = z.object({
   const ids = new Set(value.agents.map((item) => item.id));
   if (value.agents.filter((item) => item.actorType === "self").length !== 1) context.addIssue({ code: "custom", message: "one self agent required" });
   for (const relation of value.edges) if (!ids.has(relation.fromAgentId) || !ids.has(relation.toAgentId) || relation.fromAgentId === relation.toAgentId) context.addIssue({ code: "custom", message: "edge endpoint mismatch" });
+  const profileSnapshot = value.realityProfileSnapshot;
+  if (profileSnapshot.ownerId !== value.ownerId || profileSnapshot.seedContextId !== value.seedContextId || profileSnapshot.revision !== profileSnapshot.profile.revision) {
+    context.addIssue({ code: "custom", path: ["realityProfileSnapshot"], message: "Reality Profile snapshot scope or revision does not match the Run." });
+  }
+  if (profileSnapshot.profileId === null && (profileSnapshot.revision !== 0 || listRealityProfileEntries(profileSnapshot.profile).some(({ field }) => field.classification !== "unknown"))) {
+    context.addIssue({ code: "custom", path: ["realityProfileSnapshot"], message: "An absent Reality Profile must remain explicitly unknown at revision zero." });
+  }
 });
 
 export type FormalSandboxRuntimeInput = z.infer<typeof inputSchema>;
@@ -96,6 +111,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       seedContextId: input.seedContextId,
       graphSnapshotId: input.graphSnapshotId,
       agentSnapshotId: input.agentSnapshotId,
+      realityProfileSnapshot: input.realityProfileSnapshot,
       horizonDays: input.horizonDays,
       deterministicSeed: input.deterministicSeed,
       startedAt: input.startedAt,
@@ -111,6 +127,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       clock: () => boundaryAt,
       idFactory: createStableRealityBoundaryIdFactoryV2(`formal-${causalFingerprint}`),
     };
+    const profileEntries = listRealityProfileEntries(input.realityProfileSnapshot.profile);
     const evidenceLedger = buildEvidenceLedgerV2({
       seedContextId: input.seedContextId,
       runtime: realityRuntime,
@@ -133,6 +150,15 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
           provenance: [{ sourceRef: `relation_edge:${item.id}`, capturedAt: boundaryAt }],
           limitations: ["Relationship structure is confirmed; private intent is not inferred."],
         })),
+        ...profileEntries.filter(({ field }) => field.classification === "fact").map(({ key, label, field }) => ({
+          statement: `${label}：${field.value}`,
+          claimKey: `reality.profile.${key}`,
+          sourceKind: "user_statement" as const,
+          sourceTier: "tier_1_user_confirmed" as const,
+          verificationStatus: "user_confirmed" as const,
+          provenance: [{ sourceRef: `reality_profile:${input.realityProfileSnapshot.profileId ?? "absent"}:revision:${input.realityProfileSnapshot.revision}:${key}`, capturedAt: boundaryAt }],
+          limitations: [`User-supplied basis: ${field.evidenceSummary}`, "A user-recorded fact can still be incomplete."],
+        })),
       ],
     });
     const primaryEvidenceId = evidenceLedger.items[0]!.id;
@@ -151,7 +177,18 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
         limitations: ["Visible simulation assumption, not a real-world fact."],
         confirmationRequirement: "not_required",
         confirmationStatus: "not_required",
-      }],
+      }, ...profileEntries.filter(({ field }) => field.classification === "assumption").map(({ key, field }) => ({
+        statement: field.value,
+        subjectType: "unknown" as const,
+        category: `reality_profile_${key}`,
+        epistemicStatus: "confirmed_for_simulation" as const,
+        impactLevel: "low" as const,
+        supportingRealEvidenceIds: [],
+        contradictingRealEvidenceIds: [],
+        limitations: [`User designated this as an assumption: ${field.evidenceSummary}`, "Not a verified real-world fact."],
+        confirmationRequirement: "not_required" as const,
+        confirmationStatus: "confirmed" as const,
+      }))],
     });
     const assumptionId = assumptionLedger.assumptions[0]!.id;
     const boundary = {

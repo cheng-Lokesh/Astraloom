@@ -2,21 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { createUnknownRealityProfileField, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
+import { realityProfileDatabaseColumns, realityProfileDraftFromDatabaseRow, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const rowSchema = z.object({
-  life_climate_value: z.string().nullable(), life_climate_classification: z.enum(["fact", "assumption", "unknown"]), life_climate_evidence_summary: z.string().nullable(),
-  resources_value: z.string().nullable(), resources_classification: z.enum(["fact", "assumption", "unknown"]), resources_evidence_summary: z.string().nullable(),
-  constraints_value: z.string().nullable(), constraints_classification: z.enum(["fact", "assumption", "unknown"]), constraints_evidence_summary: z.string().nullable(),
-  life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()),
-  revision: z.number().int().nonnegative(),
-}).strict();
-
-const profileColumns = "life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,life_goals,core_values,life_themes,pressures,external_variables,revision";
+const profileColumns = realityProfileDatabaseColumns;
 
 function failure(status: number, errorCode: string, traceId: string) {
   return NextResponse.json({ ok: false, error_code: errorCode, trace_id: traceId }, { status, headers: { "Cache-Control": "no-store" } });
@@ -37,18 +29,7 @@ async function ownerAndSeed(): Promise<OwnerSeedContext> {
 }
 
 function profileFromRow(row: unknown) {
-  const record = rowSchema.parse(row);
-  return realityProfileDraftSchema.parse({
-    lifeClimate: { value: record.life_climate_value ?? "", classification: record.life_climate_classification, evidenceSummary: record.life_climate_evidence_summary ?? "明确未知" },
-    resources: { value: record.resources_value ?? "", classification: record.resources_classification, evidenceSummary: record.resources_evidence_summary ?? "明确未知" },
-    constraints: { value: record.constraints_value ?? "", classification: record.constraints_classification, evidenceSummary: record.constraints_evidence_summary ?? "明确未知" },
-    goals: record.life_goals ?? [createUnknownRealityProfileField()],
-    values: record.core_values ?? [createUnknownRealityProfileField()],
-    lifeThemes: record.life_themes ?? [createUnknownRealityProfileField()],
-    pressures: record.pressures ?? [createUnknownRealityProfileField()],
-    externalVariables: record.external_variables ?? [createUnknownRealityProfileField()],
-    revision: record.revision,
-  });
+  return realityProfileDraftFromDatabaseRow(row);
 }
 
 function databaseFields(profile: z.infer<typeof realityProfileDraftSchema>) {

@@ -52,7 +52,7 @@ function profileRow(ownerId = ids.owner, seedId = ids.seed) {
   };
 }
 
-function createService(profile: Row | null, operations: string[] = {}) {
+function createService(profile: Row | null, operations: string[] = []) {
   const rows: Record<string, unknown> = {
     relation_graph_snapshots: { id: ids.graph, user_id: ids.owner, seed_context_id: ids.seed, agent_snapshot_id: ids.agentSnapshot, graph_locked: true, locked_at: "2026-09-01T00:00:00.000Z", safety_level: "safe" },
     seed_contexts: { id: ids.seed, user_question: "A bounded question", raw_context: "Private raw scenario text", safety_flags: [] },
@@ -82,7 +82,10 @@ function createService(profile: Row | null, operations: string[] = {}) {
 }
 
 beforeEach(() => {
-  vi.mocked(buildFormalSandboxRunV2).mockResolvedValue({ ok: true, bundle: { inputSnapshot: {} } } as never);
+  vi.mocked(buildFormalSandboxRunV2).mockImplementation(async (rawInput) => {
+    const realityProfileSnapshot = (rawInput as { realityProfileSnapshot?: unknown }).realityProfileSnapshot;
+    return { ok: true, bundle: { inputSnapshot: { realityProfileSnapshot } } } as never;
+  });
   vi.mocked(persistFormalSandboxRun).mockResolvedValue({
     ok: true,
     idempotent: false,

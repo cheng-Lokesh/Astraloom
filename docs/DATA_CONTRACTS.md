@@ -1090,6 +1090,18 @@ and Agent snapshot bindings, run phase, failure metadata, calibration snapshot,
 and immutable result bundle. It does not introduce a parallel run or History
 table.
 
+The input snapshot freezes the Reality Profile selected by the authenticated
+owner and the locked Graph's Seed, including its revision and each dimension's
+classification. If no Profile row exists, the snapshot records revision zero
+and every dimension as unknown. Profile facts enter the run as user-provided
+reality evidence; Profile assumptions enter the assumption ledger as
+assumptions; unknowns remain unknown and do not enter either ledger. The result
+projection reads only this frozen snapshot, keeps Profile facts, assumptions,
+and unknowns in distinct categories, and does not expose Profile evidence refs,
+owner/Seed/Profile ids, or raw Seed narrative as display values. Earlier Runs
+without this snapshot remain marked as not recorded instead of using a current
+Profile.
+
 The controlled transaction writes `simulation_ticks`, then `event_logs`, then
 same-run evidence-linked `claims`, then the single `reports` projection, and
 only then marks the simulation completed. Forced failure rolls the transaction

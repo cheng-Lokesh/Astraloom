@@ -19,8 +19,8 @@ const projection: FormalSandboxResultProjection = {
     { key: "person-2", label: "Frozen participant", role: "frozen participant" },
   ],
   relationships: [{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "professional" }],
-  facts: [{ key: "fact-1", statement: "User supplied fact", boundary: "user_provided_fact" }],
-  assumptions: [{ key: "assumption-1", statement: "System assumption", boundary: "system_assumption" }],
+  facts: [{ key: "fact-1", statement: "Confirmed relationship evidence", boundary: "user_provided_fact" }],
+  assumptions: [{ key: "assumption-1", statement: "Conditions may remain stable.", boundary: "system_assumption" }],
   realityProfile: {
     status: "frozen",
     revision: 7,
@@ -43,22 +43,25 @@ const workbench = (selectedClaimKey: string | null = null, feedbackState = initi
 });
 
 describe("M2.2 Result components and controllers", () => {
-  it("renders only the safe projection across all four evidence ledgers", () => {
+  it("renders only the safe frozen Reality Profile classification and simulation projection", () => {
     const html = renderToStaticMarkup(workbench());
 
-    expect(html).toContain("User-provided facts");
-    expect(html).toContain("System assumptions");
     expect(html).toContain("本次运行冻结的 Reality Profile");
     expect(html).toContain("明确事实");
     expect(html).toContain("明确假设");
     expect(html).toContain("仍然未知");
+    expect(html).toContain("User-provided facts");
+    expect(html).toContain("System assumptions");
+    expect(html).toContain("Confirmed relationship evidence");
+    expect(html).toContain("Conditions may remain stable.");
     expect(html).toContain("本人在 Reality Profile 中记录");
     expect(html).toContain("下月可能有项目变化");
     expect(html).toContain("Revision 7");
     expect(html).toContain("Direct supporting simulation steps");
     expect(html).toContain("Conditional conclusions");
-    expect(html).toContain("User supplied fact");
-    expect(html).toContain("System assumption");
+    expect(html).toContain("当前生活节奏正在调整");
+    expect(html).toContain("明确提交的待验证假设");
+    expect(html).toContain("约束：明确未知");
     expect(html).toContain("Conditional conclusion");
     expect(html).not.toMatch(/private-ref|world_event_v2_|claim_v2_|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
   });

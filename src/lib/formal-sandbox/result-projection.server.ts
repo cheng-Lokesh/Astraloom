@@ -1,8 +1,21 @@
 import { z } from "zod";
 
+import { listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
+
 const ordinal = (prefix: string, index: number) => `${prefix}-${index + 1}`;
-const safeText = z.string().trim().min(1).max(2_000);
+const unsafeVisibleText = /[\u0000-\u001f\u007f-\u009f]|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:raw\s+scenario|trace(?:[_ -]?id)?|internal(?:[_ -]?key|\s+evidence\s+ref)?|token|secret|password|api[_ -]?key|private\s+key|bearer)\b/i;
+const safeText = z.string().trim().min(1).max(2_000).refine((value) => !unsafeVisibleText.test(value));
 const reference = z.string().min(1);
+const realityProfileSnapshotSchema = z.object({
+  ownerId: z.string().uuid(),
+  seedContextId: z.string().uuid(),
+  profileId: z.string().uuid().nullable(),
+  revision: z.number().int().nonnegative(),
+  profile: realityProfileDraftSchema,
+}).strict();
+const profileFactSchema = z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), label: safeText, statement: safeText, evidenceSummary: safeText }).strict();
+const profileAssumptionSchema = z.object({ key: z.string().regex(/^assumption-[1-9]\d*$/), label: safeText, statement: safeText, evidenceSummary: safeText }).strict();
+const profileUnknownSchema = z.object({ key: z.string().regex(/^unknown-[1-9]\d*$/), label: safeText }).strict();
 const agentSchema = z.object({ id: reference, displayName: safeText, actorType: z.enum(["self", "third_party"]), evidenceRefs: z.array(z.string()).min(1) }).passthrough();
 const relationSchema = z.object({ id: reference, fromAgentId: reference, toAgentId: reference, relationshipType: safeText, evidenceRefs: z.array(z.string()).min(1) }).passthrough();
 const eventSchema = z.object({ id: reference, eventType: safeText, actorId: reference.optional(), targetEntityIds: z.array(reference).optional(), targetRelationIds: z.array(reference).optional(), causalRealEvidenceIds: z.array(reference).optional(), priorWorldEventIds: z.array(reference).optional() }).passthrough();
@@ -13,8 +26,8 @@ const worldSnapshotSchema = z.object({
   relations: z.array(z.object({ id: reference, fromEntityId: reference, toEntityId: reference, provenance: z.object({ realEvidenceIds: z.array(reference).optional(), assumptionIds: z.array(reference).optional(), provisional: z.boolean().optional(), visible: z.literal(true).optional() }).passthrough().optional() }).passthrough()).max(500).optional(),
 }).passthrough();
 const bundleSchema = z.object({
-  inputSnapshot: z.object({ agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
-  sourceBoundary: z.object({ evidenceLedger: z.object({ items: z.array(z.object({ id: reference, statement: safeText }).passthrough()).max(200) }).passthrough().optional(), assumptionLedger: z.object({ assumptions: z.array(z.object({ statement: safeText }).passthrough()).max(200) }).passthrough().optional() }).passthrough().optional(),
+  inputSnapshot: z.object({ ownerId: z.string().uuid().optional(), seedContextId: z.string().uuid().optional(), realityProfileSnapshot: realityProfileSnapshotSchema.optional(), agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
+  sourceBoundary: z.object({ evidenceLedger: z.object({ items: z.array(z.object({ id: reference, statement: z.string().trim().min(1).max(4_000) }).passthrough()).max(200) }).passthrough().optional(), assumptionLedger: z.object({ assumptions: z.array(z.object({ statement: z.string().trim().min(1).max(2_000) }).passthrough()).max(200) }).passthrough().optional() }).passthrough().optional(),
   worldSnapshots: z.array(worldSnapshotSchema).max(500).optional(),
   events: z.array(eventSchema).min(1).max(500),
   claims: z.array(claimSchema).min(1).max(100),
@@ -26,6 +39,13 @@ export const safeResultProjectionSchema = z.object({
   relationships: z.array(z.object({ key: z.string().regex(/^relation-[1-9]\d*$/), fromPersonKey: z.string().regex(/^person-[1-9]\d*$/), toPersonKey: z.string().regex(/^person-[1-9]\d*$/), label: safeText }).strict()),
   facts: z.array(z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), statement: safeText, boundary: z.literal("user_provided_fact") }).strict()),
   assumptions: z.array(z.object({ key: z.string().regex(/^assumption-[1-9]\d*$/), statement: safeText, boundary: z.literal("system_assumption") }).strict()),
+  realityProfile: z.object({
+    status: z.enum(["frozen", "not_recorded"]),
+    revision: z.number().int().nonnegative().nullable(),
+    facts: z.array(profileFactSchema),
+    assumptions: z.array(profileAssumptionSchema),
+    unknowns: z.array(profileUnknownSchema),
+  }).strict(),
   steps: z.array(z.object({ key: z.string().regex(/^step-[1-9]\d*$/), order: z.number().int().positive(), label: safeText, kind: z.literal("sandbox_simulation"), boundary: z.literal("simulation_step"), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
   claims: z.array(z.object({ key: z.string().regex(/^claim-[1-9]\d*$/), statement: safeText, uncertainty: safeText, boundary: z.literal("conditional_claim"), stepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), supportingStepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
 }).strict();
@@ -50,6 +70,21 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const parsed = bundleSchema.safeParse(rawBundle);
   if (!parsed.success) return null;
   const bundle = parsed.data;
+  const profileSnapshot = bundle.inputSnapshot.realityProfileSnapshot;
+  if (profileSnapshot) {
+    if (bundle.inputSnapshot.ownerId !== profileSnapshot.ownerId || bundle.inputSnapshot.seedContextId !== profileSnapshot.seedContextId || profileSnapshot.revision !== profileSnapshot.profile.revision) return null;
+    if (profileSnapshot.profileId === null && (profileSnapshot.revision !== 0 || listRealityProfileEntries(profileSnapshot.profile).some(({ field }) => field.classification !== "unknown"))) return null;
+  }
+  const realityProfile = profileSnapshot ? (() => {
+    const entries = listRealityProfileEntries(profileSnapshot.profile);
+    return {
+      status: "frozen" as const,
+      revision: profileSnapshot.revision,
+      facts: entries.filter(({ field }) => field.classification === "fact").map(({ label, field }, index) => ({ key: ordinal("fact", index), label, statement: field.value, evidenceSummary: field.evidenceSummary })),
+      assumptions: entries.filter(({ field }) => field.classification === "assumption").map(({ label, field }, index) => ({ key: ordinal("assumption", index), label, statement: field.value, evidenceSummary: field.evidenceSummary })),
+      unknowns: entries.filter(({ field }) => field.classification === "unknown").map(({ label }, index) => ({ key: ordinal("unknown", index), label })),
+    };
+  })() : { status: "not_recorded" as const, revision: null, facts: [], assumptions: [], unknowns: [] };
 
   const agentIds = bundle.inputSnapshot.agents.map((item) => item.id);
   const edgeIds = bundle.inputSnapshot.edges.map((item) => item.id);
@@ -58,6 +93,17 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   if (!unique(agentIds) || !unique(edgeIds) || !unique(frozenEndpoints) || bundle.inputSnapshot.agents.some((agent) => !unique(agent.evidenceRefs)) || bundle.inputSnapshot.edges.some((edge) => !unique(edge.evidenceRefs) || !agentIdSet.has(edge.fromAgentId) || !agentIdSet.has(edge.toAgentId) || edge.fromAgentId === edge.toAgentId)) return null;
 
   const evidenceItems = bundle.sourceBoundary?.evidenceLedger?.items ?? [];
+  const frozenSeedSummary = typeof bundle.inputSnapshot.seedSummary === "string" ? bundle.inputSnapshot.seedSummary.trim() : "";
+  const visibleEvidenceItems = evidenceItems.filter((item) => {
+    const claimKey = typeof item.claimKey === "string" ? item.claimKey : "";
+    return claimKey !== "formal.seed.summary"
+      && !claimKey.startsWith("reality.profile.")
+      && (!frozenSeedSummary || item.statement !== frozenSeedSummary);
+  });
+  const visibleRunAssumptions = (bundle.sourceBoundary?.assumptionLedger?.assumptions ?? []).filter((item) => {
+    const category = typeof item.category === "string" ? item.category : "";
+    return !category.startsWith("reality_profile_");
+  });
   const evidenceIds = evidenceItems.map((item) => item.id);
   if (!unique(evidenceIds)) return null;
   const evidenceIdSet = new Set(evidenceIds);
@@ -163,8 +209,9 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const projection = {
     participants: bundle.inputSnapshot.agents.map((agent, index) => ({ key: participantKeys[index]!, label: agent.displayName, role: agent.actorType === "self" ? "scenario decision maker" as const : "frozen participant" as const })),
     relationships: bundle.inputSnapshot.edges.map((edge, index) => ({ key: relationshipKeys[index]!, fromPersonKey: personKeyById.get(edge.fromAgentId)!, toPersonKey: personKeyById.get(edge.toAgentId)!, label: edge.relationshipType })),
-    facts: evidenceItems.map((fact, index) => ({ key: ordinal("fact", index), statement: fact.statement, boundary: "user_provided_fact" as const })),
-    assumptions: (bundle.sourceBoundary?.assumptionLedger?.assumptions ?? []).map((assumption, index) => ({ key: ordinal("assumption", index), statement: assumption.statement, boundary: "system_assumption" as const })),
+    facts: visibleEvidenceItems.map((fact, index) => ({ key: ordinal("fact", index), statement: fact.statement, boundary: "user_provided_fact" as const })),
+    assumptions: visibleRunAssumptions.map((assumption, index) => ({ key: ordinal("assumption", index), statement: assumption.statement, boundary: "system_assumption" as const })),
+    realityProfile,
     steps: bundle.events.map((event, index) => ({ key: eventKeyById.get(event.id)!, order: index + 1, label: event.eventType.replaceAll("_", " "), kind: "sandbox_simulation" as const, boundary: "simulation_step" as const, participantKeys: eventLinks.get(event.id)!.participantKeys, relationshipKeys: eventLinks.get(event.id)!.relationshipKeys })),
     claims: bundle.claims.map((claim, index) => {
       const stepKeys = claim.simulationEventIds.map((id) => eventKeyById.get(id)!);

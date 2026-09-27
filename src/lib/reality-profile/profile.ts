@@ -40,6 +40,31 @@ export const realityProfileDraftSchema = z.object({
 
 export type RealityProfileField = z.infer<typeof realityProfileFieldSchema>;
 export type RealityProfileDraft = z.infer<typeof realityProfileDraftSchema>;
+export const realityProfileDatabaseColumns = "life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,life_goals,core_values,life_themes,pressures,external_variables,revision";
+
+const realityProfileDatabaseRowSchema = z.object({
+  life_climate_value: z.string().nullable(), life_climate_classification: classificationSchema, life_climate_evidence_summary: z.string().nullable(),
+  resources_value: z.string().nullable(), resources_classification: classificationSchema, resources_evidence_summary: z.string().nullable(),
+  constraints_value: z.string().nullable(), constraints_classification: classificationSchema, constraints_evidence_summary: z.string().nullable(),
+  life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()),
+  revision: z.number().int().nonnegative(),
+}).passthrough();
+
+export function realityProfileDraftFromDatabaseRow(row: unknown): RealityProfileDraft {
+  const record = realityProfileDatabaseRowSchema.parse(row);
+  return realityProfileDraftSchema.parse({
+    lifeClimate: { value: record.life_climate_value ?? "", classification: record.life_climate_classification, evidenceSummary: record.life_climate_evidence_summary ?? "明确未知" },
+    resources: { value: record.resources_value ?? "", classification: record.resources_classification, evidenceSummary: record.resources_evidence_summary ?? "明确未知" },
+    constraints: { value: record.constraints_value ?? "", classification: record.constraints_classification, evidenceSummary: record.constraints_evidence_summary ?? "明确未知" },
+    goals: record.life_goals,
+    values: record.core_values,
+    lifeThemes: record.life_themes,
+    pressures: record.pressures,
+    externalVariables: record.external_variables,
+    revision: record.revision,
+  });
+}
+
 type LedgerItem = { label: string; evidenceSummary: string };
 type UnknownItem = { label: string };
 export type LatestRunEvent = "cooperation" | "avoidance" | "direct_conflict" | "disclosure" | "resource_competition" | "support" | "opportunity_signal" | "information_gap_widening" | null;
@@ -86,6 +111,30 @@ export function createEmptyRealityProfileDraft(revision = 0): RealityProfileDraf
     externalVariables: [createUnknownRealityProfileField()],
     revision,
   };
+}
+
+export function listRealityProfileEntries(rawDraft: RealityProfileDraft) {
+  const draft = realityProfileDraftSchema.parse(rawDraft);
+  const entries = [
+    { key: "lifeClimate", label: dimensionLabels.lifeClimate, field: draft.lifeClimate },
+    { key: "resources", label: dimensionLabels.resources, field: draft.resources },
+    { key: "constraints", label: dimensionLabels.constraints, field: draft.constraints },
+  ];
+  const lists = [
+    { key: "goals", label: dimensionLabels.goals, fields: draft.goals },
+    { key: "values", label: dimensionLabels.values, fields: draft.values },
+    { key: "lifeThemes", label: dimensionLabels.lifeThemes, fields: draft.lifeThemes },
+    { key: "pressures", label: dimensionLabels.pressures, fields: draft.pressures },
+    { key: "externalVariables", label: dimensionLabels.externalVariables, fields: draft.externalVariables },
+  ];
+  return [
+    ...entries,
+    ...lists.flatMap(({ key, label, fields }) => fields.map((field, index) => ({
+      key: `${key}.${index + 1}`,
+      label: fields.length === 1 ? label : `${label}（第${index + 1}项）`,
+      field,
+    }))),
+  ];
 }
 
 function ledgerFor(field: RealityProfileField, label: string) {

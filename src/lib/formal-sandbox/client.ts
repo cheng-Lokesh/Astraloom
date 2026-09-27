@@ -4,11 +4,19 @@ const failure = z.object({ ok: z.literal(false), error_code: z.string(), trace_i
 const run = z.object({ id: z.string().uuid(), status: z.string(), graph_snapshot_id: z.string().uuid().nullable().optional(), time_horizon: z.enum(["30_days", "90_days"]).optional(), completed_at: z.string().nullable().optional() }).passthrough();
 const startSuccess = z.object({ ok: z.literal(true), idempotent: z.boolean(), run }).passthrough();
 const statusSuccess = z.object({ ok: z.literal(true), run }).passthrough();
+const resultProfileItemKey = (prefix: "fact" | "assumption" | "unknown") => z.string().regex(new RegExp(`^${prefix}-[1-9]\\d*$`));
 export const formalSandboxResultProjectionSchema = z.object({
   participants: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: z.string(), role: z.enum(["scenario decision maker", "frozen participant"]) })),
   relationships: z.array(z.object({ key: z.string().regex(/^relation-[1-9]\d*$/), fromPersonKey: z.string().regex(/^person-[1-9]\d*$/), toPersonKey: z.string().regex(/^person-[1-9]\d*$/), label: z.string() })),
   facts: z.array(z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), statement: z.string(), boundary: z.literal("user_provided_fact") })),
   assumptions: z.array(z.object({ key: z.string().regex(/^assumption-[1-9]\d*$/), statement: z.string(), boundary: z.literal("system_assumption") })),
+  realityProfile: z.object({
+    status: z.enum(["frozen", "not_recorded"]),
+    revision: z.number().int().nonnegative().nullable(),
+    facts: z.array(z.object({ key: resultProfileItemKey("fact"), label: z.string(), statement: z.string(), evidenceSummary: z.string() }).strict()),
+    assumptions: z.array(z.object({ key: resultProfileItemKey("assumption"), label: z.string(), statement: z.string(), evidenceSummary: z.string() }).strict()),
+    unknowns: z.array(z.object({ key: resultProfileItemKey("unknown"), label: z.string() }).strict()),
+  }).strict(),
   steps: z.array(z.object({ key: z.string().regex(/^step-[1-9]\d*$/), order: z.number().int().positive(), label: z.string(), kind: z.literal("sandbox_simulation"), boundary: z.literal("simulation_step"), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) })),
   claims: z.array(z.object({ key: z.string().regex(/^claim-[1-9]\d*$/), statement: z.string(), uncertainty: z.string(), boundary: z.literal("conditional_claim"), stepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), supportingStepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) })),
 }).strict();

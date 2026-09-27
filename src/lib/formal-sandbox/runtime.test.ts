@@ -58,8 +58,8 @@ describe("formal account sandbox V2 runtime adapter", () => {
     expect(result.bundle.report.claimIds).toEqual(result.bundle.claims.map((claim) => claim.id).sort());
     expect(result.bundle.inputSnapshot.realityProfileSnapshot).toEqual(input.realityProfileSnapshot);
     expect(result.bundle.sourceBoundary.evidenceLedger.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ claimKey: "reality.profile.lifeClimate", statement: "人生气候：当前生活节奏正在调整" }),
-      expect.objectContaining({ claimKey: "reality.profile.goals.1", statement: "目标（第1项）：保留每周学习时间" }),
+      expect.objectContaining({ claimKey: "reality.profile.lifeclimate", statement: "人生气候：当前生活节奏正在调整" }),
+      expect.objectContaining({ claimKey: "reality.profile.goals.1", statement: "目标：保留每周学习时间" }),
     ]));
     expect(result.bundle.sourceBoundary.assumptionLedger.assumptions).toEqual(expect.arrayContaining([
       expect.objectContaining({ statement: "未来30天可能有项目安排变化", factStatus: "not_real_world_fact" }),

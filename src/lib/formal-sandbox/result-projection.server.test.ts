@@ -31,7 +31,7 @@ function bundle(overrides: Record<string, unknown> = {}) {
     inputSnapshot: {
       ownerId: ids.owner, seedContextId: ids.seed, graphSnapshotId: ids.graph, agentSnapshotId: ids.agentSnapshot,
       horizonDays: 30, deterministicSeed: 1701,
-      realityProfileSnapshot,
+      realityProfileSnapshot: structuredClone(realityProfileSnapshot),
       agents: [
         { id: ids.self, displayName: "Scenario owner", actorType: "self", evidenceRefs: ["private-ref"] },
         { id: ids.counterpart, displayName: "Frozen participant", actorType: "third_party", evidenceRefs: ["private-ref"] },
@@ -82,11 +82,11 @@ describe("formal sandbox result projection", () => {
 
   it("fails closed when the frozen Profile owner, Seed or revision does not match the Run snapshot", () => {
     const wrongOwner = bundle();
-    wrongOwner.inputSnapshot.realityProfileSnapshot.ownerId = ids.otherOwner;
+    wrongOwner.inputSnapshot.realityProfileSnapshot.ownerId = ids.graph;
     expect(projectFormalSandboxResult(wrongOwner)).toBeNull();
 
     const wrongSeed = bundle();
-    wrongSeed.inputSnapshot.realityProfileSnapshot.seedContextId = ids.otherOwner;
+    wrongSeed.inputSnapshot.realityProfileSnapshot.seedContextId = ids.graph;
     expect(projectFormalSandboxResult(wrongSeed)).toBeNull();
 
     const wrongRevision = bundle();
@@ -95,8 +95,10 @@ describe("formal sandbox result projection", () => {
   });
 
   it("marks older Runs without a stored Profile snapshot as unrecorded and never reads a current Profile", () => {
-    const legacy = bundle();
-    delete legacy.inputSnapshot.realityProfileSnapshot;
+    const current = bundle();
+    const { realityProfileSnapshot, ...legacyInputSnapshot } = current.inputSnapshot;
+    expect(realityProfileSnapshot).toBeDefined();
+    const legacy = { ...current, inputSnapshot: legacyInputSnapshot };
     const result = projectFormalSandboxResult(legacy);
     expect(result?.realityProfile).toEqual({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [] });
   });

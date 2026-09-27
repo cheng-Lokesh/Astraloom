@@ -506,12 +506,19 @@ Another owner's valid identifier is indistinguishable from a missing object.
 - `POST /api/sandbox/runs`: accepts a locked Graph snapshot UUID, a UUID
   idempotency key, and a `30` or `90` day horizon. It revalidates the complete
   owned Seed/People/Agent/Graph chain and returns 201 for a new atomic completed
-  bundle or 200 for an identical replay. A reused key with different content is
-  409; unsafe or incomplete input is rejected without completed artifacts.
+  bundle or 200 for an identical replay. It also freezes the Reality Profile
+  belonging to the authenticated owner and that Graph's Seed; when no Profile
+  row exists, it freezes revision zero with every dimension explicitly unknown.
+  A reused key with different content is 409; unsafe or incomplete input is
+  rejected without completed artifacts.
 - `GET /api/sandbox/runs/:runId`: returns owner-scoped persisted status and
   phase metadata. Polling is read-only and never creates completion.
-- `GET /api/sandbox/runs/:runId/result`: returns the persisted immutable bundle
-  only after completion; incomplete runs return 409.
+- `GET /api/sandbox/runs/:runId/result`: projects the persisted immutable
+  bundle only after completion; incomplete runs return 409. The result includes
+  ordinal-keyed Reality Profile facts, assumptions, and unknowns from that Run's
+  frozen snapshot. It keeps Seed/relationship evidence and system assumptions
+  in their existing sections, while omitting raw Seed narrative, Profile
+  evidence references, and database identifiers from display fields.
 - `GET /api/sandbox/runs?limit=&before=&horizon=`: returns newest-first completed account History. `horizon` is optional and accepts only `30_days` or `90_days`; filtering happens in the owner-scoped server query before stable `(created_at, id)` cursor pagination.
   The opaque compound cursor binds `(created_at, id)` for stable pagination.
 - `POST /api/sandbox/runs/:runId/feedback`: accepts `useful`, `mixed`, or `off`,
