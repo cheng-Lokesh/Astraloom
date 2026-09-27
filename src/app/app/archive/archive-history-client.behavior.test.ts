@@ -34,4 +34,12 @@ describe("ArchiveHistoryClient completed-result boundary",()=>{
     expect(resultLinks.map((element)=>element.props?.href)).toEqual([`/app/simulation/result?run_id=${completedId}`]);
     expect(completionBadges.map(text)).toEqual(["completed"]);
   });
+
+  it("offers comparison selection only for the completed History entry",()=>{
+    const elements=descendants(ArchiveHistoryClient({timeUnavailableLabel:"time unavailable"}));
+    const selectors=elements.filter((element)=>element.props?.type==="checkbox");
+
+    expect(selectors).toHaveLength(1);
+    expect(text(ArchiveHistoryClient({timeUnavailableLabel:"time unavailable"}))).toContain("比较所选 Run");
+  });
 });
