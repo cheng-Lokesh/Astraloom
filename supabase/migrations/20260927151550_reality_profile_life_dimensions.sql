@@ -13,33 +13,36 @@ as $function$
     else not exists (
       select 1
       from pg_catalog.jsonb_array_elements(profile_items) as entry(value)
-      where pg_catalog.jsonb_typeof(entry.value) is distinct from 'object'
-        or pg_catalog.jsonb_object_length(entry.value) <> 3
-        or pg_catalog.jsonb_typeof(entry.value -> 'value') is distinct from 'string'
-        or pg_catalog.jsonb_typeof(entry.value -> 'classification') is distinct from 'string'
-        or pg_catalog.jsonb_typeof(entry.value -> 'evidenceSummary') is distinct from 'string'
-        or entry.value ->> 'classification' not in ('fact', 'assumption', 'unknown')
-        or (
-          entry.value ->> 'classification' = 'unknown'
-          and (entry.value ->> 'value' is distinct from '' or entry.value ->> 'evidenceSummary' is distinct from '明确未知')
-        )
-        or (
-          entry.value ->> 'classification' in ('fact', 'assumption')
-          and (
-            pg_catalog.char_length(pg_catalog.btrim(entry.value ->> 'value')) not between 1 and 240
-            or pg_catalog.char_length(pg_catalog.btrim(entry.value ->> 'evidenceSummary')) not between 1 and 160
-            or entry.value ->> 'value' <> pg_catalog.btrim(entry.value ->> 'value')
-            or entry.value ->> 'evidenceSummary' <> pg_catalog.btrim(entry.value ->> 'evidenceSummary')
-            or (entry.value ->> 'value') ~ '[[:cntrl:]]'
-            or (entry.value ->> 'evidenceSummary') ~ '[[:cntrl:]]'
-            or (entry.value ->> 'value') ~* '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
-            or (entry.value ->> 'evidenceSummary') ~* '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
-            or (entry.value ->> 'value') ~* '[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}'
-            or (entry.value ->> 'evidenceSummary') ~* '[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}'
-            or (entry.value ->> 'value') ~* '(raw[[:space:]]+(scenario|evidence)|trace([_-]?id)?|internal([_-]?key)?|token|secret|password|api[_ -]?key)'
-            or (entry.value ->> 'evidenceSummary') ~* '(raw[[:space:]]+(scenario|evidence)|trace([_-]?id)?|internal([_-]?key)?|token|secret|password|api[_ -]?key)'
+      where case
+        when pg_catalog.jsonb_typeof(entry.value) is distinct from 'object' then true
+        else
+          (entry.value - array['value', 'classification', 'evidenceSummary']::text[]) <> '{}'::jsonb
+          or pg_catalog.jsonb_typeof(entry.value -> 'value') is distinct from 'string'
+          or pg_catalog.jsonb_typeof(entry.value -> 'classification') is distinct from 'string'
+          or pg_catalog.jsonb_typeof(entry.value -> 'evidenceSummary') is distinct from 'string'
+          or entry.value ->> 'classification' not in ('fact', 'assumption', 'unknown')
+          or (
+            entry.value ->> 'classification' = 'unknown'
+            and (entry.value ->> 'value' is distinct from '' or entry.value ->> 'evidenceSummary' is distinct from '明确未知')
           )
-        )
+          or (
+            entry.value ->> 'classification' in ('fact', 'assumption')
+            and (
+              pg_catalog.char_length(pg_catalog.btrim(entry.value ->> 'value')) not between 1 and 240
+              or pg_catalog.char_length(pg_catalog.btrim(entry.value ->> 'evidenceSummary')) not between 1 and 160
+              or entry.value ->> 'value' <> pg_catalog.btrim(entry.value ->> 'value')
+              or entry.value ->> 'evidenceSummary' <> pg_catalog.btrim(entry.value ->> 'evidenceSummary')
+              or (entry.value ->> 'value') ~ '[[:cntrl:]]'
+              or (entry.value ->> 'evidenceSummary') ~ '[[:cntrl:]]'
+              or (entry.value ->> 'value') ~* '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+              or (entry.value ->> 'evidenceSummary') ~* '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+              or (entry.value ->> 'value') ~* '[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}'
+              or (entry.value ->> 'evidenceSummary') ~* '[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}'
+              or (entry.value ->> 'value') ~* '(raw[[:space:]]+(scenario|evidence)|trace([_-]?id)?|internal([_-]?key)?|token|secret|password|api[_ -]?key)'
+              or (entry.value ->> 'evidenceSummary') ~* '(raw[[:space:]]+(scenario|evidence)|trace([_-]?id)?|internal([_-]?key)?|token|secret|password|api[_ -]?key)'
+            )
+          )
+      end
     )
   end;
 $function$;
