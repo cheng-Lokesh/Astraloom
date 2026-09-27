@@ -76,9 +76,30 @@ select throws_ok($$ update public.reality_profiles set life_climate_value = '000
 select throws_ok($$ update public.reality_profiles set life_climate_evidence_summary = 'Contact owner@example.test for confirmation', revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_life_climate_valid"', 'scalar evidence summaries reject email addresses');
 select throws_ok($$ update public.reality_profiles set resources_value = 'API token must remain private', revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_resources_valid"', 'resource values reject sensitive-key language');
 select throws_ok($$ update public.reality_profiles set resources_evidence_summary = 'api_key value omitted', revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_resources_valid"', 'resource summaries reject sensitive-key language');
-select throws_ok($$ update public.reality_profiles set constraints_value = 'raw scenario must stay server side', revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_constraints_valid"', 'constraint values reject raw scenario text');
-select throws_ok($$ update public.reality_profiles set constraints_evidence_summary = '00000000-0000-0000-0000-000000000000', revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_constraints_valid"', 'constraint summaries reject version and variant agnostic UUIDs');
-select throws_ok($$ update public.reality_profiles set constraints_evidence_summary = repeat('x', 161), revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', null, 'scalar evidence summaries enforce the trimmed 160-character limit');
+select throws_ok($$
+  update public.reality_profiles
+  set constraints_value = 'raw scenario must stay server side',
+      constraints_classification = 'fact',
+      constraints_evidence_summary = 'User-confirmed current constraint',
+      revision = revision + 1
+  where seed_context_id = '00000000-0000-0000-0000-00000000a773'
+$$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_constraints_valid"', 'constraint values reject raw scenario text');
+select throws_ok($$
+  update public.reality_profiles
+  set constraints_value = 'Current work hours are limited',
+      constraints_classification = 'fact',
+      constraints_evidence_summary = '00000000-0000-0000-0000-000000000000',
+      revision = revision + 1
+  where seed_context_id = '00000000-0000-0000-0000-00000000a773'
+$$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_constraints_valid"', 'constraint summaries reject version and variant agnostic UUIDs');
+select throws_ok($$
+  update public.reality_profiles
+  set constraints_value = 'Current work hours are limited',
+      constraints_classification = 'fact',
+      constraints_evidence_summary = repeat('x', 161),
+      revision = revision + 1
+  where seed_context_id = '00000000-0000-0000-0000-00000000a773'
+$$, '23514', null, 'scalar evidence summaries enforce the trimmed 160-character limit');
 select throws_ok($$ update public.reality_profiles set life_climate_value = repeat('x', 241), revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', null, 'scalar values enforce the trimmed 240-character limit');
 select lives_ok($$ update public.reality_profiles set life_climate_value = repeat('😀', 121), revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, 'scalar length counts Unicode characters consistently with the application');
 select throws_ok($$ update public.reality_profiles set life_goals = '[{"value":"","classification":"unknown","evidenceSummary":"明确未知","private_payload":"unvalidated"}]'::jsonb, revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_life_goals_valid"', 'authenticated direct writes cannot attach an unvalidated extra key');
