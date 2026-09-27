@@ -40,14 +40,14 @@ describe("My Sandbox navigation contract", () => {
     expect(languageSwitcher).not.toContain("min-h-9");
   });
 
-  it("gives mobile flow navigation its own horizontally scrollable row", async () => {
+  it("gives mobile flow navigation its own full-width three-column grid", async () => {
     const source = await readFile(
       path.join(root, "src/components/app-shell.tsx"),
       "utf8",
     );
 
-    expect(source).toMatch(/aria-label="Flow"[\s\S]*?overflow-x-auto/);
-    expect(source).toContain("shrink-0 px-3 text-xs sm:text-sm");
-    expect(source).toContain("max-w-7xl items-center gap-1 overflow-x-auto");
+    expect(source).toMatch(/aria-label="Flow"[\s\S]*?grid grid-cols-3/);
+    expect(source).toContain("w-full px-2 text-xs sm:text-sm");
+    expect(source).toContain("max-w-7xl grid-cols-3 gap-1 px-4 pb-2");
   });
 });
