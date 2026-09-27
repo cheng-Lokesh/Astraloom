@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 import { projectFormalSandboxResult } from "./result-projection.server";
 
 const ids = {
@@ -12,11 +13,25 @@ const ids = {
   relation: "77777777-7777-4777-8777-777777777777",
 };
 
+const profile = createEmptyRealityProfileDraft(7);
+profile.lifeClimate = { value: "当前生活节奏正在调整", classification: "fact", evidenceSummary: "本人在现实档案中记录" };
+profile.resources = { value: "下月可能有项目变化", classification: "assumption", evidenceSummary: "本人明确提交的待验证假设" };
+profile.goals = [{ value: "保留每周学习时间", classification: "fact", evidenceSummary: "本人在现实档案中记录" }];
+profile.pressures = [{ value: "未来日程存在不确定性", classification: "assumption", evidenceSummary: "本人明确提交的待验证假设" }];
+const realityProfileSnapshot = {
+  ownerId: ids.owner,
+  seedContextId: ids.seed,
+  profileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  revision: 7,
+  profile,
+};
+
 function bundle(overrides: Record<string, unknown> = {}) {
   return {
     inputSnapshot: {
       ownerId: ids.owner, seedContextId: ids.seed, graphSnapshotId: ids.graph, agentSnapshotId: ids.agentSnapshot,
       horizonDays: 30, deterministicSeed: 1701,
+      realityProfileSnapshot,
       agents: [
         { id: ids.self, displayName: "Scenario owner", actorType: "self", evidenceRefs: ["private-ref"] },
         { id: ids.counterpart, displayName: "Frozen participant", actorType: "third_party", evidenceRefs: ["private-ref"] },
@@ -38,6 +53,54 @@ function bundle(overrides: Record<string, unknown> = {}) {
 }
 
 describe("formal sandbox result projection", () => {
+  it("shows only the frozen Profile facts, assumptions and unknowns without exposing private inputs", () => {
+    const input = bundle();
+    Object.assign(input.inputSnapshot, { seedSummary: "Private raw scenario with a secret credential" });
+    input.sourceBoundary.evidenceLedger.items.push({ id: "private-profile-evidence-ref", statement: "Private raw scenario with a secret credential" });
+    const result = projectFormalSandboxResult(input);
+
+    expect(result?.realityProfile).toEqual({
+      status: "frozen",
+      revision: 7,
+      facts: [
+        { key: "fact-1", label: "人生气候", statement: "当前生活节奏正在调整", evidenceSummary: "本人在现实档案中记录" },
+        { key: "fact-2", label: "目标", statement: "保留每周学习时间", evidenceSummary: "本人在现实档案中记录" },
+      ],
+      assumptions: [
+        { key: "assumption-1", label: "资源", statement: "下月可能有项目变化", evidenceSummary: "本人明确提交的待验证假设" },
+        { key: "assumption-2", label: "压力", statement: "未来日程存在不确定性", evidenceSummary: "本人明确提交的待验证假设" },
+      ],
+      unknowns: [
+        { key: "unknown-1", label: "约束" },
+        { key: "unknown-2", label: "价值观" },
+        { key: "unknown-3", label: "人生主题" },
+        { key: "unknown-4", label: "外部变量" },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toMatch(new RegExp(`${ids.owner}|${ids.seed}|${realityProfileSnapshot.profileId}|private-profile-evidence-ref|Private raw scenario|secret credential`));
+  });
+
+  it("fails closed when the frozen Profile owner, Seed or revision does not match the Run snapshot", () => {
+    const wrongOwner = bundle();
+    wrongOwner.inputSnapshot.realityProfileSnapshot.ownerId = ids.otherOwner;
+    expect(projectFormalSandboxResult(wrongOwner)).toBeNull();
+
+    const wrongSeed = bundle();
+    wrongSeed.inputSnapshot.realityProfileSnapshot.seedContextId = ids.otherOwner;
+    expect(projectFormalSandboxResult(wrongSeed)).toBeNull();
+
+    const wrongRevision = bundle();
+    wrongRevision.inputSnapshot.realityProfileSnapshot.revision += 1;
+    expect(projectFormalSandboxResult(wrongRevision)).toBeNull();
+  });
+
+  it("marks older Runs without a stored Profile snapshot as unrecorded and never reads a current Profile", () => {
+    const legacy = bundle();
+    delete legacy.inputSnapshot.realityProfileSnapshot;
+    const result = projectFormalSandboxResult(legacy);
+    expect(result?.realityProfile).toEqual({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [] });
+  });
+
   it("projects only frozen inputs and direct Claim-to-step evidence through ordinal UI keys", () => {
     const result = projectFormalSandboxResult(bundle());
 

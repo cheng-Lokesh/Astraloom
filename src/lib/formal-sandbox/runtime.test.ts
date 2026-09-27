@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 import { buildFormalSandboxRunV2 } from "./runtime";
+
+const frozenProfile = createEmptyRealityProfileDraft(4);
+frozenProfile.lifeClimate = { value: "当前生活节奏正在调整", classification: "fact", evidenceSummary: "由本人在 Reality Profile 中记录" };
+frozenProfile.resources = { value: "未来30天可能有项目安排变化", classification: "assumption", evidenceSummary: "由本人作为待验证假设提交" };
+frozenProfile.goals = [{ value: "保留每周学习时间", classification: "fact", evidenceSummary: "由本人在 Reality Profile 中记录" }];
 
 const input = {
   ownerId: "11111111-1111-4111-8111-111111111111",
@@ -11,6 +17,13 @@ const input = {
   deterministicSeed: 1701,
   startedAt: "2026-08-30T04:00:00.000Z",
   seedSummary: "A user is comparing two career paths under a stated deadline.",
+  realityProfileSnapshot: {
+    ownerId: "11111111-1111-4111-8111-111111111111",
+    seedContextId: "22222222-2222-4222-8222-222222222222",
+    profileId: "88888888-8888-4888-8888-888888888888",
+    revision: frozenProfile.revision,
+    profile: frozenProfile,
+  },
   agents: [
     { id: "55555555-5555-4555-8555-555555555555", displayName: "User", actorType: "self" as const, evidenceRefs: ["seed:user_question"] },
     { id: "66666666-6666-4666-8666-666666666666", displayName: "Decision counterpart", actorType: "third_party" as const, evidenceRefs: ["seed:key_people"] },
@@ -43,12 +56,30 @@ describe("formal account sandbox V2 runtime adapter", () => {
       expect(claim.simulationEventIds.every((id) => eventIds.has(id))).toBe(true);
     }
     expect(result.bundle.report.claimIds).toEqual(result.bundle.claims.map((claim) => claim.id).sort());
+    expect(result.bundle.inputSnapshot.realityProfileSnapshot).toEqual(input.realityProfileSnapshot);
+    expect(result.bundle.sourceBoundary.evidenceLedger.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ claimKey: "reality.profile.lifeClimate", statement: "人生气候：当前生活节奏正在调整" }),
+      expect.objectContaining({ claimKey: "reality.profile.goals.1", statement: "目标（第1项）：保留每周学习时间" }),
+    ]));
+    expect(result.bundle.sourceBoundary.assumptionLedger.assumptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ statement: "未来30天可能有项目安排变化", factStatus: "not_real_world_fact" }),
+    ]));
+    expect(JSON.stringify({ boundary: result.bundle.sourceBoundary, world: result.bundle.worldSnapshots, events: result.bundle.events })).not.toContain("明确未知");
   }, 30_000);
 
   it("is structurally reproducible for the same fixed input and seed", async () => {
     const first = await buildFormalSandboxRunV2(input);
     const second = await buildFormalSandboxRunV2(structuredClone(input));
+    const editedProfile = structuredClone(input);
+    editedProfile.realityProfileSnapshot.revision += 1;
+    editedProfile.realityProfileSnapshot.profile.revision += 1;
+    const third = await buildFormalSandboxRunV2(editedProfile);
     expect(first).toEqual(second);
+    expect(first.ok && third.ok).toBe(true);
+    if (first.ok && third.ok) {
+      expect(first.bundle.causalFingerprint).not.toBe(third.bundle.causalFingerprint);
+      expect(third.bundle.inputSnapshot.realityProfileSnapshot.revision).toBe(5);
+    }
   }, 30_000);
 
   it("keeps Symbolic Lens outside causal output and confidence", async () => {
