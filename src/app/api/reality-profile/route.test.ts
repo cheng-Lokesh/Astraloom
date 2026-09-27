@@ -55,6 +55,7 @@ describe("/api/reality-profile", () => {
     expect(body.profile.revision).toBe(3);
     expect(body.profile.goals).toEqual([{ value: "完成职业转向", classification: "fact", evidenceSummary: "用户确认的计划" }]);
     expect(body.profile.externalVariables).toEqual([{ value: "", classification: "unknown", evidenceSummary: "明确未知" }]);
+    expect(body.profile.worldInputs).toEqual(sampleWorldInputs());
     expect(body.trace_id).toMatch(/^reality_profile_[0-9a-f-]{36}$/i);
     expect(body.profile).not.toHaveProperty("id");
     expect(body.profile).not.toHaveProperty("seed_context_id");
@@ -85,6 +86,7 @@ describe("/api/reality-profile", () => {
     expect(body).not.toHaveProperty("id");
     expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ user_id: "signed-in-owner", seed_context_id: "current-seed", revision: 1 }));
     expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ life_goals: (validInput(0) as { goals: unknown }).goals }));
+    expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ world_model_inputs: sampleWorldInputs() }));
   });
 
   it("rejects a stale revision without overwriting the newer profile", async () => {
@@ -144,7 +146,34 @@ function validInput(revision: number | string): unknown {
     lifeThemes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     externalVariables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    worldInputs: sampleWorldInputs(),
     revision,
+  };
+}
+
+function sampleWorldInputs() {
+  return {
+    version: 1 as const,
+    resources: [{
+      key: "weekly-time",
+      label: "每周可投入时间",
+      resourceType: "time" as const,
+      available: 8,
+      unit: "小时/周",
+      minimum: 2,
+      maximum: 16,
+      usePerTick: 1,
+      classification: "fact" as const,
+      evidenceSummary: "用户明确确认的可用时间",
+    }],
+    constraints: [{
+      key: "project-deadline",
+      label: "项目截止时间",
+      resourceKey: "weekly-time",
+      rule: { kind: "before_time" as const, value: "2026-12-01T00:00:00.000Z" },
+      classification: "fact" as const,
+      evidenceSummary: "用户确认的项目期限",
+    }],
   };
 }
 
@@ -158,5 +187,6 @@ function dbRow(revision: number) {
     life_themes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     external_variables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    world_model_inputs: sampleWorldInputs(),
   };
 }
