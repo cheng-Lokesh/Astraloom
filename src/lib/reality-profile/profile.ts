@@ -6,6 +6,8 @@ const safeTextSchema = (maxChars: number) => z.string().trim().refine((value) =>
   return length >= 1 && length <= maxChars && !unsafeVisibleText.test(value);
 }, "Profile text is invalid");
 const classificationSchema = z.enum(["fact", "assumption", "unknown"]);
+const modeledClassificationSchema = z.enum(["fact", "assumption"]);
+const worldInputKeySchema = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
 
 export const realityProfileFieldSchema = z.object({
   value: z.string().trim(),
@@ -26,6 +28,62 @@ export const realityProfileFieldSchema = z.object({
 
 const profileItemsSchema = z.array(realityProfileFieldSchema).min(1).max(8);
 
+const worldResourceInputSchema = z.object({
+  key: worldInputKeySchema,
+  label: safeTextSchema(80),
+  resourceType: z.enum(["time", "budget", "position_availability", "information"]),
+  available: z.number().finite().min(0).max(1_000_000),
+  unit: safeTextSchema(32),
+  minimum: z.number().finite().min(0).max(1_000_000),
+  maximum: z.number().finite().min(0).max(1_000_000),
+  usePerTick: z.number().finite().positive().max(1_000_000).nullable(),
+  classification: modeledClassificationSchema,
+  evidenceSummary: safeTextSchema(160),
+}).strict().superRefine((resource, ctx) => {
+  if (resource.minimum > resource.available || resource.available > resource.maximum) {
+    ctx.addIssue({ code: "custom", path: ["available"], message: "Available resource must remain within its declared bounds." });
+  }
+  if (resource.usePerTick !== null && resource.usePerTick > resource.available - resource.minimum) {
+    ctx.addIssue({ code: "custom", path: ["usePerTick"], message: "Per-tick use must leave the declared minimum reserve available." });
+  }
+});
+
+const worldConstraintInputSchema = z.object({
+  key: worldInputKeySchema,
+  label: safeTextSchema(80),
+  resourceKey: worldInputKeySchema,
+  rule: z.object({
+    kind: z.literal("before_time"),
+    value: z.string().datetime({ offset: true }),
+  }).strict(),
+  classification: modeledClassificationSchema,
+  evidenceSummary: safeTextSchema(160),
+}).strict();
+
+export const realityProfileWorldInputsSchema = z.object({
+  version: z.literal(1),
+  resources: z.array(worldResourceInputSchema).max(8),
+  constraints: z.array(worldConstraintInputSchema).max(8),
+}).strict().superRefine((inputs, ctx) => {
+  const resourceKeys = new Set<string>();
+  inputs.resources.forEach((resource, index) => {
+    if (resourceKeys.has(resource.key)) ctx.addIssue({ code: "custom", path: ["resources", index, "key"], message: "World resource keys must be unique." });
+    resourceKeys.add(resource.key);
+  });
+  const constraintKeys = new Set<string>();
+  inputs.constraints.forEach((constraint, index) => {
+    if (constraintKeys.has(constraint.key)) ctx.addIssue({ code: "custom", path: ["constraints", index, "key"], message: "World constraint keys must be unique." });
+    constraintKeys.add(constraint.key);
+    if (!resourceKeys.has(constraint.resourceKey)) ctx.addIssue({ code: "custom", path: ["constraints", index, "resourceKey"], message: "World constraints must target a declared resource." });
+  });
+});
+
+export type RealityProfileWorldInputs = z.infer<typeof realityProfileWorldInputsSchema>;
+
+export function createEmptyRealityProfileWorldInputs(): RealityProfileWorldInputs {
+  return { version: 1, resources: [], constraints: [] };
+}
+
 export const realityProfileDraftSchema = z.object({
   lifeClimate: realityProfileFieldSchema,
   resources: realityProfileFieldSchema,
@@ -35,18 +93,20 @@ export const realityProfileDraftSchema = z.object({
   lifeThemes: profileItemsSchema,
   pressures: profileItemsSchema,
   externalVariables: profileItemsSchema,
+  worldInputs: realityProfileWorldInputsSchema.default({ version: 1, resources: [], constraints: [] }),
   revision: z.number().int().nonnegative(),
 }).strict();
 
 export type RealityProfileField = z.infer<typeof realityProfileFieldSchema>;
 export type RealityProfileDraft = z.infer<typeof realityProfileDraftSchema>;
-export const realityProfileDatabaseColumns = "life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,life_goals,core_values,life_themes,pressures,external_variables,revision";
+export const realityProfileDatabaseColumns = "life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,life_goals,core_values,life_themes,pressures,external_variables,world_model_inputs,revision";
 
 const realityProfileDatabaseRowSchema = z.object({
   life_climate_value: z.string().nullable(), life_climate_classification: classificationSchema, life_climate_evidence_summary: z.string().nullable(),
   resources_value: z.string().nullable(), resources_classification: classificationSchema, resources_evidence_summary: z.string().nullable(),
   constraints_value: z.string().nullable(), constraints_classification: classificationSchema, constraints_evidence_summary: z.string().nullable(),
   life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()),
+  world_model_inputs: z.unknown().optional(),
   revision: z.number().int().nonnegative(),
 }).passthrough();
 
@@ -61,6 +121,7 @@ export function realityProfileDraftFromDatabaseRow(row: unknown): RealityProfile
     lifeThemes: record.life_themes,
     pressures: record.pressures,
     externalVariables: record.external_variables,
+    worldInputs: record.world_model_inputs ?? createEmptyRealityProfileWorldInputs(),
     revision: record.revision,
   });
 }
@@ -109,6 +170,7 @@ export function createEmptyRealityProfileDraft(revision = 0): RealityProfileDraf
     lifeThemes: [createUnknownRealityProfileField()],
     pressures: [createUnknownRealityProfileField()],
     externalVariables: [createUnknownRealityProfileField()],
+    worldInputs: createEmptyRealityProfileWorldInputs(),
     revision,
   };
 }
