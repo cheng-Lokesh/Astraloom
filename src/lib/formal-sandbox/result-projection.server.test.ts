@@ -80,6 +80,38 @@ describe("formal sandbox result projection", () => {
     expect(JSON.stringify(result)).not.toMatch(new RegExp(`${ids.owner}|${ids.seed}|${realityProfileSnapshot.profileId}|private-profile-evidence-ref|Private raw scenario|secret credential`));
   });
 
+  it("keeps submitted Seed evidence in facts without exposing its narrative or private references", () => {
+    const input = bundle();
+    const rawSeedScenario = "PRIVATE_RAW_SEED_SCENARIO secret api_key seed-internal-ref 88888888-8888-4888-8888-888888888888";
+    const seedEvidenceId = "99999999-9999-4999-8999-999999999999";
+    const relationshipEvidenceId = "relationship-evidence-private-ref";
+    Object.assign(input.inputSnapshot, { seedSummary: rawSeedScenario });
+    input.sourceBoundary.evidenceLedger.items.push(Object.assign(
+      { id: seedEvidenceId, statement: rawSeedScenario },
+      { claimKey: "formal.seed.summary", privateRef: "seed-private-ref-marker", credential: "secret credential marker" },
+    ));
+    input.sourceBoundary.evidenceLedger.items.push(Object.assign(
+      { id: relationshipEvidenceId, statement: "A professional connection is supported by a user-provided observation." },
+      { claimKey: "formal.relationship.context", privateRef: "relationship-private-ref-marker" },
+    ));
+    input.claims[0].realEvidenceIds = [relationshipEvidenceId];
+    input.worldSnapshots[0].relations[0].provenance.realEvidenceIds = [relationshipEvidenceId];
+
+    const result = projectFormalSandboxResult(input);
+    const serialized = JSON.stringify(result);
+
+    expect(result?.facts).toEqual([
+      { key: "fact-1", statement: "本次运行使用已提交的 Seed 作为 Reality evidence；情境原文未展示。", boundary: "user_provided_fact" },
+      { key: "fact-2", statement: "A professional connection is supported by a user-provided observation.", boundary: "user_provided_fact" },
+    ]);
+    expect(result?.relationships).toEqual([{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "professional" }]);
+    expect(result?.claims[0]?.relationshipKeys).toEqual(["relation-1"]);
+    expect(result?.assumptions).toEqual([{ key: "assumption-1", statement: "Conditions may remain stable during this selected horizon.", boundary: "system_assumption" }]);
+    expect(result?.realityProfile.facts.map(({ statement }) => statement)).toEqual(["当前生活节奏正在调整", "保留每周学习时间"]);
+    expect(result?.realityProfile.assumptions.map(({ statement }) => statement)).toEqual(["下月可能有项目变化", "未来日程存在不确定性"]);
+    expect(serialized).not.toMatch(/PRIVATE_RAW_SEED_SCENARIO|api_key|seed-internal-ref|88888888-8888-4888-8888-888888888888|99999999-9999-4999-8999-999999999999|seed-private-ref-marker|secret credential marker|relationship-private-ref-marker/);
+  });
+
   it("fails closed when the frozen Profile owner, Seed or revision does not match the Run snapshot", () => {
     const wrongOwner = bundle();
     wrongOwner.inputSnapshot.realityProfileSnapshot.ownerId = ids.graph;
