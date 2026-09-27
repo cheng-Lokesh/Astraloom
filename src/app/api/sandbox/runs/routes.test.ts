@@ -67,6 +67,15 @@ describe("formal sandbox route contracts",()=>{
     expect(operations).toContain("eq:status:completed");
     expect(operations.indexOf("eq:status:completed")).toBeLessThan(operations.indexOf("limit:2"));
   });
+  it("accepts the History horizon filter and applies it to the owner-scoped query",async()=>{
+    const operations:string[]=[];
+    state.client=authClient(userId,()=>query({data:[],error:null},operations));
+
+    const response=await history(new Request("http://local/api/sandbox/runs?horizon=30_days"));
+
+    expect(response.status).toBe(200);
+    expect(operations).toContain("eq:time_horizon:30_days");
+  });
   it("preserves append-only feedback idempotency and stable 500 errors",async()=>{
     const rpc=vi.fn().mockResolvedValueOnce({data:[{idempotent:true,feedback:{id:runId}}],error:null}).mockResolvedValueOnce({data:null,error:{message:"private sql detail"}});
     state.client=authClient(userId,undefined,rpc);
