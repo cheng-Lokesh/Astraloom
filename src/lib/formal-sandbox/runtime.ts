@@ -8,6 +8,7 @@ import {
   AGENT_WORLD_ENGINE_VERSION_V2,
   type ActionProposalInputV2,
   type AgentDefinitionIdV2,
+  type WorldConstraintIdV2,
   type WorldEntityIdV2,
   type WorldResourceIdV2,
 } from "@/lib/v2/agent-world/types";
@@ -104,6 +105,9 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
   if (!parsed.success) return { ok: false as const, errorCode: "invalid_run_input" as const };
   const input = parsed.data;
   if (input.safetyLevel === "blocked" || input.safetyLevel === "downgraded") return { ok: false as const, errorCode: "safety_blocked" as const };
+  if (!input.realityProfileSnapshot.profile.worldInputs.resources.some((resource) => resource.usePerTick !== null)) {
+    return { ok: false as const, errorCode: "world_model_required" as const };
+  }
 
   try {
     const causalInput = {
@@ -128,6 +132,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       idFactory: createStableRealityBoundaryIdFactoryV2(`formal-${causalFingerprint}`),
     };
     const profileEntries = listRealityProfileEntries(input.realityProfileSnapshot.profile);
+    const worldInputs = input.realityProfileSnapshot.profile.worldInputs;
     const evidenceLedger = buildEvidenceLedgerV2({
       seedContextId: input.seedContextId,
       runtime: realityRuntime,
@@ -159,6 +164,24 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
           provenance: [{ sourceRef: `reality_profile:${input.realityProfileSnapshot.profileId ?? "absent"}:revision:${input.realityProfileSnapshot.revision}:${key}`, capturedAt: boundaryAt }],
           limitations: [`User-supplied basis: ${field.evidenceSummary}`, "A user-recorded fact can still be incomplete."],
         })),
+        ...worldInputs.resources.filter((resource) => resource.classification === "fact").map((resource) => ({
+          statement: `${resource.label}：${resource.available} ${resource.unit}（范围 ${resource.minimum}–${resource.maximum} ${resource.unit}）`,
+          claimKey: `reality.profile.world_resource.${resource.key}`,
+          sourceKind: "user_statement" as const,
+          sourceTier: "tier_1_user_confirmed" as const,
+          verificationStatus: "user_confirmed" as const,
+          provenance: [{ sourceRef: `reality_profile:${input.realityProfileSnapshot.profileId ?? "absent"}:revision:${input.realityProfileSnapshot.revision}:world_resource:${resource.key}`, capturedAt: boundaryAt }],
+          limitations: [`User-supplied basis: ${resource.evidenceSummary}`, "A user-recorded resource can still be incomplete."],
+        })),
+        ...worldInputs.constraints.filter((constraint) => constraint.classification === "fact").map((constraint) => ({
+          statement: `${constraint.label}：${constraint.rule.value} 之前`,
+          claimKey: `reality.profile.world_constraint.${constraint.key}`,
+          sourceKind: "user_statement" as const,
+          sourceTier: "tier_1_user_confirmed" as const,
+          verificationStatus: "user_confirmed" as const,
+          provenance: [{ sourceRef: `reality_profile:${input.realityProfileSnapshot.profileId ?? "absent"}:revision:${input.realityProfileSnapshot.revision}:world_constraint:${constraint.key}`, capturedAt: boundaryAt }],
+          limitations: [`User-supplied basis: ${constraint.evidenceSummary}`, "A user-recorded constraint can still be incomplete."],
+        })),
       ],
     });
     const primaryEvidenceId = evidenceLedger.items[0]!.id;
@@ -188,9 +211,62 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
         limitations: [`User designated this as an assumption: ${field.evidenceSummary}`, "Not a verified real-world fact."],
         confirmationRequirement: "not_required" as const,
         confirmationStatus: "confirmed" as const,
-      }))],
+      })),
+      ...worldInputs.resources.flatMap((resource) => [
+        ...(resource.classification === "assumption" ? [{
+          statement: `模拟假设：${resource.label} 从 ${resource.available} ${resource.unit} 开始。`,
+          subjectType: "self" as const,
+          category: `reality_profile_world_resource_${resource.key}`,
+          epistemicStatus: "confirmed_for_simulation" as const,
+          impactLevel: "low" as const,
+          supportingRealEvidenceIds: [],
+          contradictingRealEvidenceIds: [],
+          limitations: [`User designated this resource value as a simulation assumption: ${resource.evidenceSummary}`, "Not a verified real-world fact."],
+          confirmationRequirement: "not_required" as const,
+          confirmationStatus: "confirmed" as const,
+        }] : []),
+        ...(resource.usePerTick === null ? [] : [{
+          statement: `模拟规则：当行动被选中时，从“${resource.label}”分配 ${resource.usePerTick} ${resource.unit}。`,
+          subjectType: "self" as const,
+          category: `reality_profile_world_rate_${resource.key}`,
+          epistemicStatus: "confirmed_for_simulation" as const,
+          impactLevel: "low" as const,
+          supportingRealEvidenceIds: [],
+          contradictingRealEvidenceIds: [],
+          limitations: ["This is an explicit user-entered simulation rule, not a prediction or measured future change."],
+          confirmationRequirement: "not_required" as const,
+          confirmationStatus: "confirmed" as const,
+        }]),
+      ]),
+      ...worldInputs.constraints.filter((constraint) => constraint.classification === "assumption").map((constraint) => ({
+        statement: `模拟假设：${constraint.label} 适用于 ${constraint.rule.value} 之前。`,
+        subjectType: "external_variable" as const,
+        category: `reality_profile_world_constraint_${constraint.key}`,
+        epistemicStatus: "confirmed_for_simulation" as const,
+        impactLevel: "low" as const,
+        supportingRealEvidenceIds: [],
+        contradictingRealEvidenceIds: [],
+        limitations: [`User designated this constraint as a simulation assumption: ${constraint.evidenceSummary}`, "Not a verified real-world fact."],
+        confirmationRequirement: "not_required" as const,
+        confirmationStatus: "confirmed" as const,
+      })),
+      ],
     });
     const assumptionId = assumptionLedger.assumptions[0]!.id;
+    const evidenceIdFor = (claimKey: string) => evidenceLedger.items.find((item) => item.claimKey === claimKey)!.id;
+    const assumptionIdFor = (category: string) => assumptionLedger.assumptions.find((item) => item.category === category)!.id;
+    const worldIds = createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}`);
+    const resourceIdsByKey = new Map<string, WorldResourceIdV2>(worldInputs.resources.map((resource) => [
+      resource.key,
+      worldIds("world_resource", resource.key) as WorldResourceIdV2,
+    ]));
+    const resourceAssumptionsByKey = new Map(worldInputs.resources.map((resource) => [
+      resource.key,
+      [
+        ...(resource.classification === "assumption" ? [assumptionIdFor(`reality_profile_world_resource_${resource.key}`)] : []),
+        ...(resource.usePerTick === null ? [] : [assumptionIdFor(`reality_profile_world_rate_${resource.key}`)]),
+      ],
+    ]));
     const boundary = {
       seedContextId: input.seedContextId,
       schemaVersion: REALITY_BOUNDARY_SCHEMA_VERSION_V2,
@@ -202,7 +278,6 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       updatedAt: boundaryAt,
     };
 
-    const worldIds = createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}`);
     const agentIds = new Map(input.agents.map((item) => [item.id, worldIds("agent_definition", item.id) as AgentDefinitionIdV2]));
     const entityIds = new Map(input.agents.map((item) => [item.id, worldIds("world_entity", item.id) as WorldEntityIdV2]));
     const provenance = (withAssumption = false) => ({
@@ -212,7 +287,12 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       visible: true as const,
     });
     const self = input.agents.find((item) => item.actorType === "self")!;
-    const timeResourceId = worldIds("world_resource", "decision_capacity") as WorldResourceIdV2;
+    const resourceProvenance = (realEvidenceIds: typeof primaryEvidenceId[], assumptionIds: typeof assumptionId[]) => ({
+      realEvidenceIds,
+      assumptionIds,
+      provisional: assumptionIds.length > 0,
+      visible: true as const,
+    });
     const worldResult = initializeWorldV2(boundary, {
       seedContextId: input.seedContextId,
       engineVersion: AGENT_WORLD_ENGINE_VERSION_V2,
@@ -230,7 +310,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
         agentDefinitionId: agentIds.get(item.id)!,
         observableStatus: "available" as const,
         commitments: [],
-        resourceAccessIds: item.id === self.id ? [timeResourceId] : [],
+        resourceAccessIds: item.id === self.id ? [...resourceIdsByKey.values()] : [],
         observations: [],
         memory: [],
         activeAssumptionIds: item.actorType === "self" ? [] : [assumptionId],
@@ -251,19 +331,31 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
         signal: "neutral" as const,
         provenance: provenance(true),
       })),
-      resources: [{
-        id: timeResourceId,
-        resourceType: "time",
-        label: "Decision capacity",
+      resources: worldInputs.resources.map((resource) => ({
+        id: resourceIdsByKey.get(resource.key)!,
+        resourceType: resource.resourceType,
+        label: resource.label,
         ownerEntityId: entityIds.get(self.id)!,
         controllerAgentId: agentIds.get(self.id)!,
-        available: 100,
-        unit: "units",
-        min: 0,
-        max: 100,
-        provenance: provenance(false),
-      }],
-      constraints: [],
+        available: resource.available,
+        unit: resource.unit,
+        min: resource.minimum,
+        max: resource.maximum,
+        provenance: resourceProvenance(
+          resource.classification === "fact" ? [evidenceIdFor(`reality.profile.world_resource.${resource.key}`)] : [],
+          resourceAssumptionsByKey.get(resource.key)!,
+        ),
+      })),
+      constraints: worldInputs.constraints.map((constraint) => ({
+        id: worldIds("world_constraint", constraint.key) as WorldConstraintIdV2,
+        constraintType: "deadline" as const,
+        target: { type: "resource" as const, id: resourceIdsByKey.get(constraint.resourceKey)! },
+        rule: constraint.rule,
+        provenance: resourceProvenance(
+          constraint.classification === "fact" ? [evidenceIdFor(`reality.profile.world_constraint.${constraint.key}`)] : [],
+          constraint.classification === "assumption" ? [assumptionIdFor(`reality_profile_world_constraint_${constraint.key}`)] : [],
+        ),
+      })),
       externalVariables: [],
     }, { clock: () => input.startedAt, idFactory: worldIds });
     if (!worldResult.ok) return { ok: false as const, errorCode: "world_initialization_failed" as const };
@@ -304,22 +396,37 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       policyFactory: ({ seed }) => createLocalTrajectoryPolicyV2({
         policyId: spec.policyId,
         policyVersion: spec.policyVersion,
-        candidatesForTick: ({ world, tickIndex, occurredAt }): ActionProposalInputV2[] => [{
-          id: `action_proposal_v2_formal_${seed}_${tickIndex}`,
-          seedContextId: world.seedContextId,
-          actorAgentId: agentIds.get(self.id)!,
-          actionType: "allocate_resource",
-          targetEntityIds: [entityIds.get(self.id)!],
-          targetResourceIds: [timeResourceId],
-          targetRelationIds: [],
-          targetVariableIds: [],
-          parameters: { actionType: "allocate_resource", resourceId: timeResourceId, amount: 1 },
-          realEvidenceIds: [primaryEvidenceId],
-          assumptionIds: [assumptionId],
-          priorWorldEventIds: [...world.worldEventIds],
-          rationaleSummary: `Controlled option at tick ${tickIndex + 1}.`,
-          createdAt: occurredAt,
-        }],
+        candidatesForTick: ({ world, tickIndex, occurredAt }): ActionProposalInputV2[] => worldInputs.resources.flatMap((resource) => {
+          const resourceId = resourceIdsByKey.get(resource.key)!;
+          const currentResource = world.resources.find((item) => item.id === resourceId);
+          if (!currentResource || resource.usePerTick === null || currentResource.available - resource.usePerTick < currentResource.min) return [];
+          if (world.constraints.some((constraint) =>
+            constraint.constraintType === "deadline" &&
+            constraint.target.type === "resource" &&
+            constraint.target.id === resourceId &&
+            constraint.rule.kind === "before_time" &&
+            Date.parse(occurredAt) >= Date.parse(constraint.rule.value)
+          )) return [];
+          return [{
+            id: `action_proposal_v2_formal_${seed}_${tickIndex}_${resource.key}`,
+            seedContextId: world.seedContextId,
+            actorAgentId: agentIds.get(self.id)!,
+            actionType: "allocate_resource",
+            targetEntityIds: [entityIds.get(self.id)!],
+            targetResourceIds: [resourceId],
+            targetRelationIds: [],
+            targetVariableIds: [],
+            parameters: { actionType: "allocate_resource", resourceId, amount: resource.usePerTick },
+            realEvidenceIds: [...new Set([...currentResource.provenance.realEvidenceIds, primaryEvidenceId])],
+            assumptionIds: [...new Set([
+              ...currentResource.provenance.assumptionIds,
+              assumptionIdFor(`reality_profile_world_rate_${resource.key}`),
+            ])],
+            priorWorldEventIds: [...world.worldEventIds],
+            rationaleSummary: `User-declared resource rule at tick ${tickIndex + 1}.`,
+            createdAt: occurredAt,
+          }];
+        }),
       }),
       trajectoryRuntimeFactory: ({ seed }) => ({ agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}-${seed}`) }),
       interventionRuntimeFactory: ({ interventionId }) => ({ clock: () => input.startedAt, idFactory: createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}-${interventionId}`) }),
