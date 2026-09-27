@@ -76,7 +76,7 @@ describe("My Sandbox dashboard behavior", () => {
 
     expect(html).toContain("8 小时/周");
     expect(html).toContain("2–16");
-    expect(html).toContain("每周期使用 1");
+    expect(html).toContain("每周期使用：1");
     expect(html).toContain("1200 元/月");
     expect(html).toContain("关联资源：每周可投入时间");
     expect(html).toContain("截止时间：2026-12-01T00:00:00.000Z");

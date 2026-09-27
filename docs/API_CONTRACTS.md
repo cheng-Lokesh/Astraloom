@@ -571,12 +571,18 @@ Projection:
   carry their own user-selected classification and safe evidence summary.
   New dimensions default to explicitly unknown; no repository, localStorage,
   static-case, Seed narrative, or Career-demo value may fill these fields.
+- Structured resources and constraints are projected from the same profile's
+  `world_model_inputs`: resources expose their safe label, current amount, unit,
+  declared bounds, optional per-tick use, classification, and evidence summary;
+  constraints expose their safe resource label and deadline. Canonical keys
+  remain server-side, and these saved inputs do not imply a future change.
 - The safe World State returns only a current-chain stage and up to three
   allowlisted Event type labels from the current completed formal Run. Each
   Change Node has the fixed evidence summary "来自当前正式运行的受控模拟事件";
   resources and constraints are projected only from that Reality Profile. It
-  never returns event ids, evidence refs/bodies, trace ids, raw summaries,
-  scenario text, emails, or internal keys in the page.
+  keeps `nextChange` as `not_modeled` until a real modeled artifact supports a
+  watchpoint, and never returns event ids, evidence refs/bodies, trace ids, raw
+  summaries, scenario text, emails, or internal keys in the page.
 
 ### Account exploration routes
 

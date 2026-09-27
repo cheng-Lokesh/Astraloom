@@ -1102,6 +1102,14 @@ owner/Seed/Profile ids, or raw Seed narrative as display values. Earlier Runs
 without this snapshot remain marked as not recorded instead of using a current
 Profile.
 
+`reality_profiles.world_model_inputs` is a versioned object with up to eight
+explicit resources and eight `before_time` constraints. A resource retains its
+safe label, available amount, unit, minimum/maximum bounds, optional per-tick
+use, classification, and evidence summary. A constraint binds to one declared
+resource and retains its deadline. My Sandbox may project these current saved
+inputs, resolving internal resource keys to safe labels; it must not expose the
+keys or imply a future state change from these inputs.
+
 The controlled transaction writes `simulation_ticks`, then `event_logs`, then
 same-run evidence-linked `claims`, then the single `reports` projection, and
 only then marks the simulation completed. Forced failure rolls the transaction

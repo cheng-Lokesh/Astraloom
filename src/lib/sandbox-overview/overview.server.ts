@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildRealityWorldProjection, createUnknownRealityProfileField, realityProfileDraftSchema, type LatestRunEvent, type RealityProfileDraft } from "@/lib/reality-profile/profile";
+import { buildRealityWorldProjection, createUnknownRealityProfileField, realityProfileDatabaseColumns, realityProfileDraftSchema, type LatestRunEvent, type RealityProfileDraft } from "@/lib/reality-profile/profile";
 
 const hrefSchema = z.string().regex(/^(?:\/app\/|\/login$)/).max(500);
 const notModeledSchema = z.object({ state: z.literal("not_modeled") }).strict();
@@ -10,6 +10,8 @@ const safeLabelSchema = z.string().min(1).max(320);
 const evidenceSummarySchema = z.string().min(1).max(160);
 const ledgerItemSchema = z.object({ label: safeLabelSchema, evidenceSummary: evidenceSummarySchema }).strict();
 const classifiedLedgerItemSchema = z.object({ label: safeLabelSchema, classification: z.enum(["fact", "assumption", "unknown"]), evidenceSummary: evidenceSummarySchema }).strict();
+const structuredResourceItemSchema = z.object({ kind: z.literal("structured_resource"), label: safeLabelSchema, classification: z.enum(["fact", "assumption"]), evidenceSummary: evidenceSummarySchema, available: z.number().finite().min(0).max(1_000_000), unit: safeLabelSchema, minimum: z.number().finite().min(0).max(1_000_000), maximum: z.number().finite().min(0).max(1_000_000), usePerTick: z.number().finite().positive().max(1_000_000).nullable() }).strict();
+const structuredConstraintItemSchema = z.object({ kind: z.literal("structured_constraint"), label: safeLabelSchema, classification: z.enum(["fact", "assumption"]), evidenceSummary: evidenceSummarySchema, resourceLabel: safeLabelSchema, deadline: z.string().datetime({ offset: true }) }).strict();
 const unknownItemSchema = z.object({ label: safeLabelSchema }).strict();
 const dimensionSummarySchema = z.object({ label: z.string().min(1).max(40), facts: z.number().int().nonnegative(), assumptions: z.number().int().nonnegative(), unknowns: z.number().int().nonnegative() }).strict();
 const changeNodeTypeSchema = z.enum(["graph_freeze", "avoidance", "cooperation", "direct_conflict", "disclosure", "resource_competition", "support", "opportunity_signal", "information_gap_widening"]);
@@ -30,8 +32,8 @@ const relationSummarySchema = z.object({
 export const sandboxOverviewSchema = z.object({
   authenticated: z.boolean(),
   seed: z.object({ state: z.enum(["not_started", "submitted"]) }).strict(),
-  reality: z.object({ facts: z.array(ledgerItemSchema).max(43), assumptions: z.array(ledgerItemSchema).max(43), unknowns: z.array(unknownItemSchema).max(43), dimensions: z.array(dimensionSummarySchema).length(8) }).strict(),
-  world: z.object({ state: z.enum(["not_started", "submitted", "people_confirmed", "agents_ready", "locked_graph", "running", "completed"]), changeNodes: z.array(changeNodeSchema).max(3), resources: z.array(classifiedLedgerItemSchema).max(1), constraints: z.array(classifiedLedgerItemSchema).max(1), goals: z.array(classifiedLedgerItemSchema).max(8), values: z.array(classifiedLedgerItemSchema).max(8), lifeThemes: z.array(classifiedLedgerItemSchema).max(8), pressures: z.array(classifiedLedgerItemSchema).max(8), externalVariables: z.array(classifiedLedgerItemSchema).max(8) }).strict(),
+  reality: z.object({ facts: z.array(ledgerItemSchema).max(59), assumptions: z.array(ledgerItemSchema).max(59), unknowns: z.array(unknownItemSchema).max(59), dimensions: z.array(dimensionSummarySchema).length(8) }).strict(),
+  world: z.object({ state: z.enum(["not_started", "submitted", "people_confirmed", "agents_ready", "locked_graph", "running", "completed"]), changeNodes: z.array(changeNodeSchema).max(3), resources: z.array(z.union([classifiedLedgerItemSchema, structuredResourceItemSchema])).max(9), constraints: z.array(z.union([classifiedLedgerItemSchema, structuredConstraintItemSchema])).max(9), goals: z.array(classifiedLedgerItemSchema).max(8), values: z.array(classifiedLedgerItemSchema).max(8), lifeThemes: z.array(classifiedLedgerItemSchema).max(8), pressures: z.array(classifiedLedgerItemSchema).max(8), externalVariables: z.array(classifiedLedgerItemSchema).max(8) }).strict(),
   people: z.object({ confirmedCount: z.number().int().nonnegative(), total: z.number().int().nonnegative(), items: z.array(personSummarySchema).max(5) }).strict(),
   agents: z.object({ immutableCount: z.number().int().nonnegative() }).strict(),
   graph: z.object({ exists: z.boolean(), locked: z.boolean(), edgeCount: z.number().int().nonnegative() }).strict(),
@@ -146,7 +148,7 @@ const relationRowSchema = z.object({
   relationship_type: z.string().min(1).max(120),
 }).strict();
 const eventRowSchema = z.object({ event_type: changeNodeTypeSchema }).strict();
-const profileRowSchema = z.object({ life_climate_value: z.string().nullable(), life_climate_classification: z.enum(["fact", "assumption", "unknown"]), life_climate_evidence_summary: z.string().nullable(), resources_value: z.string().nullable(), resources_classification: z.enum(["fact", "assumption", "unknown"]), resources_evidence_summary: z.string().nullable(), constraints_value: z.string().nullable(), constraints_classification: z.enum(["fact", "assumption", "unknown"]), constraints_evidence_summary: z.string().nullable(), life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()), revision: z.number().int().nonnegative() }).strict();
+const profileRowSchema = z.object({ life_climate_value: z.string().nullable(), life_climate_classification: z.enum(["fact", "assumption", "unknown"]), life_climate_evidence_summary: z.string().nullable(), resources_value: z.string().nullable(), resources_classification: z.enum(["fact", "assumption", "unknown"]), resources_evidence_summary: z.string().nullable(), constraints_value: z.string().nullable(), constraints_classification: z.enum(["fact", "assumption", "unknown"]), constraints_evidence_summary: z.string().nullable(), life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()), world_model_inputs: z.unknown(), revision: z.number().int().nonnegative() }).strict();
 
 function profileFromRow(row: unknown): RealityProfileDraft {
   const record = profileRowSchema.parse(row);
@@ -159,6 +161,7 @@ function profileFromRow(row: unknown): RealityProfileDraft {
     lifeThemes: record.life_themes ?? [createUnknownRealityProfileField()],
     pressures: record.pressures ?? [createUnknownRealityProfileField()],
     externalVariables: record.external_variables ?? [createUnknownRealityProfileField()],
+    worldInputs: record.world_model_inputs,
     revision: record.revision,
   });
 }
@@ -225,7 +228,7 @@ export async function readSandboxOverview(supabase: SupabaseClient, ownerId: str
     supabase.from("agent_profile_snapshots").select("id").eq("user_id", ownerId).eq("seed_context_id", seed.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("relation_graph_snapshots").select("id,agent_snapshot_id,graph_locked").eq("user_id", ownerId).eq("seed_context_id", seed.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("simulations").select("id", { count: "exact", head: true }).eq("user_id", ownerId).eq("execution_version", "formal-account-sandbox-m1-v1"),
-    supabase.from("reality_profiles").select("life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,life_goals,core_values,life_themes,pressures,external_variables,revision").eq("user_id", ownerId).eq("seed_context_id", seed.id).maybeSingle(),
+    supabase.from("reality_profiles").select(realityProfileDatabaseColumns).eq("user_id", ownerId).eq("seed_context_id", seed.id).maybeSingle(),
   ]);
   if (peopleError || snapshotError || graphError || historyError || profileError) throw new Error("sandbox_overview_read_failed");
 

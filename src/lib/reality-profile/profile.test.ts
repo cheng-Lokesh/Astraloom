@@ -70,6 +70,13 @@ describe("Reality Profile", () => {
     expect(projection.world.constraints).toEqual([
       { kind: "structured_constraint", label: "项目截止期限", classification: "fact", evidenceSummary: "用户确认的项目期限", resourceLabel: "每周可投入时间", deadline: "2026-12-01T00:00:00.000Z" },
     ]);
+    expect(projection.reality.dimensions).toContainEqual({ label: "资源", facts: 1, assumptions: 1, unknowns: 0 });
+    expect(projection.reality.dimensions).toContainEqual({ label: "约束", facts: 1, assumptions: 0, unknowns: 0 });
+    expect(projection.reality.facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "每周可投入时间" }),
+      expect.objectContaining({ label: "项目截止期限" }),
+    ]));
+    expect(projection.reality.assumptions).toEqual([expect.objectContaining({ label: "每月预算" })]);
     expect(JSON.stringify(projection)).not.toContain("weekly-time");
     expect(JSON.stringify(projection)).not.toContain("project-deadline");
   });

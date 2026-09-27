@@ -227,11 +227,16 @@ function dimensionSummary(label: string, fields: RealityProfileField[]): Dimensi
 
 export function buildRealityWorldProjection(draft: RealityProfileDraft, state: { graphLocked: boolean; latestRunEvent: LatestRunEvent }) {
   const parsed = realityProfileDraftSchema.parse(draft);
-  const scalarDimensions = [
-    { key: "lifeClimate", field: parsed.lifeClimate },
-    { key: "resources", field: parsed.resources },
-    { key: "constraints", field: parsed.constraints },
-  ] as const;
+  const structuredResourceFields = parsed.worldInputs.resources.map(resource => ({ value: resource.label, classification: resource.classification, evidenceSummary: resource.evidenceSummary }));
+  const structuredConstraintFields = parsed.worldInputs.constraints.map(constraint => ({ value: constraint.label, classification: constraint.classification, evidenceSummary: constraint.evidenceSummary }));
+  const resourceFields = [
+    ...(parsed.resources.classification === "unknown" && structuredResourceFields.length ? [] : [parsed.resources]),
+    ...structuredResourceFields,
+  ];
+  const constraintFields = [
+    ...(parsed.constraints.classification === "unknown" && structuredConstraintFields.length ? [] : [parsed.constraints]),
+    ...structuredConstraintFields,
+  ];
   const listDimensions = [
     { key: "goals", fields: parsed.goals },
     { key: "values", fields: parsed.values },
@@ -241,7 +246,9 @@ export function buildRealityWorldProjection(draft: RealityProfileDraft, state: {
   ] as const;
 
   const ledgerEntries = [
-    ...scalarDimensions.map(({ key, field }) => ({ key: key as ProfileDimensionKey, ...ledgerFor(field, dimensionLabels[key]) })),
+    { key: "lifeClimate" as const, ...ledgerFor(parsed.lifeClimate, dimensionLabels.lifeClimate) },
+    ...resourceFields.map(field => ({ key: "resources" as const, ...ledgerFor(field, dimensionLabels.resources) })),
+    ...constraintFields.map(field => ({ key: "constraints" as const, ...ledgerFor(field, dimensionLabels.constraints) })),
     ...listDimensions.flatMap(({ key, fields }) => classifiedDimensionItems(fields, dimensionLabels[key]).map(({ field, label }) => ({ key: key as ProfileDimensionKey, ...ledgerFor(field, label) }))),
   ];
   const displayLabel = (key: ProfileDimensionKey, label: string) => key === "goals" || key === "values" || key === "lifeThemes" || key === "pressures" || key === "externalVariables" ? `${dimensionLabels[key]}：${label}` : label;
@@ -250,19 +257,47 @@ export function buildRealityWorldProjection(draft: RealityProfileDraft, state: {
     assumptions: ledgerEntries.filter(field => field.classification === "assumption").flatMap(({ item, key }) => item ? [{ ...item, label: displayLabel(key, item.label) }] : []),
     unknowns: ledgerEntries.flatMap(({ unknown }) => unknown ? [unknown] : []),
     dimensions: [
-      ...scalarDimensions.map(({ key, field }) => dimensionSummary(dimensionLabels[key], [field])),
+      dimensionSummary(dimensionLabels.lifeClimate, [parsed.lifeClimate]),
+      dimensionSummary(dimensionLabels.resources, resourceFields),
+      dimensionSummary(dimensionLabels.constraints, constraintFields),
       ...listDimensions.map(({ key, fields }) => dimensionSummary(dimensionLabels[key], fields)),
     ],
   };
   const itemsFor = (fields: RealityProfileField[]) => fields.map((field, index) => worldLedgerFor(field, fields.length === 1 ? "尚未填写" : `第${index + 1}项尚未填写`));
+  const structuredResources = parsed.worldInputs.resources.map(resource => ({
+    kind: "structured_resource" as const,
+    label: resource.label,
+    classification: resource.classification,
+    evidenceSummary: resource.evidenceSummary,
+    available: resource.available,
+    unit: resource.unit,
+    minimum: resource.minimum,
+    maximum: resource.maximum,
+    usePerTick: resource.usePerTick,
+  }));
+  const resourceByKey = new Map(parsed.worldInputs.resources.map(resource => [resource.key, resource]));
+  const structuredConstraints = parsed.worldInputs.constraints.map(constraint => {
+    const resource = resourceByKey.get(constraint.resourceKey);
+    if (!resource) throw new Error("Reality Profile constraint target is missing.");
+    return {
+      kind: "structured_constraint" as const,
+      label: constraint.label,
+      classification: constraint.classification,
+      evidenceSummary: constraint.evidenceSummary,
+      resourceLabel: resource.label,
+      deadline: constraint.rule.value,
+    };
+  });
+  const legacyResources = parsed.resources.classification === "unknown" && structuredResources.length ? [] : [worldLedgerFor(parsed.resources)];
+  const legacyConstraints = parsed.constraints.classification === "unknown" && structuredConstraints.length ? [] : [worldLedgerFor(parsed.constraints)];
   const changeNodes = state.graphLocked && state.latestRunEvent ? [{ label: eventLabels[state.latestRunEvent], evidenceSummary: "来自当前正式运行的受控模拟事件" }] : [];
 
   return {
     reality,
     world: {
       state: state.graphLocked ? "locked_graph" as const : "submitted" as const,
-      resources: [worldLedgerFor(parsed.resources)],
-      constraints: [worldLedgerFor(parsed.constraints)],
+      resources: [...legacyResources, ...structuredResources],
+      constraints: [...legacyConstraints, ...structuredConstraints],
       goals: itemsFor(parsed.goals),
       values: itemsFor(parsed.values),
       lifeThemes: itemsFor(parsed.lifeThemes),
