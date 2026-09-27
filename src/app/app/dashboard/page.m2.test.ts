@@ -17,19 +17,22 @@ describe("My Sandbox dashboard behavior", () => {
         { label: "压力", facts: 0, assumptions: 0, unknowns: 1 },
         { label: "外部变量", facts: 0, assumptions: 0, unknowns: 1 },
       ] },
-      people: { confirmedCount: 2, total: 2, items: [{ key: "person-1", label: "Scenario owner", relationship: "self", kind: "user_core" }, { key: "person-2", label: "Current collaborator", relationship: "collaborator", kind: "npc" }] },
-      agents: { immutableCount: 2 },
-      graph: { exists: true, locked: true, edgeCount: 1 }, relations: { total: 1, items: [{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-2", label: "collaboration" }] },
+      people: { confirmedCount: 2, total: 3, items: [{ key: "person-1", label: "Scenario owner", relationship: "self", kind: "user_core" }, { key: "person-2", label: "Cautious self", relationship: "cautious", kind: "user_variant" }, { key: "person-3", label: "Current collaborator", relationship: "collaborator", kind: "npc" }] },
+      agents: { immutableCount: 3 },
+      graph: { exists: true, locked: true, edgeCount: 2 }, relations: { total: 2, items: [{ key: "relation-1", fromPersonKey: "person-1", toPersonKey: "person-3", label: "collaboration" }, { key: "relation-2", fromPersonKey: "person-2", toPersonKey: "person-3", label: "coordination" }] },
       running: { exists: false, href: null }, latestCompletedRun: { status: "completed", completedAt: "2026-09-08T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque" },
       history: { count: 1 }, feedback: { exists: true }, lifeClimate: { state: "not_modeled" }, resources: { state: "not_modeled" }, constraints: { state: "not_modeled" }, nextChange: { state: "not_modeled" },
       nextAction: { kind: "start_next_run", href: "/app/new/graph" },
       world: { state: "locked_graph", changeNodes: [{ label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" }], resources: [{ label: "可协调的支持有限", classification: "assumption", evidenceSummary: "仍待复核" }], constraints: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }], goals: [{ label: "已确认目标", classification: "fact", evidenceSummary: "用户确认" }], values: [], lifeThemes: [], pressures: [], externalVariables: [] },
     } }));
 
-    expect(html).toContain("当前人物");
+    expect(html).toContain("数字生命成员");
     expect(html).toContain("Scenario owner");
     expect(html).toContain("当前关系");
-    expect(html).toContain("person-1");
+    expect(html).toContain("本人 · self");
+    expect(html).toContain("平行自我 · cautious");
+    expect(html).toContain("关键人物 · collaborator");
+    expect(html).toContain("Scenario owner → Current collaborator");
     expect(html).toContain("尚未建模");
     expect(html).toContain("开始下一次 Run");
     expect(html).toContain("Reality Profile");
@@ -46,6 +49,7 @@ describe("My Sandbox dashboard behavior", () => {
     expect(html).toContain("分类：未知");
     expect(html).toContain("分类：事实");
     expect(html.match(/href="\/app\/new\/graph"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/person-[1-5]|relation-[1-5]/);
     expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
   });
 
