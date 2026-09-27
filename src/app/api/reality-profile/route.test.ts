@@ -56,6 +56,7 @@ describe("/api/reality-profile", () => {
     expect(body.profile.goals).toEqual([{ value: "完成职业转向", classification: "fact", evidenceSummary: "用户确认的计划" }]);
     expect(body.profile.externalVariables).toEqual([{ value: "", classification: "unknown", evidenceSummary: "明确未知" }]);
     expect(body.profile.worldInputs).toEqual(sampleWorldInputs());
+    expect(body.profile.lifeModelDomains).toEqual(sampleLifeModelDomains());
     expect(body.trace_id).toMatch(/^reality_profile_[0-9a-f-]{36}$/i);
     expect(body.profile).not.toHaveProperty("id");
     expect(body.profile).not.toHaveProperty("seed_context_id");
@@ -87,6 +88,7 @@ describe("/api/reality-profile", () => {
     expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ user_id: "signed-in-owner", seed_context_id: "current-seed", revision: 1 }));
     expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ life_goals: (validInput(0) as { goals: unknown }).goals }));
     expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ world_model_inputs: sampleWorldInputs() }));
+    expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ life_model_domains: sampleLifeModelDomains() }));
   });
 
   it("rejects a stale revision without overwriting the newer profile", async () => {
@@ -146,6 +148,7 @@ function validInput(revision: number | string): unknown {
     lifeThemes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     externalVariables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    lifeModelDomains: sampleLifeModelDomains(),
     worldInputs: sampleWorldInputs(),
     revision,
   };
@@ -177,6 +180,18 @@ function sampleWorldInputs() {
   };
 }
 
+function sampleLifeModelDomains() {
+  return {
+    version: 1 as const,
+    identity: [{ value: "正在照护家庭", classification: "fact" as const, evidenceSummary: "本人确认的当前责任" }],
+    career: [{ value: "考虑管理路线", classification: "assumption" as const, evidenceSummary: "尚未作出决定" }],
+    wealth: [{ value: "", classification: "unknown" as const, evidenceSummary: "明确未知" }],
+    relationships: [{ value: "", classification: "unknown" as const, evidenceSummary: "明确未知" }],
+    environment: [{ value: "", classification: "unknown" as const, evidenceSummary: "明确未知" }],
+    lifeStage: [{ value: "", classification: "unknown" as const, evidenceSummary: "明确未知" }],
+  };
+}
+
 function dbRow(revision: number) {
   return {
     life_climate_value: "协作节奏有所变化", life_climate_classification: "fact", life_climate_evidence_summary: "用户确认的近期观察",
@@ -187,6 +202,7 @@ function dbRow(revision: number) {
     life_themes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     external_variables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    life_model_domains: sampleLifeModelDomains(),
     world_model_inputs: sampleWorldInputs(),
   };
 }

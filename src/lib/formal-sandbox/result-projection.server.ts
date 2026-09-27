@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
+import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 
 const ordinal = (prefix: string, index: number) => `${prefix}-${index + 1}`;
 const unsafeVisibleText = /[\u0000-\u001f\u007f-\u009f]|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:raw\s+scenario|trace(?:[_ -]?id)?|internal(?:[_ -]?key|\s+evidence\s+ref)?|token|secret|password|api[_ -]?key|private\s+key|bearer)\b/i;
@@ -174,7 +174,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     if (profileSnapshot.profileId === null && (profileSnapshot.revision !== 0 || listRealityProfileEntries(profileSnapshot.profile).some(({ field }) => field.classification !== "unknown"))) return null;
   }
   const realityProfile = profileSnapshot ? (() => {
-    const entries = listRealityProfileEntries(profileSnapshot.profile);
+    const entries = listRealityProfileEntries(profileSnapshot.profile).filter(({ key }) => !key.startsWith(LIFE_MODEL_DOMAIN_ENTRY_PREFIX));
     const worldInputs = profileSnapshot.profile.worldInputs;
     const worldVariables = projectWorldVariables(entries, bundle.worldSnapshots);
     if (!worldVariables) return null;

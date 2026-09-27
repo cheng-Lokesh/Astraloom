@@ -199,4 +199,20 @@ describe("formal account sandbox V2 runtime adapter", () => {
     }
     expect(result.bundle.events.some((event) => event.eventType === "update_external_variable")).toBe(false);
   }, 30_000);
+
+  it("does not pull long-horizon life-model facts into a Track A evidence ledger", async () => {
+    const trackAInput = structuredClone(input);
+    trackAInput.realityProfileSnapshot.profile.lifeModelDomains.identity = [{
+      value: "长期照护家人",
+      classification: "fact",
+      evidenceSummary: "本人确认的长期责任",
+    }];
+
+    const result = await buildFormalSandboxRunV2(trackAInput);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.sourceBoundary.evidenceLedger.items.map(item => item.claimKey)).not.toContain("reality.profile.lifeModelDomains.identity.1");
+    expect(result.bundle.sourceBoundary.evidenceLedger.items.map(item => item.statement)).not.toContain("身份结构（第1项）：长期照护家人");
+  }, 30_000);
 });

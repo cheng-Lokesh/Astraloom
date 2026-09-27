@@ -48,6 +48,7 @@ function databaseFields(profile: z.infer<typeof realityProfileDraftSchema>) {
     life_themes: profile.lifeThemes,
     pressures: profile.pressures,
     external_variables: profile.externalVariables,
+    life_model_domains: profile.lifeModelDomains,
     world_model_inputs: profile.worldInputs,
   };
 }

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(45);
+select plan(47);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -65,11 +65,13 @@ select lives_ok($$
   )
 $$, 'an authenticated owner can create a profile for their own Seed');
 select is((select count(life_climate_value) from public.reality_profiles), 1::bigint, 'owner can read the saved profile');
-select lives_ok($$ update public.reality_profiles set life_climate_value = 'Updated observation', life_goals = '[{"value":"Updated goal","classification":"assumption","evidenceSummary":"Needs review"}]'::jsonb, revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, 'owner can update their profile');
+select throws_ok($$ update public.reality_profiles set life_model_domains = jsonb_set(life_model_domains, '{identity}', '[{"value":"Long-term responsibility","classification":"fact","evidenceSummary":"User confirmed"}]'::jsonb) where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'Reality Profile content changes require exactly one revision increment', 'life-model domain changes require a revision increment');
+select lives_ok($$ update public.reality_profiles set life_climate_value = 'Updated observation', life_goals = '[{"value":"Updated goal","classification":"assumption","evidenceSummary":"Needs review"}]'::jsonb, life_model_domains = jsonb_set(life_model_domains, '{identity}', '[{"value":"Long-term responsibility","classification":"fact","evidenceSummary":"User confirmed"}]'::jsonb), revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, 'owner can update their profile');
 select is((select life_climate_value from public.reality_profiles where seed_context_id = '00000000-0000-0000-0000-00000000a773'), 'Updated observation', 'owner update is persisted');
 select is((select life_goals -> 0 ->> 'value' from public.reality_profiles where seed_context_id = '00000000-0000-0000-0000-00000000a773'), 'Updated goal', 'owner can persist an individually classified goal');
 select throws_ok($$ update public.reality_profiles set life_climate_value = 'Stale direct Data API write', revision = 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'Reality Profile content changes require exactly one revision increment', 'a stale direct Data API update cannot overwrite a newer revision');
 select is((select jsonb_build_object('value', life_climate_value, 'revision', revision) from public.reality_profiles where seed_context_id = '00000000-0000-0000-0000-00000000a773'), '{"value":"Updated observation","revision":1}'::jsonb, 'a rejected stale update leaves content and revision unchanged');
+select is((select life_model_domains -> 'identity' -> 0 ->> 'value' from public.reality_profiles where seed_context_id = '00000000-0000-0000-0000-00000000a773'), 'Long-term responsibility', 'long-horizon profile entries persist under the owner-scoped profile');
 select throws_ok($$ update public.reality_profiles set life_climate_value = 'Skipped revision', revision = revision + 2 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'Reality Profile content changes require exactly one revision increment', 'content changes cannot skip a revision');
 select throws_ok($$ update public.reality_profiles set revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'Reality Profile content changes require exactly one revision increment', 'revision cannot advance without content changes');
 select throws_ok($$ update public.reality_profiles set life_climate_value = '00000000-0000-7000-8000-000000000000', revision = revision + 1 where seed_context_id = '00000000-0000-0000-0000-00000000a773' $$, '23514', 'new row for relation "reality_profiles" violates check constraint "reality_profiles_life_climate_valid"', 'scalar values reject UUIDs across versions');
@@ -113,7 +115,8 @@ $$, '42501', 'new row violates row-level security policy for table "reality_prof
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000b771', true);
 select is((select count(life_climate_value) from public.reality_profiles), 0::bigint, 'another owner cannot read the profile');
-select is((with changed as (update public.reality_profiles set life_climate_value = 'Unauthorized change' where seed_context_id = '00000000-0000-0000-0000-00000000a773' returning 1) select count(*) from changed), 0::bigint, 'another owner update affects no rows');
+with changed as (update public.reality_profiles set life_climate_value = 'Unauthorized change' where seed_context_id = '00000000-0000-0000-0000-00000000a773' returning 1)
+select is((select count(*) from changed), 0::bigint, 'another owner update affects no rows');
 select throws_ok($$
   insert into public.reality_profiles (user_id, seed_context_id, life_climate_value, life_climate_classification, life_climate_evidence_summary, resources_value, resources_classification, resources_evidence_summary, constraints_value, constraints_classification, constraints_evidence_summary)
   values ('00000000-0000-0000-0000-00000000a771', '00000000-0000-0000-0000-00000000a773', 'Spoofed owner', 'fact', 'Summary', null, 'unknown', '明确未知', null, 'unknown', '明确未知')
@@ -121,7 +124,7 @@ $$, '42501', 'new row violates row-level security policy for table "reality_prof
 select throws_ok($$
   insert into public.reality_profiles (user_id, seed_context_id, life_climate_value, life_climate_classification, life_climate_evidence_summary, resources_value, resources_classification, resources_evidence_summary, constraints_value, constraints_classification, constraints_evidence_summary)
   values (auth.uid(), '00000000-0000-0000-0000-00000000a773', 'Foreign Seed', 'fact', 'Summary', null, 'unknown', '明确未知', null, 'unknown', '明确未知')
-$$, '23503', 'insert or update on table "reality_profiles" violates foreign key constraint "reality_profiles_owner_seed_context_fkey"', 'an owner cannot attach a profile to another account Seed');
+$$, '42501', 'new row violates row-level security policy for table "reality_profiles"', 'an owner cannot attach a profile to another account Seed');
 reset role;
 
 select * from finish();

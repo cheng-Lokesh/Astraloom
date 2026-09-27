@@ -32,7 +32,7 @@ const relationSummarySchema = z.object({
 export const sandboxOverviewSchema = z.object({
   authenticated: z.boolean(),
   seed: z.object({ state: z.enum(["not_started", "submitted"]) }).strict(),
-  reality: z.object({ facts: z.array(ledgerItemSchema).max(59), assumptions: z.array(ledgerItemSchema).max(59), unknowns: z.array(unknownItemSchema).max(59), dimensions: z.array(dimensionSummarySchema).length(8) }).strict(),
+  reality: z.object({ facts: z.array(ledgerItemSchema).max(59), assumptions: z.array(ledgerItemSchema).max(59), unknowns: z.array(unknownItemSchema).max(59), dimensions: z.array(dimensionSummarySchema).length(14) }).strict(),
   world: z.object({ state: z.enum(["not_started", "submitted", "people_confirmed", "agents_ready", "locked_graph", "running", "completed"]), changeNodes: z.array(changeNodeSchema).max(3), resources: z.array(z.union([classifiedLedgerItemSchema, structuredResourceItemSchema])).max(9), constraints: z.array(z.union([classifiedLedgerItemSchema, structuredConstraintItemSchema])).max(9), goals: z.array(classifiedLedgerItemSchema).max(8), values: z.array(classifiedLedgerItemSchema).max(8), lifeThemes: z.array(classifiedLedgerItemSchema).max(8), pressures: z.array(classifiedLedgerItemSchema).max(8), externalVariables: z.array(classifiedLedgerItemSchema).max(8) }).strict(),
   people: z.object({ confirmedCount: z.number().int().nonnegative(), total: z.number().int().nonnegative(), items: z.array(personSummarySchema).max(5) }).strict(),
   agents: z.object({ immutableCount: z.number().int().nonnegative() }).strict(),
@@ -75,8 +75,8 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
   const fallbackReality = {
     facts: source.seed?.submitted ? [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }] : [],
     assumptions: [],
-    unknowns: ["人生气候", "资源", "约束", "目标", "价值观", "人生主题", "压力", "外部变量"].map(label => ({ label })),
-    dimensions: ["人生气候", "资源", "约束", "目标", "价值观", "人生主题", "压力", "外部变量"].map(label => ({ label, facts: 0, assumptions: 0, unknowns: 1 })),
+    unknowns: ["人生气候", "资源", "约束", "目标", "价值观", "人生主题", "压力", "外部变量", "身份结构", "职业结构", "财富结构", "关系生态", "城市与生活环境", "人生阶段"].map(label => ({ label })),
+    dimensions: ["人生气候", "资源", "约束", "目标", "价值观", "人生主题", "压力", "外部变量", "身份结构", "职业结构", "财富结构", "关系生态", "城市与生活环境", "人生阶段"].map(label => ({ label, facts: 0, assumptions: 0, unknowns: 1 })),
   };
   const changeNodes = (source.changeNodeTypes ?? []).slice(0, 3).map((eventType) => ({
     label: ({ graph_freeze: "关系网络已冻结", avoidance: "回避变化", cooperation: "协作变化", direct_conflict: "冲突变化", disclosure: "信息披露变化", resource_competition: "资源竞争变化", support: "支持变化", opportunity_signal: "机会信号变化", information_gap_widening: "信息差变化" } as const)[eventType],
@@ -148,7 +148,7 @@ const relationRowSchema = z.object({
   relationship_type: z.string().min(1).max(120),
 }).strict();
 const eventRowSchema = z.object({ event_type: changeNodeTypeSchema }).strict();
-const profileRowSchema = z.object({ life_climate_value: z.string().nullable(), life_climate_classification: z.enum(["fact", "assumption", "unknown"]), life_climate_evidence_summary: z.string().nullable(), resources_value: z.string().nullable(), resources_classification: z.enum(["fact", "assumption", "unknown"]), resources_evidence_summary: z.string().nullable(), constraints_value: z.string().nullable(), constraints_classification: z.enum(["fact", "assumption", "unknown"]), constraints_evidence_summary: z.string().nullable(), life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()), world_model_inputs: z.unknown(), revision: z.number().int().nonnegative() }).strict();
+const profileRowSchema = z.object({ life_climate_value: z.string().nullable(), life_climate_classification: z.enum(["fact", "assumption", "unknown"]), life_climate_evidence_summary: z.string().nullable(), resources_value: z.string().nullable(), resources_classification: z.enum(["fact", "assumption", "unknown"]), resources_evidence_summary: z.string().nullable(), constraints_value: z.string().nullable(), constraints_classification: z.enum(["fact", "assumption", "unknown"]), constraints_evidence_summary: z.string().nullable(), life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()), life_model_domains: z.unknown().optional(), world_model_inputs: z.unknown(), revision: z.number().int().nonnegative() }).strict();
 
 function profileFromRow(row: unknown): RealityProfileDraft {
   const record = profileRowSchema.parse(row);
@@ -161,6 +161,7 @@ function profileFromRow(row: unknown): RealityProfileDraft {
     lifeThemes: record.life_themes ?? [createUnknownRealityProfileField()],
     pressures: record.pressures ?? [createUnknownRealityProfileField()],
     externalVariables: record.external_variables ?? [createUnknownRealityProfileField()],
+    lifeModelDomains: record.life_model_domains,
     worldInputs: record.world_model_inputs,
     revision: record.revision,
   });

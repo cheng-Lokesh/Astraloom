@@ -10,12 +10,18 @@ describe("My Sandbox dashboard behavior", () => {
   it("renders current people, ordinal relations, model boundaries and one current-chain action", () => {
     const html = renderToStaticMarkup(createElement(SandboxLedger, { overview: {
       authenticated: true,
-      seed: { state: "submitted" }, reality: { facts: [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }], assumptions: [], unknowns: [{ label: "人生气候" }, { label: "资源" }, { label: "约束" }], dimensions: [
+      seed: { state: "submitted" }, reality: { facts: [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }], assumptions: [], unknowns: [{ label: "人生气候" }, { label: "资源" }, { label: "约束" }, { label: "身份结构" }, { label: "职业结构" }, { label: "财富结构" }, { label: "关系生态" }, { label: "城市与生活环境" }, { label: "人生阶段" }], dimensions: [
         { label: "目标", facts: 0, assumptions: 0, unknowns: 1 },
         { label: "价值观", facts: 0, assumptions: 0, unknowns: 1 },
         { label: "人生主题", facts: 0, assumptions: 0, unknowns: 1 },
         { label: "压力", facts: 0, assumptions: 0, unknowns: 1 },
         { label: "外部变量", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "身份结构", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "职业结构", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "财富结构", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "关系生态", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "城市与生活环境", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "人生阶段", facts: 0, assumptions: 0, unknowns: 1 },
       ] },
       people: { confirmedCount: 2, total: 3, items: [{ key: "person-1", label: "Scenario owner", relationship: "self", kind: "user_core" }, { key: "person-2", label: "Cautious self", relationship: "cautious", kind: "user_variant" }, { key: "person-3", label: "Current collaborator", relationship: "collaborator", kind: "npc" }] },
       agents: { immutableCount: 3 },
@@ -41,6 +47,9 @@ describe("My Sandbox dashboard behavior", () => {
     expect(html).toContain("人生主题");
     expect(html).toContain("压力");
     expect(html).toContain("外部变量");
+    expect(html).toContain("数字生命模型维度");
+    expect(html).toContain("财富结构");
+    expect(html).toContain("人生阶段");
     expect(html).toContain("World State");
     expect(html).toContain("事实");
     expect(html).toContain("协作变化");

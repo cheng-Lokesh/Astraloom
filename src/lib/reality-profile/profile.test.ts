@@ -20,7 +20,7 @@ describe("Reality Profile", () => {
       reality: {
         facts: [{ label: "当前协作节奏变化较多", evidenceSummary: "用户已确认的近期工作观察" }],
         assumptions: [{ label: "可协调的支持有限", evidenceSummary: "仍待复核" }],
-        unknowns: [{ label: "约束" }, { label: "目标" }, { label: "价值观" }, { label: "人生主题" }, { label: "压力" }, { label: "外部变量" }],
+        unknowns: [{ label: "约束" }, { label: "目标" }, { label: "价值观" }, { label: "人生主题" }, { label: "压力" }, { label: "外部变量" }, { label: "身份结构" }, { label: "职业结构" }, { label: "财富结构" }, { label: "关系生态" }, { label: "城市与生活环境" }, { label: "人生阶段" }],
         dimensions: [
           { label: "人生气候", facts: 1, assumptions: 0, unknowns: 0 },
           { label: "资源", facts: 0, assumptions: 1, unknowns: 0 },
@@ -30,6 +30,12 @@ describe("Reality Profile", () => {
           { label: "人生主题", facts: 0, assumptions: 0, unknowns: 1 },
           { label: "压力", facts: 0, assumptions: 0, unknowns: 1 },
           { label: "外部变量", facts: 0, assumptions: 0, unknowns: 1 },
+          { label: "身份结构", facts: 0, assumptions: 0, unknowns: 1 },
+          { label: "职业结构", facts: 0, assumptions: 0, unknowns: 1 },
+          { label: "财富结构", facts: 0, assumptions: 0, unknowns: 1 },
+          { label: "关系生态", facts: 0, assumptions: 0, unknowns: 1 },
+          { label: "城市与生活环境", facts: 0, assumptions: 0, unknowns: 1 },
+          { label: "人生阶段", facts: 0, assumptions: 0, unknowns: 1 },
         ],
       },
       world: {

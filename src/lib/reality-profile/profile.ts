@@ -27,6 +27,39 @@ export const realityProfileFieldSchema = z.object({
 });
 
 const profileItemsSchema = z.array(realityProfileFieldSchema).min(1).max(8);
+const lifeModelDomainLabels = {
+  identity: "身份结构",
+  career: "职业结构",
+  wealth: "财富结构",
+  relationships: "关系生态",
+  environment: "城市与生活环境",
+  lifeStage: "人生阶段",
+} as const;
+export const LIFE_MODEL_DOMAIN_ENTRY_PREFIX = "lifeModelDomains.";
+const lifeModelDomainKeys = Object.keys(lifeModelDomainLabels) as Array<keyof typeof lifeModelDomainLabels>;
+const lifeModelDomainsSchema = z.object({
+  version: z.literal(1),
+  identity: profileItemsSchema,
+  career: profileItemsSchema,
+  wealth: profileItemsSchema,
+  relationships: profileItemsSchema,
+  environment: profileItemsSchema,
+  lifeStage: profileItemsSchema,
+}).strict();
+
+export type RealityProfileLifeModelDomains = z.infer<typeof lifeModelDomainsSchema>;
+
+export function createEmptyRealityProfileLifeModelDomains(): RealityProfileLifeModelDomains {
+  return {
+    version: 1,
+    identity: [createUnknownRealityProfileField()],
+    career: [createUnknownRealityProfileField()],
+    wealth: [createUnknownRealityProfileField()],
+    relationships: [createUnknownRealityProfileField()],
+    environment: [createUnknownRealityProfileField()],
+    lifeStage: [createUnknownRealityProfileField()],
+  };
+}
 
 const worldResourceInputSchema = z.object({
   key: worldInputKeySchema,
@@ -93,19 +126,21 @@ export const realityProfileDraftSchema = z.object({
   lifeThemes: profileItemsSchema,
   pressures: profileItemsSchema,
   externalVariables: profileItemsSchema,
+  lifeModelDomains: lifeModelDomainsSchema.default(createEmptyRealityProfileLifeModelDomains()),
   worldInputs: realityProfileWorldInputsSchema.default({ version: 1, resources: [], constraints: [] }),
   revision: z.number().int().nonnegative(),
 }).strict();
 
 export type RealityProfileField = z.infer<typeof realityProfileFieldSchema>;
 export type RealityProfileDraft = z.infer<typeof realityProfileDraftSchema>;
-export const realityProfileDatabaseColumns = "life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,life_goals,core_values,life_themes,pressures,external_variables,world_model_inputs,revision";
+export const realityProfileDatabaseColumns = "life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,life_goals,core_values,life_themes,pressures,external_variables,life_model_domains,world_model_inputs,revision";
 
 const realityProfileDatabaseRowSchema = z.object({
   life_climate_value: z.string().nullable(), life_climate_classification: classificationSchema, life_climate_evidence_summary: z.string().nullable(),
   resources_value: z.string().nullable(), resources_classification: classificationSchema, resources_evidence_summary: z.string().nullable(),
   constraints_value: z.string().nullable(), constraints_classification: classificationSchema, constraints_evidence_summary: z.string().nullable(),
   life_goals: z.array(z.unknown()), core_values: z.array(z.unknown()), life_themes: z.array(z.unknown()), pressures: z.array(z.unknown()), external_variables: z.array(z.unknown()),
+  life_model_domains: z.unknown().optional(),
   world_model_inputs: z.unknown().optional(),
   revision: z.number().int().nonnegative(),
 }).passthrough();
@@ -121,6 +156,7 @@ export function realityProfileDraftFromDatabaseRow(row: unknown): RealityProfile
     lifeThemes: record.life_themes,
     pressures: record.pressures,
     externalVariables: record.external_variables,
+    lifeModelDomains: record.life_model_domains ?? createEmptyRealityProfileLifeModelDomains(),
     worldInputs: record.world_model_inputs ?? createEmptyRealityProfileWorldInputs(),
     revision: record.revision,
   });
@@ -170,6 +206,7 @@ export function createEmptyRealityProfileDraft(revision = 0): RealityProfileDraf
     lifeThemes: [createUnknownRealityProfileField()],
     pressures: [createUnknownRealityProfileField()],
     externalVariables: [createUnknownRealityProfileField()],
+    lifeModelDomains: createEmptyRealityProfileLifeModelDomains(),
     worldInputs: createEmptyRealityProfileWorldInputs(),
     revision,
   };
@@ -188,6 +225,7 @@ export function listRealityProfileEntries(rawDraft: RealityProfileDraft) {
     { key: "lifeThemes", label: dimensionLabels.lifeThemes, fields: draft.lifeThemes },
     { key: "pressures", label: dimensionLabels.pressures, fields: draft.pressures },
     { key: "externalVariables", label: dimensionLabels.externalVariables, fields: draft.externalVariables },
+    ...lifeModelDomainKeys.map(key => ({ key: `${LIFE_MODEL_DOMAIN_ENTRY_PREFIX}${key}`, label: lifeModelDomainLabels[key], fields: draft.lifeModelDomains[key] })),
   ];
   return [
     ...entries,
@@ -244,6 +282,7 @@ export function buildRealityWorldProjection(draft: RealityProfileDraft, state: {
     { key: "pressures", fields: parsed.pressures },
     { key: "externalVariables", fields: parsed.externalVariables },
   ] as const;
+  const longHorizonDimensions = lifeModelDomainKeys.map(key => ({ key, label: lifeModelDomainLabels[key], fields: parsed.lifeModelDomains[key] }));
 
   const ledgerEntries = [
     { key: "lifeClimate" as const, ...ledgerFor(parsed.lifeClimate, dimensionLabels.lifeClimate) },
@@ -251,16 +290,25 @@ export function buildRealityWorldProjection(draft: RealityProfileDraft, state: {
     ...constraintFields.map(field => ({ key: "constraints" as const, ...ledgerFor(field, dimensionLabels.constraints) })),
     ...listDimensions.flatMap(({ key, fields }) => classifiedDimensionItems(fields, dimensionLabels[key]).map(({ field, label }) => ({ key: key as ProfileDimensionKey, ...ledgerFor(field, label) }))),
   ];
+  const longHorizonEntries = longHorizonDimensions.flatMap(({ label, fields }) => classifiedDimensionItems(fields, label).map(({ field, label: itemLabel }) => {
+    const entry = ledgerFor(field, itemLabel);
+    return {
+      classification: entry.classification,
+      item: entry.item ? { ...entry.item, label: `${label}：${entry.item.label}` } : null,
+      unknown: entry.unknown,
+    };
+  }));
   const displayLabel = (key: ProfileDimensionKey, label: string) => key === "goals" || key === "values" || key === "lifeThemes" || key === "pressures" || key === "externalVariables" ? `${dimensionLabels[key]}：${label}` : label;
   const reality = {
-    facts: ledgerEntries.filter(field => field.classification === "fact").flatMap(({ item, key }) => item ? [{ ...item, label: displayLabel(key, item.label) }] : []),
-    assumptions: ledgerEntries.filter(field => field.classification === "assumption").flatMap(({ item, key }) => item ? [{ ...item, label: displayLabel(key, item.label) }] : []),
-    unknowns: ledgerEntries.flatMap(({ unknown }) => unknown ? [unknown] : []),
+    facts: [...ledgerEntries.filter(field => field.classification === "fact").flatMap(({ item, key }) => item ? [{ ...item, label: displayLabel(key, item.label) }] : []), ...longHorizonEntries.filter(field => field.classification === "fact").flatMap(({ item }) => item ? [item] : [])],
+    assumptions: [...ledgerEntries.filter(field => field.classification === "assumption").flatMap(({ item, key }) => item ? [{ ...item, label: displayLabel(key, item.label) }] : []), ...longHorizonEntries.filter(field => field.classification === "assumption").flatMap(({ item }) => item ? [item] : [])],
+    unknowns: [...ledgerEntries.flatMap(({ unknown }) => unknown ? [unknown] : []), ...longHorizonEntries.flatMap(({ unknown }) => unknown ? [unknown] : [])],
     dimensions: [
       dimensionSummary(dimensionLabels.lifeClimate, [parsed.lifeClimate]),
       dimensionSummary(dimensionLabels.resources, resourceFields),
       dimensionSummary(dimensionLabels.constraints, constraintFields),
       ...listDimensions.map(({ key, fields }) => dimensionSummary(dimensionLabels[key], fields)),
+      ...longHorizonDimensions.map(({ label, fields }) => dimensionSummary(label, fields)),
     ],
   };
   const itemsFor = (fields: RealityProfileField[]) => fields.map((field, index) => worldLedgerFor(field, fields.length === 1 ? "尚未填写" : `第${index + 1}项尚未填写`));

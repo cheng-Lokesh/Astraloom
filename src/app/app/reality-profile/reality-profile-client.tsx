@@ -6,6 +6,7 @@ import {
   createUnknownRealityProfileField,
   type RealityProfileDraft,
   type RealityProfileField,
+  type RealityProfileLifeModelDomains,
   type RealityProfileWorldInputs,
 } from "@/lib/reality-profile/profile";
 
@@ -24,6 +25,15 @@ const listLabels: Record<ListKey, string> = {
   lifeThemes: "人生主题",
   pressures: "压力",
   externalVariables: "外部变量",
+};
+type LifeModelDomainKey = Exclude<keyof RealityProfileLifeModelDomains, "version">;
+const lifeModelDomainLabels: Record<LifeModelDomainKey, string> = {
+  identity: "身份结构",
+  career: "职业结构",
+  wealth: "财富结构",
+  relationships: "关系生态",
+  environment: "城市与生活环境",
+  lifeStage: "人生阶段",
 };
 
 export function RealityProfileClient() {
@@ -51,6 +61,14 @@ export function RealityProfileClient() {
 
   const updateWorldInputs = (worldInputs: RealityProfileWorldInputs) => {
     setProfile(current => ({ ...current, worldInputs }));
+  };
+
+  const updateLifeModelDomain = (key: LifeModelDomainKey, index: number, field: RealityProfileField) => {
+    setProfile(current => ({ ...current, lifeModelDomains: { ...current.lifeModelDomains, [key]: current.lifeModelDomains[key].map((item, itemIndex) => itemIndex === index ? field : item) } }));
+  };
+
+  const updateLifeModelDomains = (lifeModelDomains: RealityProfileLifeModelDomains) => {
+    setProfile(current => ({ ...current, lifeModelDomains }));
   };
 
   const addListItem = (key: ListKey) => {
@@ -83,13 +101,14 @@ export function RealityProfileClient() {
   return <main id="main-content" className="mx-auto w-full max-w-4xl py-7 sm:py-12">
     <p className="font-mono text-xs uppercase tracking-[.14em] text-[var(--evidence-gold)]">Reality Profile / 当前正式链</p>
     <h1 className="mt-4 text-3xl font-semibold text-[var(--text-primary)] sm:text-5xl">复核现实资料，而让系统保留不确定。</h1>
-    <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">逐条记录目标、价值观、人生主题、压力与外部变量。每条都由你标记为事实、假设或明确未知；自由描述不会被自动转成数值，只有你在下方明确填写的结构化资源和模拟规则才会进入世界模型。</p>
+    <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">逐条记录目标、价值观、人生主题、压力、外部变量与长期生命结构。每条都由你标记为事实、假设或明确未知；自由描述不会被自动转成数值。长期结构目前会安全保存并展示，尚不代表已具备 Track B 预测能力。</p>
     <div className="mt-8 space-y-6">
       {(Object.keys(scalarLabels) as ScalarKey[]).map(key => <section key={key} className="border-y border-white/10 py-5">
         <h2 className="text-xl font-semibold text-[var(--text-primary)]">{scalarLabels[key]}</h2>
         <FieldEditor title={scalarLabels[key]} field={profile[key]} disabled={!ready} onChange={field => updateScalar(key, field)} />
       </section>)}
       <WorldInputsEditor inputs={profile.worldInputs} disabled={!ready} onChange={updateWorldInputs} />
+      <LifeModelDomainsEditor domains={profile.lifeModelDomains} disabled={!ready} onChange={updateLifeModelDomains} onUpdateItem={updateLifeModelDomain} />
       {(Object.keys(listLabels) as ListKey[]).map(key => <section key={key} className="border-y border-white/10 py-5">
         <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold text-[var(--text-primary)]">{listLabels[key]}</h2><p className="mt-1 text-sm leading-6 text-[var(--text-muted)]">每条单独标记事实、假设或未知。</p></div><button type="button" disabled={!ready || profile[key].length >= 8} onClick={() => addListItem(key)} className="inline-flex min-h-11 items-center border border-white/15 px-4 text-sm font-semibold text-[var(--text-primary)] transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-50">新增{listLabels[key]}</button></div>
         <div className="mt-4 space-y-5">{profile[key].map((field, index) => <div key={`${key}-${index}`} className="border-t border-white/10 pt-4">
@@ -101,6 +120,24 @@ export function RealityProfileClient() {
     <button type="button" disabled={!ready} onClick={() => void save()} className="mt-7 min-h-11 rounded bg-[var(--evidence-gold)] px-5 py-3 text-sm font-semibold text-black transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-50">保存当前正式链资料</button>
     <p role="status" className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{status}</p>
   </main>;
+}
+
+function LifeModelDomainsEditor({ domains, disabled, onChange, onUpdateItem }: { domains: RealityProfileLifeModelDomains; disabled: boolean; onChange: (domains: RealityProfileLifeModelDomains) => void; onUpdateItem: (key: LifeModelDomainKey, index: number, field: RealityProfileField) => void }) {
+  const add = (key: LifeModelDomainKey) => {
+    if (domains[key].length >= 8) return;
+    onChange({ ...domains, [key]: [...domains[key], createUnknownRealityProfileField()] });
+  };
+  const remove = (key: LifeModelDomainKey, index: number) => {
+    const remaining = domains[key].filter((_, itemIndex) => itemIndex !== index);
+    onChange({ ...domains, [key]: remaining.length ? remaining : [createUnknownRealityProfileField()] });
+  };
+  return <section className="border-y border-white/10 py-5">
+    <div className="border-b border-white/10 pb-4"><h2 className="text-xl font-semibold text-[var(--text-primary)]">长期生命结构</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">为长期路径整理身份、职业、财富、关系、生活环境和人生阶段。资料先按事实、假设、未知保存；无需填写账号、证件号或其他敏感原文，当前不会据此生成长期预测。</p></div>
+    <div className="mt-2 grid gap-5 md:grid-cols-2">{(Object.keys(lifeModelDomainLabels) as LifeModelDomainKey[]).map(key => <section key={key} className="border-b border-white/10 py-4">
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-base font-semibold text-[var(--text-primary)]">{lifeModelDomainLabels[key]}</h3><p className="mt-1 text-xs text-[var(--text-muted)]">逐条标记来源与确定性。</p></div><button type="button" disabled={disabled || domains[key].length >= 8} onClick={() => add(key)} className="inline-flex min-h-10 items-center border border-white/15 px-3 text-xs font-semibold text-[var(--text-primary)] disabled:opacity-50">新增</button></div>
+      <div className="mt-3 space-y-4">{domains[key].map((field, index) => <div key={`${key}-${index}`} className="border-t border-white/10 pt-3"><div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs text-[var(--text-muted)]">第 {index + 1} 项</p><button type="button" disabled={disabled || domains[key].length <= 1} onClick={() => remove(key, index)} aria-label={`移除${lifeModelDomainLabels[key]}第 ${index + 1} 项`} className="min-h-9 px-2 text-xs text-[var(--text-secondary)] disabled:opacity-40">移除</button></div><FieldEditor title={`${lifeModelDomainLabels[key]}第${index + 1}项`} field={field} disabled={disabled} onChange={next => onUpdateItem(key, index, next)} /></div>)}</div>
+    </section>)}</div>
+  </section>;
 }
 
 type WorldResourceInput = RealityProfileWorldInputs["resources"][number];

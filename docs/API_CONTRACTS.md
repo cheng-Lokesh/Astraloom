@@ -23,10 +23,11 @@ Each non-static API must include:
   `409` when no formal Seed exists, and never accepts an owner or Seed
   identifier from the request. “Newest” is ordered by `submitted_at DESC`,
   then `id DESC` as a stable tie-breaker shared with Dashboard and RLS.
-- `PUT /api/reality-profile` accepts the three scalar Reality fields and five
+- `PUT /api/reality-profile` accepts the three scalar Reality fields, five
   bounded item lists (goals, values, life themes, pressures, and external
-  variables), each with its own fact/assumption/unknown classification and
-  safe evidence summary. It validates with Zod, scopes storage to the current
+  variables), and six long-horizon life-model lists (identity, career, wealth,
+  relationships, environment, and life stage). Every item has its own
+  fact/assumption/unknown classification and safe evidence summary. It validates with Zod, scopes storage to the current
   submitted Seed, and uses the revision as an optimistic concurrency guard. A conflicting
   update returns `409`; invalid or malformed input returns `400` without
   persistence. Both endpoints return a correlation `trace_id`; the page does
@@ -571,6 +572,10 @@ Projection:
   carry their own user-selected classification and safe evidence summary.
   New dimensions default to explicitly unknown; no repository, localStorage,
   static-case, Seed narrative, or Career-demo value may fill these fields.
+- Long-horizon life-model inputs are separately classified under identity,
+  career, wealth, relationships, environment, and life stage. My Sandbox shows
+  their current completeness; Track A does not treat them as causal evidence,
+  and their storage does not imply Track B runs or forecasts exist.
 - Structured resources and constraints are projected from the same profile's
   `world_model_inputs`: resources expose their safe label, current amount, unit,
   declared bounds, optional per-tick use, classification, and evidence summary;

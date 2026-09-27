@@ -1110,6 +1110,15 @@ resource and retains its deadline. My Sandbox may project these current saved
 inputs, resolving internal resource keys to safe labels; it must not expose the
 keys or imply a future state change from these inputs.
 
+`reality_profiles.life_model_domains` is a separately versioned, owner-scoped
+object containing bounded identity, career, wealth, relationship-ecosystem,
+living-environment, and life-stage entries. Each entry retains its own
+fact/assumption/unknown classification and safe evidence summary; empty domains
+default to explicit unknowns. These long-horizon inputs are visible in the
+Reality Profile and My Sandbox, but are excluded from Track A's causal evidence
+ledger and result projection until a versioned Track B contract consumes them.
+They do not themselves produce a long-term forecast.
+
 The controlled transaction writes `simulation_ticks`, then `event_logs`, then
 same-run evidence-linked `claims`, then the single `reports` projection, and
 only then marks the simulation completed. Forced failure rolls the transaction

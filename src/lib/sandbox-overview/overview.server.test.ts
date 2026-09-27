@@ -48,7 +48,8 @@ describe("My Sandbox overview projection", () => {
     expect(overview.reality.unknowns).toEqual([
       { label: "人生气候" }, { label: "资源" }, { label: "约束" },
       { label: "目标" }, { label: "价值观" }, { label: "人生主题" },
-      { label: "压力" }, { label: "外部变量" },
+      { label: "压力" }, { label: "外部变量" }, { label: "身份结构" }, { label: "职业结构" },
+      { label: "财富结构" }, { label: "关系生态" }, { label: "城市与生活环境" }, { label: "人生阶段" },
     ]);
   });
 

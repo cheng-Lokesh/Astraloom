@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
-import { listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
+import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import {
   AGENT_WORLD_ENGINE_VERSION_V2,
@@ -132,7 +132,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       clock: () => boundaryAt,
       idFactory: createStableRealityBoundaryIdFactoryV2(`formal-${causalFingerprint}`),
     };
-    const profileEntries = listRealityProfileEntries(input.realityProfileSnapshot.profile);
+    const profileEntries = listRealityProfileEntries(input.realityProfileSnapshot.profile).filter(({ key }) => !key.startsWith(LIFE_MODEL_DOMAIN_ENTRY_PREFIX));
     const worldInputs = input.realityProfileSnapshot.profile.worldInputs;
     const evidenceLedger = buildEvidenceLedgerV2({
       seedContextId: input.seedContextId,
