@@ -79,6 +79,12 @@ Must show, from the account API only:
   bounded History, recent Feedback presence, and exactly one next action.
 - Explicit `尚未建模` labels for life climate, resources, constraints, next
   change, and any Reality detail without an authoritative database field.
+- A Reality Profile ledger that visibly separates `事实`, `假设`, and `未知项`.
+  Facts must name their safe account-backed basis; absent persisted assumptions
+  stay empty rather than being inferred. A World State panel may show only the
+  current formal-chain stage and allowlisted Change Node labels with a safe
+  evidence summary. It must not render event/trace/evidence identifiers,
+  raw scenario text, or internal keys.
 - Loading, anonymous, empty, partial, running, completed, and error states.
   Error state must not retain or invent a previous local projection.
 

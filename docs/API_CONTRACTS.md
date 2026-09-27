@@ -542,9 +542,16 @@ Projection:
   bodies, or database ids as display fields.
 - The response is Zod-validated before it is returned. Invalid server rows fail
   closed instead of becoming a browser fallback.
-- Life climate, resources, constraints, next-change timing, and Reality detail
-  currently return explicit `not_modeled`. No repository, localStorage,
-  static-case, or Career-demo value may fill these fields.
+- The safe Reality Profile returns a ledger with separate facts, assumptions,
+  and unknowns. Facts are limited to account-backed formal-chain status;
+  assumptions are empty until a persisted assumption ledger is authorized; life
+  climate, resources, and constraints remain explicit unknowns. No repository,
+  localStorage, static-case, or Career-demo value may fill these fields.
+- The safe World State returns only a current-chain stage and up to three
+  allowlisted Event type labels from the current completed formal Run. Each
+  Change Node has the fixed evidence summary "来自当前正式运行的受控模拟事件";
+  it never returns event ids, evidence refs/bodies, trace ids, raw summaries,
+  scenario text, emails, or internal keys.
 
 ### Account exploration routes
 

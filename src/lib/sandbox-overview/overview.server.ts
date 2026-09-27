@@ -6,6 +6,11 @@ const hrefSchema = z.string().regex(/^(?:\/app\/|\/login$)/).max(500);
 const notModeledSchema = z.object({ state: z.literal("not_modeled") }).strict();
 const personKeySchema = z.string().regex(/^person-[1-5]$/);
 const safeLabelSchema = z.string().min(1).max(120);
+const evidenceSummarySchema = z.string().min(1).max(120);
+const ledgerItemSchema = z.object({ label: safeLabelSchema, evidenceSummary: evidenceSummarySchema }).strict();
+const unknownItemSchema = z.object({ label: safeLabelSchema }).strict();
+const changeNodeTypeSchema = z.enum(["graph_freeze", "avoidance", "cooperation", "direct_conflict", "disclosure", "resource_competition", "support", "opportunity_signal", "information_gap_widening"]);
+const changeNodeSchema = z.object({ label: safeLabelSchema, evidenceSummary: evidenceSummarySchema }).strict();
 const personSummarySchema = z.object({
   key: personKeySchema,
   label: safeLabelSchema,
@@ -22,7 +27,8 @@ const relationSummarySchema = z.object({
 export const sandboxOverviewSchema = z.object({
   authenticated: z.boolean(),
   seed: z.object({ state: z.enum(["not_started", "submitted"]) }).strict(),
-  reality: notModeledSchema,
+  reality: z.object({ facts: z.array(ledgerItemSchema).max(4), assumptions: z.array(ledgerItemSchema).max(4), unknowns: z.array(unknownItemSchema).min(3).max(4) }).strict(),
+  world: z.object({ state: z.enum(["not_started", "submitted", "people_confirmed", "agents_ready", "locked_graph", "running", "completed"]), changeNodes: z.array(changeNodeSchema).max(3), resources: notModeledSchema, constraints: notModeledSchema }).strict(),
   people: z.object({ confirmedCount: z.number().int().nonnegative(), total: z.number().int().nonnegative(), items: z.array(personSummarySchema).max(5) }).strict(),
   agents: z.object({ immutableCount: z.number().int().nonnegative() }).strict(),
   graph: z.object({ exists: z.boolean(), locked: z.boolean(), edgeCount: z.number().int().nonnegative() }).strict(),
@@ -55,10 +61,21 @@ export type SandboxOverviewSource = {
   latestCompletedRun: { status: "completed"; completedAt: string; href: string } | null;
   historyCount: number;
   hasFeedback: boolean;
+  changeNodeTypes?: Array<z.infer<typeof changeNodeTypeSchema>>;
 };
 
 export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOverview {
   const noModel = { state: "not_modeled" as const };
+  const reality = {
+    facts: source.seed?.submitted ? [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }] : [],
+    assumptions: [],
+    unknowns: [{ label: "人生气候" }, { label: "资源" }, { label: "约束" }],
+  };
+  const changeNodes = (source.changeNodeTypes ?? []).slice(0, 3).map((eventType) => ({
+    label: ({ graph_freeze: "关系网络已冻结", avoidance: "回避变化", cooperation: "协作变化", direct_conflict: "冲突变化", disclosure: "信息披露变化", resource_competition: "资源竞争变化", support: "支持变化", opportunity_signal: "机会信号变化", information_gap_widening: "信息差变化" } as const)[eventType],
+    evidenceSummary: "来自当前正式运行的受控模拟事件",
+  }));
+  const worldState = source.runningRun ? "running" : source.latestCompletedRun ? "completed" : source.graph.exists && source.graph.locked ? "locked_graph" : source.immutableAgentsCount ? "agents_ready" : source.confirmedPeopleCount ? "people_confirmed" : source.seed?.submitted ? "submitted" : "not_started";
   const action = !source.authenticated
     ? { kind: "sign_in" as const, href: "/login" }
     : !source.seed?.submitted
@@ -80,7 +97,8 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
   return sandboxOverviewSchema.parse({
     authenticated: source.authenticated,
     seed: { state: source.seed?.submitted ? "submitted" : "not_started" },
-    reality: noModel,
+    reality,
+    world: { state: worldState, changeNodes, resources: noModel, constraints: noModel },
     people: { confirmedCount: source.confirmedPeopleCount, total: source.immutableAgentsCount, items: source.peopleItems ?? [] },
     agents: { immutableCount: source.immutableAgentsCount },
     graph: source.graph,
@@ -118,6 +136,7 @@ const relationRowSchema = z.object({
   to_agent_id: z.string().uuid(),
   relationship_type: z.string().min(1).max(120),
 }).strict();
+const eventRowSchema = z.object({ event_type: changeNodeTypeSchema }).strict();
 
 const unsafeVisibleText = /[\u0000-\u001f\u007f]|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:token|secret|password|api[_ -]?key)\b/i;
 
@@ -202,6 +221,11 @@ export async function readSandboxOverview(supabase: SupabaseClient, ownerId: str
   if (runningError || completedError) throw new Error("sandbox_overview_read_failed");
   const running = runningRecord ? runSchema.parse(runningRecord) : null;
   const completed = completedRecord ? runSchema.parse(completedRecord) : null;
+  const { data: eventRows, error: eventsError } = completed
+    ? await supabase.from("event_logs").select("event_type").eq("user_id", ownerId).eq("simulation_id", completed.id).order("created_at", { ascending: false }).limit(3)
+    : { data: [], error: null };
+  if (eventsError) throw new Error("sandbox_overview_read_failed");
+  const changeNodeTypes = z.array(eventRowSchema).parse(eventRows ?? []).map((event) => event.event_type);
   const { data: feedbackRecord, error: feedbackError } = completed ? await supabase.from("feedback_logs").select("id").eq("user_id", ownerId).eq("version", "formal-run-feedback-m1-v1").eq("seed_context_id", seed.id).eq("simulation_id", completed.id).order("created_at", { ascending: false }).limit(1).maybeSingle() : { data: null, error: null };
   if (feedbackError) throw new Error("sandbox_overview_read_failed");
   return buildSandboxOverview({
@@ -210,6 +234,6 @@ export async function readSandboxOverview(supabase: SupabaseClient, ownerId: str
     graph: { exists: Boolean(graph), locked: graph?.graph_locked ?? false, edgeCount: edgeCount ?? 0 }, relationItems: summaries.relationItems,
     runningRun: running ? { href: runHref("running", running.id) } : null,
     latestCompletedRun: completed?.completed_at ? { status: "completed", completedAt: completed.completed_at, href: runHref("result", completed.id) } : null,
-    historyCount: historyCount ?? 0, hasFeedback: Boolean(feedbackRecord),
+    historyCount: historyCount ?? 0, hasFeedback: Boolean(feedbackRecord), changeNodeTypes,
   });
 }

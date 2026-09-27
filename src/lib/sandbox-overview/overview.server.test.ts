@@ -44,7 +44,9 @@ describe("My Sandbox overview projection", () => {
     expect(overview.resources).toEqual({ state: "not_modeled" });
     expect(overview.constraints).toEqual({ state: "not_modeled" });
     expect(overview.nextChange).toEqual({ state: "not_modeled" });
-    expect(overview.reality).toEqual({ state: "not_modeled" });
+    expect(overview.reality.unknowns).toEqual([
+      { label: "人生气候" }, { label: "资源" }, { label: "约束" },
+    ]);
   });
 
   it("projects the current chain into fact, assumption, and unknown ledgers without identifiers", () => {
