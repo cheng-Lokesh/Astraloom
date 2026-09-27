@@ -166,4 +166,37 @@ describe("formal account sandbox V2 runtime adapter", () => {
       })]));
     }
   }, 30_000);
+
+  it("models explicitly classified pressures and external variables as static World variables", async () => {
+    const modeledInput = structuredClone(input);
+    modeledInput.realityProfileSnapshot.profile.pressures = [{
+      value: "本季度存在明确的交付压力",
+      classification: "assumption",
+      evidenceSummary: "本人提交的待验证情境",
+    }];
+    modeledInput.realityProfileSnapshot.profile.externalVariables = [
+      { value: "团队预算尚未确认", classification: "fact", evidenceSummary: "本人记录的当前状态" },
+      { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+    ];
+
+    const result = await buildFormalSandboxRunV2(modeledInput);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.inputSnapshot.realityProfileSnapshot).toEqual(modeledInput.realityProfileSnapshot);
+    expect(result.bundle.sourceBoundary.evidenceLedger.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ claimKey: "reality.profile.externalvariables.1", statement: "外部变量（第1项）：团队预算尚未确认" }),
+    ]));
+    expect(result.bundle.sourceBoundary.assumptionLedger.assumptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ statement: "本季度存在明确的交付压力" }),
+    ]));
+    for (const world of result.bundle.worldSnapshots) {
+      expect(world.externalVariables).toHaveLength(2);
+      expect(world.externalVariables).toEqual(expect.arrayContaining([
+        expect.objectContaining({ variableType: "enum", value: "本季度存在明确的交付压力", allowedValues: ["本季度存在明确的交付压力"], provisional: true }),
+        expect.objectContaining({ variableType: "enum", value: "团队预算尚未确认", allowedValues: ["团队预算尚未确认"], provisional: false }),
+      ]));
+    }
+    expect(result.bundle.events.some((event) => event.eventType === "update_external_variable")).toBe(false);
+  }, 30_000);
 });

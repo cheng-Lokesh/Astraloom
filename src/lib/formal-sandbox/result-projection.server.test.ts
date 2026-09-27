@@ -150,6 +150,36 @@ describe("formal sandbox result projection", () => {
     expect(JSON.stringify(result)).not.toContain("private-ref");
   });
 
+  it("explains explicitly modeled pressure and external variables as static without a user rule", () => {
+    const input = bundle();
+    input.inputSnapshot.realityProfileSnapshot.profile.pressures = [{
+      value: "本季度存在明确的交付压力",
+      classification: "assumption",
+      evidenceSummary: "本人提交的待验证情境",
+    }];
+    input.inputSnapshot.realityProfileSnapshot.profile.externalVariables = [{
+      value: "团队预算尚未确认",
+      classification: "fact",
+      evidenceSummary: "本人记录的当前状态",
+    }];
+    Object.assign(input.worldSnapshots[0], {
+      externalVariables: [
+        { id: "world_variable_v2_pressure", variableType: "enum", key: "pressure-1", value: "本季度存在明确的交付压力", allowedValues: ["本季度存在明确的交付压力"], provisional: true },
+        { id: "world_variable_v2_external", variableType: "enum", key: "external-variable-1", value: "团队预算尚未确认", allowedValues: ["团队预算尚未确认"], provisional: false },
+      ],
+    });
+
+    const result = projectFormalSandboxResult(input);
+
+    expect(result?.realityProfile).toMatchObject({
+      worldVariables: [
+        { key: "world-variable-1", category: "pressure", label: "压力", value: "本季度存在明确的交付压力", classification: "assumption", state: "static_without_explicit_rule" },
+        { key: "world-variable-2", category: "external_variable", label: "外部变量", value: "团队预算尚未确认", classification: "fact", state: "static_without_explicit_rule" },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("world_variable_v2_");
+  });
+
   it("fails closed when a Claim references a missing Event or Report claim", () => {
     expect(projectFormalSandboxResult(bundle({ claims: [{ id: "claim_v2_safe_claim", statement: "Conditional", uncertaintyStatement: "Uncertain", simulationEventIds: ["world_event_v2_missing"] }] }))).toBeNull();
     expect(projectFormalSandboxResult(bundle({ report: { claimIds: ["claim_v2_missing"] } }))).toBeNull();
