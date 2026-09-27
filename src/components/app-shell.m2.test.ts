@@ -39,4 +39,15 @@ describe("My Sandbox navigation contract", () => {
     expect(source).not.toContain("min-h-10");
     expect(languageSwitcher).not.toContain("min-h-9");
   });
+
+  it("gives mobile flow navigation its own horizontally scrollable row", async () => {
+    const source = await readFile(
+      path.join(root, "src/components/app-shell.tsx"),
+      "utf8",
+    );
+
+    expect(source).toMatch(/aria-label="Flow"[\s\S]*?overflow-x-auto/);
+    expect(source).toContain("shrink-0 px-3 text-xs sm:text-sm");
+    expect(source).toContain("max-w-7xl items-center gap-1 overflow-x-auto");
+  });
 });
