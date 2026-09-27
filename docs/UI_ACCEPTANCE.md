@@ -80,6 +80,12 @@ Must show, from the account API only:
 - Explicit `尚未建模` labels for life climate, resources, constraints, next
   change, and any Reality detail without an authoritative database field.
 - A Reality Profile ledger that visibly separates `事实`, `假设`, and `未知项`.
+
+- Authenticated users can open `/app/reality-profile` from My Sandbox, review
+  life climate, resources, and constraints individually, label each as fact,
+  assumption, or explicitly unknown, and save with recoverable error and
+  conflict feedback. The page must not show raw scenario text, evidence URLs,
+  IDs, trace data, or diagnostic/deterministic wording.
   Facts must name their safe account-backed basis; absent persisted assumptions
   stay empty rather than being inferred. A World State panel may show only the
   current formal-chain stage and allowlisted Change Node labels with a safe

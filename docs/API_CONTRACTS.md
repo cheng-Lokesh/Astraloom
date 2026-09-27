@@ -16,6 +16,16 @@ Each non-static API must include:
 
 ## Target API Routes
 
+## Reality Profile API
+
+- `GET /api/reality-profile` requires a session and returns only the owner’s
+  newest submitted/frozen Seed profile. It returns `401` without a session and
+  never accepts an owner or Seed identifier from the request.
+- `PUT /api/reality-profile` accepts the typed three-field profile and its
+  revision. It validates with Zod, scopes storage to the current formal Seed,
+  and uses the revision as an optimistic concurrency guard. A conflicting
+  update returns `409`; invalid input returns `400` without persistence.
+
 ### `/api/seed-context`
 
 Purpose: Create, read, and update simulation seed context.

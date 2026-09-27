@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildRealityWorldProjection, realityProfileDraftSchema, type RealityProfileDraft } from "@/lib/reality-profile/profile";
 
 const hrefSchema = z.string().regex(/^(?:\/app\/|\/login$)/).max(500);
 const notModeledSchema = z.object({ state: z.literal("not_modeled") }).strict();
@@ -62,11 +63,12 @@ export type SandboxOverviewSource = {
   historyCount: number;
   hasFeedback: boolean;
   changeNodeTypes?: Array<z.infer<typeof changeNodeTypeSchema>>;
+  realityProfile?: RealityProfileDraft | null;
 };
 
 export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOverview {
   const noModel = { state: "not_modeled" as const };
-  const reality = {
+  const fallbackReality = {
     facts: source.seed?.submitted ? [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }] : [],
     assumptions: [],
     unknowns: [{ label: "人生气候" }, { label: "资源" }, { label: "约束" }],
@@ -76,6 +78,7 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
     evidenceSummary: "来自当前正式运行的受控模拟事件",
   }));
   const worldState = source.runningRun ? "running" : source.latestCompletedRun ? "completed" : source.graph.exists && source.graph.locked ? "locked_graph" : source.immutableAgentsCount ? "agents_ready" : source.confirmedPeopleCount ? "people_confirmed" : source.seed?.submitted ? "submitted" : "not_started";
+  const profileProjection = source.realityProfile ? buildRealityWorldProjection(source.realityProfile, { graphLocked: source.graph.locked, latestRunEvent: (source.changeNodeTypes?.[0] ?? null) === "graph_freeze" ? null : (source.changeNodeTypes?.[0] ?? null) }) : null;
   const action = !source.authenticated
     ? { kind: "sign_in" as const, href: "/login" }
     : !source.seed?.submitted
@@ -97,8 +100,8 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
   return sandboxOverviewSchema.parse({
     authenticated: source.authenticated,
     seed: { state: source.seed?.submitted ? "submitted" : "not_started" },
-    reality,
-    world: { state: worldState, changeNodes, resources: noModel, constraints: noModel },
+    reality: profileProjection?.reality ?? fallbackReality,
+    world: { state: profileProjection?.world.state ?? worldState, changeNodes: profileProjection?.world.changeNodes ?? changeNodes, resources: noModel, constraints: noModel },
     people: { confirmedCount: source.confirmedPeopleCount, total: source.immutableAgentsCount, items: source.peopleItems ?? [] },
     agents: { immutableCount: source.immutableAgentsCount },
     graph: source.graph,
@@ -137,6 +140,12 @@ const relationRowSchema = z.object({
   relationship_type: z.string().min(1).max(120),
 }).strict();
 const eventRowSchema = z.object({ event_type: changeNodeTypeSchema }).strict();
+const profileRowSchema = z.object({ life_climate_value: z.string().nullable(), life_climate_classification: z.enum(["fact", "assumption", "unknown"]), life_climate_evidence_summary: z.string().nullable(), resources_value: z.string().nullable(), resources_classification: z.enum(["fact", "assumption", "unknown"]), resources_evidence_summary: z.string().nullable(), constraints_value: z.string().nullable(), constraints_classification: z.enum(["fact", "assumption", "unknown"]), constraints_evidence_summary: z.string().nullable(), revision: z.number().int().nonnegative() }).strict();
+
+function profileFromRow(row: unknown): RealityProfileDraft {
+  const record = profileRowSchema.parse(row);
+  return realityProfileDraftSchema.parse({ lifeClimate: { value: record.life_climate_value ?? "", classification: record.life_climate_classification, evidenceSummary: record.life_climate_evidence_summary ?? "明确未知" }, resources: { value: record.resources_value ?? "", classification: record.resources_classification, evidenceSummary: record.resources_evidence_summary ?? "明确未知" }, constraints: { value: record.constraints_value ?? "", classification: record.constraints_classification, evidenceSummary: record.constraints_evidence_summary ?? "明确未知" }, revision: record.revision });
+}
 
 const unsafeVisibleText = /[\u0000-\u001f\u007f]|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:token|secret|password|api[_ -]?key)\b/i;
 
@@ -195,13 +204,14 @@ export async function readSandboxOverview(supabase: SupabaseClient, ownerId: str
   const seed = seedRecord ? seedSchema.parse(seedRecord) : null;
   if (!seed) return buildSandboxOverview({ authenticated: true, seed: null, confirmedPeopleCount: 0, immutableAgentsCount: 0, graph: { exists: false, locked: false, edgeCount: 0 }, runningRun: null, latestCompletedRun: null, historyCount: 0, hasFeedback: false });
 
-  const [{ count: confirmedPeopleCount, error: peopleError }, { data: snapshotRecord, error: snapshotError }, { data: graphRecord, error: graphError }, { count: historyCount, error: historyError }] = await Promise.all([
+  const [{ count: confirmedPeopleCount, error: peopleError }, { data: snapshotRecord, error: snapshotError }, { data: graphRecord, error: graphError }, { count: historyCount, error: historyError }, { data: profileRecord, error: profileError }] = await Promise.all([
     supabase.from("key_people").select("id", { count: "exact", head: true }).eq("user_id", ownerId).eq("seed_context_id", seed.id).eq("status", "confirmed"),
     supabase.from("agent_profile_snapshots").select("id").eq("user_id", ownerId).eq("seed_context_id", seed.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("relation_graph_snapshots").select("id,agent_snapshot_id,graph_locked").eq("user_id", ownerId).eq("seed_context_id", seed.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("simulations").select("id", { count: "exact", head: true }).eq("user_id", ownerId).eq("execution_version", "formal-account-sandbox-m1-v1"),
+    supabase.from("reality_profiles").select("life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,revision").eq("user_id", ownerId).eq("seed_context_id", seed.id).maybeSingle(),
   ]);
-  if (peopleError || snapshotError || graphError || historyError) throw new Error("sandbox_overview_read_failed");
+  if (peopleError || snapshotError || graphError || historyError || profileError) throw new Error("sandbox_overview_read_failed");
 
   const snapshot = snapshotRecord ? snapshotSchema.parse(snapshotRecord) : null;
   const graph = graphRecord ? graphSchema.parse(graphRecord) : null;
@@ -234,6 +244,6 @@ export async function readSandboxOverview(supabase: SupabaseClient, ownerId: str
     graph: { exists: Boolean(graph), locked: graph?.graph_locked ?? false, edgeCount: edgeCount ?? 0 }, relationItems: summaries.relationItems,
     runningRun: running ? { href: runHref("running", running.id) } : null,
     latestCompletedRun: completed?.completed_at ? { status: "completed", completedAt: completed.completed_at, href: runHref("result", completed.id) } : null,
-    historyCount: historyCount ?? 0, hasFeedback: Boolean(feedbackRecord), changeNodeTypes,
+    historyCount: historyCount ?? 0, hasFeedback: Boolean(feedbackRecord), changeNodeTypes, realityProfile: profileRecord ? profileFromRow(profileRecord) : null,
   });
 }
