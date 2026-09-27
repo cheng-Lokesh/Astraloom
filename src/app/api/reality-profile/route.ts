@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -13,18 +14,22 @@ const rowSchema = z.object({
   constraints_value: z.string().nullable(), constraints_classification: z.enum(["fact", "assumption", "unknown"]), constraints_evidence_summary: z.string().nullable(), revision: z.number().int().nonnegative(),
 }).strict();
 
-function failure(status: number, errorCode: string) {
-  return NextResponse.json({ ok: false, error_code: errorCode }, { status, headers: { "Cache-Control": "no-store" } });
+function failure(status: number, errorCode: string, traceId: string) {
+  return NextResponse.json({ ok: false, error_code: errorCode, trace_id: traceId }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-async function ownerAndSeed() {
+type OwnerSeedContext =
+  | { ok: false; status: 401 | 500; errorCode: string }
+  | { ok: true; supabase: SupabaseClient; ownerId: string; seedId: string | null };
+
+async function ownerAndSeed(): Promise<OwnerSeedContext> {
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return null;
+  if (!supabase) return { ok: false, status: 500, errorCode: "persistence_failed" };
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user?.id) return null;
+  if (!auth.user?.id) return { ok: false, status: 401, errorCode: "unauthenticated" };
   const { data: seed, error } = await supabase.from("seed_contexts").select("id").eq("user_id", auth.user.id).eq("status", "submitted").not("submitted_at", "is", null).not("frozen_at", "is", null).order("submitted_at", { ascending: false }).limit(1).maybeSingle();
   if (error) throw new Error("profile_seed_read_failed");
-  return seed ? { supabase, ownerId: auth.user.id, seedId: seed.id } : { supabase, ownerId: auth.user.id, seedId: null };
+  return { ok: true, supabase, ownerId: auth.user.id, seedId: seed?.id ?? null };
 }
 
 function profileFromRow(row: unknown) {
@@ -52,32 +57,37 @@ function databaseFields(profile: z.infer<typeof realityProfileDraftSchema>) {
 }
 
 export async function GET() {
+  const traceId = `reality_profile_${crypto.randomUUID()}`;
   try {
     const context = await ownerAndSeed();
-    if (!context) return failure(401, "unauthenticated");
-    if (!context.seedId) return failure(409, "current_seed_required");
+    if (!context.ok) return failure(context.status, context.errorCode, traceId);
+    if (!context.seedId) return failure(409, "current_seed_required", traceId);
     const { data, error } = await context.supabase.from("reality_profiles").select("life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,revision").eq("user_id", context.ownerId).eq("seed_context_id", context.seedId).maybeSingle();
     if (error) throw error;
-    return NextResponse.json({ ok: true, profile: data ? profileFromRow(data) : null }, { headers: { "Cache-Control": "no-store" } });
-  } catch { return failure(500, "persistence_failed"); }
+    return NextResponse.json({ ok: true, error_code: null, trace_id: traceId, profile: data ? profileFromRow(data) : null }, { headers: { "Cache-Control": "no-store" } });
+  } catch { return failure(500, "persistence_failed", traceId); }
 }
 
 export async function PUT(request: Request) {
+  const traceId = `reality_profile_${crypto.randomUUID()}`;
   try {
     const context = await ownerAndSeed();
-    if (!context) return failure(401, "unauthenticated");
-    if (!context.seedId) return failure(409, "current_seed_required");
-    const body = realityProfileDraftSchema.safeParse(await request.json());
-    if (!body.success) return failure(400, "invalid_reality_profile");
+    if (!context.ok) return failure(context.status, context.errorCode, traceId);
+    if (!context.seedId) return failure(409, "current_seed_required", traceId);
+    let input: unknown;
+    try { input = await request.json(); } catch { return failure(400, "invalid_reality_profile", traceId); }
+    const body = realityProfileDraftSchema.safeParse(input);
+    if (!body.success) return failure(400, "invalid_reality_profile", traceId);
     const fields = databaseFields(body.data);
     const { data: updated, error } = await context.supabase.from("reality_profiles").update({ ...fields, revision: body.data.revision + 1 }).eq("user_id", context.ownerId).eq("seed_context_id", context.seedId).eq("revision", body.data.revision).select("life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,revision").maybeSingle();
     if (error) throw error;
-    if (updated) return NextResponse.json({ ok: true, profile: profileFromRow(updated) }, { headers: { "Cache-Control": "no-store" } });
+    if (updated) return NextResponse.json({ ok: true, error_code: null, trace_id: traceId, profile: profileFromRow(updated) }, { headers: { "Cache-Control": "no-store" } });
     const { data: existing, error: readError } = await context.supabase.from("reality_profiles").select("revision").eq("user_id", context.ownerId).eq("seed_context_id", context.seedId).maybeSingle();
     if (readError) throw readError;
-    if (existing) return failure(409, "reality_profile_conflict");
+    if (existing) return failure(409, "reality_profile_conflict", traceId);
     const { data: inserted, error: insertError } = await context.supabase.from("reality_profiles").insert({ ...fields, user_id: context.ownerId, seed_context_id: context.seedId, revision: 1 }).select("life_climate_value,life_climate_classification,life_climate_evidence_summary,resources_value,resources_classification,resources_evidence_summary,constraints_value,constraints_classification,constraints_evidence_summary,revision").single();
+    if (insertError?.code === "23505") return failure(409, "reality_profile_conflict", traceId);
     if (insertError) throw insertError;
-    return NextResponse.json({ ok: true, profile: profileFromRow(inserted) }, { status: 201, headers: { "Cache-Control": "no-store" } });
-  } catch { return failure(500, "persistence_failed"); }
+    return NextResponse.json({ ok: true, error_code: null, trace_id: traceId, profile: profileFromRow(inserted) }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  } catch { return failure(500, "persistence_failed", traceId); }
 }

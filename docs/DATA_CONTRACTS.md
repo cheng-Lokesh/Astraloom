@@ -24,6 +24,10 @@ evidence references, trace keys, or inferred personal attributes. World State
 is a projection of this profile plus the current locked Graph and controlled
 Run events; it never creates a Change Node without such an event.
 
+The profile's composite `(seed_context_id, user_id)` foreign key binds every
+row to the same owner's canonical Seed. RLS permits only authenticated owner
+access; browser grants exclude owner reassignment and deletion.
+
 `reality_intake_drafts.mode` must distinguish `local_assumption`,
 `manual_reality`, and `external_reality`. When no manual or external sources
 exist, downstream reality confidence stays capped and UI copy must not imply

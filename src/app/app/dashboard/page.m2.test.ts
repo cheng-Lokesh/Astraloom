@@ -15,7 +15,7 @@ describe("My Sandbox dashboard behavior", () => {
       running: { exists: false, href: null }, latestCompletedRun: { status: "completed", completedAt: "2026-09-08T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque" },
       history: { count: 1 }, feedback: { exists: true }, lifeClimate: { state: "not_modeled" }, resources: { state: "not_modeled" }, constraints: { state: "not_modeled" }, nextChange: { state: "not_modeled" },
       nextAction: { kind: "start_next_run", href: "/app/new/graph" },
-      world: { state: "locked_graph", changeNodes: [{ label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" }], resources: { state: "not_modeled" }, constraints: { state: "not_modeled" } },
+      world: { state: "locked_graph", changeNodes: [{ label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" }], resources: [{ label: "可协调的支持有限", evidenceSummary: "仍待复核" }], constraints: [] },
     } }));
 
     expect(html).toContain("当前人物");
@@ -28,6 +28,7 @@ describe("My Sandbox dashboard behavior", () => {
     expect(html).toContain("World State");
     expect(html).toContain("事实");
     expect(html).toContain("协作变化");
+    expect(html).toContain("可协调的支持有限");
     expect(html.match(/href="\/app\/new\/graph"/g)).toHaveLength(1);
     expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
   });

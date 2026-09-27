@@ -37,4 +37,16 @@ describe("Reality Profile", () => {
       revision: 0,
     })).toThrow();
   });
+
+  it("preserves each classification when separate fields share the same description", () => {
+    const projection = buildRealityWorldProjection({
+      lifeClimate: { value: "支持有限", classification: "fact", evidenceSummary: "已确认的当前情况" },
+      resources: { value: "支持有限", classification: "assumption", evidenceSummary: "需要后续复核" },
+      constraints: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      revision: 1,
+    }, { graphLocked: false, latestRunEvent: null });
+
+    expect(projection.reality.facts).toEqual([{ label: "支持有限", evidenceSummary: "已确认的当前情况" }]);
+    expect(projection.reality.assumptions).toEqual([{ label: "支持有限", evidenceSummary: "需要后续复核" }]);
+  });
 });

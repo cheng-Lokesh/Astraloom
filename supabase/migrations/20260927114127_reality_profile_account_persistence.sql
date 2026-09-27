@@ -3,7 +3,7 @@
 create table public.reality_profiles (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  seed_context_id uuid not null references public.seed_contexts(id) on delete cascade,
+  seed_context_id uuid not null,
   life_climate_value text,
   life_climate_classification text not null check (life_climate_classification in ('fact', 'assumption', 'unknown')),
   life_climate_evidence_summary text,
@@ -16,6 +16,9 @@ create table public.reality_profiles (
   revision integer not null default 0 check (revision >= 0),
   created_at timestamptz not null default clock_timestamp(),
   updated_at timestamptz not null default clock_timestamp(),
+  constraint reality_profiles_owner_seed_context_fkey
+    foreign key (seed_context_id, user_id)
+    references public.seed_contexts(id, user_id) on delete cascade,
   unique (user_id, seed_context_id),
   check (
     (life_climate_classification = 'unknown' and life_climate_value is null and life_climate_evidence_summary = '明确未知')
@@ -35,7 +38,24 @@ create index reality_profiles_owner_seed_idx on public.reality_profiles(user_id,
 
 alter table public.reality_profiles enable row level security;
 revoke all on public.reality_profiles from public, anon;
-grant select, insert, update on public.reality_profiles to authenticated;
+revoke all on public.reality_profiles from authenticated;
+grant select (
+  user_id, seed_context_id,
+  life_climate_value, life_climate_classification, life_climate_evidence_summary,
+  resources_value, resources_classification, resources_evidence_summary,
+  constraints_value, constraints_classification, constraints_evidence_summary, revision
+) on public.reality_profiles to authenticated;
+grant insert (
+  user_id, seed_context_id,
+  life_climate_value, life_climate_classification, life_climate_evidence_summary,
+  resources_value, resources_classification, resources_evidence_summary,
+  constraints_value, constraints_classification, constraints_evidence_summary, revision
+) on public.reality_profiles to authenticated;
+grant update (
+  life_climate_value, life_climate_classification, life_climate_evidence_summary,
+  resources_value, resources_classification, resources_evidence_summary,
+  constraints_value, constraints_classification, constraints_evidence_summary, revision
+) on public.reality_profiles to authenticated;
 
 create policy "reality_profiles_select_own" on public.reality_profiles
   for select to authenticated using ((select auth.uid()) = user_id);

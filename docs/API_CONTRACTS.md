@@ -16,15 +16,18 @@ Each non-static API must include:
 
 ## Target API Routes
 
-## Reality Profile API
+### Reality Profile API
 
 - `GET /api/reality-profile` requires a session and returns only the owner’s
-  newest submitted/frozen Seed profile. It returns `401` without a session and
-  never accepts an owner or Seed identifier from the request.
+  newest submitted/frozen Seed profile. It returns `401` without a session,
+  `409` when no formal Seed exists, and never accepts an owner or Seed
+  identifier from the request.
 - `PUT /api/reality-profile` accepts the typed three-field profile and its
   revision. It validates with Zod, scopes storage to the current formal Seed,
   and uses the revision as an optimistic concurrency guard. A conflicting
-  update returns `409`; invalid input returns `400` without persistence.
+  update returns `409`; invalid or malformed input returns `400` without
+  persistence. Both endpoints return a correlation `trace_id`; the page does
+  not render it or return row identifiers.
 
 ### `/api/seed-context`
 
@@ -552,16 +555,17 @@ Projection:
   bodies, or database ids as display fields.
 - The response is Zod-validated before it is returned. Invalid server rows fail
   closed instead of becoming a browser fallback.
-- The safe Reality Profile returns a ledger with separate facts, assumptions,
-  and unknowns. Facts are limited to account-backed formal-chain status;
-  assumptions are empty until a persisted assumption ledger is authorized; life
-  climate, resources, and constraints remain explicit unknowns. No repository,
-  localStorage, static-case, or Career-demo value may fill these fields.
+- The Reality Profile ledger returns separate facts, assumptions, and
+  unknowns from the current owner's persisted formal-Seed profile. Life
+  climate, resources, and constraints each carry their own user-selected
+  classification and safe evidence summary. No repository, localStorage,
+  static-case, or Career-demo value may fill these fields.
 - The safe World State returns only a current-chain stage and up to three
   allowlisted Event type labels from the current completed formal Run. Each
   Change Node has the fixed evidence summary "来自当前正式运行的受控模拟事件";
-  it never returns event ids, evidence refs/bodies, trace ids, raw summaries,
-  scenario text, emails, or internal keys.
+  resources and constraints are projected only from that Reality Profile. It
+  never returns event ids, evidence refs/bodies, trace ids, raw summaries,
+  scenario text, emails, or internal keys in the page.
 
 ### Account exploration routes
 

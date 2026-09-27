@@ -46,8 +46,8 @@ const eventLabels: Record<Exclude<LatestRunEvent, null>, string> = {
 };
 
 function ledgerFor(field: z.infer<typeof profileFieldSchema>, label: string) {
-  if (field.classification === "unknown") return { item: null, unknown: { label } as UnknownItem };
-  return { item: { label: field.value, evidenceSummary: field.evidenceSummary } as LedgerItem, unknown: null };
+  if (field.classification === "unknown") return { classification: field.classification, item: null, unknown: { label } as UnknownItem };
+  return { classification: field.classification, item: { label: field.value, evidenceSummary: field.evidenceSummary } as LedgerItem, unknown: null };
 }
 
 export function buildRealityWorldProjection(draft: RealityProfileDraft, state: { graphLocked: boolean; latestRunEvent: LatestRunEvent }) {
@@ -56,8 +56,8 @@ export function buildRealityWorldProjection(draft: RealityProfileDraft, state: {
   const resources = ledgerFor(parsed.resources, "资源");
   const constraints = ledgerFor(parsed.constraints, "约束");
   const fields = [climate, resources, constraints];
-  const facts = fields.flatMap(({ item }) => item && [item]).filter((item): item is LedgerItem => Boolean(item && [parsed.lifeClimate, parsed.resources, parsed.constraints].some(field => field.value === item.label && field.classification === "fact")));
-  const assumptions = fields.flatMap(({ item }) => item && [item]).filter((item): item is LedgerItem => Boolean(item && [parsed.lifeClimate, parsed.resources, parsed.constraints].some(field => field.value === item.label && field.classification === "assumption")));
+  const facts = fields.filter(field => field.classification === "fact").flatMap(({ item }) => item ? [item] : []);
+  const assumptions = fields.filter(field => field.classification === "assumption").flatMap(({ item }) => item ? [item] : []);
   const changeNodes = state.graphLocked && state.latestRunEvent ? [{ label: eventLabels[state.latestRunEvent], evidenceSummary: "来自当前正式运行的受控模拟事件" }] : [];
 
   return {
