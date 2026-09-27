@@ -80,6 +80,8 @@ Must show, from the account API only:
 - Explicit `尚未建模` labels for life climate, resources, constraints, next
   change, and any Reality detail without an authoritative database field.
 - A Reality Profile ledger that visibly separates `事实`, `假设`, and `未知项`.
+- People are labeled by their stored role (`本人`, `平行自我`, or `关键人物`);
+  relationship endpoints use member display labels, never internal ordinal keys.
 
 - Authenticated users can open `/app/reality-profile` from My Sandbox, review
   life climate, resources, and constraints individually, and add or remove

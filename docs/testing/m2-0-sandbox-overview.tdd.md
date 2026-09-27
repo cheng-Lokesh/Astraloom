@@ -76,3 +76,14 @@ coverage was 89.74%; overview source coverage remains 89.18% branches. The
 overview envelope continues to return a fresh HTTP response
 `trace_id`; it does not project persisted trace ids, identities, or raw
 scenario fields.
+
+## Member roles and relationship display (functional candidate)
+
+The dashboard renders `user_core`, `user_variant`, and `npc` as `本人`,
+`平行自我`, and `关键人物`; relationship endpoints resolve to the saved
+member labels instead of exposing internal person/relation keys.
+
+| Stage | Commit | Command | Exit | Evidence |
+| --- | --- | --- | ---: | --- |
+| RED | `81b4101` | `npm test -- src/app/app/dashboard/page.m2.test.ts` | 1 | Dashboard assertions failed on the missing member heading/role labels and exposed ordinal identifiers. |
+| GREEN | current candidate | same command | 0 | 1 file / 2 tests passed. Targeted ESLint, `npm run type-check`, and `npm run build` also passed. This is a focused functional candidate, not final browser or whole-product acceptance. |
