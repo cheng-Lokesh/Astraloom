@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(13);
 
 select has_table('public', 'life_climate_runs', 'Track B runs have a dedicated immutable ledger');
 select has_function('public', 'persist_life_climate_run_b1', array['uuid','uuid','integer','uuid','jsonb','jsonb','text'], 'Track B runs use one versioned server-side writer');
@@ -14,6 +14,23 @@ select ok(not coalesce(has_function_privilege('authenticated', to_regprocedure('
 select ok(coalesce(has_function_privilege('service_role', to_regprocedure('public.persist_life_climate_run_b1(uuid,uuid,integer,uuid,jsonb,jsonb,text)'), 'EXECUTE'), false), 'the server-only service role can call the writer');
 select ok(coalesce(has_table_privilege('service_role', to_regclass('public.life_climate_runs'), 'SELECT') and has_table_privilege('service_role', to_regclass('public.life_climate_runs'), 'INSERT'), false), 'the server writer can read and append Track B records');
 select ok(not coalesce(has_table_privilege('service_role', to_regclass('public.life_climate_runs'), 'UPDATE') or has_table_privilege('service_role', to_regclass('public.life_climate_runs'), 'DELETE'), false), 'the server role has no update or delete privilege for Track B history');
+
+set local role service_role;
+select throws_ok(
+  $$ select * from public.persist_life_climate_run_b1(
+    '00000000-0000-4000-8000-00000000b501',
+    '00000000-0000-4000-8000-00000000b502',
+    0,
+    '00000000-0000-4000-8000-00000000b503',
+    '{}'::jsonb,
+    '{}'::jsonb,
+    'test-trace'
+  ) $$,
+  'P0001',
+  'invalid_run_input',
+  'the RPC rejects malformed input with a stable validation error'
+);
+reset role;
 
 select * from finish();
 rollback;
