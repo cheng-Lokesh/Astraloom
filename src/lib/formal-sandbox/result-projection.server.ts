@@ -96,9 +96,8 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const frozenSeedSummary = typeof bundle.inputSnapshot.seedSummary === "string" ? bundle.inputSnapshot.seedSummary.trim() : "";
   const visibleEvidenceItems = evidenceItems.filter((item) => {
     const claimKey = typeof item.claimKey === "string" ? item.claimKey : "";
-    return claimKey !== "formal.seed.summary"
-      && !claimKey.startsWith("reality.profile.")
-      && (!frozenSeedSummary || item.statement !== frozenSeedSummary);
+    return !claimKey.startsWith("reality.profile.")
+      && (claimKey === "formal.seed.summary" || !frozenSeedSummary || item.statement !== frozenSeedSummary);
   });
   const visibleRunAssumptions = (bundle.sourceBoundary?.assumptionLedger?.assumptions ?? []).filter((item) => {
     const category = typeof item.category === "string" ? item.category : "";
@@ -209,7 +208,11 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const projection = {
     participants: bundle.inputSnapshot.agents.map((agent, index) => ({ key: participantKeys[index]!, label: agent.displayName, role: agent.actorType === "self" ? "scenario decision maker" as const : "frozen participant" as const })),
     relationships: bundle.inputSnapshot.edges.map((edge, index) => ({ key: relationshipKeys[index]!, fromPersonKey: personKeyById.get(edge.fromAgentId)!, toPersonKey: personKeyById.get(edge.toAgentId)!, label: edge.relationshipType })),
-    facts: visibleEvidenceItems.map((fact, index) => ({ key: ordinal("fact", index), statement: fact.statement, boundary: "user_provided_fact" as const })),
+    facts: visibleEvidenceItems.map((fact, index) => ({
+      key: ordinal("fact", index),
+      statement: fact.claimKey === "formal.seed.summary" ? "本次运行使用已提交的 Seed 作为 Reality evidence；情境原文未展示。" : fact.statement,
+      boundary: "user_provided_fact" as const,
+    })),
     assumptions: visibleRunAssumptions.map((assumption, index) => ({ key: ordinal("assumption", index), statement: assumption.statement, boundary: "system_assumption" as const })),
     realityProfile,
     steps: bundle.events.map((event, index) => ({ key: eventKeyById.get(event.id)!, order: index + 1, label: event.eventType.replaceAll("_", " "), kind: "sandbox_simulation" as const, boundary: "simulation_step" as const, participantKeys: eventLinks.get(event.id)!.participantKeys, relationshipKeys: eventLinks.get(event.id)!.relationshipKeys })),
