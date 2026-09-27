@@ -29,6 +29,7 @@ const projection: FormalSandboxResultProjection = {
     unknowns: [{ key: "unknown-1", label: "约束" }],
     structuredResources: [],
     structuredConstraints: [],
+    worldVariables: [],
   },
   resourceChanges: [],
   steps: [{ key: "step-1", order: 1, label: "record observation", kind: "sandbox_simulation", boundary: "simulation_step", participantKeys: ["person-1", "person-2"], relationshipKeys: ["relation-1"] }],

@@ -78,6 +78,15 @@ describe("formal sandbox result projection", () => {
       ],
       structuredResources: [],
       structuredConstraints: [],
+      worldVariables: [{
+        key: "world-variable-1",
+        category: "pressure",
+        label: "压力",
+        value: "未来日程存在不确定性",
+        classification: "assumption",
+        evidenceSummary: "本人明确提交的待验证假设",
+        state: "not_recorded",
+      }],
     });
     expect(JSON.stringify(result)).not.toMatch(new RegExp(`${ids.owner}|${ids.seed}|${realityProfileSnapshot.profileId}|private-profile-evidence-ref|Private raw scenario|secret credential`));
   });
@@ -134,7 +143,7 @@ describe("formal sandbox result projection", () => {
     expect(realityProfileSnapshot).toBeDefined();
     const legacy = { ...current, inputSnapshot: legacyInputSnapshot };
     const result = projectFormalSandboxResult(legacy);
-    expect(result?.realityProfile).toEqual({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [] });
+    expect(result?.realityProfile).toEqual({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [], worldVariables: [] });
   });
 
   it("projects only frozen inputs and direct Claim-to-step evidence through ordinal UI keys", () => {
@@ -178,6 +187,29 @@ describe("formal sandbox result projection", () => {
       ],
     });
     expect(JSON.stringify(result)).not.toContain("world_variable_v2_");
+  });
+
+  it("fails closed if a frozen pressure or external variable changes in a later World snapshot", () => {
+    const input = bundle();
+    input.inputSnapshot.realityProfileSnapshot.profile.pressures = [{
+      value: "本季度存在明确的交付压力",
+      classification: "assumption",
+      evidenceSummary: "本人提交的待验证情境",
+    }];
+    const staticVariable = {
+      id: "world_variable_v2_pressure",
+      variableType: "enum" as const,
+      key: "pressure-1",
+      value: "本季度存在明确的交付压力",
+      allowedValues: ["本季度存在明确的交付压力"],
+      provisional: true,
+    };
+    Object.assign(input.worldSnapshots[0], { externalVariables: [staticVariable] });
+    const laterSnapshot = structuredClone(input.worldSnapshots[0]);
+    Object.assign(laterSnapshot, { externalVariables: [{ ...staticVariable, value: "压力已自动缓解" }] });
+    input.worldSnapshots.push(laterSnapshot);
+
+    expect(projectFormalSandboxResult(input)).toBeNull();
   });
 
   it("fails closed when a Claim references a missing Event or Report claim", () => {

@@ -33,6 +33,7 @@ export function FeedbackPanel({ state, onCommentChange, onSave }: { state: Feedb
 }
 
 export function FrozenRealityProfileCard({ profile }: { profile: FormalSandboxResultProjection["realityProfile"] }) {
+  const worldVariables = profile.worldVariables;
   return <SurfaceCard className="mt-8 p-5">
     <h2>本次运行冻结的 Reality Profile</h2>
     {profile.status === "frozen" ? <p className="mt-2 text-sm">Revision {profile.revision}</p> : <p className="mt-2 text-sm">此历史 Run 未记录 Reality Profile 快照。</p>}
@@ -45,6 +46,7 @@ export function FrozenRealityProfileCard({ profile }: { profile: FormalSandboxRe
       <section aria-labelledby="run-structured-resources"><h3 id="run-structured-resources">冻结的结构化资源</h3>{profile.structuredResources.length ? profile.structuredResources.map((item) => <div key={item.key} className="mt-3"><p><strong>{item.label}</strong> · {item.available} {item.unit} · {item.classification === "fact" ? "事实" : "模拟假设"}</p><p className="text-sm">区间 {item.minimum}–{item.maximum} {item.unit}{item.usePerTick === null ? " · 未设资源变化规则" : ` · 每次受控行动变化 ${item.usePerTick} ${item.unit}`}</p><p className="text-sm">依据：{item.evidenceSummary}</p></div>) : <p className="mt-2 text-sm">此 Run 没有冻结结构化资源输入。</p>}</section>
       <section aria-labelledby="run-structured-constraints"><h3 id="run-structured-constraints">冻结的时间限制</h3>{profile.structuredConstraints.length ? profile.structuredConstraints.map((item) => <div key={item.key} className="mt-3"><p><strong>{item.label}</strong> · {item.resourceLabel}</p><p className="text-sm">{new Date(item.rule.value).toLocaleString()} 之前 · {item.classification === "fact" ? "事实" : "模拟假设"}</p><p className="text-sm">依据：{item.evidenceSummary}</p></div>) : <p className="mt-2 text-sm">此 Run 没有冻结明确的时间限制。</p>}</section>
     </div>
+    <section aria-labelledby="run-world-variables" className="mt-6 border-t border-white/10 pt-5"><h3 id="run-world-variables">进入本次模拟的压力与外部变量</h3>{worldVariables.length ? worldVariables.map((item) => <div key={item.key} className="mt-3"><p><strong>{item.label}：</strong>{item.value} · {item.classification === "fact" ? "事实" : "模拟假设"}</p><p className="text-sm">依据：{item.evidenceSummary}</p><p className="text-sm">{item.state === "static_without_explicit_rule" ? "未提供变化规则，保持静态" : "此历史 Run 未记录该变量是否进入 World，状态未记录"}</p></div>) : <p className="mt-2 text-sm">没有明确分类的压力或外部变量进入本次模拟。</p>}</section>
   </SurfaceCard>;
 }
 

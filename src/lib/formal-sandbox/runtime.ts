@@ -11,6 +11,7 @@ import {
   type WorldConstraintIdV2,
   type WorldEntityIdV2,
   type WorldResourceIdV2,
+  type WorldVariableIdV2,
 } from "@/lib/v2/agent-world/types";
 import { initializeWorldV2 } from "@/lib/v2/agent-world/world-initializer";
 import { buildClaimsV2, buildClaimsReportV2 } from "@/lib/v2/claims-reports";
@@ -267,6 +268,23 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
         ...(resource.usePerTick === null ? [] : [assumptionIdFor(`reality_profile_world_rate_${resource.key}`)]),
       ],
     ]));
+    const modeledProfileVariables = profileEntries.filter(({ key, field }) =>
+      (key.startsWith("pressures.") || key.startsWith("externalVariables.")) && field.classification !== "unknown",
+    );
+    const profileVariableSpecs = modeledProfileVariables.map(({ key, field }) => ({
+      id: worldIds("world_variable", key) as WorldVariableIdV2,
+      variableType: "enum" as const,
+      key: key.startsWith("pressures.") ? `pressure-${key.slice("pressures.".length)}` : `external-variable-${key.slice("externalVariables.".length)}`,
+      value: field.value,
+      allowedValues: [field.value],
+      provisional: field.classification === "assumption",
+      provenance: {
+        realEvidenceIds: field.classification === "fact" ? [evidenceIdFor(`reality.profile.${key.toLowerCase()}`)] : [],
+        assumptionIds: field.classification === "assumption" ? [assumptionIdFor(`reality_profile_${key}`)] : [],
+        provisional: field.classification === "assumption",
+        visible: true as const,
+      },
+    }));
     const boundary = {
       seedContextId: input.seedContextId,
       schemaVersion: REALITY_BOUNDARY_SCHEMA_VERSION_V2,
@@ -356,7 +374,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
           constraint.classification === "assumption" ? [assumptionIdFor(`reality_profile_world_constraint_${constraint.key}`)] : [],
         ),
       })),
-      externalVariables: [],
+      externalVariables: profileVariableSpecs,
     }, { clock: () => input.startedAt, idFactory: worldIds });
     if (!worldResult.ok) return { ok: false as const, errorCode: "world_initialization_failed" as const };
 

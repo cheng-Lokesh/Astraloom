@@ -26,6 +26,7 @@ describe("formal Run resource result cards", () => {
           evidenceSummary: "本人明确设定的模拟参数",
         }],
         structuredConstraints: [],
+        worldVariables: [],
       },
     }));
 

@@ -36,6 +36,15 @@ export const formalSandboxResultProjectionSchema = z.object({
       classification: z.enum(["fact", "assumption"]),
       evidenceSummary: z.string(),
     }).strict()),
+    worldVariables: z.array(z.object({
+      key: z.string().regex(/^world-variable-[1-9]\d*$/),
+      category: z.enum(["pressure", "external_variable"]),
+      label: z.string(),
+      value: z.string(),
+      classification: z.enum(["fact", "assumption"]),
+      evidenceSummary: z.string(),
+      state: z.enum(["static_without_explicit_rule", "not_recorded"]),
+    }).strict()),
   }).strict(),
   resourceChanges: z.array(z.object({
     key: z.string().regex(/^change-[1-9]\d*$/),

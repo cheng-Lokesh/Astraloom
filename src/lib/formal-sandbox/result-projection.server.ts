@@ -32,12 +32,17 @@ const agentSchema = z.object({ id: reference, displayName: safeText, actorType: 
 const relationSchema = z.object({ id: reference, fromAgentId: reference, toAgentId: reference, relationshipType: safeText, evidenceRefs: z.array(z.string()).min(1) }).passthrough();
 const eventSchema = z.object({ id: reference, eventType: safeText, actorId: reference.optional(), targetEntityIds: z.array(reference).optional(), targetRelationIds: z.array(reference).optional(), causalRealEvidenceIds: z.array(reference).optional(), priorWorldEventIds: z.array(reference).optional() }).passthrough();
 const claimSchema = z.object({ id: reference, statement: safeText, uncertaintyStatement: safeText, simulationEventIds: z.array(reference).min(1), realEvidenceIds: z.array(reference).optional() }).passthrough();
+const worldVariableSnapshotSchema = z.discriminatedUnion("variableType", [
+  z.object({ id: reference, variableType: z.literal("enum"), key: z.string().trim().min(1).max(200), value: safeText, allowedValues: z.array(safeText).min(1).max(16), provisional: z.boolean() }).passthrough(),
+  z.object({ id: reference, variableType: z.literal("number"), key: z.string().trim().min(1).max(200), value: z.number().finite(), unit: safeText, min: z.number().finite(), max: z.number().finite(), provisional: z.boolean() }).passthrough(),
+]);
 const worldSnapshotSchema = z.object({
   agentDefinitions: z.array(z.object({ id: reference, displayName: safeText }).passthrough()).max(50),
   entities: z.array(z.object({ id: reference, agentDefinitionId: reference.optional() }).passthrough()).max(200),
   relations: z.array(z.object({ id: reference, fromEntityId: reference, toEntityId: reference, provenance: z.object({ realEvidenceIds: z.array(reference).optional(), assumptionIds: z.array(reference).optional(), provisional: z.boolean().optional(), visible: z.literal(true).optional() }).passthrough().optional() }).passthrough()).max(500).optional(),
   resources: z.array(z.object({ id: reference, resourceType: z.enum(["time", "budget", "position_availability", "information"]), label: safeText, available: z.number().finite().min(0), unit: safeText, min: z.number().finite().min(0), max: z.number().finite().min(0) }).passthrough()).max(8).optional(),
   constraints: z.array(z.object({ id: reference, constraintType: z.literal("deadline"), target: z.object({ type: z.literal("resource"), id: reference }).strict(), rule: z.object({ kind: z.literal("before_time"), value: z.string().datetime({ offset: true }) }).strict() }).passthrough()).max(8).optional(),
+  externalVariables: z.array(worldVariableSnapshotSchema).max(16).optional(),
 }).passthrough();
 const bundleSchema = z.object({
   inputSnapshot: z.object({ ownerId: z.string().uuid().optional(), seedContextId: z.string().uuid().optional(), realityProfileSnapshot: realityProfileSnapshotSchema.optional(), agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
@@ -68,6 +73,15 @@ export const safeResultProjectionSchema = z.object({
       classification: z.enum(["fact", "assumption"]),
       evidenceSummary: safeText,
     }).strict()).max(8),
+    worldVariables: z.array(z.object({
+      key: z.string().regex(/^world-variable-[1-9]\d*$/),
+      category: z.enum(["pressure", "external_variable"]),
+      label: safeText,
+      value: safeText,
+      classification: z.enum(["fact", "assumption"]),
+      evidenceSummary: safeText,
+      state: z.enum(["static_without_explicit_rule", "not_recorded"]),
+    }).strict()).max(16),
   }).strict(),
   resourceChanges: z.array(z.object({
     key: z.string().regex(/^change-[1-9]\d*$/),
@@ -100,6 +114,56 @@ const provenanceSignature = (value: Record<string, unknown> | undefined) => JSON
   assumptionIds: [...((value?.assumptionIds as string[] | undefined) ?? [])].sort(),
 }));
 
+function projectWorldVariables(
+  entries: ReturnType<typeof listRealityProfileEntries>,
+  snapshots: z.infer<typeof worldSnapshotSchema>[] | undefined,
+) {
+  const profileVariables = entries.filter(({ key, field }) =>
+    (key.startsWith("pressures.") || key.startsWith("externalVariables.")) && field.classification !== "unknown",
+  );
+  const worldVariablesBySnapshot = (snapshots ?? []).map((snapshot) => snapshot.externalVariables ?? []);
+
+  if (profileVariables.length === 0) {
+    return worldVariablesBySnapshot.some((variables) => variables.length > 0) ? null : [];
+  }
+
+  const hasRecordedWorldVariables = worldVariablesBySnapshot.some((variables) => variables.length > 0);
+  if (!hasRecordedWorldVariables) {
+    return profileVariables.map(({ key, label, field }, index) => ({
+      key: ordinal("world-variable", index),
+      category: key.startsWith("pressures.") ? "pressure" as const : "external_variable" as const,
+      label,
+      value: field.value,
+      classification: field.classification as "fact" | "assumption",
+      evidenceSummary: field.evidenceSummary,
+      state: "not_recorded" as const,
+    }));
+  }
+
+  if (worldVariablesBySnapshot.some((variables) => variables.length !== profileVariables.length)) return null;
+  const initialVariables = worldVariablesBySnapshot[0] ?? [];
+  for (let index = 0; index < profileVariables.length; index += 1) {
+    const profileVariable = profileVariables[index]!;
+    const initial = initialVariables[index];
+    if (!initial || initial.variableType !== "enum" || initial.value !== profileVariable.field.value || initial.allowedValues.length !== 1 || initial.allowedValues[0] !== profileVariable.field.value || initial.provisional !== (profileVariable.field.classification === "assumption")) return null;
+    if (!unique(initialVariables.map((variable) => variable.id)) || !unique(initialVariables.map((variable) => variable.key))) return null;
+    for (const variables of worldVariablesBySnapshot.slice(1)) {
+      const later = variables[index];
+      if (!later || later.variableType !== "enum" || later.id !== initial.id || later.key !== initial.key || later.value !== initial.value || later.allowedValues.length !== 1 || later.allowedValues[0] !== initial.allowedValues[0] || later.provisional !== initial.provisional) return null;
+    }
+  }
+
+  return profileVariables.map(({ key, label, field }, index) => ({
+    key: ordinal("world-variable", index),
+    category: key.startsWith("pressures.") ? "pressure" as const : "external_variable" as const,
+    label,
+    value: field.value,
+    classification: field.classification as "fact" | "assumption",
+    evidenceSummary: field.evidenceSummary,
+    state: "static_without_explicit_rule" as const,
+  }));
+}
+
 export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjection | null {
   const parsed = bundleSchema.safeParse(rawBundle);
   if (!parsed.success) return null;
@@ -112,6 +176,8 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const realityProfile = profileSnapshot ? (() => {
     const entries = listRealityProfileEntries(profileSnapshot.profile);
     const worldInputs = profileSnapshot.profile.worldInputs;
+    const worldVariables = projectWorldVariables(entries, bundle.worldSnapshots);
+    if (!worldVariables) return null;
     const resourceLabelByKey = new Map(worldInputs.resources.map((resource) => [resource.key, resource.label]));
     return {
       status: "frozen" as const,
@@ -139,8 +205,10 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
         classification: constraint.classification,
         evidenceSummary: constraint.evidenceSummary,
       })),
+      worldVariables,
     };
-  })() : { status: "not_recorded" as const, revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [] };
+  })() : { status: "not_recorded" as const, revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [], worldVariables: [] };
+  if (!realityProfile) return null;
 
   const agentIds = bundle.inputSnapshot.agents.map((item) => item.id);
   const edgeIds = bundle.inputSnapshot.edges.map((item) => item.id);

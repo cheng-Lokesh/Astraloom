@@ -28,8 +28,8 @@ function projection(realityProfile: FormalSandboxResultProjection["realityProfil
   };
 }
 
-const firstProjection = projection({ status: "frozen", revision: 3, facts: [{ key: "fact-1", label: "生活安排", statement: "每周保留学习时间", evidenceSummary: "用户确认" }], assumptions: [{ key: "assumption-1", label: "项目节奏", statement: "下月可能有变化", evidenceSummary: "明确假设" }], unknowns: [{ key: "unknown-1", label: "资源" }], structuredResources: [], structuredConstraints: [] }, "First outcome");
-const secondProjection = projection({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [] }, "Second outcome");
+const firstProjection = projection({ status: "frozen", revision: 3, facts: [{ key: "fact-1", label: "生活安排", statement: "每周保留学习时间", evidenceSummary: "用户确认" }], assumptions: [{ key: "assumption-1", label: "项目节奏", statement: "下月可能有变化", evidenceSummary: "明确假设" }], unknowns: [{ key: "unknown-1", label: "资源" }], structuredResources: [], structuredConstraints: [], worldVariables: [] }, "First outcome");
+const secondProjection = projection({ status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [], worldVariables: [] }, "Second outcome");
 
 function exported<T>(name: string): T {
   const value = (archive as unknown as Record<string, unknown>)[name];

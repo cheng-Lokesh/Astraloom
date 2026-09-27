@@ -17,12 +17,12 @@ describe("formal Run world-variable result explanation", () => {
     }, {
       worldVariables: [{
         key: "world-variable-1",
-        category: "pressure",
+        category: "pressure" as const,
         label: "压力",
         value: "本季度存在明确的交付压力",
-        classification: "assumption",
+        classification: "assumption" as const,
         evidenceSummary: "本人提交的待验证情境",
-        state: "static_without_explicit_rule",
+        state: "static_without_explicit_rule" as const,
       }],
     });
     const html = renderToStaticMarkup(createElement(FrozenRealityProfileCard, { profile }));
