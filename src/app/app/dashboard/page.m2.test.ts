@@ -21,7 +21,7 @@ describe("My Sandbox dashboard behavior", () => {
       running: { exists: false, href: null }, latestCompletedRun: { status: "completed", completedAt: "2026-09-08T08:00:00.000Z", href: "/app/simulation/result?run_id=opaque" },
       history: { count: 1 }, feedback: { exists: true }, lifeClimate: { state: "not_modeled" }, resources: { state: "not_modeled" }, constraints: { state: "not_modeled" }, nextChange: { state: "not_modeled" },
       nextAction: { kind: "start_next_run", href: "/app/new/graph" },
-      world: { state: "locked_graph", changeNodes: [{ label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" }], resources: [{ label: "可协调的支持有限", evidenceSummary: "仍待复核" }], constraints: [], goals: [], values: [], lifeThemes: [], pressures: [], externalVariables: [] },
+      world: { state: "locked_graph", changeNodes: [{ label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" }], resources: [{ label: "可协调的支持有限", classification: "assumption", evidenceSummary: "仍待复核" }], constraints: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }], goals: [{ label: "已确认目标", classification: "fact", evidenceSummary: "用户确认" }], values: [], lifeThemes: [], pressures: [], externalVariables: [] },
     } }));
 
     expect(html).toContain("当前人物");
@@ -40,6 +40,9 @@ describe("My Sandbox dashboard behavior", () => {
     expect(html).toContain("事实");
     expect(html).toContain("协作变化");
     expect(html).toContain("可协调的支持有限");
+    expect(html).toContain("分类：假设");
+    expect(html).toContain("分类：未知");
+    expect(html).toContain("分类：事实");
     expect(html.match(/href="\/app\/new\/graph"/g)).toHaveLength(1);
     expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
   });

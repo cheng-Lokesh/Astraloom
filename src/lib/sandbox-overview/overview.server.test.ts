@@ -7,6 +7,7 @@ import {
   type SandboxOverview,
   type SandboxOverviewSource,
 } from "./overview.server";
+import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 
 const source = (overrides: Partial<SandboxOverviewSource> = {}): SandboxOverviewSource => ({
   authenticated: true,
@@ -56,20 +57,29 @@ describe("My Sandbox overview projection", () => {
       immutableAgentsCount: 2,
       graph: { exists: true, locked: true, edgeCount: 1 },
       changeNodeTypes: ["cooperation"],
+      realityProfile: {
+        ...createEmptyRealityProfileDraft(1),
+        lifeClimate: { value: "已确认的近况", classification: "fact", evidenceSummary: "用户确认" },
+        resources: { value: "可能的支持", classification: "assumption", evidenceSummary: "等待复核" },
+        goals: [{ value: "完成目标", classification: "fact", evidenceSummary: "用户确认" }],
+      },
     }));
 
     expect(overview.reality.facts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "正式现实情境已提交" }),
+      expect.objectContaining({ label: "已确认的近况" }),
+      expect.objectContaining({ label: "目标：完成目标" }),
     ]));
-    expect(overview.reality.assumptions).toEqual([]);
+    expect(overview.reality.assumptions).toEqual([expect.objectContaining({ label: "可能的支持" })]);
     expect(overview.reality.unknowns).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "人生气候" }),
-      expect.objectContaining({ label: "资源" }),
+      expect.objectContaining({ label: "约束" }),
       expect.objectContaining({ label: "约束" }),
     ]));
     expect(overview.world.changeNodes).toEqual([
       { label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" },
     ]);
+    expect(overview.world.resources).toEqual([{ label: "可能的支持", classification: "assumption", evidenceSummary: "等待复核" }]);
+    expect(overview.world.constraints).toEqual([{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }]);
+    expect(overview.world.goals).toEqual([{ label: "完成目标", classification: "fact", evidenceSummary: "用户确认" }]);
     expect(JSON.stringify(overview)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
     expect(JSON.stringify(overview)).not.toMatch(/evidence_refs|trace_id|raw_context/i);
   });
@@ -96,6 +106,7 @@ describe("My Sandbox overview projection", () => {
 
   it("reads only the supplied owner chain and hides all raw identifiers in a complete account projection", async () => {
     const calls: Array<{ table: string; filters: Array<[string, unknown]> }> = [];
+    const seedOrder: Array<{ column: string; ascending: boolean }> = [];
     const owner = "11111111-1111-4111-8111-111111111111";
     const seedId = "22222222-2222-4222-8222-222222222222";
     const snapshotId = "33333333-3333-4333-8333-333333333333";
@@ -121,7 +132,10 @@ describe("My Sandbox overview projection", () => {
           eq: (name: string, value: unknown) => { filters.push([name, value]); return builder; },
           not: () => builder,
           in: (name: string, value: unknown) => { filters.push([name, value]); return builder; },
-          order: () => builder,
+          order: (column: string, options: { ascending?: boolean }) => {
+            if (table === "seed_contexts") seedOrder.push({ column, ascending: options.ascending ?? true });
+            return builder;
+          },
           limit: () => builder,
           maybeSingle: async () => { calls.push({ table, filters }); return responseFor(table, filters); },
           then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => { calls.push({ table, filters }); return Promise.resolve(responseFor(table, filters)).then(resolve, reject); },
@@ -133,6 +147,7 @@ describe("My Sandbox overview projection", () => {
     const overview = await readSandboxOverview(client as never, owner);
 
     expect(calls.every((call) => call.filters.some(([name, value]) => name === "user_id" && value === owner))).toBe(true);
+    expect(seedOrder).toEqual([{ column: "submitted_at", ascending: false }, { column: "id", ascending: false }]);
     expect(overview.graph).toEqual({ exists: true, locked: true, edgeCount: 3 });
     expect(overview.latestCompletedRun).toEqual({ status: "completed", completedAt: "2026-08-30T08:00:00.000Z", href: `/app/simulation/result?run_id=${runId}` });
     expect(JSON.stringify(overview)).not.toContain(seedId);

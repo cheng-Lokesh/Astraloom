@@ -61,6 +61,8 @@ describe("/api/reality-profile", () => {
     expect(state.queries[0].eq).toHaveBeenCalledWith("user_id", "signed-in-owner");
     expect(state.queries[1].eq).toHaveBeenCalledWith("user_id", "signed-in-owner");
     expect(state.queries[1].eq).toHaveBeenCalledWith("seed_context_id", "current-seed");
+    expect(state.queries[0].order).toHaveBeenNthCalledWith(1, "submitted_at", { ascending: false });
+    expect(state.queries[0].order).toHaveBeenNthCalledWith(2, "id", { ascending: false });
   });
 
   it("creates a first profile with revision 1 and safe response fields", async () => {

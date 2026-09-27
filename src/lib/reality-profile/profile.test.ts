@@ -34,16 +34,42 @@ describe("Reality Profile", () => {
       },
       world: {
         state: "locked_graph",
-        resources: [{ label: "可协调的支持有限", evidenceSummary: "仍待复核" }],
-        constraints: [],
-        goals: [],
-        values: [],
-        lifeThemes: [],
-        pressures: [],
-        externalVariables: [],
+        resources: [{ label: "可协调的支持有限", classification: "assumption", evidenceSummary: "仍待复核" }],
+        constraints: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }],
+        goals: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }],
+        values: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }],
+        lifeThemes: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }],
+        pressures: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }],
+        externalVariables: [{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }],
         changeNodes: [{ label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" }],
       },
     });
+  });
+
+  it.each([
+    ["a newer UUID version", "00000000-0000-7000-8000-000000000000"],
+    ["a UUID outside the RFC variant subset", "00000000-0000-0000-0000-000000000000"],
+  ])("rejects identifiers independently of %s", (_kind, identifier) => {
+    const result = realityProfileDraftSchema.safeParse({
+      ...createEmptyRealityProfileDraft(),
+      lifeClimate: { value: "ordinary profile text", classification: "fact", evidenceSummary: `Confirmed entry ${identifier}` },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("uses a trim-first Unicode character limit consistent with SQL", () => {
+    const valid = realityProfileDraftSchema.safeParse({
+      ...createEmptyRealityProfileDraft(),
+      lifeClimate: { value: `  ${"😀".repeat(240)}  `, classification: "fact", evidenceSummary: "Confirmed observation" },
+    });
+    const invalid = realityProfileDraftSchema.safeParse({
+      ...createEmptyRealityProfileDraft(),
+      lifeClimate: { value: "😀".repeat(241), classification: "fact", evidenceSummary: "Confirmed observation" },
+    });
+
+    expect(valid.success).toBe(true);
+    expect(invalid.success).toBe(false);
   });
 
   it("fails closed for identifiers, raw scenarios, and unsafe evidence summaries", () => {
