@@ -173,7 +173,8 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(page).toContain("登录后查看账户历史");
     expect(page).toContain("ArchiveHistoryClient");
     expect(page).not.toMatch(/"use client"|createFormalSandboxClient|useEffect/);
-    expect(client).toContain("createFormalSandboxClient().history(12)");
+    expect(client).toContain("createFormalSandboxClient().history(12, undefined, horizon)");
+    expect(client).toContain("createFormalSandboxClient().history(12, cursor, horizon)");
   });
 
   it("keeps the formal primary navigation free of sample and standalone Result destinations", async () => {
