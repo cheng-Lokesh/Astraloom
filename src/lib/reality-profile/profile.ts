@@ -32,7 +32,7 @@ export type RealityProfileDraft = z.infer<typeof realityProfileDraftSchema>;
 
 type LedgerItem = { label: string; evidenceSummary: string };
 type UnknownItem = { label: string };
-type LatestRunEvent = "cooperation" | "avoidance" | "direct_conflict" | "disclosure" | "resource_competition" | "support" | "opportunity_signal" | "information_gap_widening" | null;
+export type LatestRunEvent = "cooperation" | "avoidance" | "direct_conflict" | "disclosure" | "resource_competition" | "support" | "opportunity_signal" | "information_gap_widening" | null;
 
 const eventLabels: Record<Exclude<LatestRunEvent, null>, string> = {
   cooperation: "协作变化",

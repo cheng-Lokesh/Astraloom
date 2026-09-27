@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildRealityWorldProjection, realityProfileDraftSchema, type RealityProfileDraft } from "@/lib/reality-profile/profile";
+import { buildRealityWorldProjection, realityProfileDraftSchema, type LatestRunEvent, type RealityProfileDraft } from "@/lib/reality-profile/profile";
 
 const hrefSchema = z.string().regex(/^(?:\/app\/|\/login$)/).max(500);
 const notModeledSchema = z.object({ state: z.literal("not_modeled") }).strict();
@@ -78,7 +78,9 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
     evidenceSummary: "来自当前正式运行的受控模拟事件",
   }));
   const worldState = source.runningRun ? "running" : source.latestCompletedRun ? "completed" : source.graph.exists && source.graph.locked ? "locked_graph" : source.immutableAgentsCount ? "agents_ready" : source.confirmedPeopleCount ? "people_confirmed" : source.seed?.submitted ? "submitted" : "not_started";
-  const profileProjection = source.realityProfile ? buildRealityWorldProjection(source.realityProfile, { graphLocked: source.graph.locked, latestRunEvent: (source.changeNodeTypes?.[0] ?? null) === "graph_freeze" ? null : (source.changeNodeTypes?.[0] ?? null) }) : null;
+  const newestEvent = source.changeNodeTypes?.[0];
+  const profileEvent: LatestRunEvent = newestEvent === "avoidance" || newestEvent === "cooperation" || newestEvent === "direct_conflict" || newestEvent === "disclosure" || newestEvent === "resource_competition" || newestEvent === "support" || newestEvent === "opportunity_signal" || newestEvent === "information_gap_widening" ? newestEvent : null;
+  const profileProjection = source.realityProfile ? buildRealityWorldProjection(source.realityProfile, { graphLocked: source.graph.locked, latestRunEvent: profileEvent }) : null;
   const action = !source.authenticated
     ? { kind: "sign_in" as const, href: "/login" }
     : !source.seed?.submitted
