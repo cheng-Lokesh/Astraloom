@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { SandboxLedger } from "./sandbox-dashboard-client";
+import { buildSandboxOverview } from "@/lib/sandbox-overview/overview.server";
+import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 
 describe("My Sandbox dashboard behavior", () => {
   it("renders current people, ordinal relations, model boundaries and one current-chain action", () => {
@@ -45,5 +47,40 @@ describe("My Sandbox dashboard behavior", () => {
     expect(html).toContain("分类：事实");
     expect(html.match(/href="\/app\/new\/graph"/g)).toHaveLength(1);
     expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
+  });
+
+  it("renders saved resource values, bounds, per-run usage and bound deadlines", () => {
+    const overview = buildSandboxOverview({
+      authenticated: true,
+      seed: { submitted: true },
+      confirmedPeopleCount: 0,
+      immutableAgentsCount: 0,
+      graph: { exists: false, locked: false, edgeCount: 0 },
+      runningRun: null,
+      latestCompletedRun: null,
+      historyCount: 0,
+      hasFeedback: false,
+      realityProfile: {
+        ...createEmptyRealityProfileDraft(3),
+        worldInputs: {
+          version: 1,
+          resources: [
+            { key: "weekly-time", label: "每周可投入时间", resourceType: "time", available: 8, unit: "小时/周", minimum: 2, maximum: 16, usePerTick: 1, classification: "fact", evidenceSummary: "用户明确确认的每周时间" },
+            { key: "monthly-budget", label: "每月预算", resourceType: "budget", available: 1200, unit: "元/月", minimum: 0, maximum: 2500, usePerTick: null, classification: "assumption", evidenceSummary: "预算仍待复核" },
+          ],
+          constraints: [{ key: "project-deadline", label: "项目截止期限", resourceKey: "weekly-time", rule: { kind: "before_time", value: "2026-12-01T00:00:00.000Z" }, classification: "fact", evidenceSummary: "用户确认的项目期限" }],
+        },
+      },
+    });
+    const html = renderToStaticMarkup(createElement(SandboxLedger, { overview }));
+
+    expect(html).toContain("8 小时/周");
+    expect(html).toContain("2–16");
+    expect(html).toContain("每周期使用 1");
+    expect(html).toContain("1200 元/月");
+    expect(html).toContain("关联资源：每周可投入时间");
+    expect(html).toContain("截止时间：2026-12-01T00:00:00.000Z");
+    expect(html).not.toMatch(/weekly-time|monthly-budget|project-deadline/);
+    expect(html).toContain("目前没有当前正式链的已确认资料或受控事件支持");
   });
 });

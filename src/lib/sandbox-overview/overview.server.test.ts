@@ -107,6 +107,7 @@ describe("My Sandbox overview projection", () => {
   it("reads only the supplied owner chain and hides all raw identifiers in a complete account projection", async () => {
     const calls: Array<{ table: string; filters: Array<[string, unknown]> }> = [];
     const seedOrder: Array<{ column: string; ascending: boolean }> = [];
+    let profileSelection = "";
     const owner = "11111111-1111-4111-8111-111111111111";
     const seedId = "22222222-2222-4222-8222-222222222222";
     const snapshotId = "33333333-3333-4333-8333-333333333333";
@@ -119,6 +120,28 @@ describe("My Sandbox overview projection", () => {
       if (table === "relation_graph_snapshots") return { data: { id: graphId, graph_locked: true }, error: null };
       if (table === "relation_edges") return { data: null, count: 3, error: null };
       if (table === "agent_profiles") return { data: null, count: 4, error: null };
+      if (table === "reality_profiles") {
+        if (!profileSelection.includes("world_model_inputs")) return { data: null, error: null };
+        return { data: {
+          life_climate_value: null, life_climate_classification: "unknown", life_climate_evidence_summary: null,
+          resources_value: null, resources_classification: "unknown", resources_evidence_summary: null,
+          constraints_value: null, constraints_classification: "unknown", constraints_evidence_summary: null,
+          life_goals: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+          core_values: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+          life_themes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+          pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+          external_variables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+          world_model_inputs: {
+            version: 1,
+            resources: [
+              { key: "weekly-time", label: "每周可投入时间", resourceType: "time", available: 8, unit: "小时/周", minimum: 2, maximum: 16, usePerTick: 1, classification: "fact", evidenceSummary: "用户明确确认的每周时间" },
+              { key: "monthly-budget", label: "每月预算", resourceType: "budget", available: 1200, unit: "元/月", minimum: 0, maximum: 2500, usePerTick: null, classification: "assumption", evidenceSummary: "预算仍待复核" },
+            ],
+            constraints: [{ key: "project-deadline", label: "项目截止期限", resourceKey: "weekly-time", rule: { kind: "before_time", value: "2026-12-01T00:00:00.000Z" }, classification: "fact", evidenceSummary: "用户确认的项目期限" }],
+          },
+          revision: 3,
+        }, error: null };
+      }
       if (table === "feedback_logs") return { data: { id: "66666666-6666-4666-8666-666666666666" }, error: null };
       if (table === "simulations" && filters.some(([name, value]) => name === "status" && value === "completed")) return { data: { id: runId, status: "completed", completed_at: "2026-08-30T08:00:00.000Z" }, error: null };
       if (table === "simulations" && filters.some(([name]) => name === "in")) return { data: null, error: null };
@@ -128,7 +151,7 @@ describe("My Sandbox overview projection", () => {
       from(table: string) {
         const filters: Array<[string, unknown]> = [];
         const builder = {
-          select: () => builder,
+          select: (columns?: string) => { if (table === "reality_profiles") profileSelection = columns ?? ""; return builder; },
           eq: (name: string, value: unknown) => { filters.push([name, value]); return builder; },
           not: () => builder,
           in: (name: string, value: unknown) => { filters.push([name, value]); return builder; },
@@ -150,8 +173,17 @@ describe("My Sandbox overview projection", () => {
     expect(seedOrder).toEqual([{ column: "submitted_at", ascending: false }, { column: "id", ascending: false }]);
     expect(overview.graph).toEqual({ exists: true, locked: true, edgeCount: 3 });
     expect(overview.latestCompletedRun).toEqual({ status: "completed", completedAt: "2026-08-30T08:00:00.000Z", href: `/app/simulation/result?run_id=${runId}` });
+    expect(profileSelection).toContain("world_model_inputs");
+    expect(overview.world.resources).toEqual([
+      { kind: "structured_resource", label: "每周可投入时间", classification: "fact", evidenceSummary: "用户明确确认的每周时间", available: 8, unit: "小时/周", minimum: 2, maximum: 16, usePerTick: 1 },
+      { kind: "structured_resource", label: "每月预算", classification: "assumption", evidenceSummary: "预算仍待复核", available: 1200, unit: "元/月", minimum: 0, maximum: 2500, usePerTick: null },
+    ]);
+    expect(overview.world.constraints).toEqual([
+      { kind: "structured_constraint", label: "项目截止期限", classification: "fact", evidenceSummary: "用户确认的项目期限", resourceLabel: "每周可投入时间", deadline: "2026-12-01T00:00:00.000Z" },
+    ]);
     expect(JSON.stringify(overview)).not.toContain(seedId);
     expect(JSON.stringify(overview)).not.toContain(graphId);
+    expect(JSON.stringify(overview)).not.toMatch(/weekly-time|monthly-budget|project-deadline/);
     expect(calls.some((call) => call.table === "event_logs" && call.filters.some(([name, value]) => name === "simulation_id" && value === runId))).toBe(true);
   });
 

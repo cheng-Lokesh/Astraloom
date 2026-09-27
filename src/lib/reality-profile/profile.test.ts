@@ -46,6 +46,34 @@ describe("Reality Profile", () => {
     });
   });
 
+  it("projects every saved structured resource and constraint without exposing internal keys", () => {
+    const draft = realityProfileDraftSchema.parse({
+      ...createEmptyRealityProfileDraft(3),
+      worldInputs: {
+        version: 1,
+        resources: [
+          { key: "weekly-time", label: "每周可投入时间", resourceType: "time", available: 8, unit: "小时/周", minimum: 2, maximum: 16, usePerTick: 1, classification: "fact", evidenceSummary: "用户明确确认的每周时间" },
+          { key: "monthly-budget", label: "每月预算", resourceType: "budget", available: 1200, unit: "元/月", minimum: 0, maximum: 2500, usePerTick: null, classification: "assumption", evidenceSummary: "预算仍待复核" },
+        ],
+        constraints: [
+          { key: "project-deadline", label: "项目截止期限", resourceKey: "weekly-time", rule: { kind: "before_time", value: "2026-12-01T00:00:00.000Z" }, classification: "fact", evidenceSummary: "用户确认的项目期限" },
+        ],
+      },
+    });
+
+    const projection = buildRealityWorldProjection(draft, { graphLocked: true, latestRunEvent: null });
+
+    expect(projection.world.resources).toEqual([
+      { kind: "structured_resource", label: "每周可投入时间", classification: "fact", evidenceSummary: "用户明确确认的每周时间", available: 8, unit: "小时/周", minimum: 2, maximum: 16, usePerTick: 1 },
+      { kind: "structured_resource", label: "每月预算", classification: "assumption", evidenceSummary: "预算仍待复核", available: 1200, unit: "元/月", minimum: 0, maximum: 2500, usePerTick: null },
+    ]);
+    expect(projection.world.constraints).toEqual([
+      { kind: "structured_constraint", label: "项目截止期限", classification: "fact", evidenceSummary: "用户确认的项目期限", resourceLabel: "每周可投入时间", deadline: "2026-12-01T00:00:00.000Z" },
+    ]);
+    expect(JSON.stringify(projection)).not.toContain("weekly-time");
+    expect(JSON.stringify(projection)).not.toContain("project-deadline");
+  });
+
   it.each([
     ["a newer UUID version", "00000000-0000-7000-8000-000000000000"],
     ["a UUID outside the RFC variant subset", "00000000-0000-0000-0000-000000000000"],
