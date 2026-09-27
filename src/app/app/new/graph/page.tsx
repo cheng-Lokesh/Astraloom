@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { AccountExplorationPage } from "@/components/account-exploration";
 import { FormalSeedSelector } from "@/components/formal-seed-selector";
 import { FormalRunStarter } from "@/components/formal-sandbox/run-starter";
 import { StatusPill } from "@/components/status-pill";
@@ -19,6 +20,7 @@ export default function GraphPage() {
   const run = (work: () => Promise<boolean | void>) => runFormalGraphUiAction(work, sync);
 
   useEffect(() => {
+    if (!requestedSeedId) return;
     void controller.recover(requestedSeedId).then(sync);
   }, [controller, requestedSeedId, sync]);
   const selectSeed = (seedId: string) => {
@@ -28,6 +30,7 @@ export default function GraphPage() {
     setRequestedSeedId(seedId);
   };
 
+  if (!requestedSeedId) return <AccountExplorationPage mode="graph" />;
   if (state.phase === "loading") return <AppShell><Loading /></AppShell>;
   return <AppShell><main className="mx-auto max-w-6xl py-6 sm:py-10">
     <a href="#graph-ledger" className="sr-only rounded bg-[#11150f] px-4 py-3 text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4">Skip to relationship ledger</a>

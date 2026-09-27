@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { AccountExplorationPage } from "@/components/account-exploration";
 import { FormalSeedSelector } from "@/components/formal-seed-selector";
 import { StatusPill } from "@/components/status-pill";
 import { Button, ButtonLink, EmptyState, SurfaceCard } from "@/components/ui-foundation";
@@ -34,6 +35,7 @@ export default function PeoplePage() {
   const run = async (work: () => Promise<boolean | void>) => { const result = await work(); sync(); return result === true; };
 
   useEffect(() => {
+    if (!requestedSeedId) return;
     void controller.recover(requestedSeedId).then(sync);
   }, [controller, requestedSeedId, sync]);
   const selectSeed = (seedId: string) => {
@@ -43,6 +45,7 @@ export default function PeoplePage() {
     setRequestedSeedId(seedId);
   };
 
+  if (!requestedSeedId) return <AccountExplorationPage mode="people" />;
   if (state.phase === "loading") return <AppShell><Loading /></AppShell>;
 
   return (

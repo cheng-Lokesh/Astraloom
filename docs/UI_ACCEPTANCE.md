@@ -96,6 +96,15 @@ interactive target is at least 40px, has visible keyboard focus, uses
 `active:scale-95`, and respects reduced motion by limiting interaction motion to
 transform and opacity.
 
+People, Agents, and Graph are also direct account-exploration destinations.
+Their no-selector mode shows only the current formal chain and safe summary
+labels. People keeps the explicit Start confirmation or supplement path;
+Agents distinguishes 本人, 平行自我, and NPC while marking unavailable
+confidence or missing-field detail as 尚未建模; Graph is read-only and must
+never render internal identifiers or raw evidence references. When no current
+Run exists, Running must show an honest empty state; History exposes completed
+30 and 90 day server-filtered views and only completed entries link to Result.
+
 ### Scene And Question
 
 Must show:

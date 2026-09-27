@@ -496,7 +496,7 @@ Another owner's valid identifier is indistinguishable from a missing object.
   phase metadata. Polling is read-only and never creates completion.
 - `GET /api/sandbox/runs/:runId/result`: returns the persisted immutable bundle
   only after completion; incomplete runs return 409.
-- `GET /api/sandbox/runs?limit=&before=`: returns newest-first account History.
+- `GET /api/sandbox/runs?limit=&before=&horizon=`: returns newest-first completed account History. `horizon` is optional and accepts only `30_days` or `90_days`; filtering happens in the owner-scoped server query before stable `(created_at, id)` cursor pagination.
   The opaque compound cursor binds `(created_at, id)` for stable pagination.
 - `POST /api/sandbox/runs/:runId/feedback`: accepts `useful`, `mixed`, or `off`,
   an optional bounded comment, and a UUID idempotency key. Feedback is
@@ -545,6 +545,15 @@ Projection:
 - Life climate, resources, constraints, next-change timing, and Reality detail
   currently return explicit `not_modeled`. No repository, localStorage,
   static-case, or Career-demo value may fill these fields.
+
+### Account exploration routes
+
+Primary navigation opens `/app/new/people`, `/app/new/agents`, and
+`/app/new/graph` without a selector as current-chain account exploration views.
+They fetch only `GET /api/sandbox-overview`, render no database identifiers,
+raw evidence references, trace values, or scenario body, and never restore from
+browser storage. A `seed_id` is reserved for the explicit Start confirmation or
+supplement flow and remains owner-scoped by its existing route contracts.
 
 `next_action.kind` is exactly one of: `start_intake`, `review_people`,
 `build_agents`, `review_graph`, `start_run`, `open_running`, or

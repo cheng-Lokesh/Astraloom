@@ -17,6 +17,7 @@ const navItems = [
   { href: "/app/dashboard", label: "My Sandbox" },
   { href: "/app/new/scene", label: "Start" },
   { href: "/app/new/people", label: "People" },
+  { href: "/app/new/agents", label: "Agents" },
   { href: "/app/new/graph", label: "Graph" },
   { href: "/app/simulation/running", label: "Running" },
   { href: "/app/archive", label: "History" },
