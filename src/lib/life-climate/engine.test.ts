@@ -90,8 +90,9 @@ describe("buildLifeClimateRun", () => {
     const result = buildLifeClimateRun(profileFixture(), requestFixture(), idSequence());
     const visibleText = JSON.stringify({ paths: result.paths, events: result.events, claims: result.claims, report: result.report });
 
-    expect(visibleText).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b|\b\d+(?:\.\d+)?%|概率|必然发生/);
+    expect(visibleText).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b|\b\d+(?:\.\d+)?%|必然发生/);
     expect(result.report).toMatchObject({ mode: "conditional_structure_comparison", includesExactDates: false, claimsUseEventEvidence: true });
+    expect(result.report.limitations.join(" ")).toContain("不是现实事件清单、概率或确定预言");
   });
 
   it("rejects a stale profile revision and a change that targets a missing domain entry", () => {
