@@ -269,12 +269,6 @@ export function ArchiveHistoryClient({ timeUnavailableLabel }: { timeUnavailable
   useEffect(() => {
     const requestVersion = ++historyRequestVersion.current;
     let active = true;
-    setPhase("loading");
-    setMessage("");
-    setItems([]);
-    setCursor(null);
-    setPageLoading(false);
-    clearComparison();
 
     void createFormalSandboxClient().history(12, undefined, horizon).then((response) => {
       if (!active || requestVersion !== historyRequestVersion.current) return;
@@ -293,7 +287,7 @@ export function ArchiveHistoryClient({ timeUnavailableLabel }: { timeUnavailable
     });
 
     return () => { active = false; };
-  }, [clearComparison, horizon, reloadVersion]);
+  }, [horizon, reloadVersion]);
 
   const loadOlder = async () => {
     if (!cursor || pageLoading) return;
@@ -370,6 +364,7 @@ export function ArchiveHistoryClient({ timeUnavailableLabel }: { timeUnavailable
     setCursor(null);
     setPhase("loading");
     setPageLoading(false);
+    setMessage("");
     setReloadVersion((value) => value + 1);
   };
 
