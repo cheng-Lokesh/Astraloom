@@ -101,4 +101,51 @@ describe("formal account sandbox V2 runtime adapter", () => {
     expect(ninety.ok).toBe(true);
     await expect(buildFormalSandboxRunV2({ ...input, horizonDays: 365 as 30 })).resolves.toEqual({ ok: false, errorCode: "invalid_run_input" });
   }, 30_000);
+
+  it("freezes explicit structured resources and constraints into the simulated World State", async () => {
+    const modeledInput = structuredClone(input);
+    modeledInput.realityProfileSnapshot.profile.worldInputs = {
+      version: 1,
+      resources: [{
+        key: "weekly-focus",
+        label: "每周可投入时间",
+        resourceType: "time",
+        available: 8,
+        unit: "小时",
+        minimum: 2,
+        maximum: 8,
+        usePerTick: 2,
+        classification: "assumption",
+        evidenceSummary: "本人明确设定的模拟参数",
+      }],
+      constraints: [{
+        key: "focus-deadline",
+        label: "阶段时间边界",
+        resourceKey: "weekly-focus",
+        rule: { kind: "before_time", value: "2026-10-01T00:00:00.000Z" },
+        classification: "fact",
+        evidenceSummary: "本人记录的时间限制",
+      }],
+    };
+    const result = await buildFormalSandboxRunV2(modeledInput);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const world of result.bundle.worldSnapshots) {
+      expect(world.resources).toEqual(expect.arrayContaining([expect.objectContaining({
+        label: "每周可投入时间",
+        resourceType: "time",
+        available: 2,
+        unit: "小时",
+        min: 2,
+        max: 8,
+      })]));
+      expect(world.resources.map((resource) => resource.label)).not.toContain("Decision capacity");
+      expect(world.constraints).toEqual(expect.arrayContaining([expect.objectContaining({
+        constraintType: "deadline",
+        rule: { kind: "before_time", value: "2026-10-01T00:00:00.000Z" },
+        target: expect.objectContaining({ type: "resource" }),
+      })]));
+    }
+  }, 30_000);
 });
