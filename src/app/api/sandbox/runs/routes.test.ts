@@ -1,8 +1,8 @@
 import { beforeEach,describe,expect,it,vi } from "vitest";
 
-const state=vi.hoisted(()=>({client:null as unknown,service:null as unknown,start:vi.fn()}));
+const state=vi.hoisted(()=>({client:null as unknown,service:vi.fn(),start:vi.fn()}));
 vi.mock("@/lib/supabase/server",()=>({createSupabaseServerClient:async()=>state.client}));
-vi.mock("@/lib/supabase/service-role.server",()=>({getServiceRoleSupabaseClient:()=>state.service}));
+vi.mock("@/lib/supabase/service-role.server",()=>({getServiceRoleSupabaseClient:()=>state.service()}));
 vi.mock("@/lib/formal-sandbox/start.server",()=>({startFormalSandboxRun:(...args:unknown[])=>state.start(...args)}));
 
 import { GET as history,POST as start } from "./route";
@@ -17,20 +17,42 @@ function authClient(user:string|null,from?:()=>unknown,rpc?:()=>unknown){return{
 function query(resultValue:Record<string,unknown>,operations?:string[]){const value={...resultValue};type Builder={select:()=>Builder;eq:(column:string,value:unknown)=>Builder;order:(column:string)=>Builder;limit:(value:number)=>Builder;lt:()=>Builder;or:()=>Builder;maybeSingle:()=>Promise<Record<string,unknown>>;then:PromiseLike<Record<string,unknown>>["then"]};const builder={} as Builder;builder.select=()=>builder;builder.eq=(column,value)=>{operations?.push(`eq:${column}:${String(value)}`);return builder};builder.order=(column)=>{operations?.push(`order:${column}`);return builder};builder.limit=(value)=>{operations?.push(`limit:${value}`);return builder};builder.lt=()=>builder;builder.or=()=>builder;builder.maybeSingle=async()=>value;builder.then=(resolve,reject)=>Promise.resolve(value).then(resolve,reject);return builder}
 
 describe("formal sandbox route contracts",()=>{
-  beforeEach(()=>{state.start.mockReset();state.service={};state.client=authClient(null)});
+  beforeEach(()=>{state.start.mockReset();state.service.mockReset().mockReturnValue({});state.client=authClient(null)});
   it("returns the same non-leaking 401 contract on every account route",async()=>{
     const json=new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});
     const responses=await Promise.all([start(json),history(new Request("http://local/api/sandbox/runs")),status(new Request("http://local"),context),result(new Request("http://local"),context),feedback(json,context)]);
     expect(responses.map(item=>item.status)).toEqual([401,401,401,401,401]);
     for(const response of responses)expect(await response.json()).toEqual(expect.objectContaining({ok:false,error_code:"unauthenticated",trace_id:expect.any(String)}));
+    expect(state.service).not.toHaveBeenCalled();
+    expect(state.start).not.toHaveBeenCalled();
   });
   it("validates Start input and maps safety refusal to 403",async()=>{
-    state.client=authClient(userId);state.service={};
+    state.client=authClient(userId);
     const invalid=await start(new Request("http://local",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
     expect(invalid.status).toBe(422);
     state.start.mockResolvedValue({ok:false,errorCode:"safety_blocked"});
     const valid=await start(new Request("http://local",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({graph_snapshot_id:runId,idempotency_key:"33333333-3333-4333-8333-333333333333",horizon_days:30})}));
     expect(valid.status).toBe(403);
+  });
+  it("gates the server-only writer on cookie identity and rejects a body-supplied owner",async()=>{
+    const serviceClient={serverWriter:true};
+    const input={graph_snapshot_id:runId,idempotency_key:"33333333-3333-4333-8333-333333333333",horizon_days:30};
+    state.client=authClient(userId);
+    state.service.mockReturnValue(serviceClient);
+    state.start.mockResolvedValue({ok:true,idempotent:false,run:{id:runId,status:"completed",graph_snapshot_id:runId,time_horizon:"30_days"}});
+
+    const response=await start(new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(input)}));
+
+    expect(response.status).toBe(201);
+    expect(state.service).toHaveBeenCalledOnce();
+    expect(state.start).toHaveBeenCalledOnce();
+    expect(state.start).toHaveBeenCalledWith(serviceClient,userId,input);
+
+    const forgedOwner=await start(new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...input,user_id:"99999999-9999-4999-8999-999999999999"})}));
+
+    expect(forgedOwner.status).toBe(422);
+    expect(state.service).toHaveBeenCalledOnce();
+    expect(state.start).toHaveBeenCalledOnce();
   });
   it("hides a missing or foreign Run behind the same 404",async()=>{
     state.client=authClient(userId,()=>query({data:null,error:null}));
@@ -47,7 +69,7 @@ describe("formal sandbox route contracts",()=>{
     const bundle={inputSnapshot:{ownerId:userId,seedContextId:"33333333-3333-4333-8333-333333333333",graphSnapshotId:"44444444-4444-4444-8444-444444444444",agentSnapshotId:"55555555-5555-4555-8555-555555555555",seedSummary:"PRIVATE_RAW_SCENARIO_WITH_SECRET",realityProfileSnapshot:{ownerId:userId,seedContextId:"33333333-3333-4333-8333-333333333333",profileId:"66666666-6666-4666-8666-666666666666",revision:0,profile:{lifeClimate:unknown,resources:unknown,constraints:unknown,goals:[unknown],values:[unknown],lifeThemes:[unknown],pressures:[unknown],externalVariables:[unknown],revision:0}},agents:[{id:"agent_internal",displayName:"Scenario owner",actorType:"self",evidenceRefs:["seed"]}],edges:[]},sourceBoundary:{evidenceLedger:{items:[{id:"real_internal",statement:"PRIVATE_RAW_SCENARIO_WITH_SECRET",claimKey:"formal.seed.summary",privateRef:"seed-private-ref-marker",sourceKind:"user_statement",sourceTier:"tier_1_user_confirmed",verificationStatus:"user_confirmed",provenance:[],limitations:[]}]},assumptionLedger:{assumptions:[]}},events:[{id:"world_event_v2_one",eventType:"record_observation",evidenceClass:"world_transition_simulation_evidence",causalRealEvidenceIds:["real_internal"],causalAssumptionIds:[]}],claims:[{id:"claim_v2_one",claimType:"scenario_frequency",statement:"A conditional signal.",uncertaintyStatement:"Not a probability.",simulationEventIds:["world_event_v2_one"]}],report:{claimIds:["claim_v2_one"]}};
     state.client=authClient(userId,()=>query({data:{id:runId,status:"completed",result_bundle:bundle,completed_at:"2026-09-08T00:00:00.000Z"},error:null}));
     const response=await result(new Request("http://local"),context);const body=await response.json();
-    expect(response.status).toBe(200);expect(body).toEqual(expect.objectContaining({ok:true,projection:expect.objectContaining({claims:[expect.objectContaining({key:"claim-1",stepKeys:["step-1"]})],realityProfile:{status:"frozen",revision:0,facts:[],assumptions:[],unknowns:[expect.objectContaining({label:"人生气候"}),expect.objectContaining({label:"资源"}),expect.objectContaining({label:"约束"}),expect.any(Object),expect.any(Object),expect.any(Object),expect.any(Object),expect.any(Object)]}})}));expect(body).not.toHaveProperty("run_id");
+    expect(response.status).toBe(200);expect(body).toEqual(expect.objectContaining({ok:true,projection:expect.objectContaining({claims:[expect.objectContaining({key:"claim-1",stepKeys:["step-1"]})],realityProfile:{status:"frozen",revision:0,facts:[],assumptions:[],unknowns:[expect.objectContaining({label:"人生气候"}),expect.objectContaining({label:"资源"}),expect.objectContaining({label:"约束"}),expect.any(Object),expect.any(Object),expect.any(Object),expect.any(Object),expect.any(Object)],structuredResources:[],structuredConstraints:[],worldVariables:[]}})}));expect(body).not.toHaveProperty("run_id");
     expect(body.projection.facts).toEqual([{key:"fact-1",statement:"本次运行使用已提交的 Seed 作为 Reality evidence；情境原文未展示。",boundary:"user_provided_fact"}]);
     expect(JSON.stringify(body)).not.toMatch(/agent_internal|real_internal|world_event_v2|claim_v2|result_bundle|PRIVATE_RAW_SCENARIO_WITH_SECRET|seed-private-ref-marker|66666666-6666-4666-8666-666666666666/i);
   });
