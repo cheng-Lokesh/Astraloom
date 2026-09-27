@@ -47,6 +47,29 @@ describe("My Sandbox overview projection", () => {
     expect(overview.reality).toEqual({ state: "not_modeled" });
   });
 
+  it("projects the current chain into fact, assumption, and unknown ledgers without identifiers", () => {
+    const overview = buildSandboxOverview(source({
+      immutableAgentsCount: 2,
+      graph: { exists: true, locked: true, edgeCount: 1 },
+      changeNodeTypes: ["cooperation"],
+    }));
+
+    expect(overview.reality.facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "正式现实情境已提交" }),
+    ]));
+    expect(overview.reality.assumptions).toEqual([]);
+    expect(overview.reality.unknowns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "人生气候" }),
+      expect.objectContaining({ label: "资源" }),
+      expect.objectContaining({ label: "约束" }),
+    ]));
+    expect(overview.world.changeNodes).toEqual([
+      { label: "协作变化", evidenceSummary: "来自当前正式运行的受控模拟事件" },
+    ]);
+    expect(JSON.stringify(overview)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+    expect(JSON.stringify(overview)).not.toMatch(/evidence_refs|trace_id|raw_context/i);
+  });
+
   it("returns only counts, status and opaque navigation paths", () => {
     const overview = buildSandboxOverview(source({
       runningRun: { href: "/app/simulation/running?run_id=opaque" },
@@ -110,6 +133,7 @@ describe("My Sandbox overview projection", () => {
     expect(overview.latestCompletedRun).toEqual({ status: "completed", completedAt: "2026-08-30T08:00:00.000Z", href: `/app/simulation/result?run_id=${runId}` });
     expect(JSON.stringify(overview)).not.toContain(seedId);
     expect(JSON.stringify(overview)).not.toContain(graphId);
+    expect(calls.some((call) => call.table === "event_logs" && call.filters.some(([name, value]) => name === "simulation_id" && value === runId))).toBe(true);
   });
 
   it("fails closed when a server row does not meet the Zod projection contract", async () => {
