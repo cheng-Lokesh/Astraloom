@@ -7,6 +7,18 @@ const frozenProfile = createEmptyRealityProfileDraft(4);
 frozenProfile.lifeClimate = { value: "当前生活节奏正在调整", classification: "fact", evidenceSummary: "由本人在 Reality Profile 中记录" };
 frozenProfile.resources = { value: "未来30天可能有项目安排变化", classification: "assumption", evidenceSummary: "由本人作为待验证假设提交" };
 frozenProfile.goals = [{ value: "保留每周学习时间", classification: "fact", evidenceSummary: "由本人在 Reality Profile 中记录" }];
+frozenProfile.worldInputs.resources = [{
+  key: "focus-time",
+  label: "每周可投入时间",
+  resourceType: "time",
+  available: 8,
+  unit: "小时",
+  minimum: 1,
+  maximum: 8,
+  usePerTick: 1,
+  classification: "assumption",
+  evidenceSummary: "本人明确设定的模拟参数",
+}];
 
 const input = {
   ownerId: "11111111-1111-4111-8111-111111111111",
@@ -94,6 +106,12 @@ describe("formal account sandbox V2 runtime adapter", () => {
 
   it("blocks unsafe input before creating Events, Claims, or Report", async () => {
     await expect(buildFormalSandboxRunV2({ ...input, safetyLevel: "blocked" })).resolves.toEqual({ ok: false, errorCode: "safety_blocked" });
+  });
+
+  it("does not invent a resource when the frozen Reality Profile has no executable world inputs", async () => {
+    const unknownWorld = structuredClone(input);
+    unknownWorld.realityProfileSnapshot.profile.worldInputs.resources = [];
+    await expect(buildFormalSandboxRunV2(unknownWorld)).resolves.toEqual({ ok: false, errorCode: "world_model_required" });
   });
 
   it("supports only Track A 30 and 90 day horizons", async () => {
