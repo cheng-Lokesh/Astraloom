@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ client: null as any }));
+const state = vi.hoisted(() => ({
+  client: null as { auth: { getUser: () => Promise<{ data: { user: null } }> } } | null,
+}));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => state.client }));
 
 import { GET, PUT } from "./route";
