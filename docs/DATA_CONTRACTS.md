@@ -28,6 +28,13 @@ inferred personal attributes. World State
 is a projection of this profile plus the current locked Graph and controlled
 Run events; it never creates a Change Node without such an event.
 
+Scalar values and evidence summaries use trim-first character limits of 240
+and 160 respectively, and reject control characters, UUID-shaped identifiers,
+email addresses, raw scenario/evidence text, and secret or trace-key language.
+The database enforces these rules for direct Data API writes as well as API
+writes. Every content-changing update advances `revision` by exactly one;
+revision-only changes and stale direct updates are rejected by the database.
+
 The profile's composite `(seed_context_id, user_id)` foreign key binds every
 row to the same owner's canonical Seed. RLS permits only authenticated owner
 access; browser grants exclude owner reassignment and deletion.

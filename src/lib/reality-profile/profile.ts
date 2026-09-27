@@ -1,13 +1,16 @@
 import { z } from "zod";
 
-const unsafeVisibleText = /[\u0000-\u001f\u007f]|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:raw\s+(?:scenario|evidence)|trace(?:[_ -]?id)?|internal(?:[_ -]?key)?|token|secret|password|api[_ -]?key)\b/i;
-const safeTextSchema = z.string().trim().min(1).max(240).refine((value) => !unsafeVisibleText.test(value), "Unsafe profile text");
+const unsafeVisibleText = /[\u0000-\u001f\u007f-\u009f]|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:raw\s+(?:scenario|evidence)|trace(?:[_ -]?id)?|internal(?:[_ -]?key)?|token|secret|password|api[_ -]?key)\b/i;
+const safeTextSchema = (maxChars: number) => z.string().trim().refine((value) => {
+  const length = Array.from(value).length;
+  return length >= 1 && length <= maxChars && !unsafeVisibleText.test(value);
+}, "Profile text is invalid");
 const classificationSchema = z.enum(["fact", "assumption", "unknown"]);
 
 export const realityProfileFieldSchema = z.object({
-  value: z.string().trim().max(240),
+  value: z.string().trim(),
   classification: classificationSchema,
-  evidenceSummary: z.string().trim().max(160),
+  evidenceSummary: z.string().trim(),
 }).strict().superRefine((field, ctx) => {
   if (field.classification === "unknown") {
     if (field.value || field.evidenceSummary !== "明确未知") {
@@ -15,8 +18,8 @@ export const realityProfileFieldSchema = z.object({
     }
     return;
   }
-  for (const [key, value] of Object.entries({ value: field.value, evidenceSummary: field.evidenceSummary })) {
-    const parsed = safeTextSchema.safeParse(value);
+  for (const [key, value, maxChars] of [["value", field.value, 240], ["evidenceSummary", field.evidenceSummary, 160]] as const) {
+    const parsed = safeTextSchema(maxChars).safeParse(value);
     if (!parsed.success) ctx.addIssue({ code: "custom", path: [key], message: "Profile text is invalid." });
   }
 });
@@ -65,6 +68,7 @@ const dimensionLabels = {
 
 type ProfileDimensionKey = keyof typeof dimensionLabels;
 type DimensionSummary = { label: string; facts: number; assumptions: number; unknowns: number };
+type ClassifiedLedgerItem = LedgerItem & { classification: "fact" | "assumption" | "unknown" };
 
 export function createUnknownRealityProfileField(): RealityProfileField {
   return { value: "", classification: "unknown", evidenceSummary: "明确未知" };
@@ -87,6 +91,14 @@ export function createEmptyRealityProfileDraft(revision = 0): RealityProfileDraf
 function ledgerFor(field: RealityProfileField, label: string) {
   if (field.classification === "unknown") return { classification: field.classification, item: null, unknown: { label } as UnknownItem };
   return { classification: field.classification, item: { label: field.value, evidenceSummary: field.evidenceSummary } as LedgerItem, unknown: null };
+}
+
+function worldLedgerFor(field: RealityProfileField, unknownLabel = "尚未填写"): ClassifiedLedgerItem {
+  return {
+    label: field.classification === "unknown" ? unknownLabel : field.value,
+    classification: field.classification,
+    evidenceSummary: field.evidenceSummary,
+  };
 }
 
 function classifiedDimensionItems(fields: RealityProfileField[], label: string) {
@@ -131,17 +143,15 @@ export function buildRealityWorldProjection(draft: RealityProfileDraft, state: {
       ...listDimensions.map(({ key, fields }) => dimensionSummary(dimensionLabels[key], fields)),
     ],
   };
-  const itemsFor = (fields: RealityProfileField[]) => fields.filter(field => field.classification !== "unknown").map(field => ({ label: field.value, evidenceSummary: field.evidenceSummary }));
-  const resources = ledgerFor(parsed.resources, dimensionLabels.resources);
-  const constraints = ledgerFor(parsed.constraints, dimensionLabels.constraints);
+  const itemsFor = (fields: RealityProfileField[]) => fields.map((field, index) => worldLedgerFor(field, fields.length === 1 ? "尚未填写" : `第${index + 1}项尚未填写`));
   const changeNodes = state.graphLocked && state.latestRunEvent ? [{ label: eventLabels[state.latestRunEvent], evidenceSummary: "来自当前正式运行的受控模拟事件" }] : [];
 
   return {
     reality,
     world: {
       state: state.graphLocked ? "locked_graph" as const : "submitted" as const,
-      resources: resources.item ? [resources.item] : [],
-      constraints: constraints.item ? [constraints.item] : [],
+      resources: [worldLedgerFor(parsed.resources)],
+      constraints: [worldLedgerFor(parsed.constraints)],
       goals: itemsFor(parsed.goals),
       values: itemsFor(parsed.values),
       lifeThemes: itemsFor(parsed.lifeThemes),

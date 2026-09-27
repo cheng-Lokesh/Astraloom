@@ -21,7 +21,8 @@ Each non-static API must include:
 - `GET /api/reality-profile` requires a session and returns only the owner’s
   newest submitted/frozen Seed profile. It returns `401` without a session,
   `409` when no formal Seed exists, and never accepts an owner or Seed
-  identifier from the request.
+  identifier from the request. “Newest” is ordered by `submitted_at DESC`,
+  then `id DESC` as a stable tie-breaker shared with Dashboard and RLS.
 - `PUT /api/reality-profile` accepts the three scalar Reality fields and five
   bounded item lists (goals, values, life themes, pressures, and external
   variables), each with its own fact/assumption/unknown classification and

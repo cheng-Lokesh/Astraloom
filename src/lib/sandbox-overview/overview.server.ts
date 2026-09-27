@@ -9,6 +9,7 @@ const personKeySchema = z.string().regex(/^person-[1-5]$/);
 const safeLabelSchema = z.string().min(1).max(320);
 const evidenceSummarySchema = z.string().min(1).max(160);
 const ledgerItemSchema = z.object({ label: safeLabelSchema, evidenceSummary: evidenceSummarySchema }).strict();
+const classifiedLedgerItemSchema = z.object({ label: safeLabelSchema, classification: z.enum(["fact", "assumption", "unknown"]), evidenceSummary: evidenceSummarySchema }).strict();
 const unknownItemSchema = z.object({ label: safeLabelSchema }).strict();
 const dimensionSummarySchema = z.object({ label: z.string().min(1).max(40), facts: z.number().int().nonnegative(), assumptions: z.number().int().nonnegative(), unknowns: z.number().int().nonnegative() }).strict();
 const changeNodeTypeSchema = z.enum(["graph_freeze", "avoidance", "cooperation", "direct_conflict", "disclosure", "resource_competition", "support", "opportunity_signal", "information_gap_widening"]);
@@ -30,7 +31,7 @@ export const sandboxOverviewSchema = z.object({
   authenticated: z.boolean(),
   seed: z.object({ state: z.enum(["not_started", "submitted"]) }).strict(),
   reality: z.object({ facts: z.array(ledgerItemSchema).max(43), assumptions: z.array(ledgerItemSchema).max(43), unknowns: z.array(unknownItemSchema).max(43), dimensions: z.array(dimensionSummarySchema).length(8) }).strict(),
-  world: z.object({ state: z.enum(["not_started", "submitted", "people_confirmed", "agents_ready", "locked_graph", "running", "completed"]), changeNodes: z.array(changeNodeSchema).max(3), resources: z.array(ledgerItemSchema).max(1), constraints: z.array(ledgerItemSchema).max(1), goals: z.array(ledgerItemSchema).max(8), values: z.array(ledgerItemSchema).max(8), lifeThemes: z.array(ledgerItemSchema).max(8), pressures: z.array(ledgerItemSchema).max(8), externalVariables: z.array(ledgerItemSchema).max(8) }).strict(),
+  world: z.object({ state: z.enum(["not_started", "submitted", "people_confirmed", "agents_ready", "locked_graph", "running", "completed"]), changeNodes: z.array(changeNodeSchema).max(3), resources: z.array(classifiedLedgerItemSchema).max(1), constraints: z.array(classifiedLedgerItemSchema).max(1), goals: z.array(classifiedLedgerItemSchema).max(8), values: z.array(classifiedLedgerItemSchema).max(8), lifeThemes: z.array(classifiedLedgerItemSchema).max(8), pressures: z.array(classifiedLedgerItemSchema).max(8), externalVariables: z.array(classifiedLedgerItemSchema).max(8) }).strict(),
   people: z.object({ confirmedCount: z.number().int().nonnegative(), total: z.number().int().nonnegative(), items: z.array(personSummarySchema).max(5) }).strict(),
   agents: z.object({ immutableCount: z.number().int().nonnegative() }).strict(),
   graph: z.object({ exists: z.boolean(), locked: z.boolean(), edgeCount: z.number().int().nonnegative() }).strict(),
@@ -83,6 +84,7 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
   const newestEvent = source.changeNodeTypes?.[0];
   const profileEvent: LatestRunEvent = newestEvent === "avoidance" || newestEvent === "cooperation" || newestEvent === "direct_conflict" || newestEvent === "disclosure" || newestEvent === "resource_competition" || newestEvent === "support" || newestEvent === "opportunity_signal" || newestEvent === "information_gap_widening" ? newestEvent : null;
   const profileProjection = source.realityProfile ? buildRealityWorldProjection(source.realityProfile, { graphLocked: source.graph.locked, latestRunEvent: profileEvent }) : null;
+  const unknownWorldItems = () => [{ label: "尚未填写", classification: "unknown" as const, evidenceSummary: "明确未知" }];
   const action = !source.authenticated
     ? { kind: "sign_in" as const, href: "/login" }
     : !source.seed?.submitted
@@ -105,7 +107,7 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
     authenticated: source.authenticated,
     seed: { state: source.seed?.submitted ? "submitted" : "not_started" },
     reality: profileProjection?.reality ?? fallbackReality,
-    world: { state: worldState, changeNodes: profileProjection?.world.changeNodes ?? changeNodes, resources: profileProjection?.world.resources ?? [], constraints: profileProjection?.world.constraints ?? [], goals: profileProjection?.world.goals ?? [], values: profileProjection?.world.values ?? [], lifeThemes: profileProjection?.world.lifeThemes ?? [], pressures: profileProjection?.world.pressures ?? [], externalVariables: profileProjection?.world.externalVariables ?? [] },
+    world: { state: worldState, changeNodes: profileProjection?.world.changeNodes ?? changeNodes, resources: profileProjection?.world.resources ?? unknownWorldItems(), constraints: profileProjection?.world.constraints ?? unknownWorldItems(), goals: profileProjection?.world.goals ?? unknownWorldItems(), values: profileProjection?.world.values ?? unknownWorldItems(), lifeThemes: profileProjection?.world.lifeThemes ?? unknownWorldItems(), pressures: profileProjection?.world.pressures ?? unknownWorldItems(), externalVariables: profileProjection?.world.externalVariables ?? unknownWorldItems() },
     people: { confirmedCount: source.confirmedPeopleCount, total: source.immutableAgentsCount, items: source.peopleItems ?? [] },
     agents: { immutableCount: source.immutableAgentsCount },
     graph: source.graph,
@@ -213,7 +215,7 @@ function runHref(kind: "running" | "result", id: string) {
 }
 
 export async function readSandboxOverview(supabase: SupabaseClient, ownerId: string): Promise<SandboxOverview> {
-  const { data: seedRecord, error: seedError } = await supabase.from("seed_contexts").select("id,status").eq("user_id", ownerId).eq("status", "submitted").not("submitted_at", "is", null).not("frozen_at", "is", null).order("submitted_at", { ascending: false }).limit(1).maybeSingle();
+  const { data: seedRecord, error: seedError } = await supabase.from("seed_contexts").select("id,status").eq("user_id", ownerId).eq("status", "submitted").not("submitted_at", "is", null).not("frozen_at", "is", null).order("submitted_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
   if (seedError) throw new Error("seed_overview_read_failed");
   const seed = seedRecord ? seedSchema.parse(seedRecord) : null;
   if (!seed) return buildSandboxOverview({ authenticated: true, seed: null, confirmedPeopleCount: 0, immutableAgentsCount: 0, graph: { exists: false, locked: false, edgeCount: 0 }, runningRun: null, latestCompletedRun: null, historyCount: 0, hasFeedback: false });

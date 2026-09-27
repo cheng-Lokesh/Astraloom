@@ -42,7 +42,7 @@ select ok(not has_function_privilege('anon', 'public.is_valid_reality_profile_it
 select policies_are('public', 'reality_profiles', array['reality_profiles_insert_own_current_seed', 'reality_profiles_select_own_current_seed', 'reality_profiles_update_own_current_seed'], 'only owner and current-Seed Reality Profile policies exist');
 select ok((select relrowsecurity from pg_class where oid = 'public.reality_profiles'::regclass), 'RLS is enabled');
 select ok((
-  select roles @> array['authenticated']::name[] and qual like '%auth.uid%' and qual like '%user_id%' and qual like '%seed_contexts%' and qual like '%submitted_at%' and with_check like '%auth.uid%' and with_check like '%seed_contexts%' and with_check like '%submitted_at%'
+  select roles @> array['authenticated']::name[] and qual like '%auth.uid%' and qual like '%user_id%' and qual like '%seed_contexts%' and qual like '%submitted_at%' and lower(qual) like '%seed.id desc%' and with_check like '%auth.uid%' and with_check like '%seed_contexts%' and with_check like '%submitted_at%' and lower(with_check) like '%seed.id desc%'
   from pg_policies where schemaname = 'public' and tablename = 'reality_profiles' and policyname = 'reality_profiles_update_own_current_seed'
 ), 'UPDATE policy checks owner and current submitted Seed in USING and WITH CHECK');
 

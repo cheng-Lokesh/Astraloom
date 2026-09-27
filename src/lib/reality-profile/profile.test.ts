@@ -113,9 +113,11 @@ describe("Reality Profile", () => {
     expect(projection.reality.facts).toContainEqual({ label: "目标：完成职业转向", evidenceSummary: "用户确认的计划" });
     expect(projection.reality.assumptions).toContainEqual({ label: "价值观：保留稳定收入", evidenceSummary: "仍需本人复核" });
     expect(projection.reality.unknowns).toContainEqual({ label: "人生主题" });
-    expect(projection.world.goals).toEqual([{ label: "完成职业转向", evidenceSummary: "用户确认的计划" }]);
-    expect(projection.world.pressures).toEqual([{ label: "团队调整", evidenceSummary: "用户确认的近期变化" }]);
-    expect(projection.world.externalVariables).toEqual([{ label: "市场需求", evidenceSummary: "尚未外部核实" }]);
+    expect(projection.world.goals).toEqual([{ label: "完成职业转向", classification: "fact", evidenceSummary: "用户确认的计划" }]);
+    expect(projection.world.values).toEqual([{ label: "保留稳定收入", classification: "assumption", evidenceSummary: "仍需本人复核" }]);
+    expect(projection.world.lifeThemes).toEqual([{ label: "尚未填写", classification: "unknown", evidenceSummary: "明确未知" }]);
+    expect(projection.world.pressures).toEqual([{ label: "团队调整", classification: "fact", evidenceSummary: "用户确认的近期变化" }]);
+    expect(projection.world.externalVariables).toEqual([{ label: "市场需求", classification: "assumption", evidenceSummary: "尚未外部核实" }]);
   });
 
   it("rejects unsafe values inside the new dimensions", () => {
