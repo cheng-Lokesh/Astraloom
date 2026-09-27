@@ -330,6 +330,7 @@ export function ArchiveHistoryClient({ timeUnavailableLabel }: { timeUnavailable
     const next = toggleHistoryRunSelection(selectedRunIds, runId, completedItems);
     if (next.length === selectedRunIds.length && !selectedRunIds.includes(runId) && selectedRunIds.length === 2) {
       setSelectionMessage("一次最多比较两条 Run；请先取消一条选择。");
+      return;
     } else {
       setSelectionMessage("");
     }
