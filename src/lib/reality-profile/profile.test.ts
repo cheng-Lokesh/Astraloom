@@ -120,6 +120,48 @@ describe("Reality Profile", () => {
     expect(projection.world.externalVariables).toEqual([{ label: "市场需求", classification: "assumption", evidenceSummary: "尚未外部核实" }]);
   });
 
+  it("keeps legacy resource prose unmodeled while accepting explicit typed world inputs", () => {
+    const legacy = realityProfileDraftSchema.parse({
+      ...createEmptyRealityProfileDraft(),
+      resources: { value: "每周大约 8 小时", classification: "fact", evidenceSummary: "用户描述" },
+    });
+
+    expect(legacy.worldInputs).toEqual({ version: 1, resources: [], constraints: [] });
+
+    const structured = realityProfileDraftSchema.safeParse({
+      ...legacy,
+      worldInputs: {
+        version: 1,
+        resources: [{
+          key: "weekly-time",
+          label: "每周可投入时间",
+          resourceType: "time",
+          available: 8,
+          unit: "小时/周",
+          minimum: 2,
+          maximum: 16,
+          usePerTick: 1,
+          classification: "fact",
+          evidenceSummary: "用户明确确认的可用时间",
+        }],
+        constraints: [{
+          key: "project-deadline",
+          label: "项目截止时间",
+          resourceKey: "weekly-time",
+          rule: { kind: "before_time", value: "2026-12-01T00:00:00.000Z" },
+          classification: "fact",
+          evidenceSummary: "用户确认的项目期限",
+        }],
+      },
+    });
+
+    expect(structured.success).toBe(true);
+    if (structured.success) {
+      expect(structured.data.worldInputs.resources[0]).toMatchObject({ available: 8, minimum: 2, maximum: 16, usePerTick: 1 });
+      expect(structured.data.worldInputs.constraints[0]?.resourceKey).toBe("weekly-time");
+    }
+  });
+
   it("rejects unsafe values inside the new dimensions", () => {
     expect(() => realityProfileDraftSchema.parse({
       lifeClimate: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
