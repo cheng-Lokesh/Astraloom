@@ -53,6 +53,8 @@ describe("/api/reality-profile", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(body.profile.revision).toBe(3);
+    expect(body.profile.goals).toEqual([{ value: "完成职业转向", classification: "fact", evidenceSummary: "用户确认的计划" }]);
+    expect(body.profile.externalVariables).toEqual([{ value: "", classification: "unknown", evidenceSummary: "明确未知" }]);
     expect(body.trace_id).toMatch(/^reality_profile_[0-9a-f-]{36}$/i);
     expect(body.profile).not.toHaveProperty("id");
     expect(body.profile).not.toHaveProperty("seed_context_id");
@@ -77,8 +79,10 @@ describe("/api/reality-profile", () => {
     expect(body.profile.revision).toBe(1);
     expect(body.profile.lifeClimate.classification).toBe("fact");
     expect(body.profile.constraints).toEqual({ value: "", classification: "unknown", evidenceSummary: "明确未知" });
+    expect(body.profile.values).toEqual(validInput(0) && (validInput(0) as { values: unknown }).values);
     expect(body).not.toHaveProperty("id");
     expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ user_id: "signed-in-owner", seed_context_id: "current-seed", revision: 1 }));
+    expect(state.queries[3].insert).toHaveBeenCalledWith(expect.objectContaining({ life_goals: (validInput(0) as { goals: unknown }).goals }));
   });
 
   it("rejects a stale revision without overwriting the newer profile", async () => {
@@ -133,6 +137,11 @@ function validInput(revision: number | string): unknown {
     lifeClimate: { value: "协作节奏有所变化", classification: "fact", evidenceSummary: "用户确认的近期观察" },
     resources: { value: "支持有限", classification: "assumption", evidenceSummary: "仍需复核" },
     constraints: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+    goals: [{ value: "完成职业转向", classification: "fact", evidenceSummary: "用户确认的计划" }],
+    values: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    lifeThemes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    externalVariables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
     revision,
   };
 }
@@ -142,5 +151,10 @@ function dbRow(revision: number) {
     life_climate_value: "协作节奏有所变化", life_climate_classification: "fact", life_climate_evidence_summary: "用户确认的近期观察",
     resources_value: "支持有限", resources_classification: "assumption", resources_evidence_summary: "仍需复核",
     constraints_value: null, constraints_classification: "unknown", constraints_evidence_summary: "明确未知", revision,
+    life_goals: [{ value: "完成职业转向", classification: "fact", evidenceSummary: "用户确认的计划" }],
+    core_values: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    life_themes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+    external_variables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
   };
 }

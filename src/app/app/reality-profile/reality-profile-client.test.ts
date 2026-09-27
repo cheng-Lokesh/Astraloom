@@ -11,6 +11,11 @@ describe("Reality Profile editor", () => {
     expect(html).toContain("生活气候");
     expect(html).toContain("资源");
     expect(html).toContain("限制");
+    expect(html).toContain("目标");
+    expect(html).toContain("价值观");
+    expect(html).toContain("人生主题");
+    expect(html).toContain("压力");
+    expect(html).toContain("外部变量");
     expect(html).toContain("明确未知");
     expect(html).toContain("保存当前正式链资料");
     expect(html).toContain("disabled");

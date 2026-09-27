@@ -8,6 +8,13 @@ describe("My Sandbox dashboard behavior", () => {
   it("renders current people, ordinal relations, model boundaries and one current-chain action", () => {
     const html = renderToStaticMarkup(createElement(SandboxLedger, { overview: {
       authenticated: true,
+      reality: { facts: [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }], assumptions: [], unknowns: [{ label: "人生气候" }, { label: "资源" }, { label: "约束" }], dimensions: [
+        { label: "目标", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "价值观", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "人生主题", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "压力", facts: 0, assumptions: 0, unknowns: 1 },
+        { label: "外部变量", facts: 0, assumptions: 0, unknowns: 1 },
+      ] },
       seed: { state: "submitted" }, reality: { facts: [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }], assumptions: [], unknowns: [{ label: "人生气候" }, { label: "资源" }, { label: "约束" }] },
       people: { confirmedCount: 2, total: 2, items: [{ key: "person-1", label: "Scenario owner", relationship: "self", kind: "user_core" }, { key: "person-2", label: "Current collaborator", relationship: "collaborator", kind: "npc" }] },
       agents: { immutableCount: 2 },
@@ -25,6 +32,11 @@ describe("My Sandbox dashboard behavior", () => {
     expect(html).toContain("尚未建模");
     expect(html).toContain("开始下一次 Run");
     expect(html).toContain("Reality Profile");
+    expect(html).toContain("目标");
+    expect(html).toContain("价值观");
+    expect(html).toContain("人生主题");
+    expect(html).toContain("压力");
+    expect(html).toContain("外部变量");
     expect(html).toContain("World State");
     expect(html).toContain("事实");
     expect(html).toContain("协作变化");

@@ -49,4 +49,41 @@ describe("Reality Profile", () => {
     expect(projection.reality.facts).toEqual([{ label: "支持有限", evidenceSummary: "已确认的当前情况" }]);
     expect(projection.reality.assumptions).toEqual([{ label: "支持有限", evidenceSummary: "需要后续复核" }]);
   });
+
+  it("keeps goals, values, life themes, pressures, and external variables individually classified", () => {
+    const draft = realityProfileDraftSchema.parse({
+      lifeClimate: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      resources: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      constraints: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      goals: [{ value: "完成职业转向", classification: "fact", evidenceSummary: "用户确认的计划" }],
+      values: [{ value: "保留稳定收入", classification: "assumption", evidenceSummary: "仍需本人复核" }],
+      lifeThemes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+      pressures: [{ value: "团队调整", classification: "fact", evidenceSummary: "用户确认的近期变化" }],
+      externalVariables: [{ value: "市场需求", classification: "assumption", evidenceSummary: "尚未外部核实" }],
+      revision: 0,
+    });
+
+    const projection = buildRealityWorldProjection(draft, { graphLocked: false, latestRunEvent: null });
+
+    expect(projection.reality.facts).toContainEqual({ label: "目标：完成职业转向", evidenceSummary: "用户确认的计划" });
+    expect(projection.reality.assumptions).toContainEqual({ label: "价值观：保留稳定收入", evidenceSummary: "仍需本人复核" });
+    expect(projection.reality.unknowns).toContainEqual({ label: "人生主题" });
+    expect(projection.world.goals).toEqual([{ label: "完成职业转向", evidenceSummary: "用户确认的计划" }]);
+    expect(projection.world.pressures).toEqual([{ label: "团队调整", evidenceSummary: "用户确认的近期变化" }]);
+    expect(projection.world.externalVariables).toEqual([{ label: "市场需求", evidenceSummary: "尚未外部核实" }]);
+  });
+
+  it("rejects unsafe values inside the new dimensions", () => {
+    expect(() => realityProfileDraftSchema.parse({
+      lifeClimate: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      resources: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      constraints: { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      goals: [{ value: "raw scenario", classification: "fact", evidenceSummary: "用户确认" }],
+      values: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+      lifeThemes: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+      pressures: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+      externalVariables: [{ value: "", classification: "unknown", evidenceSummary: "明确未知" }],
+      revision: 0,
+    })).toThrow();
+  });
 });
