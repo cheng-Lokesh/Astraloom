@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(64);
+select plan(86);
 
 select has_column('public', 'simulations', 'graph_snapshot_id', 'canonical Run binds a locked Graph');
 select has_column('public', 'simulations', 'agent_snapshot_id', 'canonical Run binds the immutable Agent snapshot');
@@ -72,7 +72,17 @@ select
       'agentSnapshotId', g.agent_snapshot_id,
       'horizonDays', 30,
       'deterministicSeed', 1701,
-      'calibrationSnapshot', '{}'::jsonb
+      'calibrationSnapshot', '{}'::jsonb,
+      'agents', coalesce((
+        select jsonb_agg(jsonb_build_object('id', a.id::text) order by a.id)
+        from public.agent_profiles a
+        where a.snapshot_id = g.agent_snapshot_id and a.user_id = g.user_id
+      ), '[]'::jsonb),
+      'edges', coalesce((
+        select jsonb_agg(jsonb_build_object('id', e.id::text) order by e.id)
+        from public.relation_edges e
+        where e.graph_snapshot_id = g.id and e.user_id = g.user_id
+      ), '[]'::jsonb)
     ),
     'events', jsonb_build_array(jsonb_build_object(
       'id', 'world_event_v2_m1_fixture',
@@ -182,6 +192,37 @@ reset role;
 select is((select count(*) from public.feedback_logs where user_id='00000000-0000-0000-0000-00000000e401' and version='formal-run-feedback-m1-v1'),1::bigint,'feedback replay creates no duplicate row');
 select throws_ok($$ update public.feedback_logs set comment=comment where user_id='00000000-0000-0000-0000-00000000e401' and version='formal-run-feedback-m1-v1' $$,'42501','formal_feedback_immutable','formal feedback cannot be updated');
 select throws_ok($$ delete from public.feedback_logs where user_id='00000000-0000-0000-0000-00000000e401' and version='formal-run-feedback-m1-v1' $$,'42501','formal_feedback_immutable','formal feedback cannot be deleted');
+
+select has_function('public','append_account_sandbox_feedback_m2',array['uuid','text','text','text','text','uuid'],'targeted append-only feedback uses one versioned RPC');
+select ok(not (select prosecdef from pg_proc where oid=to_regprocedure('public.append_account_sandbox_feedback_m2(uuid,text,text,text,text,uuid)')),'targeted feedback remains SECURITY INVOKER');
+select function_privs_are('public','append_account_sandbox_feedback_m2',array['uuid','text','text','text','text','uuid'],'anon',array[]::text[],'anonymous users cannot append targeted feedback');
+select function_privs_are('public','append_account_sandbox_feedback_m2',array['uuid','text','text','text','text','uuid'],'authenticated',array['EXECUTE'],'authenticated owners use only the validated targeted feedback RPC');
+select ok(exists(select 1 from pg_trigger where tgrelid=to_regclass('public.feedback_logs') and tgname='feedback_logs_m2_immutable_guard'),'targeted feedback has its own immutable-row guard');
+select ok(exists(select 1 from pg_indexes where schemaname='public' and tablename='feedback_logs' and indexname='feedback_logs_m2_owner_idempotency_unique'),'targeted feedback idempotency is owner-scoped');
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000e401',true);
+select set_config('request.jwt.claim.role','authenticated',true);
+set local role authenticated;
+select lives_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'claim','claim-1','off','The evidence does not support this conclusion.','00000000-0000-4000-8000-000000000431') $$,'a user can attach correction feedback to a displayed Claim');
+select is((select idempotent from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'claim','claim-1','off','The evidence does not support this conclusion.','00000000-0000-4000-8000-000000000431')),true,'same targeted feedback replays idempotently');
+select throws_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'claim','claim-1','accurate','Changed feedback','00000000-0000-4000-8000-000000000431') $$,'P0001','idempotency_key_content_conflict','same targeted key cannot change category, target, rating, or note');
+select lives_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'agent','person-1','partly_right','One detail is missing.','00000000-0000-4000-8000-000000000432') $$,'a user can attach mismatch feedback to a frozen participant');
+select lives_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'relation_edge','relation-1','off','This relationship label is wrong.','00000000-0000-4000-8000-000000000433') $$,'a user can attach judgment feedback to a frozen relation');
+select throws_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'strategy','strategy-1','useful','','00000000-0000-4000-8000-000000000434') $$,'P0001','invalid_feedback','feedback cannot target a Strategy absent from this Run');
+select throws_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'claim','claim-1','useful','','00000000-0000-4000-8000-000000000435') $$,'P0001','invalid_feedback','Claim feedback cannot use an overall-result rating');
+reset role;
+select is((select count(*) from public.feedback_logs where user_id='00000000-0000-0000-0000-00000000e401' and version='formal-run-feedback-m2-v1'),3::bigint,'three distinct targeted categories append exactly three rows');
+select is((select target_id from public.feedback_logs where idempotency_key='00000000-0000-4000-8000-000000000431'),'claim_v2_m1_fixture','Claim ordinal resolves to the canonical frozen Claim, not a browser ID');
+select is((select target_id from public.feedback_logs where idempotency_key='00000000-0000-4000-8000-000000000432'),(select input_snapshot#>>'{agents,0,id}' from m1_owned_runs),'participant ordinal resolves to the canonical frozen Agent');
+select is((select target_id from public.feedback_logs where idempotency_key='00000000-0000-4000-8000-000000000433'),(select input_snapshot#>>'{edges,0,id}' from m1_owned_runs),'relation ordinal resolves to the canonical frozen Edge');
+select throws_ok($$ update public.feedback_logs set comment=comment where idempotency_key='00000000-0000-4000-8000-000000000431' $$,'42501','formal_feedback_immutable','targeted feedback cannot be updated');
+select throws_ok($$ delete from public.feedback_logs where idempotency_key='00000000-0000-4000-8000-000000000431' $$,'42501','formal_feedback_immutable','targeted feedback cannot be deleted');
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000f401',true);
+set local role authenticated;
+select throws_ok($$ select * from public.append_account_sandbox_feedback_m2(current_setting('app.m1_run_id')::uuid,'claim','claim-1','off','','00000000-0000-4000-8000-000000000436') $$,'P0001','run_not_found','another account cannot attach feedback to a foreign Run');
+reset role;
+select is((select md5(result_bundle::text) from m1_owned_runs),current_setting('app.m1_bundle_hash'),'targeted feedback leaves every historical Result Bundle unchanged');
+select ok((select calibration_snapshot='{}'::jsonb from m1_owned_runs),'targeted feedback does not mutate the frozen calibration input of an old Run');
+
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000f401',true);
 set local role authenticated;
 select throws_ok($$ select * from public.append_account_sandbox_feedback_m1(current_setting('app.m1_run_id')::uuid,'mixed','','00000000-0000-4000-8000-000000000431') $$,'P0001','run_not_found','another account cannot append feedback to the Run');
