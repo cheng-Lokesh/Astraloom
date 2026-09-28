@@ -33,30 +33,33 @@ Each non-static API must include:
   persistence. Both endpoints return a correlation `trace_id`; the page does
   not render it or return row identifiers.
 
-### Track B life-climate runs (B1 functional candidate)
+### Track B life-climate runs (B1/B2 functional candidates)
 
-`/app/new/life-climate` uses this owner-scoped API for the first one-year
-Track B vertical. Both routes require the current cookie-authenticated user and
+`/app/new/life-climate` uses this owner-scoped API for one-theme Track B paths.
+Both routes require the current cookie-authenticated user and
 return the standard `{ ok, error_code, trace_id }` envelope. The UI never
 renders trace or database identifiers.
 
-- `POST /api/life-climate/runs` accepts only a UUID idempotency key, the
-  current profile revision, and one strict change `{ domain, entryIndex,
-  startPeriod, newState, evidenceSummary }`. The server derives the owner and
+- `POST /api/life-climate/runs` preserves the B1 request shape for old clients
+  and accepts B2 `{ horizon, changes }` with a 1-, 3-, or 5-year horizon and
+  one to twelve strict changes. Every change must stay in the same selected
+  life-model domain; the same field may change again in a later stage. The
+  server derives the owner and
   newest submitted formal Seed from the session, reads that Seed's saved
   Reality Profile, rejects a stale revision, safety-checks the submitted Seed,
-  selected saved item, and proposed alternative, then calls only
-  `persist_life_climate_run_b1`. A new immutable one-year comparison returns
-  201; an identical idempotent replay returns 200.
+  selected saved item, and proposed alternative, then calls the versioned B1
+  or B2 server-only writer. A new immutable comparison returns 201; an
+  identical idempotent replay returns 200.
 - `GET /api/life-climate/runs?limit=...` returns up to 50 newest owner-owned
-  `life-climate-b1-v1` entries. `GET /api/life-climate/runs?run_id=...` opens
+  B1 and B2 entries. `GET /api/life-climate/runs?run_id=...` opens
   one owner-owned saved comparison. Unknown, duplicate, or malformed query
   selectors return 422; another owner's or missing run returns the same 404.
-- The version currently supports only `1_year`, four coarse relative stages,
-  one explicit user assumption, and baseline-versus-alternative projection.
-  Three- and five-year runs, inferred cross-domain effects, probabilistic
-  claims, precise event dates, LLM generation, and edits to Track A/V2 history
-  are not supported by this candidate.
+- B1 history remains readable as a one-year, one-change comparison. B2 adds
+  one-theme 1-, 3-, and 5-year paths with four relative sub-year stages or
+  coarse annual stages; each selected change creates one Event and one
+  evidence-linked Claim. Neither version infers cross-domain effects, assigns
+  probabilities, emits precise event dates, invokes an LLM, or edits Track A/V2
+  history.
 
 Errors include `401 unauthenticated`, `403 safety_downgrade`, `409
 current_seed_required`, `409 reality_profile_required`, `409

@@ -62,7 +62,7 @@ describe("Track B multi-horizon path builder", () => {
       profileRevision: 7,
       changes: [
         { domain: "career", entryIndex: 0, startPeriod: 1, newState: "转入弹性工作", evidenceSummary: "本人设定的第一阶段假设" },
-        { domain: "wealth", entryIndex: 0, startPeriod: 3, newState: "逐步增加应急储备", evidenceSummary: "本人设定的第三阶段假设" },
+        { domain: "career", entryIndex: 0, startPeriod: 3, newState: "改为四天工作制", evidenceSummary: "本人设定的第三阶段假设" },
         { domain: "career", entryIndex: 0, startPeriod: 4, newState: "转为顾问型工作", evidenceSummary: "本人设定的第四阶段假设" },
       ],
     }, ids());
@@ -71,15 +71,15 @@ describe("Track B multi-horizon path builder", () => {
     expect(result).toMatchObject({ version: "life-climate-b2-v1", horizon: "5_years", profileRevision: 7 });
     expect(alternative.periods.map((period) => period.label)).toEqual(["第 1 年", "第 2 年", "第 3 年", "第 4 年", "第 5 年"]);
     expect(alternative.periods[0].lifeModelDomains.career[0].value).toBe("转入弹性工作");
-    expect(alternative.periods[2].lifeModelDomains.career[0].value).toBe("转入弹性工作");
-    expect(alternative.periods[2].lifeModelDomains.wealth[0].value).toBe("逐步增加应急储备");
+    expect(alternative.periods[1].lifeModelDomains.career[0].value).toBe("转入弹性工作");
+    expect(alternative.periods[2].lifeModelDomains.career[0].value).toBe("改为四天工作制");
     expect(alternative.periods[3].lifeModelDomains.career[0].value).toBe("转为顾问型工作");
     expect(alternative.periods[4].lifeModelDomains.career[0].value).toBe("转为顾问型工作");
     expect(baseline.periods.every((period) => period.lifeModelDomains.career[0].value === "继续当前岗位")).toBe(true);
     expect(baseline.periods.every((period) => period.lifeModelDomains.wealth[0].value === "保持现有储备")).toBe(true);
     expect(result.events).toHaveLength(3);
     expect(result.claims).toHaveLength(3);
-    expect(result.events[2].beforeState.value).toBe("转入弹性工作");
+    expect(result.events[2].beforeState.value).toBe("改为四天工作制");
     expect(result.claims.map((claim) => claim.evidenceEventIds[0])).toEqual(result.events.map((event) => event.id));
     expect(result.report.claimIds).toEqual(result.claims.map((claim) => claim.id));
   });

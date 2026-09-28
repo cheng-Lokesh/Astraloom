@@ -140,22 +140,23 @@ Must not allow:
 - Multiple unrelated domains in one MVP run.
 - Deterministic long-life prediction.
 
-### Track B one-year life-climate candidate
+### Track B life-climate path candidate
 
 The formal Start page exposes a direct Track B entry alongside Track A. The
 `/app/new/life-climate` surface must:
 
 - Read only the authenticated user's current saved Reality Profile and provide
   truthful setup links when the formal Seed or profile is missing.
-- Let the user choose one saved item from one of six long-horizon domains,
-  choose one of four relative start stages, enter one alternative state, and
-  save the comparison through the owner-scoped API.
-- Render baseline and alternative paths across four relative stages, then
-  allow a saved comparison to be reopened after refresh from this page's
-  server-backed history list.
-- Explain that this candidate supports only one year, one explicit assumption,
-  and one changed field; three/five years and cross-domain effects remain
-  unmodeled. Unknown profile items stay explicitly unknown.
+- Let the user select one theme from the saved long-horizon profile, choose a
+  one-, three-, or five-year horizon, and add up to twelve changes within that
+  same theme. A field can be changed again at a later stage; unrelated themes
+  cannot be mixed in one comparison.
+- Render baseline and alternative paths across four relative one-year stages
+  or coarse annual three-/five-year stages, then allow a saved comparison to
+  be reopened after refresh from this page's server-backed history list.
+- Explain that every alternative is conditional on user-authored assumptions.
+  Unknown profile items stay explicitly unknown unless the user explicitly
+  changes that item in the alternative path; no other domain is inferred.
 - Keep Event-to-Claim evidence linkage visible as a product explanation while
   hiding row ids, trace ids, raw Seed text, and internal evidence identifiers.
 - State that the comparison is conditional, not a certainty or prediction;

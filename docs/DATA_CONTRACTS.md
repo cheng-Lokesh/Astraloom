@@ -1132,19 +1132,19 @@ foreign keys, RLS, restricted grants, and controlled `SECURITY INVOKER` RPCs
 prevent cross-owner selection, mutation, deletion, or association. Anonymous
 business-table and protected-RPC access is denied.
 
-## Track B one-year life-climate run (B1 functional candidate)
+## Track B life-climate runs (B1/B2 functional candidates)
 
-`life_climate_runs` is a separate append-only ledger for the first bounded
-Track B comparison. It is deliberately isolated from Track A's canonical
+`life_climate_runs` is a separate append-only ledger for bounded Track B
+comparisons. It is deliberately isolated from Track A's canonical
 `simulations`, `simulation_ticks`, `event_logs`, `claims`, and `reports`, and
 does not alter the accepted V2 Core.
 
 Each row binds the authenticated owner to that owner's canonical submitted
 Seed and exact `reality_profiles.revision`, and stores a versioned, immutable
-profile snapshot, one explicit assumption, two four-period paths, one
-assumption-transition Event, one Claim referencing that Event, and a Report
-referencing that Claim. A request UUID plus canonical request hash makes a
-same-content retry idempotent and rejects reuse with different content.
+profile snapshot, two baseline/alternative paths, one assumption-transition
+Event and one Claim per selected change, and a Report referencing those Claims.
+A request UUID plus canonical request hash makes a same-content retry
+idempotent and rejects reuse with different content.
 
 RLS gives authenticated users read-only access to their own rows. Browser roles
 cannot insert, update, or delete generated runs. The only writer is the
@@ -1153,12 +1153,16 @@ only by `service_role`; it rechecks current Seed/profile ownership and
 revision, validates the event-to-claim-to-report evidence links, and appends
 without update/delete access. Service credentials remain server-only.
 
-The `life-climate-b1-v1` contract supports only a one-year conditional
-comparison across four relative periods. It changes one user-selected field
-from one selected period onward; all other dimensions remain frozen. It is not
-a causal multi-domain simulation, a 3/5-year run, an external-reality lookup,
-a probability estimate, or a dated prediction. This bounded candidate does
-not satisfy the complete Track B roadmap stage by itself.
+The `life-climate-b1-v1` contract remains readable for the original one-year,
+single-change format. `life-climate-b2-v1` supports one selected theme across
+1-, 3-, or 5-year horizons: four coarse relative stages for one year and coarse
+annual stages for three or five years. A path may contain up to twelve
+user-authored changes within that same theme, including later changes to a
+field already changed in an earlier stage. Other domains remain frozen or
+explicitly unknown. It is not a causal cross-domain simulation, external
+reality lookup, probability estimate, dated prediction, or LLM-generated
+outcome. These bounded candidates do not alone satisfy final Track B
+acceptance.
 
 ## RLS Requirements
 

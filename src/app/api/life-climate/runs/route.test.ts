@@ -109,25 +109,10 @@ describe("Track B life-climate runs route", () => {
 
   it("rejects a path that mixes unrelated life themes before reading or writing profile data", async () => {
     state.client = authClient(userId);
-    state.tables.seed_contexts = { data: seedRow(), error: null };
-    state.tables.reality_profiles = { data: profileRow(), error: null };
     const mixedChanges = [
       { ...change, startPeriod: 1 },
       { ...change, domain: "wealth" as const, startPeriod: 2, newState: "增加储备" },
     ];
-    state.rpc.mockResolvedValue({
-      data: [{
-        id: runId,
-        idempotent: false,
-        created_at: "2026-09-28T00:00:00.000Z",
-        result_bundle: buildLifeClimatePathRun(createEmptyRealityProfileDraft(7), {
-          horizon: "3_years",
-          profileRevision: 7,
-          changes: mixedChanges,
-        }),
-      }],
-      error: null,
-    });
     const response = await POST(new Request("http://local/api/life-climate/runs", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -185,7 +170,7 @@ describe("Track B life-climate runs route", () => {
       profileRevision: 7,
       changes: [
         { ...change, startPeriod: 1 },
-        { domain: "wealth" as const, entryIndex: 0, startPeriod: 3, newState: "逐步增加储备", evidenceSummary: "本人设定的备选假设" },
+        { domain: "career" as const, entryIndex: 0, startPeriod: 3, newState: "逐步转向顾问工作", evidenceSummary: "本人设定的备选假设" },
       ],
     };
     const resultBundle = buildLifeClimatePathRun(createEmptyRealityProfileDraft(7), input);

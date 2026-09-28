@@ -6,14 +6,16 @@ import { LanguageProvider } from "@/components/language-provider";
 import { LifeClimateClient } from "./life-climate-client";
 
 describe("Life climate Track B entry", () => {
-  it("orients users to the one-year conditional comparison without implying a forecast", () => {
+  it("orients users to the multi-horizon assumption builder without implying a forecast", () => {
     const html = renderToStaticMarkup(
       createElement(LanguageProvider, null, createElement(LifeClimateClient)),
     );
 
-    expect(html).toContain("One-year life-climate comparison");
+    expect(html).toContain("Long-horizon life-climate paths");
+    expect(html).toContain("Choose a 1-, 3-, or 5-year horizon");
+    expect(html).toContain("within one theme");
     expect(html).toContain("A conditional scenario, not a prediction");
-    expect(html).toContain("Four relative stages");
+    expect(html).toContain("Relative stages");
     expect(html).toContain("Reading your saved life structure");
     expect(html).not.toMatch(/trace_id|raw scenario|api[_ -]?key/i);
   });

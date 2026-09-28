@@ -8,7 +8,7 @@ import ScenePage from "./page";
 vi.mock("next/navigation", () => ({ usePathname: () => "/app/new/scene" }));
 
 describe("Track selection on the formal Start page", () => {
-  it("provides a direct entry to the one-year Track B flow alongside Track A", () => {
+  it("provides a direct entry to the bounded multi-horizon Track B flow alongside Track A", () => {
     const html = renderToStaticMarkup(
       createElement(LanguageProvider, null, createElement(ScenePage)),
     );
@@ -16,5 +16,6 @@ describe("Track selection on the formal Start page", () => {
     expect(html).toContain("href=\"/app/new/life-climate\"");
     expect(html).toContain("Track A");
     expect(html).toContain("Track B");
+    expect(html).toContain("1-, 3-, or 5-year");
   });
 });
