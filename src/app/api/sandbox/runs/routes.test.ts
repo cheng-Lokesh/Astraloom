@@ -34,24 +34,25 @@ describe("formal sandbox route contracts",()=>{
     const valid=await start(new Request("http://local",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({graph_snapshot_id:runId,idempotency_key:"33333333-3333-4333-8333-333333333333",horizon_days:30})}));
     expect(valid.status).toBe(403);
   });
-  it("gates the server-only writer on cookie identity and rejects a body-supplied owner",async()=>{
+  it("passes the same cookie-backed caller client through the complete Start write and rejects a body-supplied owner",async()=>{
     const serviceClient={serverWriter:true};
     const input={graph_snapshot_id:runId,idempotency_key:"33333333-3333-4333-8333-333333333333",horizon_days:30};
-    state.client=authClient(userId);
+    const callerClient=authClient(userId);
+    state.client=callerClient;
     state.service.mockReturnValue(serviceClient);
     state.start.mockResolvedValue({ok:true,idempotent:false,run:{id:runId,status:"completed",graph_snapshot_id:runId,time_horizon:"30_days"}});
 
     const response=await start(new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(input)}));
 
     expect(response.status).toBe(201);
-    expect(state.service).toHaveBeenCalledOnce();
+    expect(state.service).not.toHaveBeenCalled();
     expect(state.start).toHaveBeenCalledOnce();
-    expect(state.start).toHaveBeenCalledWith(serviceClient,userId,input);
+    expect(state.start).toHaveBeenCalledWith(callerClient,userId,input);
 
     const forgedOwner=await start(new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...input,user_id:"99999999-9999-4999-8999-999999999999"})}));
 
     expect(forgedOwner.status).toBe(422);
-    expect(state.service).toHaveBeenCalledOnce();
+    expect(state.service).not.toHaveBeenCalled();
     expect(state.start).toHaveBeenCalledOnce();
   });
   it("hides a missing or foreign Run behind the same 404",async()=>{
