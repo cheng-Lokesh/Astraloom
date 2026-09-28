@@ -52,7 +52,7 @@ function profileRow(ownerId = ids.owner, seedId = ids.seed) {
   };
 }
 
-function createService(profile: Row | null, operations: string[] = []) {
+function createService(profile: Row | null, operations: string[] = [], feedbackRows: Row[] = []) {
   const rows: Record<string, unknown> = {
     relation_graph_snapshots: { id: ids.graph, user_id: ids.owner, seed_context_id: ids.seed, agent_snapshot_id: ids.agentSnapshot, graph_locked: true, locked_at: "2026-09-01T00:00:00.000Z", safety_level: "safe" },
     seed_contexts: { id: ids.seed, user_question: "A bounded question", raw_context: "Private raw scenario text", safety_flags: [] },
@@ -61,7 +61,7 @@ function createService(profile: Row | null, operations: string[] = []) {
       { id: ids.other, display_name: "Colleague", agent_type: "npc", evidence_refs: ["seed:person"] },
     ],
     relation_edges: [{ id: ids.edge, from_agent_id: ids.self, to_agent_id: ids.other, relationship_type: "professional", evidence_refs: ["seed:person"] }],
-    feedback_logs: [],
+    feedback_logs: feedbackRows,
     reality_profiles: profile,
   };
 
@@ -71,6 +71,7 @@ function createService(profile: Row | null, operations: string[] = []) {
       const builder: Record<string, (...args: unknown[]) => unknown> = {};
       builder.select = () => builder;
       builder.eq = (column, val) => { operations.push(`${table}:eq:${String(column)}:${String(val)}`); return builder; };
+      builder.in = (column, values) => { operations.push(`${table}:in:${String(column)}:${Array.isArray(values) ? values.join(",") : String(values)}`); return builder; };
       builder.order = () => builder;
       builder.limit = () => builder;
       builder.maybeSingle = async () => ({ data: value ?? null, error: null });
@@ -148,5 +149,26 @@ describe("formal Run freezes the Reality Profile on its locked owner Seed", () =
 
     expect(result).toEqual({ ok: false, errorCode: "incomplete_object_chain" });
     expect(persistFormalSandboxRun).not.toHaveBeenCalled();
+  });
+
+  it("includes targeted feedback categories as bounded input to a later Run", async () => {
+    const operations: string[] = [];
+    const feedbackRows = [{ rating: "off", target_type: "claim", created_at: "2026-09-28T01:00:00.000Z" }];
+    const service = createService(null, operations, feedbackRows);
+
+    const result = await startFormalSandboxRun(service, ids.owner, {
+      graph_snapshot_id: ids.graph,
+      idempotency_key: ids.request,
+      horizon_days: 30,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(operations).toContain("feedback_logs:in:version:formal-run-feedback-m1-v1,formal-run-feedback-m2-v1");
+    expect(vi.mocked(buildFormalSandboxRunV2)).toHaveBeenCalledWith(expect.objectContaining({
+      calibrationSnapshot: {
+        source: "account_feedback",
+        signals: [{ rating: "off", targetType: "claim", createdAt: "2026-09-28T01:00:00.000Z" }],
+      },
+    }));
   });
 });
