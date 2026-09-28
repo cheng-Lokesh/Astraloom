@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useReducer, useState } from "react";
+import { useReducer, useRef, useState } from "react";
 
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { createFormalSandboxClient, type FormalSandboxResultProjection } from "@/lib/formal-sandbox/client";
@@ -20,6 +20,93 @@ export function feedbackReducer(state: FeedbackState, action: FeedbackAction): F
   if (action.type === "save_started") return { ...state, message: "", saved: false };
   if (action.type === "save_succeeded") return { ...state, rating: action.rating, message: "Feedback saved as input for a later Run.", saved: true };
   return { ...state, message: "Feedback was not saved. Your selection and note are still here.", saved: false };
+}
+
+export type FeedbackTargetType = "claim" | "agent" | "relation_edge";
+export type TargetedRating = "accurate" | "partly_right" | "off" | "unclear" | "not_happened_yet";
+export type FeedbackTarget = { targetType: FeedbackTargetType; targetKey: string; targetLabel: string };
+export type TargetedFeedbackState = { rating: TargetedRating | null; comment: string; message: string; saved: boolean };
+export const initialTargetedFeedbackState: TargetedFeedbackState = { rating: null, comment: "", message: "", saved: false };
+export type TargetedFeedbackAction =
+  | { type: "target_changed" }
+  | { type: "rating_changed"; rating: TargetedRating }
+  | { type: "comment_changed"; comment: string }
+  | { type: "save_started" }
+  | { type: "save_succeeded" }
+  | { type: "save_failed" };
+
+export function targetedFeedbackReducer(state: TargetedFeedbackState, action: TargetedFeedbackAction): TargetedFeedbackState {
+  if (action.type === "target_changed") return initialTargetedFeedbackState;
+  if (action.type === "rating_changed") return { ...state, rating: action.rating, message: "", saved: false };
+  if (action.type === "comment_changed") return { ...state, comment: action.comment, message: "", saved: false };
+  if (action.type === "save_started") return { ...state, message: "" };
+  if (action.type === "save_succeeded") return { ...state, message: "已保存为后续模拟参考，本次结果不变。 · Saved for a later Run; this result stays unchanged.", saved: true };
+  return { ...state, message: "未能保存。你的选择和说明还在。 · Could not save; your selection and note are still here.", saved: false };
+}
+
+const targetedRatings: Record<FeedbackTargetType, Array<{ value: TargetedRating; label: string }>> = {
+  claim: [
+    { value: "accurate", label: "准确 · Accurate" },
+    { value: "partly_right", label: "部分准确 · Partly right" },
+    { value: "off", label: "不准确 · Off" },
+    { value: "unclear", label: "不清楚 · Unclear" },
+    { value: "not_happened_yet", label: "尚未发生 · Not happened yet" },
+  ],
+  agent: [
+    { value: "accurate", label: "符合 · Accurate" },
+    { value: "partly_right", label: "部分符合 · Partly right" },
+    { value: "off", label: "不符合 · Off" },
+    { value: "unclear", label: "不清楚 · Unclear" },
+  ],
+  relation_edge: [
+    { value: "accurate", label: "符合 · Accurate" },
+    { value: "partly_right", label: "部分符合 · Partly right" },
+    { value: "off", label: "不符合 · Off" },
+    { value: "unclear", label: "不清楚 · Unclear" },
+  ],
+};
+
+const targetedFeedbackTitles: Record<FeedbackTargetType, string> = {
+  claim: "评价这条结论 · Feedback on this conclusion",
+  agent: "评价人物判断 · Feedback on this participant",
+  relation_edge: "评价关系判断 · Feedback on this relation",
+};
+
+export function TargetedFeedbackPanel({ targetType, targetLabel, state, onRatingChange, onCommentChange, onSave, saving }: {
+  targetType: FeedbackTargetType;
+  targetKey: string;
+  targetLabel: string;
+  state: TargetedFeedbackState;
+  onRatingChange: (rating: TargetedRating) => void;
+  onCommentChange: (comment: string) => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  return <SurfaceCard className="mt-4 p-4">
+    <h3>{targetedFeedbackTitles[targetType]}</h3>
+    <p className="mt-2 text-sm">{targetLabel}</p>
+    <p className="mt-2 text-sm">意见只供后续模拟参考，不会更改本次结果。 · This is a signal for later Runs; it will not change this result.</p>
+    <fieldset className="mt-4">
+      <legend className="text-sm font-semibold">请选择最接近的评价 · Choose the closest response</legend>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {targetedRatings[targetType].map((choice, index) => {
+          const id = `target-feedback-${targetType}-choice-${index + 1}`;
+          return <label key={choice.value} htmlFor={id} className="flex min-h-11 cursor-pointer items-center gap-2 px-3 focus-within:outline focus-within:outline-2">
+            <input id={id} type="radio" name={`target-feedback-${targetType}`} value={choice.value} checked={state.rating === choice.value} onChange={() => onRatingChange(choice.value)} />
+            <span>{choice.label}</span>
+          </label>;
+        })}
+      </div>
+    </fieldset>
+    <label className="mt-4 block text-sm font-semibold">
+      补充说明 · Optional note
+      <textarea value={state.comment} onChange={(event) => onCommentChange(event.target.value)} maxLength={2000} className="mt-2 min-h-20 w-full p-3 font-normal focus-visible:outline focus-visible:outline-2" />
+    </label>
+    <button type="button" onClick={onSave} disabled={!state.rating || saving || state.saved} className="mt-4 min-h-11 px-4 focus-visible:outline focus-visible:outline-2 disabled:opacity-50">
+      {saving ? "正在保存 · Saving" : "保存意见 · Save feedback"}
+    </button>
+    {state.message ? <p role="status" className="mt-3 text-sm">{state.message}</p> : null}
+  </SurfaceCard>;
 }
 
 export function activateClaimFromKeyboard(key: string, claimKey: string, choose: (key: string) => void) {
@@ -59,22 +146,140 @@ export function ResourceChangeCard({ changes }: { changes: FormalSandboxResultPr
   </SurfaceCard>;
 }
 
-export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseClaim, feedbackState, onCommentChange, onSaveFeedback }: { projection: FormalSandboxResultProjection; selectedClaimKey: string | null; onChooseClaim: (key: string) => void; feedbackState: FeedbackState; onCommentChange: (comment: string) => void; onSaveFeedback: (rating: Rating) => void }) {
+export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseClaim, feedbackState, onCommentChange, onSaveFeedback, targetFeedbackTarget, targetFeedbackState, targetFeedbackSaving, onChooseFeedbackTarget, onTargetRatingChange, onTargetCommentChange, onSaveTargetFeedback }: {
+  projection: FormalSandboxResultProjection;
+  selectedClaimKey: string | null;
+  onChooseClaim: (key: string) => void;
+  feedbackState: FeedbackState;
+  onCommentChange: (comment: string) => void;
+  onSaveFeedback: (rating: Rating) => void;
+  targetFeedbackTarget: FeedbackTarget | null;
+  targetFeedbackState: TargetedFeedbackState;
+  targetFeedbackSaving: boolean;
+  onChooseFeedbackTarget: (target: FeedbackTarget | null) => void;
+  onTargetRatingChange: (rating: TargetedRating) => void;
+  onTargetCommentChange: (comment: string) => void;
+  onSaveTargetFeedback: () => void;
+}) {
   const claim = projection.claims.find((item) => item.key === selectedClaimKey);
   const selectedKeys = new Set([...(claim?.supportingStepKeys ?? []), ...(claim?.participantKeys ?? []), ...(claim?.relationshipKeys ?? [])]);
-  return <section id="main-content" className="mx-auto max-w-6xl overflow-x-hidden py-8 sm:py-14"><header><p>Evidence workbench</p><h1>A conditional map, backed by frozen inputs and simulated steps.</h1><p>User-provided facts, explicit assumptions, unknowns, sandbox simulation, and conditional conclusions remain separate.</p></header><FrozenRealityProfileCard profile={projection.realityProfile} /><ResourceChangeCard changes={projection.resourceChanges} /><div className="mt-8 grid gap-6 md:grid-cols-2"><SurfaceCard className="p-4"><h2>User-provided facts</h2><p className="text-sm">Reality evidence used by this Run, excluding the private Seed narrative.</p>{projection.facts.map((item) => <p key={item.key} className="mt-2">{item.statement}</p>)}</SurfaceCard><SurfaceCard className="p-4"><h2>System assumptions</h2><p className="text-sm">Explicit simulation assumptions, not verified facts.</p>{projection.assumptions.map((item) => <p key={item.key} className="mt-2">{item.statement}</p>)}</SurfaceCard></div><div className="mt-8 grid gap-6 lg:grid-cols-2"><div><h2>Conditional conclusions</h2>{projection.claims.map((item) => <button key={item.key} type="button" onClick={() => onChooseClaim(item.key)} onKeyDown={(event) => activateClaimFromKeyboard(event.key, item.key, onChooseClaim)} aria-pressed={selectedClaimKey === item.key} className="mt-3 block min-h-10 w-full p-4 text-left focus-visible:outline focus-visible:outline-2 active:scale-95 motion-reduce:transition-none"><strong>{item.statement}</strong><span>{item.uncertainty}</span></button>)}</div><div><h2>Direct supporting simulation steps</h2>{projection.steps.map((item) => <SurfaceCard key={item.key} className={selectedKeys.has(item.key) ? "mt-3 p-4 ring-2 ring-[var(--evidence-gold)]" : "mt-3 p-4"}><b>Step {item.order}</b><p>{item.label}. This is a simulation step, not a real-world event.</p></SurfaceCard>)}<h2 className="mt-6">Frozen participants and relations</h2>{projection.participants.map((item) => <p key={item.key} className={selectedKeys.has(item.key) ? "font-semibold text-[var(--evidence-gold)]" : ""}>{item.label} · {item.role}</p>)}{projection.relationships.map((item) => <p key={item.key} className={selectedKeys.has(item.key) ? "font-semibold text-[var(--evidence-gold)]" : ""}>{item.label}</p>)}</div></div><FeedbackPanel state={feedbackState} onCommentChange={onCommentChange} onSave={onSaveFeedback} /></section>;
+  const feedbackIsOpen = (target: FeedbackTarget) => targetFeedbackTarget?.targetType === target.targetType && targetFeedbackTarget.targetKey === target.targetKey;
+  const renderTargetFeedback = (target: FeedbackTarget) => feedbackIsOpen(target)
+    ? <TargetedFeedbackPanel targetType={target.targetType} targetKey={target.targetKey} targetLabel={target.targetLabel} state={targetFeedbackState} onRatingChange={onTargetRatingChange} onCommentChange={onTargetCommentChange} onSave={onSaveTargetFeedback} saving={targetFeedbackSaving} />
+    : null;
+  const toggleTargetFeedback = (target: FeedbackTarget) => onChooseFeedbackTarget(feedbackIsOpen(target) ? null : target);
+
+  return <section id="main-content" className="mx-auto max-w-6xl overflow-x-hidden py-8 sm:py-14">
+    <header>
+      <p>Evidence workbench</p>
+      <h1>A conditional map, backed by frozen inputs and simulated steps.</h1>
+      <p>User-provided facts, explicit assumptions, unknowns, sandbox simulation, and conditional conclusions remain separate.</p>
+    </header>
+    <FrozenRealityProfileCard profile={projection.realityProfile} />
+    <ResourceChangeCard changes={projection.resourceChanges} />
+    <div className="mt-8 grid gap-6 md:grid-cols-2">
+      <SurfaceCard className="p-4"><h2>User-provided facts</h2><p className="text-sm">Reality evidence used by this Run, excluding the private Seed narrative.</p>{projection.facts.map((item) => <p key={item.key} className="mt-2">{item.statement}</p>)}</SurfaceCard>
+      <SurfaceCard className="p-4"><h2>System assumptions</h2><p className="text-sm">Explicit simulation assumptions, not verified facts.</p>{projection.assumptions.map((item) => <p key={item.key} className="mt-2">{item.statement}</p>)}</SurfaceCard>
+    </div>
+    <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div>
+        <h2>Conditional conclusions</h2>
+        {projection.claims.map((item) => {
+          const target: FeedbackTarget = { targetType: "claim", targetKey: item.key, targetLabel: item.statement };
+          return <SurfaceCard key={item.key} className="mt-3 p-4">
+            <button type="button" onClick={() => onChooseClaim(item.key)} onKeyDown={(event) => activateClaimFromKeyboard(event.key, item.key, onChooseClaim)} aria-pressed={selectedClaimKey === item.key} className="block min-h-11 w-full text-left focus-visible:outline focus-visible:outline-2 active:scale-95 motion-reduce:transition-none">
+              <strong className="block">{item.statement}</strong>
+              <span className="mt-2 block">{item.uncertainty}</span>
+            </button>
+            <button type="button" onClick={() => toggleTargetFeedback(target)} aria-expanded={feedbackIsOpen(target)} className="mt-3 min-h-11 px-3 text-left focus-visible:outline focus-visible:outline-2">
+              {feedbackIsOpen(target) ? "收起评价 · Close feedback" : "反馈这条结论 · Feedback on this conclusion"}
+            </button>
+            {renderTargetFeedback(target)}
+          </SurfaceCard>;
+        })}
+      </div>
+      <div>
+        <h2>Direct supporting simulation steps</h2>
+        {projection.steps.map((item) => <SurfaceCard key={item.key} className={selectedKeys.has(item.key) ? "mt-3 p-4 ring-2 ring-[var(--evidence-gold)]" : "mt-3 p-4"}><b>Step {item.order}</b><p>{item.label}. This is a simulation step, not a real-world event.</p></SurfaceCard>)}
+        <h2 className="mt-6">Frozen participants and relations</h2>
+        {projection.participants.map((item) => {
+          const target: FeedbackTarget = { targetType: "agent", targetKey: item.key, targetLabel: item.label };
+          return <div key={item.key} className="mt-3">
+            <p className={selectedKeys.has(item.key) ? "font-semibold text-[var(--evidence-gold)]" : ""}>{item.label} · {item.role}</p>
+            <button type="button" onClick={() => toggleTargetFeedback(target)} aria-expanded={feedbackIsOpen(target)} className="mt-1 min-h-11 px-2 text-left focus-visible:outline focus-visible:outline-2">{feedbackIsOpen(target) ? "收起人物评价 · Close" : "反馈人物判断 · Feedback on this participant"}</button>
+            {renderTargetFeedback(target)}
+          </div>;
+        })}
+        {projection.relationships.map((item) => {
+          const target: FeedbackTarget = { targetType: "relation_edge", targetKey: item.key, targetLabel: item.label };
+          return <div key={item.key} className="mt-3">
+            <p className={selectedKeys.has(item.key) ? "font-semibold text-[var(--evidence-gold)]" : ""}>{item.label}</p>
+            <button type="button" onClick={() => toggleTargetFeedback(target)} aria-expanded={feedbackIsOpen(target)} className="mt-1 min-h-11 px-2 text-left focus-visible:outline focus-visible:outline-2">{feedbackIsOpen(target) ? "收起关系评价 · Close" : "反馈关系判断 · Feedback on this relation"}</button>
+            {renderTargetFeedback(target)}
+          </div>;
+        })}
+      </div>
+    </div>
+    <FeedbackPanel state={feedbackState} onCommentChange={onCommentChange} onSave={onSaveFeedback} />
+  </section>;
 }
 
 export function ResultWorkbench({ projection, runId }: { projection: FormalSandboxResultProjection; runId: string }) {
   const [selectedClaimKey, setSelectedClaimKey] = useState<string | null>(null);
   const [feedbackState, dispatch] = useReducer(feedbackReducer, initialFeedbackState);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const [targetFeedbackTarget, setTargetFeedbackTarget] = useState<FeedbackTarget | null>(null);
+  const [targetFeedbackState, dispatchTargetFeedback] = useReducer(targetedFeedbackReducer, initialTargetedFeedbackState);
+  const [targetFeedbackSaving, setTargetFeedbackSaving] = useState(false);
+  const targetSaveInFlight = useRef(false);
   const save = async (rating: Rating) => {
     dispatch({ type: "save_started" });
-    const result = await createFormalSandboxClient().feedback(runId, { rating, comment: feedbackState.comment, idempotencyKey });
-    dispatch(result.ok ? { type: "save_succeeded", rating } : { type: "save_failed" });
+    try {
+      const result = await createFormalSandboxClient().feedback(runId, { rating, comment: feedbackState.comment, idempotencyKey: crypto.randomUUID() });
+      dispatch(result.ok ? { type: "save_succeeded", rating } : { type: "save_failed" });
+    } catch {
+      dispatch({ type: "save_failed" });
+    }
   };
-  return <EvidenceWorkbenchView projection={projection} selectedClaimKey={selectedClaimKey} onChooseClaim={setSelectedClaimKey} feedbackState={feedbackState} onCommentChange={(comment) => dispatch({ type: "comment_changed", comment })} onSaveFeedback={(rating) => void save(rating)} />;
+  const chooseFeedbackTarget = (target: FeedbackTarget | null) => {
+    setTargetFeedbackTarget(target);
+    dispatchTargetFeedback({ type: "target_changed" });
+  };
+  const saveTargetFeedback = async () => {
+    if (!targetFeedbackTarget || !targetFeedbackState.rating || targetSaveInFlight.current) return;
+    targetSaveInFlight.current = true;
+    setTargetFeedbackSaving(true);
+    dispatchTargetFeedback({ type: "save_started" });
+    try {
+      const result = await createFormalSandboxClient().feedback(runId, {
+        targetType: targetFeedbackTarget.targetType,
+        targetKey: targetFeedbackTarget.targetKey,
+        rating: targetFeedbackState.rating,
+        comment: targetFeedbackState.comment,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      dispatchTargetFeedback(result.ok ? { type: "save_succeeded" } : { type: "save_failed" });
+    } catch {
+      dispatchTargetFeedback({ type: "save_failed" });
+    } finally {
+      targetSaveInFlight.current = false;
+      setTargetFeedbackSaving(false);
+    }
+  };
+  return <EvidenceWorkbenchView
+    projection={projection}
+    selectedClaimKey={selectedClaimKey}
+    onChooseClaim={setSelectedClaimKey}
+    feedbackState={feedbackState}
+    onCommentChange={(comment) => dispatch({ type: "comment_changed", comment })}
+    onSaveFeedback={(rating) => void save(rating)}
+    targetFeedbackTarget={targetFeedbackTarget}
+    targetFeedbackState={targetFeedbackState}
+    targetFeedbackSaving={targetFeedbackSaving}
+    onChooseFeedbackTarget={chooseFeedbackTarget}
+    onTargetRatingChange={(rating) => dispatchTargetFeedback({ type: "rating_changed", rating })}
+    onTargetCommentChange={(comment) => dispatchTargetFeedback({ type: "comment_changed", comment })}
+    onSaveTargetFeedback={() => void saveTargetFeedback()}
+  />;
 }
 
 export function ResultLoading() { return <section className="mx-auto max-w-4xl py-12"><p role="status">Reading saved evidence</p></section>; }

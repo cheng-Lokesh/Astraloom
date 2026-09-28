@@ -106,7 +106,7 @@ describe("formal sandbox route contracts",()=>{
     const failed=await feedback(request(),context);expect(failed.status).toBe(500);expect(await failed.text()).not.toContain("private sql detail");
   });
   it("stores targeted feedback by a safe ordinal key and never returns database identifiers",async()=>{
-    const rpc=vi.fn().mockResolvedValue({data:[{idempotent:false,feedback:{target_type:"claim",target_key:"claim-1",rating:"off",created_at:"2026-09-28T00:00:00.000Z"}}],error:null});
+    const rpc=vi.fn().mockResolvedValue({data:[{idempotent:false,feedback:{id:"dddddddd-dddd-4ddd-8ddd-dddddddddddd",run_id:runId,target_id:"claim_v2_m1_fixture",target_type:"claim",target_key:"claim-1",rating:"off",created_at:"2026-09-28T00:00:00.000Z"}}],error:null});
     state.client=authClient(userId,undefined,rpc);
     const response=await feedback(new Request("http://local",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({target_type:"claim",target_key:"claim-1",rating:"off",comment:"The evidence does not support this conclusion.",idempotency_key:"33333333-3333-4333-8333-333333333333"})}),context);
     const body=await response.json();
@@ -121,7 +121,11 @@ describe("formal sandbox route contracts",()=>{
       p_idempotency_key:"33333333-3333-4333-8333-333333333333",
     });
     expect(body.feedback).toEqual(expect.objectContaining({target_type:"claim",target_key:"claim-1",rating:"off"}));
-    expect(JSON.stringify(body)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+    expect(JSON.stringify(body)).not.toContain(runId);
+    expect(JSON.stringify(body)).not.toContain("claim_v2_m1_fixture");
+    expect(body.feedback).not.toHaveProperty("id");
+    expect(body.feedback).not.toHaveProperty("run_id");
+    expect(body.feedback).not.toHaveProperty("target_id");
   });
   it.each([
     {target_type:"claim",target_key:"33333333-3333-4333-8333-333333333333",rating:"off"},

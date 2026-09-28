@@ -555,14 +555,25 @@ Another owner's valid identifier is indistinguishable from a missing object.
   evidence references, and database identifiers from display fields.
 - `GET /api/sandbox/runs?limit=&before=&horizon=`: returns newest-first completed account History. `horizon` is optional and accepts only `30_days` or `90_days`; filtering happens in the owner-scoped server query before stable `(created_at, id)` cursor pagination.
   The opaque compound cursor binds `(created_at, id)` for stable pagination.
-- `POST /api/sandbox/runs/:runId/feedback`: accepts `useful`, `mixed`, or `off`,
-  an optional bounded comment, and a UUID idempotency key. Feedback is
-  append-only, completed-run-only, and content-bound idempotent.
+- `POST /api/sandbox/runs/:runId/feedback`: the existing overall form accepts
+  `useful`, `mixed`, or `off`, a bounded comment, and a UUID idempotency key.
+  Targeted feedback accepts `target_type` (`claim`, `agent`, or `relation_edge`),
+  a safe ordinal `target_key` (`claim-N`, `person-N`, or `relation-N`), a
+  category-valid rating, a bounded comment, and a UUID idempotency key. The
+  database resolves the key only against that completed Run's frozen result
+  bundle; browser-supplied database identifiers are rejected. RPC row IDs are
+  stripped from the targeted response. Both forms are append-only,
+  completed-run-only, owner-scoped, and content-bound idempotent.
+  Strategy feedback is not accepted until a persisted Strategy item is actually
+  present in the formal Result; the API must not invent one.
 
 Malformed input returns 422, unauthenticated requests return 401, owner-hidden
-or missing resources return 404, contract conflicts return 409, and unexpected
-persistence failures return a sanitized 500. Formal browser clients must not
-recover Result, History, completion, or Feedback from localStorage.
+or missing resources return 404, contract conflicts or missing target keys
+return 409, and unexpected persistence failures return a sanitized 500. Formal
+browser clients must not recover Result, History, completion, or Feedback from
+localStorage. Targeted feedback signals are included in the bounded input
+snapshot of a later Run; this records the user's signal but does not yet prove
+that simulation scoring improves.
 
 ### `GET /api/sandbox-overview` (M2.0 candidate)
 

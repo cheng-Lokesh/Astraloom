@@ -589,6 +589,23 @@ Allowed `rating` values:
 - `unclear`
 - `not_happened_yet`
 
+Formal account feedback is versioned. M1 accepts only overall-result ratings
+(`useful`, `mixed`, `off`). M2 targeted feedback is appended only by its
+authenticated `SECURITY INVOKER` RPC and stores the canonical artifact
+reference in `target_id`; the browser sends only a per-Run ordinal key and never
+an internal ID. Claim ratings are `accurate`, `partly_right`, `off`, `unclear`,
+or `not_happened_yet`; Agent and Relation ratings are `accurate`,
+`partly_right`, `off`, or `unclear`; Strategy ratings, when a Strategy artifact
+exists, are `useful`, `not_useful`, or `unclear`. Current formal Results do not
+contain Strategy artifacts, so the current API rejects Strategy feedback.
+
+M1 and M2 feedback rows are append-only and owner-idempotent. A later Run may
+freeze only the bounded category, rating, and timestamp signal, never the
+feedback comment. This is an input record for future calibration work, not a
+claim that current scoring has measurably improved. Feedback cannot rewrite an
+old Run's inputs, Events, Claims, Report, Result Bundle, or calibration
+snapshot.
+
 Local feedback saves may generate a `calibration_snapshot` and a local
 `CalibrationProfile`, but the feedback log remains separate from EventLogs and
 Claims.

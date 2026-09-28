@@ -37,7 +37,7 @@ export async function startFormalSandboxRun(service: SupabaseClient, userId: str
       service.from("seed_contexts").select("id,user_question,raw_context,safety_flags").eq("id",graph.data.seed_context_id).eq("user_id",userId).eq("status","submitted").maybeSingle(),
       service.from("agent_profiles").select("id,display_name,agent_type,evidence_refs").eq("snapshot_id",graph.data.agent_snapshot_id).eq("user_id",userId).order("id"),
       service.from("relation_edges").select("id,from_agent_id,to_agent_id,relationship_type,evidence_refs").eq("graph_snapshot_id",graph.data.id).eq("user_id",userId).order("id"),
-      service.from("feedback_logs").select("rating,target_type,created_at").eq("user_id",userId).eq("version","formal-run-feedback-m1-v1").order("created_at",{ascending:false}).limit(20),
+      service.from("feedback_logs").select("rating,target_type,created_at").eq("user_id",userId).in("version",["formal-run-feedback-m1-v1","formal-run-feedback-m2-v1"]).order("created_at",{ascending:false}).limit(20),
       service.from("reality_profiles").select(`id,user_id,seed_context_id,${realityProfileDatabaseColumns}`).eq("user_id",userId).eq("seed_context_id",graph.data.seed_context_id).maybeSingle(),
     ]);
     if (seedResult.error || agentsResult.error || edgesResult.error || feedbackResult.error || profileResult.error) return { ok:false as const,errorCode:"persistence_failed" as const };

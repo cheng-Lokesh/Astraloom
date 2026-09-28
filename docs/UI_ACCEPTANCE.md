@@ -360,6 +360,14 @@ Must allow:
 - Relation judgment feedback.
 - Strategy usefulness feedback.
 
+Current formal Result feedback is available for the actual frozen Claim,
+Participant, and Relation items shown in that Run. Strategy usefulness remains
+a full-product requirement but must stay unavailable until the persisted
+Result contains a real Strategy item; do not create a placeholder or infer
+strategy content solely to collect a rating. Existing overall-result feedback
+remains available. Target feedback must use accessible controls, safe ordinal
+keys, and must not expose database IDs or alter historical Run artifacts.
+
 Must show:
 
 - Stored simulation history.

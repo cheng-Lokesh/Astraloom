@@ -10,6 +10,7 @@ import {
   FeedbackPanel,
   feedbackReducer,
   initialFeedbackState,
+  initialTargetedFeedbackState,
   ResultSurface,
 } from "./result-workbench";
 
@@ -44,6 +45,13 @@ const workbench = (selectedClaimKey: string | null = null, feedbackState = initi
   feedbackState,
   onCommentChange: noAction,
   onSaveFeedback: noAction,
+  targetFeedbackTarget: null,
+  targetFeedbackState: initialTargetedFeedbackState,
+  targetFeedbackSaving: false,
+  onChooseFeedbackTarget: noAction,
+  onTargetRatingChange: noAction,
+  onTargetCommentChange: noAction,
+  onSaveTargetFeedback: noAction,
 });
 
 describe("M2.2 Result components and controllers", () => {

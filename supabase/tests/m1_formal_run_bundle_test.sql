@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(87);
+select plan(88);
 
 select has_column('public', 'simulations', 'graph_snapshot_id', 'canonical Run binds a locked Graph');
 select has_column('public', 'simulations', 'agent_snapshot_id', 'canonical Run binds the immutable Agent snapshot');
