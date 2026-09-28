@@ -26,8 +26,9 @@ to the existing formal account path. It changes no Supabase schema, API, RLS,
 migration, overview contract, or `src/lib/v2/**`. The public hero now explains
 the Seed to People to Agents to Graph to Run to History/Feedback path; its
 primary CTA opens `/app/new/scene`, and it has no standalone sample Result
-link. `/app/start` redirects to that same formal Scene route. Scene presents
-the currently available Track A and Reality Intake path only, with no trial
+link. `/app/start` redirects to that same formal Scene route. Scene keeps Track
+A and Reality Intake as the primary path and now also links to the separate,
+bounded Track B life-climate comparison. Neither entry opens a trial
 workspace. The public legacy `/intake` bookmark server-redirects to that same
 Scene route instead of rendering the legacy local intake. Running without a
 `run_id` is an honest empty state, and History

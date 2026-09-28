@@ -52,12 +52,14 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(scene).toContain('href="/app/new/intake"');
   });
 
-  it("offers only the current formal Track A intake from the new-scene route", async () => {
+  it("offers the formal Track A intake and separate bounded Track B path from the new-scene route", async () => {
     const scene = await source("src/app/app/new/scene/page.tsx");
 
     expect(scene).toContain("Track A");
     expect(scene).toContain('href="/app/new/intake"');
-    expect(scene).not.toMatch(/TrialSampleButton|localStorage|Track B|路径 B/);
+    expect(scene).toContain("Track B");
+    expect(scene).toContain('href="/app/new/life-climate"');
+    expect(scene).not.toMatch(/TrialSampleButton|localStorage/);
   });
 
   it("keeps the public-to-formal Intake path free of sample, trial, and local-result shortcuts", async () => {

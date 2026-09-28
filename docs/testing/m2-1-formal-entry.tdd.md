@@ -518,3 +518,16 @@ HEAD, with `ahead 32 / behind 0`; the worktree was clean before this
 evidence-only update. This record does not publish the candidate. A later
 docs-only local commit may advance local HEAD, while the remote remains at the
 stated unpublished SHA until an explicitly authorized push.
+
+## Later local Track B extension and regression alignment (2026-09-28)
+
+Later commits `44c5c41` and `e39f55a` added a separate account-backed
+Track B life-climate path and linked it from Scene. The original candidate
+scope above remains historical; the current Scene intentionally offers both
+the Track A primary entry and a separate Track B entry. A full-suite run found
+the old assertion still forbade Track B, so the contract test now checks the
+two supported entry points while continuing to forbid trial/local-storage
+shortcuts. The same run found the Result-client fixture omitted the now-required
+empty `worldVariables` projection; the fixture now matches the strict response
+shape returned by the server. These are test/documentation alignment changes,
+not new acceptance of M2.1, Track B, or Phase 4.
