@@ -37,7 +37,7 @@ export function AppShell({ children, navigation = "formal" }: AppShellProps) {
   return (
     <div className="app-cinematic-shell min-h-screen text-[var(--mf-ink)]">
       {navigation === "formal" ? <header className="app-cinematic-header sticky top-0 z-30 border-b border-white/10 bg-[#08090a] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-2.5 sm:px-6">
           <Link
             href="/app/dashboard"
             className="group flex min-h-11 min-w-0 items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--evidence-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08090a]"
@@ -61,29 +61,13 @@ export function AppShell({ children, navigation = "formal" }: AppShellProps) {
           <div className="flex min-w-0 items-center gap-2 lg:justify-end">
             <nav
               aria-label="Primary"
-              className="hidden min-w-0 items-center gap-1 rounded-md border border-white/10 bg-white/[.02] p-1 md:flex"
+              className="hidden min-w-0 items-center gap-1 rounded-md border border-white/10 bg-white/[.02] p-1 lg:flex"
             >
               {navItems.map((item) => (
                 <NavLink
                   key={item.href}
                   href={item.href}
                   active={isActivePath(pathname, item.href)}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-
-            <nav
-              aria-label="Flow"
-              className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-md border border-white/10 bg-white/[.02] p-1 md:hidden"
-            >
-              {mobileFlowItems.map((item) => (
-                <NavLink
-                  key={item.href}
-                  href={item.href}
-                  active={isActivePath(pathname, item.href)}
-                  compact
                 >
                   {item.label}
                 </NavLink>
@@ -97,6 +81,21 @@ export function AppShell({ children, navigation = "formal" }: AppShellProps) {
             </div>
           </div>
         </div>
+        <nav
+          aria-label="Flow"
+          className="mx-auto grid max-w-7xl grid-cols-3 gap-1 px-4 pb-2 sm:px-6 lg:hidden"
+        >
+          {mobileFlowItems.map((item) => (
+            <NavLink
+              key={item.href}
+              href={item.href}
+              active={isActivePath(pathname, item.href)}
+              compact
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
       </header> : null}
 
       <main
@@ -136,7 +135,7 @@ function NavLink({
         active
           ? "bg-[rgba(176,224,230,0.12)] text-[var(--signal-cyan)] shadow-[0_0_18px_rgba(176,224,230,0.1)]"
           : "text-[var(--text-secondary)] hover:bg-[rgba(176,224,230,0.08)] hover:text-[var(--text-primary)]"
-      } ${compact ? "px-2 text-xs sm:text-sm" : ""}`}
+      } ${compact ? "w-full px-2 text-xs sm:text-sm" : ""}`}
     >
       {children}
     </Link>

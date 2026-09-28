@@ -46,7 +46,7 @@ describe("My Sandbox navigation contract", () => {
       "utf8",
     );
 
-    expect(source).toMatch(/aria-label="Flow"[\s\S]*?grid grid-cols-3/);
+    expect(source).toMatch(/aria-label="Flow"[\s\S]*?grid[^\"]*grid-cols-3/);
     expect(source).toContain("w-full px-2 text-xs sm:text-sm");
     expect(source).toContain("max-w-7xl grid-cols-3 gap-1 px-4 pb-2");
   });
