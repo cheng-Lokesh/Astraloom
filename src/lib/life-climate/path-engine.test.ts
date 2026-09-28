@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
-import { buildLifeClimatePathRun, lifeClimatePathRunRequestSchema } from "./engine";
+import { buildLifeClimatePathRun, lifeClimatePathRunRequestSchema, type LifeClimatePathRunRequest } from "./engine";
 
 function profileFixture() {
   const profile = createEmptyRealityProfileDraft(7);
@@ -85,9 +85,16 @@ describe("Track B multi-horizon path builder", () => {
   });
 
   it("rejects stage numbers outside the chosen horizon and duplicate changes to one field in the same stage", () => {
+    const baseChange: LifeClimatePathRunRequest["changes"][number] = {
+      domain: "career",
+      entryIndex: 0,
+      startPeriod: 1,
+      newState: "一项假设",
+      evidenceSummary: "本人设定",
+    };
     const base = {
       profileRevision: 7,
-      changes: [{ domain: "career", entryIndex: 0, startPeriod: 1, newState: "一项假设", evidenceSummary: "本人设定" }],
+      changes: [baseChange],
     };
 
     expect(lifeClimatePathRunRequestSchema.safeParse({ ...base, horizon: "3_years", changes: [{ ...base.changes[0], startPeriod: 4 }] }).success).toBe(false);
@@ -101,6 +108,19 @@ describe("Track B multi-horizon path builder", () => {
       profileRevision: 6,
       changes: base.changes,
     }, ids())).toThrow();
+  });
+
+  it("keeps each comparison inside one selected life theme", () => {
+    const result = lifeClimatePathRunRequestSchema.safeParse({
+      horizon: "3_years",
+      profileRevision: 7,
+      changes: [
+        { domain: "career", entryIndex: 0, startPeriod: 1, newState: "换一种工作安排", evidenceSummary: "本人设定" },
+        { domain: "wealth", entryIndex: 0, startPeriod: 2, newState: "增加储备", evidenceSummary: "本人设定" },
+      ],
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("keeps long-horizon results conditional and explicitly refuses to infer unsupported effects", () => {

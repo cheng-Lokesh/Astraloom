@@ -24,6 +24,7 @@ function query(result: unknown) {
   const builder: Record<string, unknown> = {};
   builder.select = (value: string) => { state.operations.push(`select:${value}`); return builder; };
   builder.eq = (key: string, value: unknown) => { state.operations.push(`eq:${key}:${String(value)}`); return builder; };
+  builder.in = (key: string, value: unknown[]) => { state.operations.push(`in:${key}:${value.join(",")}`); return builder; };
   builder.not = (key: string, operator: string, value: unknown) => { state.operations.push(`not:${key}:${operator}:${String(value)}`); return builder; };
   builder.order = (key: string) => { state.operations.push(`order:${key}`); return builder; };
   builder.limit = (value: number) => { state.operations.push(`limit:${value}`); return builder; };
@@ -106,6 +107,44 @@ describe("Track B life-climate runs route", () => {
     expect(state.serviceFactory).not.toHaveBeenCalled();
   });
 
+  it("rejects a path that mixes unrelated life themes before reading or writing profile data", async () => {
+    state.client = authClient(userId);
+    state.tables.seed_contexts = { data: seedRow(), error: null };
+    state.tables.reality_profiles = { data: profileRow(), error: null };
+    const mixedChanges = [
+      { ...change, startPeriod: 1 },
+      { ...change, domain: "wealth" as const, startPeriod: 2, newState: "增加储备" },
+    ];
+    state.rpc.mockResolvedValue({
+      data: [{
+        id: runId,
+        idempotent: false,
+        created_at: "2026-09-28T00:00:00.000Z",
+        result_bundle: buildLifeClimatePathRun(createEmptyRealityProfileDraft(7), {
+          horizon: "3_years",
+          profileRevision: 7,
+          changes: mixedChanges,
+        }),
+      }],
+      error: null,
+    });
+    const response = await POST(new Request("http://local/api/life-climate/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        idempotency_key: "55555555-5555-4555-8555-555555555557",
+        profile_revision: 7,
+        horizon: "3_years",
+        changes: mixedChanges,
+      }),
+    }));
+
+    expect(response.status).toBe(422);
+    expect(state.client && (state.client as ReturnType<typeof authClient>).from).not.toHaveBeenCalled();
+    expect(state.serviceFactory).not.toHaveBeenCalled();
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+
   it("binds the immutable run to the authenticated user's current submitted Seed and exact profile revision", async () => {
     state.client = authClient(userId);
     state.tables.seed_contexts = { data: seedRow(), error: null };
@@ -159,6 +198,7 @@ describe("Track B life-climate runs route", () => {
     }));
     const body = await response.json();
 
+    expect(state.rpc).toHaveBeenCalledOnce();
     expect(response.status).toBe(201);
     expect(state.rpc).toHaveBeenCalledWith("persist_life_climate_run_b2", expect.objectContaining({
       p_user_id: userId,
@@ -170,6 +210,35 @@ describe("Track B life-climate runs route", () => {
     expect(body.run.result.events).toHaveLength(2);
     expect(body.run.result.claims.map((item: { evidenceEventIds: string[] }) => item.evidenceEventIds[0])).toEqual(body.run.result.events.map((item: { id: string }) => item.id));
     expect(JSON.stringify(body)).not.toContain(userId);
+  });
+
+  it("reopens a saved multi-year path from the same owner-scoped history ledger", async () => {
+    state.client = authClient(userId);
+    const input = {
+      horizon: "3_years" as const,
+      profileRevision: 7,
+      changes: [{ ...change, startPeriod: 2 }],
+    };
+    const result = buildLifeClimatePathRun(createEmptyRealityProfileDraft(7), input);
+    state.tables.life_climate_runs = {
+      data: {
+        id: runId,
+        created_at: "2026-09-28T00:00:00.000Z",
+        profile_revision: 7,
+        input_snapshot: { version: result.version, horizon: result.horizon, profileRevision: result.profileRevision, changes: result.selectedChanges },
+        result_bundle: result,
+      },
+      error: null,
+    };
+
+    const response = await GET(new Request(`http://local/api/life-climate/runs?run_id=${runId}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(state.operations).toContain("in:version:life-climate-b1-v1,life-climate-b2-v1");
+    expect(state.operations).toContain(`eq:user_id:${userId}`);
+    expect(body.run.result).toMatchObject({ version: "life-climate-b2-v1", horizon: "3_years" });
+    expect(body.run.result.paths[0].periods).toHaveLength(3);
   });
 
   it("applies the safety gate to the current submitted Seed before invoking the writer", async () => {
@@ -195,7 +264,7 @@ describe("Track B life-climate runs route", () => {
     expect(state.rpc).not.toHaveBeenCalled();
   });
 
-  it("reads only owner-scoped one-year Track B entries and rejects malformed query selectors", async () => {
+  it("reads versioned owner-scoped Track B entries and rejects malformed query selectors", async () => {
     state.client = authClient(userId);
     state.tables.life_climate_runs = { data: [], error: null };
 
@@ -204,7 +273,7 @@ describe("Track B life-climate runs route", () => {
 
     expect(response.status).toBe(200);
     expect(state.operations).toContain(`eq:user_id:${userId}`);
-    expect(state.operations).toContain("eq:version:life-climate-b1-v1");
+    expect(state.operations).toContain("in:version:life-climate-b1-v1,life-climate-b2-v1");
     expect(invalid.status).toBe(422);
   });
 });
