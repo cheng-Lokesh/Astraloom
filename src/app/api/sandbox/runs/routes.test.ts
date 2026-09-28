@@ -105,4 +105,32 @@ describe("formal sandbox route contracts",()=>{
     const replay=await feedback(request(),context);expect(replay.status).toBe(200);expect(await replay.json()).toEqual(expect.objectContaining({idempotent:true}));
     const failed=await feedback(request(),context);expect(failed.status).toBe(500);expect(await failed.text()).not.toContain("private sql detail");
   });
+  it("stores targeted feedback by a safe ordinal key and never returns database identifiers",async()=>{
+    const rpc=vi.fn().mockResolvedValue({data:[{idempotent:false,feedback:{target_type:"claim",target_key:"claim-1",rating:"off",created_at:"2026-09-28T00:00:00.000Z"}}],error:null});
+    state.client=authClient(userId,undefined,rpc);
+    const response=await feedback(new Request("http://local",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({target_type:"claim",target_key:"claim-1",rating:"off",comment:"The evidence does not support this conclusion.",idempotency_key:"33333333-3333-4333-8333-333333333333"})}),context);
+    const body=await response.json();
+
+    expect(response.status).toBe(201);
+    expect(rpc).toHaveBeenCalledWith("append_account_sandbox_feedback_m2",{
+      p_run_id:runId,
+      p_target_type:"claim",
+      p_target_key:"claim-1",
+      p_rating:"off",
+      p_comment:"The evidence does not support this conclusion.",
+      p_idempotency_key:"33333333-3333-4333-8333-333333333333",
+    });
+    expect(body.feedback).toEqual(expect.objectContaining({target_type:"claim",target_key:"claim-1",rating:"off"}));
+    expect(JSON.stringify(body)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+  });
+  it.each([
+    {target_type:"claim",target_key:"33333333-3333-4333-8333-333333333333",rating:"off"},
+    {target_type:"overall",target_key:"claim-1",rating:"useful"},
+    {target_type:"claim",target_key:"claim-1",rating:"useful"},
+    {target_type:"strategy",target_key:"strategy-1",rating:"useful"},
+  ])("rejects unsupported or identifier-bearing targeted feedback before writing (%o)",async(input)=>{
+    const rpc=vi.fn();state.client=authClient(userId,undefined,rpc);
+    const response=await feedback(new Request("http://local",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...input,comment:"",idempotency_key:"33333333-3333-4333-8333-333333333333"})}),context);
+    expect(response.status).toBe(422);expect(rpc).not.toHaveBeenCalled();
+  });
 });
