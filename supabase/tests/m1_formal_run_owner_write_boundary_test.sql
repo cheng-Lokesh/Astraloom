@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(25);
 
 select has_function('public', 'persist_account_sandbox_run_m1', array['uuid','uuid','uuid','integer','jsonb'], 'one controlled formal Run writer remains available');
 select ok(not (select prosecdef from pg_proc where oid = to_regprocedure('public.persist_account_sandbox_run_m1(uuid,uuid,uuid,integer,jsonb)')), 'formal Run persistence stays SECURITY INVOKER');
@@ -11,6 +11,7 @@ select ok((select prosrc ilike '%auth.uid()%' and prosrc ilike '%p_user_id is di
 
 select ok((select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('simulations','simulation_ticks','event_logs','claims','reports','simulation_run_idempotency_receipts')), 'every formal output and receipt table keeps RLS enabled');
 select ok(has_column_privilege('authenticated', 'public.simulations', 'user_id', 'INSERT'), 'the controlled invoker can insert the minimum Run columns');
+select ok(has_column_privilege('authenticated', 'public.simulations', 'result_bundle', 'INSERT'), 'the controlled invoker can initialize the Run bundle column in the atomic insert');
 select ok(has_column_privilege('authenticated', 'public.simulations', 'result_bundle', 'UPDATE'), 'the controlled invoker can complete a Run with its immutable Bundle');
 select ok(has_column_privilege('authenticated', 'public.simulation_ticks', 'user_id', 'INSERT'), 'the controlled invoker can append canonical Ticks');
 select ok(has_column_privilege('authenticated', 'public.event_logs', 'user_id', 'INSERT'), 'the controlled invoker can append canonical Events');
@@ -18,6 +19,9 @@ select ok(has_column_privilege('authenticated', 'public.claims', 'user_id', 'INS
 select ok(has_column_privilege('authenticated', 'public.reports', 'user_id', 'INSERT'), 'the controlled invoker can append the canonical Report');
 select ok(has_column_privilege('authenticated', 'public.simulation_run_idempotency_receipts', 'user_id', 'SELECT'), 'the controlled invoker can read owner-scoped idempotency receipts');
 select ok(has_column_privilege('authenticated', 'public.simulation_run_idempotency_receipts', 'user_id', 'INSERT'), 'the controlled invoker can append owner-scoped idempotency receipts');
+select ok(has_column_privilege('authenticated', 'public.relation_graph_snapshots', 'graph_locked', 'SELECT'), 'the caller can read only the locked Graph fields needed by the writer');
+select ok(has_column_privilege('authenticated', 'public.agent_profile_snapshots', 'safety_level', 'SELECT'), 'the caller can read the frozen Agent safety state needed by the writer');
+select ok(has_column_privilege('authenticated', 'public.reality_profiles', 'id', 'SELECT'), 'the caller can read the owner-scoped Reality profile identity needed by the writer');
 select ok(not has_any_column_privilege('authenticated', 'public.simulation_ticks', 'UPDATE') and not has_any_column_privilege('authenticated', 'public.event_logs', 'UPDATE') and not has_any_column_privilege('authenticated', 'public.claims', 'UPDATE') and not has_any_column_privilege('authenticated', 'public.reports', 'UPDATE') and not has_any_column_privilege('authenticated', 'public.simulation_run_idempotency_receipts', 'UPDATE'), 'browser callers receive no update capability for immutable artifacts');
 select ok(not has_table_privilege('authenticated', 'public.simulation_ticks', 'DELETE') and not has_table_privilege('authenticated', 'public.event_logs', 'DELETE') and not has_table_privilege('authenticated', 'public.claims', 'DELETE') and not has_table_privilege('authenticated', 'public.reports', 'DELETE') and not has_table_privilege('authenticated', 'public.simulation_run_idempotency_receipts', 'DELETE'), 'browser callers receive no delete capability for immutable artifacts');
 

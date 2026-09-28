@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(88);
+select plan(98);
 
 select has_column('public', 'simulations', 'graph_snapshot_id', 'canonical Run binds a locked Graph');
 select has_column('public', 'simulations', 'agent_snapshot_id', 'canonical Run binds the immutable Agent snapshot');
@@ -19,12 +19,12 @@ select has_table('public', 'simulation_run_idempotency_receipts', 'owner-scoped 
 select has_function('public', 'persist_account_sandbox_run_m1', array['uuid','uuid','uuid','integer','jsonb'], 'one atomic formal Run persistence RPC exists');
 select ok(not (select prosecdef from pg_proc where oid = to_regprocedure('public.persist_account_sandbox_run_m1(uuid,uuid,uuid,integer,jsonb)')), 'formal Run persistence RPC is SECURITY INVOKER');
 select function_privs_are('public', 'persist_account_sandbox_run_m1', array['uuid','uuid','uuid','integer','jsonb'], 'anon', array[]::text[], 'anonymous cannot execute the formal writer');
-select function_privs_are('public', 'persist_account_sandbox_run_m1', array['uuid','uuid','uuid','integer','jsonb'], 'authenticated', array[]::text[], 'browser users cannot execute the generated-output writer directly');
-select function_privs_are('public', 'persist_account_sandbox_run_m1', array['uuid','uuid','uuid','integer','jsonb'], 'service_role', array['EXECUTE'], 'only the controlled server writer role executes persistence');
+select function_privs_are('public', 'persist_account_sandbox_run_m1', array['uuid','uuid','uuid','integer','jsonb'], 'authenticated', array['EXECUTE'], 'authenticated owners execute only the validated formal Run writer');
+select function_privs_are('public', 'persist_account_sandbox_run_m1', array['uuid','uuid','uuid','integer','jsonb'], 'service_role', array[]::text[], 'service-role cannot substitute for a caller owner session');
 select ok(coalesce((select relrowsecurity from pg_class where oid = to_regclass('public.simulations')), false), 'Run RLS remains enabled');
-select ok(not has_table_privilege('authenticated', 'public.simulations', 'insert'), 'browser cannot insert formal Runs directly');
-select ok(not has_table_privilege('authenticated', 'public.event_logs', 'insert'), 'browser cannot insert Events directly');
-select ok(not has_table_privilege('authenticated', 'public.claims', 'insert'), 'browser cannot insert Claims directly');
+select ok(not has_table_privilege('authenticated', 'public.simulations', 'insert'), 'browser has no table-wide Run insert grant');
+select ok(not has_table_privilege('authenticated', 'public.event_logs', 'insert'), 'browser has no table-wide Event insert grant');
+select ok(not has_table_privilege('authenticated', 'public.claims', 'insert'), 'browser has no table-wide Claim insert grant');
 select ok(exists (select 1 from pg_trigger where tgrelid = to_regclass('public.simulations') and tgname = 'simulations_m1_immutable_guard'), 'completed Runs have a database immutability guard');
 select ok(exists (select 1 from supabase_migrations.schema_migrations where version = '20260830140000'), 'formal Run Bundle migration is recorded');
 
@@ -36,11 +36,19 @@ values
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000e401', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', '00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000410', 30, '{}'::jsonb) $$,
   '42501',
-  null,
-  'the authenticated browser role cannot invoke formal persistence'
+  'unauthenticated',
+  'an authenticated database role without an auth.uid() claim cannot persist a Run'
+);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000e401', true);
+select throws_ok(
+  $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000f401', '00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000411', 30, '{}'::jsonb) $$,
+  '42501',
+  'unauthenticated',
+  'a caller cannot substitute a foreign owner id'
 );
 
 select * from public.submit_seed_context_phase2(
@@ -110,7 +118,7 @@ from public.relation_graph_snapshots g
 where g.user_id = '00000000-0000-0000-0000-00000000e401' and not g.graph_locked;
 grant select on m1_run_fixture to service_role, authenticated;
 
-set local role service_role;
+set local role authenticated;
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000409', 30, (select bundle from m1_run_fixture)) $$,
   'P0001', 'graph_not_found', 'an unlocked Graph cannot start a formal Run'
@@ -119,7 +127,7 @@ reset role;
 set local role authenticated;
 select * from public.lock_relation_graph_phase3((select seed_id from m1_run_fixture), '00000000-0000-4000-8000-000000000406');
 reset role;
-set local role service_role;
+set local role authenticated;
 select lives_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, (select bundle from m1_run_fixture)) $$,
   'a valid locked owner Graph persists one formal Run atomically'
@@ -150,22 +158,85 @@ select ok((select e.created_at <= c.created_at and c.created_at <= r.created_at 
 select ok((select symbolic_lens_snapshot = '{"mode":"bounded_fusion","summary":"Optional framing only"}'::jsonb from m1_owned_runs), 'Symbolic Lens is stored as a separate non-causal snapshot');
 select ok((select result_bundle = (select bundle from m1_run_fixture) from m1_owned_runs), 'the immutable Run retains the complete canonical result Bundle');
 
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000e401',true);
+set local role authenticated;
+select throws_ok($$ insert into public.simulations (
+  user_id,seed_context_id,version,status,track,time_horizon,tick_count,
+  frozen_agent_profile_ids,frozen_relation_edge_ids,safety_level,trace_id,
+  writer_version,idempotency_key,graph_snapshot_id,agent_snapshot_id,
+  input_snapshot,deterministic_seed,execution_version,schema_version,
+  engine_version,run_phase,request_hash,calibration_snapshot,destiny_mode,
+  symbolic_lens_snapshot
+) select user_id,seed_context_id,version,'running'::public.simulation_status,track,time_horizon,tick_count,
+  frozen_agent_profile_ids,frozen_relation_edge_ids,safety_level,trace_id,
+  writer_version,'direct-run:'||id::text,graph_snapshot_id,agent_snapshot_id,
+  input_snapshot,deterministic_seed,execution_version,schema_version,
+  engine_version,'persisting',repeat('a',64),calibration_snapshot,destiny_mode,
+  symbolic_lens_snapshot from m1_owned_runs limit 1 $$,'42501',null,'authenticated owner cannot insert a Run while the transaction writer gate is closed');
+select lives_ok($test$
+do $body$
+begin
+  update public.simulations set result_bundle=result_bundle where id=(select id from m1_owned_runs);
+  if found then
+    raise exception using errcode='P0001', message='direct_run_update_succeeded';
+  end if;
+end
+$body$;
+$test$,'authenticated owner cannot update a Run while the transaction writer gate is closed');
+select throws_ok($$ insert into public.simulation_ticks (
+  user_id,simulation_id,version,tick_index,time_label,environment_state,
+  agent_state_snapshot,relation_graph_snapshot,summary,trace_id,writer_version,
+  idempotency_key,branch_id,tick_payload
+) select auth.uid(),id,'formal-tick-m1-v1',99,'blocked direct insert','{}','{}','{}',
+  'Blocked direct Tick','direct-trace','formal-account-sandbox-m1-v1',
+  'direct-tick:'||id::text,'blocked','{}' from m1_owned_runs limit 1 $$,'42501',null,'authenticated owner cannot insert a Tick outside the controlled writer');
+select throws_ok($$ insert into public.event_logs (
+  user_id,simulation_id,simulation_tick_id,version,event_type,agent_ids,
+  relation_edge_ids,summary,before_state,after_state,edge_weight_deltas,
+  confidence,source,trace_id,writer_version,idempotency_key,event_payload
+) select auth.uid(),r.id,t.id,'formal-event-m1-v1','blocked_direct_insert','{}','{}',
+  'Blocked direct Event','{}','{}','[]',50,'v2_controlled_transition','direct-trace',
+  'formal-account-sandbox-m1-v1','direct-event:'||r.id::text,'{}'
+  from m1_owned_runs r join public.simulation_ticks t on t.simulation_id=r.id limit 1 $$,'42501',null,'authenticated owner cannot insert an Event outside the controlled writer');
+select throws_ok($$ insert into public.claims (
+  user_id,simulation_id,version,claim_type,summary,confidence,risk_level,
+  evidence_event_ids,related_agent_ids,related_relation_edge_ids,is_paid_locked,
+  safety_notes,trace_id,writer_version,idempotency_key,claim_payload
+) select auth.uid(),r.id,'formal-claim-m1-v1','scenario_frequency','Blocked direct Claim',
+  50,'low'::public.claim_risk_level,array[(select e.id from public.event_logs e where e.simulation_id=r.id limit 1)],
+  '{}','{}',false,'[]','direct-trace','formal-account-sandbox-m1-v1',
+  'direct-claim:'||r.id::text,'{}' from m1_owned_runs r limit 1 $$,'42501',null,'authenticated owner cannot insert a Claim outside the controlled writer');
+select throws_ok($$ insert into public.reports (
+  user_id,simulation_id,version,status,claim_ids,free_preview,paid_sections,
+  disclaimer,model_version,prompt_version,trace_id,cost_estimate,error_code,
+  writer_version,idempotency_key,report_payload
+) select auth.uid(),r.id,'formal-report-m1-v1','preview_ready'::public.report_status,
+  array[(select c.id from public.claims c where c.simulation_id=r.id limit 1)],
+  '{}','{}','Blocked direct Report','model', 'prompt','direct-trace',0,null,
+  'formal-account-sandbox-m1-v1','direct-report:'||r.id::text,'{}'
+  from m1_owned_runs r limit 1 $$,'42501',null,'authenticated owner cannot insert a Report outside the controlled writer');
+select is((select count(*) from public.simulation_run_idempotency_receipts where user_id=auth.uid()),0::bigint,'owner receipt rows remain hidden when the transaction writer gate is closed');
+select throws_ok($$ insert into public.simulation_run_idempotency_receipts(user_id,graph_snapshot_id,idempotency_key,request_hash,simulation_id)
+  select auth.uid(),graph_snapshot_id,gen_random_uuid(),repeat('b',64),id from m1_owned_runs limit 1 $$,'42501',null,'authenticated owner cannot forge an idempotency receipt outside the controlled writer');
+reset role;
+
 select set_config('app.m1_run_count', (select count(*)::text from m1_owned_runs), true);
 select set_config('app.m1_event_count', (select count(*)::text from public.event_logs where simulation_id=(select id from m1_owned_runs)), true);
 select set_config('app.m1_first_run_created_at', (select created_at::text from m1_owned_runs), true);
-set local role service_role;
+set local role authenticated;
 select is((select idempotent from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, (select bundle from m1_run_fixture))), true, 'same owner key and content returns an explicit idempotent replay');
 reset role;
+select is(coalesce(nullif(current_setting('app.m1_run_rpc', true), ''), 'off'), 'off', 'idempotent replay closes the transaction writer gate before its early return');
 select is((select count(*) from m1_owned_runs), current_setting('app.m1_run_count')::bigint, 'idempotent replay creates no duplicate Run');
 select is((select count(*) from public.event_logs where simulation_id=(select id from m1_owned_runs)), current_setting('app.m1_event_count')::bigint, 'idempotent replay creates no duplicate Event');
-set local role service_role;
+set local role authenticated;
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, jsonb_set((select bundle from m1_run_fixture), '{symbolicLensSnapshot,summary}', '"changed"')) $$,
   'P0001', 'idempotency_key_content_conflict', 'same owner key with changed content is rejected'
 );
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000f401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000411', 30, jsonb_set((select bundle from m1_run_fixture), '{inputSnapshot,ownerId}', '"00000000-0000-0000-0000-00000000f401"')) $$,
-  'P0001', 'graph_not_found', 'a foreign owner cannot bind another account Graph'
+  '42501', 'unauthenticated', 'a foreign owner cannot bind another account Graph'
 );
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000412', 30, jsonb_set((select bundle from m1_run_fixture), '{claims,0,simulationEventIds,0}', '"world_event_v2_missing"')) $$,
@@ -231,7 +302,8 @@ select throws_ok($$ select * from public.append_account_sandbox_feedback_m1(curr
 reset role;
 select is((select md5(result_bundle::text) from m1_owned_runs),current_setting('app.m1_bundle_hash'),'feedback does not rewrite the historical Run Bundle');
 select ok((select calibration_snapshot='{}'::jsonb from m1_owned_runs),'historical calibration snapshot stays frozen after later feedback');
-set local role service_role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000e401',true);
+set local role authenticated;
 select lives_ok($$ select * from public.persist_account_sandbox_run_m1(
   '00000000-0000-0000-0000-00000000e401',(select graph_id from m1_run_fixture),'00000000-0000-4000-8000-000000000440',30,
   jsonb_set(jsonb_set((select bundle from m1_run_fixture),'{causalFingerprint}','"abcdef0123456789abcdef01"'),'{inputSnapshot,calibrationSnapshot}','{"source":"account_feedback","signals":[{"rating":"useful"}]}'::jsonb)

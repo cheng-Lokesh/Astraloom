@@ -25,20 +25,20 @@ export function buildAccountCalibrationSnapshot(rows: Array<{rating:unknown;targ
   return { source:"account_feedback" as const, signals:rows.slice(0,20).map((item)=>({rating:String(item.rating),targetType:String(item.target_type),createdAt:String(item.created_at)})) };
 }
 
-export async function startFormalSandboxRun(service: SupabaseClient, userId: string, rawRequest: unknown) {
+export async function startFormalSandboxRun(caller: SupabaseClient, userId: string, rawRequest: unknown) {
   const request = requestSchema.safeParse(rawRequest);
   if (!request.success) return { ok:false as const,errorCode:"invalid_request" as const };
   try {
-    const graphResult = await service.from("relation_graph_snapshots").select("id,user_id,seed_context_id,agent_snapshot_id,graph_locked,locked_at,safety_level").eq("id",request.data.graph_snapshot_id).eq("user_id",userId).eq("graph_locked",true).maybeSingle();
+    const graphResult = await caller.from("relation_graph_snapshots").select("id,user_id,seed_context_id,agent_snapshot_id,graph_locked,locked_at,safety_level").eq("id",request.data.graph_snapshot_id).eq("user_id",userId).eq("graph_locked",true).maybeSingle();
     const graph = graphSchema.safeParse(graphResult.data);
     if (graphResult.error) return { ok:false as const,errorCode:"persistence_failed" as const };
     if (!graph.success || graph.data.user_id !== userId) return { ok:false as const,errorCode:"graph_not_found" as const };
     const [seedResult,agentsResult,edgesResult,feedbackResult,profileResult] = await Promise.all([
-      service.from("seed_contexts").select("id,user_question,raw_context,safety_flags").eq("id",graph.data.seed_context_id).eq("user_id",userId).eq("status","submitted").maybeSingle(),
-      service.from("agent_profiles").select("id,display_name,agent_type,evidence_refs").eq("snapshot_id",graph.data.agent_snapshot_id).eq("user_id",userId).order("id"),
-      service.from("relation_edges").select("id,from_agent_id,to_agent_id,relationship_type,evidence_refs").eq("graph_snapshot_id",graph.data.id).eq("user_id",userId).order("id"),
-      service.from("feedback_logs").select("rating,target_type,created_at").eq("user_id",userId).in("version",["formal-run-feedback-m1-v1","formal-run-feedback-m2-v1"]).order("created_at",{ascending:false}).limit(20),
-      service.from("reality_profiles").select(`id,user_id,seed_context_id,${realityProfileDatabaseColumns}`).eq("user_id",userId).eq("seed_context_id",graph.data.seed_context_id).maybeSingle(),
+      caller.from("seed_contexts").select("id,user_question,raw_context,safety_flags").eq("id",graph.data.seed_context_id).eq("user_id",userId).eq("status","submitted").maybeSingle(),
+      caller.from("agent_profiles").select("id,display_name,agent_type,evidence_refs").eq("snapshot_id",graph.data.agent_snapshot_id).eq("user_id",userId).order("id"),
+      caller.from("relation_edges").select("id,from_agent_id,to_agent_id,relationship_type,evidence_refs").eq("graph_snapshot_id",graph.data.id).eq("user_id",userId).order("id"),
+      caller.from("feedback_logs").select("rating,target_type,created_at").eq("user_id",userId).in("version",["formal-run-feedback-m1-v1","formal-run-feedback-m2-v1"]).order("created_at",{ascending:false}).limit(20),
+      caller.from("reality_profiles").select(`id,user_id,seed_context_id,${realityProfileDatabaseColumns}`).eq("user_id",userId).eq("seed_context_id",graph.data.seed_context_id).maybeSingle(),
     ]);
     if (seedResult.error || agentsResult.error || edgesResult.error || feedbackResult.error || profileResult.error) return { ok:false as const,errorCode:"persistence_failed" as const };
     const seed = seedSchema.safeParse(seedResult.data);
@@ -71,7 +71,7 @@ export async function startFormalSandboxRun(service: SupabaseClient, userId: str
       calibrationSnapshot:buildAccountCalibrationSnapshot(feedbackResult.data??[]),
     });
     if (!built.ok) return built;
-    return persistFormalSandboxRun(service,{userId,graphSnapshotId:graph.data.id,idempotencyKey:request.data.idempotency_key,horizonDays:request.data.horizon_days,bundle:built.bundle});
+    return persistFormalSandboxRun(caller,{userId,graphSnapshotId:graph.data.id,idempotencyKey:request.data.idempotency_key,horizonDays:request.data.horizon_days,bundle:built.bundle});
   } catch {
     return { ok:false as const,errorCode:"persistence_failed" as const };
   }
