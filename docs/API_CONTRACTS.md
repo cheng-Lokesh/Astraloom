@@ -33,6 +33,36 @@ Each non-static API must include:
   persistence. Both endpoints return a correlation `trace_id`; the page does
   not render it or return row identifiers.
 
+### Track B life-climate runs (B1 functional candidate)
+
+`/app/new/life-climate` uses this owner-scoped API for the first one-year
+Track B vertical. Both routes require the current cookie-authenticated user and
+return the standard `{ ok, error_code, trace_id }` envelope. The UI never
+renders trace or database identifiers.
+
+- `POST /api/life-climate/runs` accepts only a UUID idempotency key, the
+  current profile revision, and one strict change `{ domain, entryIndex,
+  startPeriod, newState, evidenceSummary }`. The server derives the owner and
+  newest submitted formal Seed from the session, reads that Seed's saved
+  Reality Profile, rejects a stale revision, safety-checks the submitted Seed,
+  selected saved item, and proposed alternative, then calls only
+  `persist_life_climate_run_b1`. A new immutable one-year comparison returns
+  201; an identical idempotent replay returns 200.
+- `GET /api/life-climate/runs?limit=...` returns up to 50 newest owner-owned
+  `life-climate-b1-v1` entries. `GET /api/life-climate/runs?run_id=...` opens
+  one owner-owned saved comparison. Unknown, duplicate, or malformed query
+  selectors return 422; another owner's or missing run returns the same 404.
+- The version currently supports only `1_year`, four coarse relative stages,
+  one explicit user assumption, and baseline-versus-alternative projection.
+  Three- and five-year runs, inferred cross-domain effects, probabilistic
+  claims, precise event dates, LLM generation, and edits to Track A/V2 history
+  are not supported by this candidate.
+
+Errors include `401 unauthenticated`, `403 safety_downgrade`, `409
+current_seed_required`, `409 reality_profile_required`, `409
+profile_revision_conflict`, `409 idempotency_conflict`, `422 invalid_request`,
+and sanitized `500 persistence_failed`.
+
 ### `/api/seed-context`
 
 Purpose: Create, read, and update simulation seed context.

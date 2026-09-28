@@ -1132,6 +1132,34 @@ foreign keys, RLS, restricted grants, and controlled `SECURITY INVOKER` RPCs
 prevent cross-owner selection, mutation, deletion, or association. Anonymous
 business-table and protected-RPC access is denied.
 
+## Track B one-year life-climate run (B1 functional candidate)
+
+`life_climate_runs` is a separate append-only ledger for the first bounded
+Track B comparison. It is deliberately isolated from Track A's canonical
+`simulations`, `simulation_ticks`, `event_logs`, `claims`, and `reports`, and
+does not alter the accepted V2 Core.
+
+Each row binds the authenticated owner to that owner's canonical submitted
+Seed and exact `reality_profiles.revision`, and stores a versioned, immutable
+profile snapshot, one explicit assumption, two four-period paths, one
+assumption-transition Event, one Claim referencing that Event, and a Report
+referencing that Claim. A request UUID plus canonical request hash makes a
+same-content retry idempotent and rejects reuse with different content.
+
+RLS gives authenticated users read-only access to their own rows. Browser roles
+cannot insert, update, or delete generated runs. The only writer is the
+server-only `persist_life_climate_run_b1` `SECURITY INVOKER` RPC, executable
+only by `service_role`; it rechecks current Seed/profile ownership and
+revision, validates the event-to-claim-to-report evidence links, and appends
+without update/delete access. Service credentials remain server-only.
+
+The `life-climate-b1-v1` contract supports only a one-year conditional
+comparison across four relative periods. It changes one user-selected field
+from one selected period onward; all other dimensions remain frozen. It is not
+a causal multi-domain simulation, a 3/5-year run, an external-reality lookup,
+a probability estimate, or a dated prediction. This bounded candidate does
+not satisfy the complete Track B roadmap stage by itself.
+
 ## RLS Requirements
 
 ### Phase 3 formal Key People

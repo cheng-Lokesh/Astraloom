@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/app/new/scene" }));
 describe("Track selection on the formal Start page", () => {
   it("provides a direct entry to the one-year Track B flow alongside Track A", () => {
     const html = renderToStaticMarkup(
-      createElement(LanguageProvider, { children: createElement(ScenePage) }),
+      createElement(LanguageProvider, null, createElement(ScenePage)),
     );
 
     expect(html).toContain("href=\"/app/new/life-climate\"");

@@ -85,6 +85,7 @@ export type LifeClimateRun = {
   events: LifeClimateEvent[];
   claims: LifeClimateClaim[];
   report: {
+    claimIds: string[];
     mode: "conditional_structure_comparison";
     headline: string;
     summary: string;
@@ -183,6 +184,7 @@ export function buildLifeClimateRun(
     events: [transitionEvent],
     claims: [claim],
     report: {
+      claimIds: [claim.id],
       mode: "conditional_structure_comparison",
       headline: "一年人生结构路径对照",
       summary: "并排查看当前资料结构与一项明确假设下的差异。阶段只表示相对顺序，不对应具体日历时间。",

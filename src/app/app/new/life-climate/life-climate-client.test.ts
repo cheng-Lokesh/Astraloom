@@ -8,7 +8,7 @@ import { LifeClimateClient } from "./life-climate-client";
 describe("Life climate Track B entry", () => {
   it("orients users to the one-year conditional comparison without implying a forecast", () => {
     const html = renderToStaticMarkup(
-      createElement(LanguageProvider, { children: createElement(LifeClimateClient) }),
+      createElement(LanguageProvider, null, createElement(LifeClimateClient)),
     );
 
     expect(html).toContain("One-year life-climate comparison");

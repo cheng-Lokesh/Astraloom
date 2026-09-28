@@ -16,6 +16,7 @@ Primary product navigation must use the formal route family:
 - `/login`
 - `/app/dashboard`
 - `/app/new/scene`
+- `/app/new/life-climate`
 - `/app/new/intake`
 - `/app/new/people`
 - `/app/new/agents`
@@ -138,6 +139,31 @@ Must not allow:
 
 - Multiple unrelated domains in one MVP run.
 - Deterministic long-life prediction.
+
+### Track B one-year life-climate candidate
+
+The formal Start page exposes a direct Track B entry alongside Track A. The
+`/app/new/life-climate` surface must:
+
+- Read only the authenticated user's current saved Reality Profile and provide
+  truthful setup links when the formal Seed or profile is missing.
+- Let the user choose one saved item from one of six long-horizon domains,
+  choose one of four relative start stages, enter one alternative state, and
+  save the comparison through the owner-scoped API.
+- Render baseline and alternative paths across four relative stages, then
+  allow a saved comparison to be reopened after refresh from this page's
+  server-backed history list.
+- Explain that this candidate supports only one year, one explicit assumption,
+  and one changed field; three/five years and cross-domain effects remain
+  unmodeled. Unknown profile items stay explicitly unknown.
+- Keep Event-to-Claim evidence linkage visible as a product explanation while
+  hiding row ids, trace ids, raw Seed text, and internal evidence identifiers.
+- State that the comparison is conditional, not a certainty or prediction;
+  never present exact dates, probabilities, private third-party facts, or
+  invented domain effects.
+
+This candidate is not the complete Track B experience or final product
+acceptance.
 
 ### Intake
 

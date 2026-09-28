@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -27,6 +27,10 @@ const querySchema = z.object({
 
 function traceId() {
   return `life_climate_${randomUUID()}`;
+}
+
+function privateSafetyText(value: unknown) {
+  return typeof value === "string" ? value : JSON.stringify(value ?? "");
 }
 
 function failure(status: number, errorCode: string, trace: string) {
@@ -75,29 +79,9 @@ export async function POST(request: Request) {
     });
     if (!input.success) return failure(422, "invalid_request", trace);
 
-    const safety = verifySafety({
-      seedContext: {
-        id: "life-climate-input",
-        questionText: "",
-        trackType: "life_climate",
-        timeWindow: "1_year",
-        currentQuestionDescription: input.data.change.newState,
-        situationSummary: "",
-        keyPeopleText: "",
-        privacyAck: true,
-        locale: "zh",
-        status: "submitted",
-        createdAt: "",
-        updatedAt: "",
-      },
-    });
-    if (safety.safetyLevel === "blocked" || safety.safetyLevel === "downgraded") {
-      return failure(403, "safety_downgrade", trace);
-    }
-
     const { data: seed, error: seedError } = await userClient
       .from("seed_contexts")
-      .select("id")
+      .select("id,user_question,raw_context,decision_options,forbidden_actions,desired_output,safety_flags")
       .eq("user_id", auth.user.id)
       .eq("status", "submitted")
       .not("submitted_at", "is", null)
@@ -120,6 +104,38 @@ export async function POST(request: Request) {
     const profile = realityProfileDraftFromDatabaseRow(profileRow);
     if (profile.revision !== input.data.profileRevision) return failure(409, "profile_revision_conflict", trace);
 
+    const selectedProfileField = profile.lifeModelDomains[input.data.change.domain][input.data.change.entryIndex];
+    const safetyContext = [
+      seed.decision_options,
+      seed.forbidden_actions,
+      seed.desired_output,
+      seed.safety_flags,
+      selectedProfileField?.value,
+      selectedProfileField?.evidenceSummary,
+    ].map(privateSafetyText).join("\n");
+    const safety = verifySafety({
+      seedContext: {
+        id: "life-climate-input",
+        questionText: seed.user_question ?? "",
+        trackType: "crossroad",
+        timeWindow: "1_year",
+        currentQuestionDescription: input.data.change.newState,
+        situationSummary: seed.raw_context ?? "",
+        recentEvents: "",
+        keyPeopleText: "",
+        decisionOptions: safetyContext,
+        worries: safetyContext,
+        privacyAck: true,
+        locale: "zh",
+        status: "submitted",
+        createdAt: "",
+        updatedAt: "",
+      },
+    });
+    if (safety.safetyLevel === "blocked" || safety.safetyLevel === "downgraded") {
+      return failure(403, "safety_downgrade", trace);
+    }
+
     const resultBundle = buildLifeClimateRun(profile, input.data);
     const inputSnapshot = {
       version: resultBundle.version,
@@ -130,9 +146,6 @@ export async function POST(request: Request) {
       safetyLevel: safety.safetyLevel,
       safetyFlags: safety.flags,
     };
-    const requestHash = createHash("sha256")
-      .update(JSON.stringify({ seedId: seed.id, inputSnapshot }))
-      .digest("hex");
     const service = getServiceRoleSupabaseClient();
     if (!service) return failure(503, "persistence_unavailable", trace);
     const { data, error } = await service.rpc("persist_life_climate_run_b1", {
@@ -140,7 +153,6 @@ export async function POST(request: Request) {
       p_seed_context_id: seed.id,
       p_profile_revision: profile.revision,
       p_idempotency_key: parsedBody.data.idempotency_key,
-      p_request_hash: requestHash,
       p_input_snapshot: inputSnapshot,
       p_result_bundle: resultBundle,
       p_trace_id: trace,
