@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(86);
+select plan(87);
 
 select has_column('public', 'simulations', 'graph_snapshot_id', 'canonical Run binds a locked Graph');
 select has_column('public', 'simulations', 'agent_snapshot_id', 'canonical Run binds the immutable Agent snapshot');
@@ -199,9 +199,11 @@ select function_privs_are('public','append_account_sandbox_feedback_m2',array['u
 select function_privs_are('public','append_account_sandbox_feedback_m2',array['uuid','text','text','text','text','uuid'],'authenticated',array['EXECUTE'],'authenticated owners use only the validated targeted feedback RPC');
 select ok(exists(select 1 from pg_trigger where tgrelid=to_regclass('public.feedback_logs') and tgname='feedback_logs_m2_immutable_guard'),'targeted feedback has its own immutable-row guard');
 select ok(exists(select 1 from pg_indexes where schemaname='public' and tablename='feedback_logs' and indexname='feedback_logs_m2_owner_idempotency_unique'),'targeted feedback idempotency is owner-scoped');
+select ok(exists(select 1 from pg_trigger where tgrelid=to_regclass('public.feedback_logs') and tgname='feedback_logs_m2_writer_guard'),'direct browser inserts cannot bypass targeted feedback validation');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000e401',true);
 select set_config('request.jwt.claim.role','authenticated',true);
 set local role authenticated;
+select throws_ok($$ insert into public.feedback_logs(user_id,seed_context_id,simulation_id,target_type,target_id,rating,comment,agent_correction,edge_correction_note,version,writer_version,idempotency_key,request_hash) values(auth.uid(),(select seed_context_id from m1_owned_runs),(select id from m1_owned_runs),'claim','claim_v2_m1_fixture','off','','{}','','formal-run-feedback-m2-v1','formal-run-feedback-m2-v1','00000000-0000-4000-8000-000000000437',repeat('a',64)) $$,'42501','formal_feedback_writer_required','a browser cannot bypass the controlled targeted feedback writer');
 select lives_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'claim','claim-1','off','The evidence does not support this conclusion.','00000000-0000-4000-8000-000000000431') $$,'a user can attach correction feedback to a displayed Claim');
 select is((select idempotent from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'claim','claim-1','off','The evidence does not support this conclusion.','00000000-0000-4000-8000-000000000431')),true,'same targeted feedback replays idempotently');
 select throws_ok($$ select * from public.append_account_sandbox_feedback_m2((select id from m1_owned_runs),'claim','claim-1','accurate','Changed feedback','00000000-0000-4000-8000-000000000431') $$,'P0001','idempotency_key_content_conflict','same targeted key cannot change category, target, rating, or note');
