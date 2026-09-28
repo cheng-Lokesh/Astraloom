@@ -14,7 +14,7 @@ vi.mock("@/lib/supabase/service-role.server", () => ({ getServiceRoleSupabaseCli
 
 import { GET, POST } from "./route";
 import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
-import { buildLifeClimateRun } from "@/lib/life-climate/engine";
+import { buildLifeClimatePathRun, buildLifeClimateRun } from "@/lib/life-climate/engine";
 
 const userId = "22222222-2222-4222-8222-222222222222";
 const seedId = "33333333-3333-4333-8333-333333333333";
@@ -134,6 +134,41 @@ describe("Track B life-climate runs route", () => {
       p_result_bundle: expect.objectContaining({ version: "life-climate-b1-v1" }),
     }));
     expect(body).toMatchObject({ ok: true, error_code: null, idempotent: false, run: { id: runId } });
+    expect(JSON.stringify(body)).not.toContain(userId);
+  });
+
+  it("saves a multi-stage 3-year path with all user assumptions in the versioned owner-scoped writer", async () => {
+    state.client = authClient(userId);
+    state.tables.seed_contexts = { data: seedRow(), error: null };
+    state.tables.reality_profiles = { data: profileRow(), error: null };
+    const input = {
+      horizon: "3_years" as const,
+      profileRevision: 7,
+      changes: [
+        { ...change, startPeriod: 1 },
+        { domain: "wealth" as const, entryIndex: 0, startPeriod: 3, newState: "逐步增加储备", evidenceSummary: "本人设定的备选假设" },
+      ],
+    };
+    const resultBundle = buildLifeClimatePathRun(createEmptyRealityProfileDraft(7), input);
+    state.rpc.mockResolvedValue({ data: [{ id: runId, idempotent: false, created_at: "2026-09-28T00:00:00.000Z", result_bundle: resultBundle }], error: null });
+
+    const response = await POST(new Request("http://local/api/life-climate/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idempotency_key: "55555555-5555-4555-8555-555555555556", profile_revision: 7, horizon: input.horizon, changes: input.changes }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(state.rpc).toHaveBeenCalledWith("persist_life_climate_run_b2", expect.objectContaining({
+      p_user_id: userId,
+      p_seed_context_id: seedId,
+      p_profile_revision: 7,
+      p_result_bundle: expect.objectContaining({ version: "life-climate-b2-v1", horizon: "3_years", events: expect.any(Array), claims: expect.any(Array) }),
+      p_input_snapshot: expect.objectContaining({ version: "life-climate-b2-v1", horizon: "3_years", changes: input.changes }),
+    }));
+    expect(body.run.result.events).toHaveLength(2);
+    expect(body.run.result.claims.map((item: { evidenceEventIds: string[] }) => item.evidenceEventIds[0])).toEqual(body.run.result.events.map((item: { id: string }) => item.id));
     expect(JSON.stringify(body)).not.toContain(userId);
   });
 
