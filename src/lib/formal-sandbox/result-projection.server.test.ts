@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 import { projectFormalSandboxResult } from "./result-projection.server";
+import { attachedSymbolicFixture, emptySymbolicFixture } from "./symbolic-lens.test-fixtures";
 
 const ids = {
   owner: "11111111-1111-4111-8111-111111111111",
@@ -53,6 +54,39 @@ function bundle(overrides: Record<string, unknown> = {}) {
 }
 
 describe("formal sandbox result projection", () => {
+  it("projects the real frozen symbolic frame outside causal facts and strips all consent/source identifiers", () => {
+    const lens = attachedSymbolicFixture();
+    const input = bundle({ symbolicLensSnapshot: lens });
+    Object.assign(input.inputSnapshot, { acceptedAt: lens.frozenAt });
+    const result = projectFormalSandboxResult(input);
+    expect(result).not.toBeNull();
+    expect((result as unknown as { symbolicLens: unknown }).symbolicLens).toEqual({ status: "attached", frozenAt: lens.frozenAt, preferenceRevision: 2, frame: lens.frame, causalUse: false });
+    for (const key of ["sourceId", "snapshotId", "storageConsentId", "calculationConsentId", "futureAttachmentConsentId"] as const) expect(JSON.stringify(result)).not.toContain(lens.provenance[key]);
+    expect(result?.facts).toEqual(projectFormalSandboxResult(bundle())?.facts);
+    expect(result?.claims).toEqual(projectFormalSandboxResult(bundle())?.claims);
+  });
+
+  it("treats the historical static lens as not recorded, not a personal model", () => {
+    const result = projectFormalSandboxResult(bundle({ symbolicLensSnapshot: { mode: "bounded_fusion", summary: "legacy static" } }));
+    expect((result as unknown as { symbolicLens: unknown }).symbolicLens).toEqual({ status: "not_recorded", frozenAt: null, preferenceRevision: null, frame: null, causalUse: false });
+  });
+
+  it("keeps explicit frozen empty reasons and rejects foreign owner or an altered accepted clock", () => {
+    for (const status of ["not_configured", "not_authorized", "stale", "withdrawn"]) {
+      const lens = emptySymbolicFixture(status);
+      const input = bundle({ symbolicLensSnapshot: lens });
+      Object.assign(input.inputSnapshot, { acceptedAt: lens.frozenAt });
+      expect((projectFormalSandboxResult(input) as unknown as { symbolicLens: { status: string } }).symbolicLens.status).toBe(status);
+    }
+    const lens = attachedSymbolicFixture();
+    const input = bundle({ symbolicLensSnapshot: lens });
+    Object.assign(input.inputSnapshot, { acceptedAt: lens.frozenAt });
+    const foreign = structuredClone(input);
+    foreign.inputSnapshot.ownerId = "88888888-8888-4888-8888-888888888888";
+    expect(projectFormalSandboxResult(foreign)).toBeNull();
+    Object.assign(input.inputSnapshot, { acceptedAt: "2026-10-06T00:00:01.000Z" });
+    expect(projectFormalSandboxResult(input)).toBeNull();
+  });
   it("shows only the frozen Profile facts, assumptions and unknowns without exposing private inputs", () => {
     const input = bundle();
     Object.assign(input.inputSnapshot, { seedSummary: "Private raw scenario with a secret credential" });
