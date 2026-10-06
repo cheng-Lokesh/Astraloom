@@ -63,9 +63,18 @@ describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(exe
       const link = page.getByRole("link", { name: scenario.rows ? "管理象征框架" : "配置象征框架", exact: true });
       await link.focus();
       expect(await page.evaluate(() => document.activeElement?.getAttribute('href'), undefined)).toBe('/app/symbolic-lens');
-      expect(await page.evaluate(() => window.symbolicRequests.filter(r => r.url === '/api/symbolic-lens').every(r => r.cache === 'no-store'), undefined)).toBe(true);
+      const requests = await page.evaluate(() => window.symbolicRequests.filter(r => r.url === '/api/symbolic-lens'), undefined);
+      expect(requests).toHaveLength(1);
+      expect(requests.every(r => r.cache === 'no-store')).toBe(true);
       if (scenario.rows) for (const dimension of frame.dimensions) expect(text).toContain(dimension.label);
       if (scenario.status !== 200 || scenario.text === "暂时无法读取") expect(text).not.toContain("尚未配置");
+      if (scenario.name === "server failure") {
+        await page.evaluate(value => { window.symbolicFixture = { status: 200, lens: value, hold: false }; }, configured);
+        await page.getByRole("button", { name: "重新读取象征框架", exact: true }).click();
+        await page.getByRole("link", { name: "管理象征框架", exact: true }).waitFor();
+        expect(await page.evaluate(() => document.querySelectorAll('[data-dashboard-symbolic-dimension]').length, undefined)).toBe(5);
+        expect(await page.evaluate(() => window.symbolicRequests.filter(r => r.url === '/api/sandbox-overview').length, undefined)).toBe(1);
+      }
     } finally { await page.close(); }
   }, 15_000);
 });
