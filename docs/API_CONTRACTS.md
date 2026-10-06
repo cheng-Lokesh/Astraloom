@@ -690,3 +690,28 @@ missing/unlocked default context returns 409 `current_graph_required`; foreign
 or malformed selectors and inconsistent object chains are rejected. Responses
 are strict-schema validated and `Cache-Control: no-store`; the route writes
 no database rows. Graph Start views may consume this context alongside overview.
+
+### Optional symbolic lens routes
+
+`GET /api/symbolic-lens` returns a strict owner-scoped readonly projection:
+`lens.{revision,status,sourceVersion,snapshot,consent,futureAttachmentStatus}`.
+Status is `not_configured`, `active`, `stale`, or `withdrawn`; attachment is
+`not_connected`. GET never reads raw birth inputs for output or writes rows.
+Current-calendar-only comparison detects changed month or approximate year/month
+structure (including within the same month); a stale snapshot stays historical.
+
+`PUT /api/symbolic-lens` requires JSON, revision and UUID idempotency key. Operation
+`replace_source` accepts strict date/optional-time source and two explicit true
+consents (storage/calculation); futureAttachment must be false. `refresh_period`
+accepts no new source and requires currently active owned source/consents.
+Verified `getUser()` determines owner, never a client field. Receipt-first
+service-only recovery checks original operation/revision/source before current
+source reads or recalculation; matching retry returns 200 with current consent
+state, a new atomic save returns 201. Changed input or stale revision is 409.
+
+`POST /api/symbolic-lens/withdraw` accepts only revision/key and atomically appends
+withdrawals, disables future use and returns no active snapshot. All endpoints
+reject unauthenticated/anonymous Auth callers with 401, malformed input with 422,
+and use `Cache-Control:no-store` plus stable errors. Birth values, owner/source/
+snapshot/consent identifiers and database error details never appear in DTOs.
+No route attaches this lens to a Run or changes existing Run artifacts.

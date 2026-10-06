@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const state = vi.hoisted(() => ({ user: null as null | { id: string; is_anonymous?: boolean }, rpc: vi.fn(), rows: [] as unknown[], eq: vi.fn(), from: vi.fn() }));
+const state = vi.hoisted(() => ({ user: null as null | { id: string; is_anonymous?: boolean }, rpc: vi.fn(), recover: vi.fn(), rows: [] as unknown[], eq: vi.fn(), from: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth: { getUser: async () => ({ data: { user: state.user }, error: null }) }, from: state.from }) }));
-vi.mock("@/lib/supabase/service-role.server", () => ({ getServiceRoleSupabaseClient: () => ({ rpc: state.rpc }) }));
+vi.mock("@/lib/supabase/service-role.server", () => ({ getServiceRoleSupabaseClient: () => ({ rpc: (name: string, args: unknown) => name === "recover_symbolic_lens_v1" ? state.recover(name, args) : state.rpc(name, args) }) }));
 import { GET, PUT } from "./route";
 import { POST as withdraw } from "./withdraw/route";
 import { buildSymbolicFrame } from "@/lib/formal-symbolic-lens/frame";
@@ -18,6 +18,7 @@ describe("formal symbolic lens API", () => {
     state.user = { id: "signed-in-owner" };
     state.rows = [];
     state.rpc.mockReset(); state.eq.mockReset(); state.from.mockReset();
+    state.recover.mockReset(); state.recover.mockResolvedValue({ data: [], error: null });
     state.from.mockImplementation(() => { const q = { select: vi.fn(), eq: state.eq, maybeSingle: vi.fn(async () => ({ data: state.rows.shift() ?? null, error: null })) }; q.select.mockReturnValue(q); state.eq.mockReturnValue(q); return q; });
   });
   it("denies unauthenticated and anonymous signed-in users before reads or writes", async () => {
@@ -102,20 +103,28 @@ describe("formal symbolic lens API", () => {
   });
   it("recovers an owner-key refresh receipt before newer revision or source reads", async () => {
     state.rows = [{ source_id: "owned-source", source_version: 1, revision: 2, storage_consent: true, calculation_consent: true }];
-    state.rpc.mockResolvedValue({ data: [{ ...preference(), revision: 2, idempotent: true }], error: null });
+    state.recover.mockResolvedValue({ data: [{ ...preference(), revision: 2, idempotent: true }], error: null });
     const response = await PUT(request({ operation: "refresh_period", revision: 1, idempotency_key: requestBody().idempotency_key }));
     expect(response.status).toBe(200);
     expect(state.from).not.toHaveBeenCalled();
-    expect(state.rpc.mock.calls[0][0]).toBe("recover_symbolic_lens_v1");
-    expect(state.rpc.mock.calls[0][1]).not.toHaveProperty("p_frame");
+    expect(state.recover.mock.calls[0][0]).toBe("recover_symbolic_lens_v1");
+    expect(state.recover.mock.calls[0][1]).not.toHaveProperty("p_frame");
+    expect(state.rpc).not.toHaveBeenCalled();
   });
   it("recovers a source-save receipt on another day without recalculation or reactivation", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-07T00:00:00Z"));
-    state.rpc.mockResolvedValue({ data: [{ ...preference(), revision: 2, storage_consent: false, calculation_consent: false, current_snapshot: null, idempotent: true }], error: null });
+    state.recover.mockResolvedValue({ data: [{ ...preference(), revision: 2, storage_consent: false, calculation_consent: false, current_snapshot: null, idempotent: true }], error: null });
     const response = await PUT(request(requestBody())); const body = await response.json();
     expect(response.status).toBe(200); expect(body.lens.status).toBe("withdrawn");
-    expect(state.rpc.mock.calls[0][0]).toBe("recover_symbolic_lens_v1");
-    expect(state.rpc.mock.calls[0][1]).not.toHaveProperty("p_frame");
+    expect(state.recover.mock.calls[0][0]).toBe("recover_symbolic_lens_v1");
+    expect(state.recover.mock.calls[0][1]).not.toHaveProperty("p_frame");
+    expect(state.rpc).not.toHaveBeenCalled();
     expect(JSON.stringify(body).includes(source.birthDate)).toBe(false);
+  });
+  it("rejects conflicting recovered input before source reads or new generation", async () => {
+    state.recover.mockResolvedValue({ data: null, error: { message: "symbolic_idempotency_conflict" } });
+    expect((await PUT(request(requestBody()))).status).toBe(409);
+    expect(state.from).not.toHaveBeenCalled(); expect(state.rpc).not.toHaveBeenCalled();
+    expect(state.recover.mock.calls[0][1].p_user_id).toBe("signed-in-owner");
   });
 });

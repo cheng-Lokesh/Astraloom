@@ -413,3 +413,22 @@ Before shipping a UI change, check:
 - No engineering jargon in primary user-facing copy.
 - No mojibake or encoding corruption.
 - User can see Agent, graph, timeline, evidence, or calibration value.
+
+## Optional symbolic lens candidate
+
+`/app/symbolic-lens` uses existing tokens and five explainable row blocks, not a
+new marketing surface. It remains separate from self-recorded Reality climate.
+Skip returns to the sandbox without a birth write. Date plus optional civil time
+are the only inputs; unknown time is allowed. Storage and calculation consent
+start unchecked and are independent. Saved birth inputs never echo back. Details
+show actual calculation limits and explicit product-rule basis without claiming
+traditional authority, prediction or scientific probability.
+
+A stale lens says it belongs to a prior period and provides an explicit update
+button; rendering/GET never silently refreshes it. Withdrawal shows no active lens
+and blocks future calculation, without changing old Runs or claiming deletion.
+The privacy section states formal birth-source deletion is not yet connected.
+Future Run attachment is visibly unavailable; initial-inclination fusion is not
+claimed complete. An ambiguous save failure blocks new writes until the user
+explicitly reloads current account state; it never automatically changes the key
+and resubmits. Real signed-in browser acceptance remains a separate check.

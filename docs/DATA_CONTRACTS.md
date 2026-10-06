@@ -1315,3 +1315,41 @@ or relationship changes. New-model relationships include only edges present in
 that active World; source Graph edges remain frozen intact and ordinal keys do
 not shift when an inactive parallel-comparison edge is omitted. Raw source
 references, owner/Seed ids and canonical resource keys remain server-side.
+
+## Optional formal symbolic lens v1
+
+`symbolic_birth_sources` stores sensitive owner-only birth date and optional
+civil time as immutable source versions. No place, gender or unused timezone is
+collected. `symbolic_lens_preferences` holds revision and active consent/pointers;
+`symbolic_lens_snapshots` is an immutable generated ledger with writer/version,
+trace and request identity. Owner-composite foreign keys prevent cross-owner
+references. Browser roles have owner-only SELECT, never direct DML or RPC EXECUTE.
+Service-only SECURITY INVOKER writers recheck a live, non-anonymous Auth owner.
+
+Existing `consent_events` records independent `symbolic_storage` and
+`symbolic_calculation` grants and all three scopes' withdrawals. Browser inserts
+cannot forge symbolic grants. Withdrawal immediately clears the active pointer
+and blocks future calculation/attachment, but does not mutate old snapshots or
+Runs and is not a deletion claim. Formal source privacy deletion is not connected
+yet; an eventual audited privileged workflow must implement it explicitly.
+
+Frames are `symbolic_lens`, `causalUse:false`, with explicit product rules, five
+bounded dimensions, source/rule/calculation versions, actual consumed-input
+flags and limitations. The local approximate pillar calculator consumes date
+and optional time only; unknown time uses three pillars. No birth timezone or
+true-solar-time correction, luck hash/score, scientific probability or event
+prediction is supported. The reference uses actual server Asia/Shanghai date,
+calendar month and approximate year/month structure key, not a whole-month
+forecast. Provenance is `sourceRefs`, never Reality/Evidence event references.
+
+Hashes bind requests only. Same owner/key and original operation/revision/source
+can recover a safe current projection without recalculating; changed inputs
+conflict. Replay after withdrawal remains withdrawn. Raw birth data is excluded
+from safe DTOs, audit metadata and logs. Run freeze and explainable low-weight
+initial-inclination fusion before controlled proposals are separate remaining
+gaps; this frame does not alter Claims, probabilities, World or Agent actions.
+
+The four migrations in this fresh-module batch deploy together. Provenance's
+NOT NULL columns require an empty snapshot ledger before that step; this batch
+does not claim an upgrade/backfill for partially deployed populated symbolic
+tables, and must not fabricate trace or request identity for historical rows.
