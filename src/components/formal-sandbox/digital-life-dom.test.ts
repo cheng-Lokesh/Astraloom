@@ -1,0 +1,57 @@
+import path from "node:path";
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { build } from "vite";
+import { expect, it } from "vitest";
+
+const require = createRequire(import.meta.url);
+const runtimeModules = process.env.CODEX_BROWSER_MODULES ?? "C:/Users/clf04/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules";
+const browserExecutable = process.env.CODEX_BROWSER_EXECUTABLE ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const playwrightPath = path.join(runtimeModules, "playwright");
+
+it.skipIf(!existsSync(playwrightPath) || !existsSync(browserExecutable))("uses real React DOM controls to confirm rules, handle dependencies, change horizon and retry a failed start", async () => {
+  const { chromium } = require(playwrightPath) as { chromium: { launch: (options: unknown) => Promise<any> } };
+  const fixture = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {FormalRunStarter} from '@/components/formal-sandbox/run-starter'; globalThis.React=React;
+  const context={graphSnapshotId:'00000000-0000-4000-8000-000000000001',agentSnapshotId:'00000000-0000-4000-8000-000000000002',profileRevision:2,agents:[{key:'person-4',label:'本人',role:'user_core'},{key:'person-8',label:'合作伙伴',role:'npc'},{key:'person-11',label:'另一种沟通策略',role:'user_variant'}],relationships:[{key:'relation-7',label:'合作关系',fromPersonKey:'person-4',toPersonKey:'person-8'}],resources:[]};
+  window.requests=[];window.failStart=true;window.fetch=async(input,init)=>{if(String(input).includes('model-context'))return new Response(JSON.stringify({ok:true,error_code:null,trace_id:'safe',context}));window.requests.push(JSON.parse(init.body));return new Response(JSON.stringify(window.failStart?{ok:false,error_code:'profile_revision_conflict',trace_id:'safe'}:{ok:true,idempotent:false,run:{id:'00000000-0000-4000-8000-000000000003',status:'completed'}}),{status:window.failStart?409:201})};createRoot(document.getElementById('root')).render(React.createElement(FormalRunStarter,{}));`;
+  const output = await build({ configFile: false, root: process.cwd(), logLevel: "silent", resolve: { alias: { "@": path.join(process.cwd(), "src"), "next/navigation": "virtual:navigation", "next/link": "virtual:link" } }, plugins: [{ name: "fixture", resolveId(id) { if (id.startsWith("virtual:")) return `\0${id}`; }, load(id) { if (id === "\0virtual:fixture") return fixture; if (id === "\0virtual:navigation") return "export function useRouter(){return {push:(url)=>{window.navigation=url}}}"; if (id === "\0virtual:link") return "import React from 'react'; export default function Link(props){return React.createElement('a',props)}"; } }], build: { write: false, minify: false, rollupOptions: { input: "virtual:fixture", output: { format: "iife", name: "Fixture" } } } });
+  const bundle = (Array.isArray(output) ? output[0] : output) as { output: Array<{ type: string; code?: string }> };
+  const browser = await chromium.launch({ executablePath: browserExecutable, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    page.setDefaultTimeout(5000);
+    const errors: string[] = [];
+    page.on("pageerror", (error: Error) => errors.push(error.message));
+    await page.setContent('<html lang="zh"><body><div id="root"></div></body></html>');
+    await page.addScriptTag({ content: bundle.output.find(item => item.type === "chunk")!.code });
+    await page.waitForFunction(() => Boolean(document.querySelector("button")));
+    expect(errors).toEqual([]);
+    await page.getByLabel("运行时间窗口").waitFor();
+    await page.getByLabel("运行时间窗口").selectOption("90");
+    expect(await page.getByLabel("模拟周期", { exact: true }).locator("option").count()).toBe(6);
+    await page.getByLabel("行动人物").selectOption("person-4");
+    await page.getByLabel("询问对象").selectOption("person-8");
+    await page.getByLabel("要询问的问题").fill("询问下一步合作安排".repeat(8));
+    await page.getByLabel("来源与假设说明").fill("本人拟定的沟通条件");
+    expect(await page.getByRole("button", { name: "加入本次规则" }).isDisabled()).toBe(true);
+    await page.getByLabel("我确认这是用于本次运行的模拟假设").check();
+    await page.getByRole("button", { name: "加入本次规则" }).click();
+    await page.getByLabel("行动人物").selectOption("person-8");
+    await page.getByLabel("前置行动").selectOption("rule-1");
+    await page.getByLabel("已锁定关系").selectOption("relation-7");
+    await page.getByLabel("来源与假设说明").fill("假设收到询问后对方给出中性回应");
+    await page.getByLabel("我确认这是用于本次运行的模拟假设").check();
+    await page.getByRole("button", { name: "加入本次规则" }).click();
+    expect(await page.getByRole("button", { name: /移除行动/ }).count()).toBe(2);
+    await page.getByRole("button", { name: "移除行动 1 及依赖它的后续规则" }).click();
+    expect(await page.getByRole("button", { name: /移除行动/ }).count()).toBe(0);
+    await page.getByLabel("运行时间窗口").selectOption("30");
+    expect(await page.getByLabel("模拟周期", { exact: true }).locator("option").count()).toBe(3);
+    await page.getByRole("button", { name: "开始 30 天运行", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "背景资料已更新" }).waitFor();
+    await page.evaluate(() => { (window as any).failStart = false; });
+    await page.getByRole("button", { name: "开始 30 天运行", exact: true }).click();
+    await page.waitForFunction(() => Boolean((window as any).navigation));
+    expect(await page.evaluate(() => (window as any).requests.map((item: any) => item.horizon_days))).toEqual([30, 30]);
+  } finally { await browser.close(); }
+}, 60_000);
