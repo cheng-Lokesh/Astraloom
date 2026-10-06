@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 import { buildFormalSandboxRunV2 } from "./runtime";
+import { attachedSymbolicFixture, emptySymbolicFixture } from "./symbolic-lens.test-fixtures";
 
 const frozenProfile = createEmptyRealityProfileDraft(4);
 frozenProfile.lifeClimate = { value: "当前生活节奏正在调整", classification: "fact", evidenceSummary: "由本人在 Reality Profile 中记录" };
@@ -117,6 +118,24 @@ describe("formal account sandbox V2 runtime adapter", () => {
     expect(first.bundle.causalFingerprint).toBe(second.bundle.causalFingerprint);
     expect(first.bundle.claims).toEqual(second.bundle.claims);
     expect(first.bundle.symbolicLensSnapshot).not.toEqual(second.bundle.symbolicLensSnapshot);
+  }, 30_000);
+
+  it("freezes a real symbolic frame while leaving all controlled causal artifacts unchanged", async () => {
+    const attached = attachedSymbolicFixture(input.startedAt);
+    attached.provenance.ownerId = input.ownerId;
+    const first = await buildFormalSandboxRunV2({ ...input, symbolicLens: attached });
+    const second = await buildFormalSandboxRunV2({ ...input, symbolicLens: emptySymbolicFixture("not_authorized", input.startedAt) });
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(first.bundle.symbolicLensSnapshot).toEqual(attached);
+    expect(first.bundle.causalFingerprint).toBe(second.bundle.causalFingerprint);
+    expect(first.bundle.inputSnapshot).toEqual(second.bundle.inputSnapshot);
+    expect(first.bundle.sourceBoundary).toEqual(second.bundle.sourceBoundary);
+    expect(first.bundle.worldSnapshots).toEqual(second.bundle.worldSnapshots);
+    expect(first.bundle.events).toEqual(second.bundle.events);
+    expect(first.bundle.trajectoryAnalysis).toEqual(second.bundle.trajectoryAnalysis);
+    expect(first.bundle.claims).toEqual(second.bundle.claims);
+    expect(first.bundle.report).toEqual(second.bundle.report);
   }, 30_000);
 
   it("blocks unsafe input before creating Events, Claims, or Report", async () => {
