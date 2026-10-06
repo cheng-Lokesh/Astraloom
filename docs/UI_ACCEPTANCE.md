@@ -428,7 +428,14 @@ A stale lens says it belongs to a prior period and provides an explicit update
 button; rendering/GET never silently refreshes it. Withdrawal shows no active lens
 and blocks future calculation, without changing old Runs or claiming deletion.
 The privacy section states formal birth-source deletion is not yet connected.
-Future Run attachment is visibly unavailable; initial-inclination fusion is not
-claimed complete. An ambiguous save failure blocks new writes until the user
+Future Run attachment uses a separate default-off explicit consent switch.
+Current-period eligibility and authorization are distinct; a stale frame must
+be explicitly refreshed and authorized again. The boundary is visible: accepted
+(including queued) Runs have started and keep their old frozen frame; switching
+off affects only newly accepted keys. Result shows one independent frozen
+symbolic section, precision/rule/calculation/reference-period limitations and
+explicit empty reasons, never as Reality facts or claim evidence. Legacy static
+records are not personal models. Initial-inclination fusion is not claimed
+complete. An ambiguous save failure blocks new writes until the user
 explicitly reloads current account state; it never automatically changes the key
 and resubmits. Real signed-in browser acceptance remains a separate check.

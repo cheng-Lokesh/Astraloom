@@ -696,7 +696,7 @@ no database rows. Graph Start views may consume this context alongside overview.
 `GET /api/symbolic-lens` returns a strict owner-scoped readonly projection:
 `lens.{revision,status,sourceVersion,snapshot,consent,futureAttachmentStatus}`.
 Status is `not_configured`, `active`, `stale`, or `withdrawn`; attachment is
-`not_connected`. GET never reads raw birth inputs for output or writes rows.
+`connected` (clients still read legacy `not_connected`). GET never reads raw birth inputs for output or writes rows.
 Current-calendar-only comparison detects changed month or approximate year/month
 structure (including within the same month); a stale snapshot stays historical.
 
@@ -714,4 +714,22 @@ withdrawals, disables future use and returns no active snapshot. All endpoints
 reject unauthenticated/anonymous Auth callers with 401, malformed input with 422,
 and use `Cache-Control:no-store` plus stable errors. Birth values, owner/source/
 snapshot/consent identifiers and database error details never appear in DTOs.
-No route attaches this lens to a Run or changes existing Run artifacts.
+The existing source routes never automatically authorize Run attachment.
+
+`GET /api/symbolic-lens/future-attachment` returns only
+`attachment.{revision,enabled,eligible,status}`; eligibility is true only for an
+active current-period frame. Independent `PUT` accepts strictly
+`{revision,enabled,idempotency_key}`; a new operation returns 201, receipt replay
+200 with current safe state. A changed key payload, revision conflict, missing
+storage/calculation consent or stale period returns 409. The verified-owner,
+service-only SECURITY INVOKER writer binds source/snapshot/consent provenance.
+Enablement defaults false and correction/refresh/withdrawal reset it.
+
+New formal Run reservation freezes the approved current frame atomically after
+the owner lock; receipt recovery does not read mutable current lens preferences.
+Queued acceptance counts as started. Disabling future use affects only new keys.
+Result returns safe `projection.symbolicLens` (status, frozenAt,
+preferenceRevision, frame, causalUse:false), stripping all internal provenance
+IDs; legacy static entries return `not_recorded`. No new personal frame enters
+causal input or changes frozen historical artifacts. Run POST refuses an
+explicitly anonymous verified user before admission.

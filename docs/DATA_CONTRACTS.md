@@ -1345,11 +1345,34 @@ forecast. Provenance is `sourceRefs`, never Reality/Evidence event references.
 Hashes bind requests only. Same owner/key and original operation/revision/source
 can recover a safe current projection without recalculating; changed inputs
 conflict. Replay after withdrawal remains withdrawn. Raw birth data is excluded
-from safe DTOs, audit metadata and logs. Run freeze and explainable low-weight
-initial-inclination fusion before controlled proposals are separate remaining
-gaps; this frame does not alter Claims, probabilities, World or Agent actions.
+from safe DTOs, audit metadata and logs. Explainable low-weight initial-inclination
+fusion before controlled proposals remains a separate gap; freezing this frame
+does not alter Claims, probabilities, World or Agent actions.
 
 The four migrations in this fresh-module batch deploy together. Provenance's
 NOT NULL columns require an empty snapshot ledger before that step; this batch
 does not claim an upgrade/backfill for partially deployed populated symbolic
 tables, and must not fabricate trace or request identity for historical rows.
+
+### Optional Run attachment v1
+
+An independent `symbolic_future_attachment` grant binds the current preference
+revision, source version and immutable frame snapshot. It defaults false;
+source replacement/period refresh/full withdrawal clear it. A stale frame cannot
+be newly authorized or attached. New Run admission shares the source writer's
+owner lock and fixes its accepted clock only after acquiring that lock. It
+atomically freezes `formal-symbolic-run-v1`, including assessed Shanghai period,
+frame/rule/calculation versions and the three exact consent references. Raw
+birth values are never copied. Empty states are `not_configured`, `not_authorized`,
+`stale`, `withdrawn`; only `attached` carries a frame/provenance.
+
+Acceptance means the Run has started for consent purposes, including queued
+reservations. Same-key queued/completed recovery uses the original frozen source
+and never current preferences. Later withdrawal/correction/period change affects
+new keys only. Legacy static bundles remain readable as `not_recorded`, never a
+real personal model. Result `symbolicLens` strips internal identifiers; both
+strategy paths preserve exactly the same frozen frame. It remains outside seed,
+Reality/Evidence, assumptions, proposal weights, causal events, World, Claims
+and probability/frequency. Explicit anonymous JWT claims cannot freeze new data;
+missing anonymous flags in older owner-scoped legal tokens stay compatible.
+Direct-DB banned/deleted stale-token hardening beyond existing RLS is not claimed.

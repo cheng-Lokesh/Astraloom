@@ -3,6 +3,7 @@ import { digitalLifeModelSchema } from "@/lib/digital-life/model";
 import { projectDigitalLifeModel, safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
+import { parseFrozenSymbolicLens, projectFrozenSymbolicLens, runSymbolicLensSchema, safeRunSymbolicLensSchema } from "./symbolic-lens";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 
@@ -49,6 +50,8 @@ const worldSnapshotSchema = z.object({
   externalVariables: z.array(worldVariableSnapshotSchema).max(16).optional(),
 }).passthrough();
 const pathBundleSchema = z.object({
+  symbolicLensSnapshot: runSymbolicLensSchema.optional(),
+  forecastTiming: z.object({ acceptedAt: z.string().datetime({ offset: true }), boundaryAt: z.string().datetime({ offset: true }), lockedAt: z.string().datetime({ offset: true }), generatedPersistedAt: z.string().datetime({ offset: true }), simulationStartAt: z.string().datetime({ offset: true }) }).strict().optional(),
   inputSnapshot: z.object({ ownerId: z.string().uuid().optional(), seedContextId: z.string().uuid().optional(), realityProfileSnapshot: realityProfileSnapshotSchema.optional(), digitalLifeModel: digitalLifeModelSchema.optional(), activePathKey: z.string().optional(), agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
   sourceBoundary: z.object({ evidenceLedger: z.object({ items: z.array(z.object({ id: reference, statement: z.string().trim().min(1).max(4_000) }).passthrough()).max(200) }).passthrough().optional(), assumptionLedger: z.object({ assumptions: z.array(z.object({ statement: z.string().trim().min(1).max(2_000) }).passthrough()).max(200) }).passthrough().optional() }).passthrough().optional(),
   worldSnapshots: z.array(worldSnapshotSchema).max(500).optional(),
@@ -59,7 +62,7 @@ const pathBundleSchema = z.object({
 
 const strategyBundleSchema = pathBundleSchema.extend({
   runtimePath: z.array(reference).length(7), causalFingerprint: z.string().regex(/^[a-f0-9]{24}$/),
-  symbolicLensSnapshot: z.object({ mode: z.literal("bounded_fusion"), summary: z.string().max(1_000) }).strict(),
+  symbolicLensSnapshot: runSymbolicLensSchema,
   trajectoryAnalysis: z.record(z.string(), z.unknown()),
   forecastLockReference: z.object({ streamId: reference, version: z.number().int().positive() }).strict(),
   versions: z.object({ runtime: z.literal("formal-account-sandbox-m1-v1"), schema: z.literal("formal-run-bundle-m1-v1"), world: reference, trajectory: z.literal("trajectory-engine-v2-stage-4"), analysis: reference }).strict(),
@@ -67,6 +70,7 @@ const strategyBundleSchema = pathBundleSchema.extend({
 const bundleSchema = pathBundleSchema.extend({ strategyPaths: z.object({ version: z.literal("digital-life-paths-v1"), paths: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: safeText, bundle: strategyBundleSchema }).strict()).max(2) }).strict().optional() });
 
 const baseSafeResultProjectionSchema = z.object({
+  symbolicLens: safeRunSymbolicLensSchema,
   participants: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: safeText, role: z.enum(["scenario decision maker", "frozen participant"]) }).strict()),
   relationships: z.array(z.object({ key: z.string().regex(/^relation-[1-9]\d*$/), fromPersonKey: z.string().regex(/^person-[1-9]\d*$/), toPersonKey: z.string().regex(/^person-[1-9]\d*$/), label: safeText }).strict()),
   facts: z.array(z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), statement: safeText, boundary: z.literal("user_provided_fact") }).strict()),
@@ -185,6 +189,16 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const parsed = bundleSchema.safeParse(rawBundle);
   if (!parsed.success) return null;
   const bundle = parsed.data;
+  try {
+    if (bundle.symbolicLensSnapshot && "version" in bundle.symbolicLensSnapshot) {
+      const owner = bundle.inputSnapshot.ownerId;
+      const accepted = bundle.inputSnapshot.acceptedAt ?? bundle.inputSnapshot.startedAt;
+      if (typeof owner !== "string" || typeof accepted !== "string") return null;
+      parseFrozenSymbolicLens(bundle.symbolicLensSnapshot, owner, accepted);
+      if (bundle.forecastTiming && Date.parse(bundle.forecastTiming.acceptedAt) !== Date.parse(accepted)) return null;
+    }
+  } catch { return null; }
+  const symbolicLens = projectFrozenSymbolicLens(bundle.symbolicLensSnapshot);
   const digitalLifeModel = projectDigitalLifeModel(bundle.inputSnapshot.digitalLifeModel, bundle.inputSnapshot);
   if (!digitalLifeModel) return null;
   const frozenModel = bundle.inputSnapshot.digitalLifeModel;
@@ -196,7 +210,8 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   for (const [index, path] of (bundle.strategyPaths?.paths ?? []).entries()) {
     const strategy = frozenModel!.rules.strategies[index];
     if (!strategy || strategy.participantKey !== path.key || strategy.label !== path.label || path.bundle.inputSnapshot.activePathKey !== path.key || JSON.stringify(canonicalValue(path.bundle.inputSnapshot.digitalLifeModel)) !== JSON.stringify(canonicalValue(frozenModel))) return null;
-    for (const key of ["ownerId", "seedContextId", "graphSnapshotId", "agentSnapshotId", "horizonDays", "startedAt", "deterministicSeed", "realityProfileSnapshot", "agents", "edges"] as const) {
+    if (JSON.stringify(canonicalValue(path.bundle.symbolicLensSnapshot)) !== JSON.stringify(canonicalValue(bundle.symbolicLensSnapshot))) return null;
+    for (const key of ["ownerId", "seedContextId", "graphSnapshotId", "agentSnapshotId", "horizonDays", "startedAt", "acceptedAt", "graphLockedAt", "deterministicSeed", "realityProfileSnapshot", "agents", "edges"] as const) {
       if (JSON.stringify(canonicalValue(path.bundle.inputSnapshot[key])) !== JSON.stringify(canonicalValue(bundle.inputSnapshot[key]))) return null;
     }
     if (path.bundle.causalFingerprint === bundle.causalFingerprint || path.bundle.events.some(event => allEventIds.has(event.id))) return null;
@@ -441,6 +456,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     }
   }
   const projection = {
+    symbolicLens,
     digitalLifeModel,
     strategyPaths,
     relationshipChanges,

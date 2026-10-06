@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { buildDigitalLifeModel, digitalLifeAgentInputSchema, digitalLifeEdgeInputSchema, digitalLifeRulesSchema, ordinalPerson, roleForAgent, type DigitalLifeModel } from "@/lib/digital-life/model";
 import { proposeDigitalLifeActions } from "./digital-life-proposals";
+import { parseFrozenSymbolicLens, runSymbolicLensSchema } from "./symbolic-lens";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
@@ -62,7 +63,7 @@ const inputSchema = z.object({
   agents: z.array(agent).min(1).max(50),
   edges: z.array(edge).min(1).max(200),
   safetyLevel: z.enum(["safe", "caution", "blocked", "downgraded"]),
-  symbolicLens: z.object({ mode: z.literal("bounded_fusion"), summary: z.string().trim().max(1_000) }).strict(),
+  symbolicLens: runSymbolicLensSchema,
   calibrationSnapshot: z.record(z.string(), z.unknown()),
   digitalLifeRules: digitalLifeRulesSchema.optional(),
 }).strict().superRefine((value, context) => {
@@ -99,6 +100,8 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
   const parsed = inputSchema.safeParse(rawInput);
   if (!parsed.success) return { ok: false as const, errorCode: "invalid_run_input" as const };
   const input = parsed.data;
+  try { parseFrozenSymbolicLens(input.symbolicLens, input.ownerId, input.acceptedAt ?? input.startedAt); }
+  catch { return { ok: false as const, errorCode: "invalid_run_input" as const }; }
   if (input.acceptedAt && Date.now() >= Date.parse(input.startedAt)) return { ok: false as const, errorCode: "reservation_expired" as const };
   if (input.acceptedAt && (Date.parse(input.acceptedAt) > Date.now() || Date.parse(input.acceptedAt) >= Date.parse(input.startedAt))) return { ok: false as const, errorCode: "invalid_run_input" as const };
   if (input.safetyLevel === "blocked" || input.safetyLevel === "downgraded") return { ok: false as const, errorCode: "safety_blocked" as const };

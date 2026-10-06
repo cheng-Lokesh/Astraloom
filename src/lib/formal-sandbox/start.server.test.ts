@@ -64,6 +64,7 @@ function createService(profile: Row | null, operations: string[] = [], feedbackR
     relation_edges: [{ id: ids.edge, from_agent_id: ids.self, to_agent_id: ids.other, relationship_type: "professional", evidence_refs: ["seed:person"] }],
     feedback_logs: feedbackRows,
     reality_profiles: profile,
+    symbolic_lens: { mode: "bounded_fusion", summary: "Legacy reservation framing only." },
   };
 
   const client = {
@@ -117,6 +118,7 @@ describe("formal Run freezes the Reality Profile on its locked owner Seed", () =
       agent_profiles: [{ id: ids.self, display_name: "Self", agent_type: "user_core", evidence_refs: ["seed:self"] }, { id: ids.other, display_name: "Colleague", agent_type: "npc", evidence_refs: ["seed:person"] }],
       relation_edges: [{ id: ids.edge, from_agent_id: ids.self, to_agent_id: ids.other, relationship_type: "professional", evidence_refs: ["seed:person"] }],
       feedback_logs: [], reality_profiles: profileRow(),
+      symbolic_lens: { mode: "bounded_fusion", summary: "Legacy reservation framing only." },
     };
     const accepted = new Date().toISOString();
     const start = new Date(Date.now() + 300_000).toISOString();

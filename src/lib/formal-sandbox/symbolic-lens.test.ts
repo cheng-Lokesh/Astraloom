@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parseFrozenSymbolicLens, projectFrozenSymbolicLens } from "./symbolic-lens";
 import { attachedSymbolicFixture, emptySymbolicFixture, symbolicTestOwner } from "./symbolic-lens.test-fixtures";
+import { currentSymbolicPeriod } from "@/lib/formal-symbolic-lens/frame";
+import calendarVectors from "./symbolic-calendar.test-fixtures.json";
 
 describe("a formal Run's frozen optional symbolic source", () => {
+  it.each(calendarVectors)("matches the SQL calendar vector at $at", ({ at, period }) => {
+    expect(currentSymbolicPeriod(at)).toEqual(period);
+  });
   it("accepts a real date-only frame with exact source, consent and period provenance", () => {
     const value = attachedSymbolicFixture();
     expect(parseFrozenSymbolicLens(value, symbolicTestOwner, value.frozenAt)).toEqual(value);

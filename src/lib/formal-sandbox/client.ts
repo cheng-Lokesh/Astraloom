@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { DigitalLifeRules } from "@/lib/digital-life/model";
 import { safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
+import { safeRunSymbolicLensSchema } from "./symbolic-lens";
 
 const failure = z.object({ ok: z.literal(false), error_code: z.string(), trace_id: z.string() }).passthrough();
 const run = z.object({ id: z.string().uuid(), status: z.string(), graph_snapshot_id: z.string().uuid().nullable().optional(), time_horizon: z.enum(["30_days", "90_days"]).optional(), completed_at: z.string().nullable().optional() }).passthrough();
@@ -8,6 +9,7 @@ const startSuccess = z.object({ ok: z.literal(true), idempotent: z.boolean(), ru
 const statusSuccess = z.object({ ok: z.literal(true), run }).passthrough();
 const resultProfileItemKey = (prefix: "fact" | "assumption" | "unknown") => z.string().regex(new RegExp(`^${prefix}-[1-9]\\d*$`));
 const baseFormalSandboxResultProjectionSchema = z.object({
+  symbolicLens: safeRunSymbolicLensSchema.optional(),
   participants: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: z.string(), role: z.enum(["scenario decision maker", "frozen participant"]) })),
   relationships: z.array(z.object({ key: z.string().regex(/^relation-[1-9]\d*$/), fromPersonKey: z.string().regex(/^person-[1-9]\d*$/), toPersonKey: z.string().regex(/^person-[1-9]\d*$/), label: z.string() })),
   facts: z.array(z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), statement: z.string(), boundary: z.literal("user_provided_fact") })),

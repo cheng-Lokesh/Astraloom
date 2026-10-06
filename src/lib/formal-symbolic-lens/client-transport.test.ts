@@ -2,8 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { canWriteSymbolicLens, readSymbolicLensAccount, writeSymbolicLensAccount } from "./client-transport";
 import { buildSymbolicFrame } from "./frame";
 import type { SymbolicLensProjection } from "./projection";
-const lens = (revision: number): SymbolicLensProjection => ({ revision, status: "active", sourceVersion: 1, snapshot: buildSymbolicFrame({ birthDate: "1991-06-15", birthTime: null }, 1, "2026-10-06T00:00:00Z"), consent: { storage: true, calculation: true, futureAttachment: false }, futureAttachmentStatus: "not_connected" });
+const lens = (revision: number): SymbolicLensProjection => ({ revision, status: "active", sourceVersion: 1, snapshot: buildSymbolicFrame({ birthDate: "1991-06-15", birthTime: null }, 1, "2026-10-06T00:00:00Z"), consent: { storage: true, calculation: true, futureAttachment: false }, futureAttachmentStatus: "connected" });
 describe("symbolic client ambiguous-write recovery", () => {
+  it("retains read compatibility with the old not-connected DTO", async () => {
+    const recovered = await readSymbolicLensAccount(vi.fn(async () => Response.json({ ok: true, lens: { ...lens(1), futureAttachmentStatus: "not_connected" } })));
+    expect(recovered.account.ready).toBe(true);
+  });
   it("blocks writes and clears old projection after lost response, then GET restores only real saved version", async () => {
     let stored = lens(1); let writes = 0;
     const transport = vi.fn(async (_url: string, init?: RequestInit) => {

@@ -35,7 +35,7 @@ describe("formal symbolic lens API", () => {
     const response = await GET(); const body = await response.json();
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("no-store");
     expect(state.eq).toHaveBeenCalledWith("user_id", "signed-in-owner");
-    expect(body.lens.status).toBe("active"); expect(body.lens.futureAttachmentStatus).toBe("not_connected");
+    expect(body.lens.status).toBe("active"); expect(body.lens.futureAttachmentStatus).toBe("connected");
     expect(JSON.stringify(body).includes(source.birthDate)).toBe(false); expect(body.lens).not.toHaveProperty("user_id");
     expect(state.rpc).not.toHaveBeenCalled();
   });

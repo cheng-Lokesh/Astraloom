@@ -6,6 +6,7 @@ import { createEmptyRealityProfileDraft, realityProfileDraftFromDatabaseRow } fr
 import { persistFormalSandboxRun } from "./repository.server";
 import { buildFormalSandboxRunV2 } from "./runtime";
 import { formalSandboxStartRequestSchema } from "./start-request";
+import { parseFrozenSymbolicLens } from "./symbolic-lens";
 
 const requestSchema = formalSandboxStartRequestSchema;
 const graphSchema = z.object({ id:z.string().uuid(), user_id:z.string().uuid(), seed_context_id:z.string().uuid(), agent_snapshot_id:z.string().uuid(), graph_locked:z.literal(true), locked_at:z.string(), safety_level:z.enum(["safe","caution"]) }).passthrough();
@@ -80,7 +81,7 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
       agents:agents.data.map((item)=>({id:item.id,displayName:item.display_name,sourceRole:item.agent_type,actorType:item.agent_type==="user_core"||item.agent_type==="user_variant"?"self" as const:item.agent_type==="group"?"organization" as const:"third_party" as const,evidenceRefs:item.evidence_refs})),
       edges:edges.data.map((item)=>({id:item.id,fromAgentId:item.from_agent_id,toAgentId:item.to_agent_id,relationshipType:item.relationship_type,evidenceRefs:item.evidence_refs})),
       safetyLevel:graph.data.safety_level,
-      symbolicLens:z.object({mode:z.literal("bounded_fusion"),summary:z.string().trim().max(1_000)}).strict().parse(source.symbolic_lens ?? {mode:"bounded_fusion",summary:"Symbolic context is optional framing and does not alter causal claims."}),
+      symbolicLens:parseFrozenSymbolicLens(source.symbolic_lens,userId,reservation.accepted_at),
       calibrationSnapshot:buildAccountCalibrationSnapshot(z.array(z.object({ rating:z.unknown(),target_type:z.unknown(),created_at:z.unknown() })).parse(source.feedback_logs)),
       ...(source.digital_life_rules ? { digitalLifeRules: source.digital_life_rules } : request.data.digital_life_rules ? { digitalLifeRules: request.data.digital_life_rules } : {}),
     });
