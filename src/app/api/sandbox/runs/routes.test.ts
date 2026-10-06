@@ -17,6 +17,12 @@ function authClient(user:string|null,from?:()=>unknown,rpc?:()=>unknown){return{
 function query(resultValue:Record<string,unknown>,operations?:string[]){const value={...resultValue};type Builder={select:()=>Builder;eq:(column:string,value:unknown)=>Builder;order:(column:string)=>Builder;limit:(value:number)=>Builder;lt:()=>Builder;or:()=>Builder;maybeSingle:()=>Promise<Record<string,unknown>>;then:PromiseLike<Record<string,unknown>>["then"]};const builder={} as Builder;builder.select=()=>builder;builder.eq=(column,value)=>{operations?.push(`eq:${column}:${String(value)}`);return builder};builder.order=(column)=>{operations?.push(`order:${column}`);return builder};builder.limit=(value)=>{operations?.push(`limit:${value}`);return builder};builder.lt=()=>builder;builder.or=()=>builder;builder.maybeSingle=async()=>value;builder.then=(resolve,reject)=>Promise.resolve(value).then(resolve,reject);return builder}
 
 describe("formal sandbox route contracts",()=>{
+  it("refuses an explicitly anonymous verified account before new Run admission", async () => {
+    state.client = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: userId, is_anonymous: true } } }) } };
+    const response = await start(new Request("http://local/api/sandbox/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_snapshot_id: runId, idempotency_key: runId, horizon_days: 30 }) }));
+    expect(response.status).toBe(401);
+    expect(state.start).not.toHaveBeenCalled();
+  });
   beforeEach(()=>{state.start.mockReset();state.service.mockReset().mockReturnValue({});state.client=authClient(null)});
   it("returns the same non-leaking 401 contract on every account route",async()=>{
     const json=new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});
