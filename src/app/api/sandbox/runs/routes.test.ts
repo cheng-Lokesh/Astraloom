@@ -45,9 +45,15 @@ describe("formal sandbox route contracts",()=>{
     const response=await start(new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(input)}));
 
     expect(response.status).toBe(201);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(state.service).not.toHaveBeenCalled();
     expect(state.start).toHaveBeenCalledOnce();
     expect(state.start).toHaveBeenCalledWith(callerClient,userId,input);
+
+    state.start.mockResolvedValue({ok:true,idempotent:true,run:{id:runId,status:"completed",graph_snapshot_id:runId,time_horizon:"30_days"}});
+    const replay=await start(new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(input)}));
+    expect(replay.status).toBe(200);
+    expect(replay.headers.get("cache-control")).toBe("no-store");
 
     const forgedOwner=await start(new Request("http://local/api/sandbox/runs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...input,user_id:"99999999-9999-4999-8999-999999999999"})}));
 
@@ -59,6 +65,16 @@ describe("formal sandbox route contracts",()=>{
     state.client=authClient(userId,()=>query({data:null,error:null}));
     const response=await status(new Request("http://local"),context);
     expect(response.status).toBe(404);expect(await response.json()).toEqual(expect.objectContaining({error_code:"run_not_found"}));
+  });
+  it("marks successful Run status responses as non-cacheable",async()=>{
+    const run={id:runId,status:"running",run_phase:"ticks",graph_snapshot_id:"33333333-3333-4333-8333-333333333333"};
+    state.client=authClient(userId,()=>query({data:run,error:null}));
+
+    const response=await status(new Request("http://local"),context);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual(expect.objectContaining({ok:true,run}));
   });
   it.each(["draft","queued","running","blocked","failed"])("returns 409 from Result until a persisted Bundle is completed (%s)",async(statusValue)=>{
     state.client=authClient(userId,()=>query({data:{id:runId,status:statusValue,result_bundle:null},error:null}));
@@ -78,7 +94,7 @@ describe("formal sandbox route contracts",()=>{
     const items=[{id:runId,created_at:"2026-08-30T02:00:00.000Z"},{id:"33333333-3333-4333-8333-333333333333",created_at:"2026-08-30T01:00:00.000Z"}];
     state.client=authClient(userId,()=>query({data:items,error:null}));
     const response=await history(new Request("http://local/api/sandbox/runs?limit=1"));const body=await response.json();
-    expect(response.status).toBe(200);expect(body.items).toEqual([items[0]]);expect(JSON.parse(Buffer.from(body.next_cursor,"base64url").toString("utf8"))).toEqual([items[0].created_at,items[0].id]);
+    expect(response.status).toBe(200);expect(response.headers.get("cache-control")).toBe("no-store");expect(body.items).toEqual([items[0]]);expect(JSON.parse(Buffer.from(body.next_cursor,"base64url").toString("utf8"))).toEqual([items[0].created_at,items[0].id]);
   });
   it("filters History to completed Runs in the database before applying the limit-plus-one page boundary",async()=>{
     const operations:string[]=[];
@@ -103,7 +119,7 @@ describe("formal sandbox route contracts",()=>{
     const rpc=vi.fn().mockResolvedValueOnce({data:[{idempotent:true,feedback:{id:runId}}],error:null}).mockResolvedValueOnce({data:null,error:{message:"private sql detail"}});
     state.client=authClient(userId,undefined,rpc);
     const request=()=>new Request("http://local",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({rating:"useful",comment:"clear",idempotency_key:"33333333-3333-4333-8333-333333333333"})});
-    const replay=await feedback(request(),context);expect(replay.status).toBe(200);expect(await replay.json()).toEqual(expect.objectContaining({idempotent:true}));
+    const replay=await feedback(request(),context);expect(replay.status).toBe(200);expect(replay.headers.get("cache-control")).toBe("no-store");expect(await replay.json()).toEqual(expect.objectContaining({idempotent:true}));
     const failed=await feedback(request(),context);expect(failed.status).toBe(500);expect(await failed.text()).not.toContain("private sql detail");
   });
   it("stores targeted feedback by a safe ordinal key and never returns database identifiers",async()=>{
@@ -113,6 +129,7 @@ describe("formal sandbox route contracts",()=>{
     const body=await response.json();
 
     expect(response.status).toBe(201);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(rpc).toHaveBeenCalledWith("append_account_sandbox_feedback_m2",{
       p_run_id:runId,
       p_target_type:"claim",
