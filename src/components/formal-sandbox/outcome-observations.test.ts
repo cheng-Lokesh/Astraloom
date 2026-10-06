@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { OutcomeObservationsView, initialOutcomeDraft, outcomeDraftReducer } from "./outcome-observations";
 
-const target = { key: "target-1", label: "本人主路径的资源投入条件", observationWindow: { startAt: "2026-10-01T00:00:00Z", horizonEnd: "2026-10-31T00:00:00Z" }, status: "observable" as const, reason: null, canRecordDidNotOccur: false, conditions: [{ key: "condition-1", label: "本人投入的时间", kind: "allocate_resource" as const, expectedValue: 2, ruleKey: "rule-1", correctable: true }] };
+const target = { key: "target-1", label: "本人主路径的资源投入条件", observationWindow: { startAt: "2026-10-01T00:00:00Z", horizonEnd: "2026-10-31T00:00:00Z" }, status: "observable" as const, reason: null, canRecordDidNotOccur: false, conditions: [{ key: "condition-1", label: "本人投入的时间", kind: "allocate_resource" as const, expectedValue: 2, ruleKey: "rule-1", correctable: true, requiresTime: true }] };
 const projection = { lockStatus: "available" as const, assessedAt: "2026-10-06T00:00:00Z", targets: [target], history: [], calibration: { status: "insufficient_data" as const, sampleCount: 0, minimumSampleSize: 5 as const } };
 const handlers = { onTargetChange: () => {}, onDraftChange: () => {}, onSave: () => {}, onRetry: () => {}, onRecover: () => {} };
 describe("personal outcome capture", () => {
@@ -32,5 +32,14 @@ describe("personal outcome capture", () => {
   });
   it("clears all old conditions and confirmation when selecting a different target", () => {
     expect(outcomeDraftReducer({ ...initialOutcomeDraft, confirmed: true, values: { "condition-1": 9 }, correctionRuleKey: "rule-1" }, { type: "target" })).toEqual(initialOutcomeDraft);
+  });
+  it("retains typed timed observations and a separate correction for a non-scored mixed target", () => {
+    const mixed = { ...projection, targets: [{ ...target, status: "not_observable" as const, reason: "混合关系回应条件不具备整组可评分依据" }] };
+    const html = renderToStaticMarkup(createElement(OutcomeObservationsView, { projection: mixed, draft: { ...initialOutcomeDraft, values: { "condition-1": 3 } }, targetKey: "target-1", phase: "ready", ...handlers }));
+    expect(html).toContain("实际观察 · 本人投入的时间");
+    expect(html).toContain("条件发生时间 · 本人投入的时间");
+    expect(html).toContain("供下一次运行参考的条件修正");
+    expect(html).toContain("仅保留本人观察，不对整组条件评分");
+    expect(html).not.toContain('value="occurred"');
   });
 });
