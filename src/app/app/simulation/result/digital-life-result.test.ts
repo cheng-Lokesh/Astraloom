@@ -18,3 +18,13 @@ it("shows honest historical absence and does not invent a strategy", () => {
   expect(pathHtml).toContain("未设置独立策略");
   expect(pathHtml).toContain("采样路径");
 });
+
+it("shows each strategy's own resource changes and event-backed claim without baseline feedback controls", () => {
+  const html = renderToStaticMarkup(createElement(StrategyPathsCard, { paths: [{ key: "path-1", label: "先补全信息", projection: { participants: [], relationships: [], facts: [], assumptions: [], realityProfile: { status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [], worldVariables: [] }, resourceChanges: [{ key: "change-1", pathKey: "path-1", label: "专注时间", before: 8, after: 6, unit: "小时", minimum: 2, maximum: 8, boundary: "simulation_change" }], steps: [{ key: "step-1", order: 1, label: "条件沟通", kind: "sandbox_simulation", boundary: "simulation_step", participantKeys: [], relationshipKeys: [] }], claims: [{ key: "claim-1", statement: "沟通后信息可能增加", uncertainty: "取决于用户确认的回应假设", boundary: "conditional_claim", stepKeys: ["step-1"], supportingStepKeys: ["step-1"], participantKeys: [], relationshipKeys: [] }] } }] }));
+  expect(html).toContain("专注时间");
+  expect(html).toContain("8 → 6 小时");
+  expect(html).toContain("沟通后信息可能增加");
+  expect(html).toContain("条件沟通");
+  expect(html).not.toContain("反馈这条结论");
+  expect(html).not.toContain("claim-1");
+});
