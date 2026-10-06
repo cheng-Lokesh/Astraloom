@@ -28,7 +28,7 @@ vi.mock("@/lib/formal-sandbox/client", () => ({
   createFormalSandboxClient: () => ({ status: state.status }),
 }));
 
-import { RunningController } from "./app/simulation/running/page";
+import { RunningController } from "./app/simulation/running/running-workbench";
 
 async function settle() {
   await Promise.resolve();

@@ -7,7 +7,7 @@ import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { FormalIntakeClient } from "./app/new/intake/formal-intake-client";
-import { projectRunningPhase, readRunningStatus } from "./app/simulation/running/page";
+import { projectRunningPhase, readRunningStatus } from "./app/simulation/running/running-workbench";
 import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
 
 const root = process.cwd();
@@ -132,7 +132,7 @@ describe("M2.1 formal entry and legacy isolation", () => {
   });
 
   it("projects a completed server Run in natural language without exposing ready as a user-visible state", async () => {
-    const running = await source("src/app/app/simulation/running/page.tsx");
+    const running = await source("src/app/app/simulation/running/running-workbench.tsx");
 
     expect(running).toContain("结果已生成");
     expect(running).not.toMatch(/Bundle is ready|>ready<|>\{phase\}<\/p>/i);
@@ -184,7 +184,7 @@ describe("M2.1 formal entry and legacy isolation", () => {
   });
 
   it("shows an honest no-run empty state while preserving the run-id status branch", async () => {
-    const running = await source("src/app/app/simulation/running/page.tsx");
+    const running = await source("src/app/app/simulation/running/running-workbench.tsx");
 
     expect(running).toContain("当前没有正在运行的沙盘");
     expect(running).toContain('href="/app/dashboard"');
