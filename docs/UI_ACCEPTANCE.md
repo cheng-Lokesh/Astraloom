@@ -271,6 +271,33 @@ Must not show:
 
 ### Simulation Running
 
+### Digital-life pre-run rules (functional candidate)
+
+The locked current-chain Graph view and explicit saved-Graph view expose a
+30/90-day formal Run starter. It loads server-authoritative safe participant,
+relationship and resource selectors; the UI must not reconstruct their ordering
+from another projection. Loading, missing model, error/reload and pending states
+must remain recoverable and hide internal identifiers.
+
+Every user-added rule needs a labelled actor, trigger, typed operation, safe
+source summary and unchecked-by-default simulation-assumption confirmation.
+30 days has three cycles; 90 days has six. These are simulation cycles, not
+precise real event dates. Changing the horizon clears old rules with an explicit
+notice. Deleting a prerequisite also removes dependent rules.
+
+Third-party conditional responses must follow a same-path information request
+to that participant. They are positive/neutral/negative response assumptions,
+never private-intent facts or Graph-weight editing. At most two explicitly
+defined variant strategies execute in separate worlds. Sampling trajectories
+and strategy branches are labelled separately.
+
+Result shows the frozen digital-life background as facts/assumptions/unknowns,
+confirmed action sources/triggers, simulated relationship changes and separate
+strategy Event/Claim support. Old Runs without this model remain not recorded.
+Model-correction links apply to a later Run. Strategy child claims currently
+have no targeted-feedback controls because the baseline feedback writer cannot
+address them. These candidates are not final nine-stage product acceptance.
+
 Must show execution stages:
 
 - Freeze graph.

@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DigitalLifeRulesEditor, buildEditorRules, emptyEditorDraft } from "./digital-life-rules-editor";
+import { DigitalLifeRulesEditor, buildEditorRules, emptyEditorDraft, removeEditorRule } from "./digital-life-rules-editor";
 
 export const context = {
   graphSnapshotId: "00000000-0000-4000-8000-000000000001",
@@ -36,5 +36,19 @@ describe("digital life rules editor", () => {
     expect(html).toContain('href="/app/reality-profile"');
     expect(html).not.toContain(context.graphSnapshotId);
     expect(html).not.toContain("textarea name=\"json\"");
+  });
+  it("validates all four action types, independent variant worlds and recursive deletion", () => {
+    const base = { ...emptyEditorDraft, actorKey: "person-4", targetKey: "person-8", text: "询問下一步安排", evidenceSummary: "本人拟定的沟通假设", confirmed: true };
+    const request = buildEditorRules(context, 30, [], [], base);
+    if (!request.ok) throw new Error("request failed");
+    const response = buildEditorRules(context, 30, request.rules.actions, [], { ...base, actorKey: "person-8", operation: "update_relation_signal", when: "after_rule", previousKey: "rule-1", relationKey: "relation-7" });
+    expect(response.ok).toBe(true);
+    if (response.ok) expect(removeEditorRule(response.rules.actions, [], "rule-1").actions).toEqual([]);
+    expect(buildEditorRules(context, 30, [], [], { ...base, operation: "allocate_resource", resourceKey: "resource-3", amount: "6" }).ok).toBe(true);
+    expect(buildEditorRules(context, 30, [], [], { ...base, operation: "allocate_resource", resourceKey: "resource-3", amount: "7" }).ok).toBe(false);
+    expect(buildEditorRules(context, 30, [], [], { ...base, operation: "update_commitment" }).ok).toBe(true);
+    const strategy = buildEditorRules(context, 90, [], [], { ...base, actorKey: "person-11", pathKey: "person-11", strategyLabel: "先补全信息" });
+    expect(strategy.ok).toBe(true);
+    if (strategy.ok) { expect(strategy.rules.strategies).toHaveLength(1); expect(strategy.rules.actions[0].pathKey).toBe("person-11"); }
   });
 });

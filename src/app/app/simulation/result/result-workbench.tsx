@@ -5,6 +5,7 @@ import { useReducer, useRef, useState } from "react";
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { createFormalSandboxClient, type FormalSandboxResultProjection } from "@/lib/formal-sandbox/client";
 import type { ResultRequestState } from "@/lib/formal-sandbox/result-request-gate";
+import { actionLabel } from "@/components/formal-sandbox/digital-life-rules-editor";
 
 type Rating = "useful" | "mixed" | "off";
 export type FeedbackState = { rating: Rating | null; comment: string; message: string; saved: boolean };
@@ -141,9 +142,46 @@ export function ResourceChangeCard({ changes }: { changes: FormalSandboxResultPr
   const paths = [...new Set(changes.map((item) => item.pathKey))];
   return <SurfaceCard className="mt-8 p-5">
     <h2>结构化资源变化 · 模拟路径</h2>
-    <p className="mt-2 text-sm leading-6">只展示由用户明确输入的资源；数值变化属于受控模拟，不代表现实中已经发生或必然发生。</p>
+    <p className="mt-2 text-sm leading-6">只展示由用户明确输入的资源；此处路径编号表示重复模拟的采样，不是独立策略。数值变化属于受控模拟，不代表现实中已经发生或必然发生。</p>
     {paths.length ? <div className="mt-4 grid gap-4 md:grid-cols-3">{paths.map((pathKey) => <section key={pathKey} className="border border-white/10 p-4"><h3 className="font-semibold">路径 {pathKey.slice("path-".length)}</h3>{changes.filter((item) => item.pathKey === pathKey).map((item) => <p key={item.key} className="mt-3 text-sm leading-6"><strong>{item.label}</strong><br />{item.before} → {item.after} {item.unit}<br /><span className="text-[var(--text-muted)]">最低保留 {item.minimum} · 上限 {item.maximum}</span></p>)}</section>)}</div> : <p className="mt-4 text-sm text-[var(--text-secondary)]">此历史 Run 没有可对比的结构化资源快照。</p>}
   </SurfaceCard>;
+}
+
+export function DigitalLifeModelCard({ model }: { model?: FormalSandboxResultProjection["digitalLifeModel"] }) {
+  if (!model || model.status === "not_recorded") return <SurfaceCard className="mt-8 p-5"><h2>未记录数字生命规则</h2><p className="mt-2 text-sm leading-6">此历史运行没有冻结数字生命模型，不会用当前资料补写历史。</p><ButtonLink href="/app/reality-profile" variant="ghost" className="!w-auto mt-3">修改模型，供下一次运行使用</ButtonLink></SurfaceCard>;
+  const labels = new Map(model.agents.map(agent => [agent.key, agent.label]));
+  const classifications = { fact: "事实", assumption: "假设", unknown: "未知" } as const;
+  const roles = { user_core: "本人", user_variant: "平行策略", npc: "关键人物", group: "群体" } as const;
+  return <SurfaceCard className="mt-8 min-w-0 p-5">
+    <h2>本次冻结的数字生命模型</h2><p className="mt-2 max-w-prose text-sm leading-6">背景记录说明模型的输入，并不自动成为因果规则。模拟行动和第三方条件回应均为已确认的假设。</p>
+    <div className="mt-5 grid min-w-0 gap-5 md:grid-cols-3">{(["fact", "assumption", "unknown"] as const).map(classification => <section key={classification}><h3 className="font-semibold">{classifications[classification]} · {model.background.filter(item => item.classification === classification).length}</h3>{model.background.filter(item => item.classification === classification).map(item => <p key={item.key} className="mt-3 break-words text-sm leading-6"><strong>{item.label}</strong>：{classification === "unknown" ? "尚未提供" : item.value}<br /><span className="text-[var(--text-secondary)]">依据：{item.evidenceSummary}</span></p>)}</section>)}</div>
+    <section className="mt-6 border-t border-white/15 pt-5"><h3 className="font-semibold">人物与策略定义</h3>{model.agents.map(agent => <p key={agent.key} className="mt-2 break-words text-sm leading-6">{agent.label} · {roles[agent.role]}{agent.role === "user_variant" ? agent.strategyStatus === "explicit" ? " · 已定义独立策略" : " · 尚未定义策略行为" : ""}<br /><span className="text-[var(--text-secondary)]">{agent.evidenceSummary}</span></p>)}</section>
+    <section className="mt-6 border-t border-white/15 pt-5"><h3 className="font-semibold">确认的条件行动</h3>{model.rules.length ? model.rules.map((rule, index) => <div key={rule.key} className="mt-3 text-sm leading-6"><p>行动 {index + 1} · {labels.get(rule.actorKey) ?? "冻结人物"} · {actionLabel(rule.actionType)} · 模拟假设</p><p>{rule.when.kind === "at_tick" ? `第 ${rule.when.tickIndex + 1} 模拟周期` : `行动 ${model.rules.findIndex(item => item.key === (rule.when.kind === "after_rule" ? rule.when.ruleKey : "")) + 1} 之后`} · {rule.pathKey === "main" ? "本人主路径" : `${labels.get(rule.pathKey) ?? "平行策略"}的独立世界`}</p>{rule.operation.actionType === "request_information" ? <p>向{labels.get(rule.operation.targetPersonKey) ?? "关键人物"}询问：{rule.operation.question}</p> : rule.operation.actionType === "update_commitment" ? <p>承诺：{rule.operation.label}</p> : rule.operation.actionType === "allocate_resource" ? <p>投入量：{rule.operation.amount} · 资源依据见冻结资源</p> : <p>假设回应：{{ positive: "积极", neutral: "中性", negative: "消极" }[rule.operation.signal]}，不代表已知其真实想法。</p>}<p className="text-[var(--text-secondary)]">来源：{rule.evidenceSummary}</p></div>) : <p className="mt-3 text-sm">没有添加显式行动规则，不推断他人意图。</p>}</section>
+    <ul className="mt-5 space-y-1 text-sm leading-6 text-[var(--text-secondary)]">{model.limitations.map(limit => <li key={limit}>{limit}</li>)}</ul><ButtonLink href="/app/reality-profile" variant="ghost" className="!w-auto mt-4">修正模型，供下一次运行使用</ButtonLink>
+  </SurfaceCard>;
+}
+
+function RelationshipChangeLedger({ projection }: { projection: FormalSandboxResultProjection }) {
+  const directions = { positive: "积极", neutral: "中性", negative: "消极" };
+  return <section className="mt-5"><h3 className="font-semibold">受控关系回应变化</h3><p className="mt-2 text-sm leading-6">由你确认的条件回应假设产生，属于模拟变化；原始关系图与现实关系未被修改。</p>{projection.relationshipChanges?.length ? projection.relationshipChanges.map(change => <p key={change.key} className="mt-3 text-sm leading-6">{projection.relationships.find(item => item.key === change.relationshipKey)?.label ?? "冻结关系"} · {directions[change.before]} → {directions[change.after]}<br />依据：模拟步骤 {projection.steps.find(item => item.key === change.stepKey)?.order ?? "未记录"}</p>) : <p className="mt-2 text-sm text-[var(--text-secondary)]">没有记录关系回应变化。</p>}</section>;
+}
+
+export function StrategyPathsCard({ paths = [] }: { paths?: FormalSandboxResultProjection["strategyPaths"] }) {
+  return <section className="mt-8">
+    <h2>独立策略比较</h2>
+    <p className="mt-2 max-w-prose text-sm leading-6">每个策略从同一冻结背景开始，使用自己的独立世界。策略结果不会合并；采样路径描述重复模拟，不是策略分支。</p>
+    {paths.length ? paths.map((path, index) => <SurfaceCard key={path.key} className="mt-5 min-w-0 p-5">
+      <h3 className="break-words text-lg font-semibold">策略 {index + 1} · {path.label}</h3>
+      <p className="mt-2 text-sm">独立模拟 · 条件结论 · 仅供比较，不代表现实发生概率。</p>
+      <div className="mt-5 grid gap-5 md:grid-cols-2">
+        <section><h4 className="font-semibold">本策略条件结论与依据</h4>{path.projection.claims.length ? path.projection.claims.map(claim => <div key={claim.key} className="mt-3 text-sm leading-6"><p>{claim.statement}</p><p className="text-[var(--text-secondary)]">{claim.uncertainty}</p><p>直接支持步骤：{claim.supportingStepKeys.map(key => path.projection.steps.find(step => step.key === key)?.order).filter(Boolean).join("、")}</p></div>) : <p className="mt-3 text-sm">没有已保存的条件结论。</p>}</section>
+        <section><h4 className="font-semibold">本策略模拟步骤</h4>{path.projection.steps.length ? path.projection.steps.map(step => <p key={step.key} className="mt-3 text-sm leading-6">步骤 {step.order} · {step.label}<br /><span className="text-[var(--text-secondary)]">模拟事件，不是现实证据</span></p>) : <p className="mt-3 text-sm">没有已保存的模拟步骤。</p>}</section>
+      </div>
+      <section className="mt-5"><h4 className="font-semibold">本策略独立资源变化</h4>{path.projection.resourceChanges.length ? path.projection.resourceChanges.map(change => <p key={change.key} className="mt-3 text-sm leading-6">{change.label} · {change.before} → {change.after} {change.unit}<br /><span className="text-[var(--text-secondary)]">模拟变化 · 最低保留 {change.minimum} · 上限 {change.maximum}</span></p>) : <p className="mt-3 text-sm">没有已保存的结构化资源变化。</p>}</section>
+      <RelationshipChangeLedger projection={path.projection} />
+      <p className="mt-5 text-sm text-[var(--text-secondary)]">此策略的独立结论暂不支持条目反馈，主路径反馈不会用于替代它。</p>
+    </SurfaceCard>) : <p className="mt-4 text-sm text-[var(--text-secondary)]">本次运行未设置独立策略。不会从人物名称自动生成策略。</p>}
+  </section>;
 }
 
 export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseClaim, feedbackState, onCommentChange, onSaveFeedback, targetFeedbackTarget, targetFeedbackState, targetFeedbackSaving, onChooseFeedbackTarget, onTargetRatingChange, onTargetCommentChange, onSaveTargetFeedback }: {
@@ -176,7 +214,10 @@ export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseCl
       <p>User-provided facts, explicit assumptions, unknowns, sandbox simulation, and conditional conclusions remain separate.</p>
     </header>
     <FrozenRealityProfileCard profile={projection.realityProfile} />
+    <DigitalLifeModelCard model={projection.digitalLifeModel} />
     <ResourceChangeCard changes={projection.resourceChanges} />
+    <RelationshipChangeLedger projection={projection} />
+    <StrategyPathsCard paths={projection.strategyPaths} />
     <div className="mt-8 grid gap-6 md:grid-cols-2">
       <SurfaceCard className="p-4"><h2>User-provided facts</h2><p className="text-sm">Reality evidence used by this Run, excluding the private Seed narrative.</p>{projection.facts.map((item) => <p key={item.key} className="mt-2">{item.statement}</p>)}</SurfaceCard>
       <SurfaceCard className="p-4"><h2>System assumptions</h2><p className="text-sm">Explicit simulation assumptions, not verified facts.</p>{projection.assumptions.map((item) => <p key={item.key} className="mt-2">{item.statement}</p>)}</SurfaceCard>
