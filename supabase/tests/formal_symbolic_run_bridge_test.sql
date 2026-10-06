@@ -1,0 +1,15 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+set local search_path=public,extensions,pg_temp;
+select no_plan();
+select has_function('public','symbolic_calendar_period_v1',array['timestamp with time zone'],'Run admission has a database-authoritative calendar period');
+select has_function('public','freeze_symbolic_run_lens_v1',array['uuid','timestamp with time zone'],'Run admission freezes a real owned symbolic source');
+select has_function('public','set_symbolic_future_attachment_v1',array['uuid','integer','uuid','boolean','text'],'future Run use requires its own controlled consent operation');
+select has_column('public','symbolic_lens_preferences','future_attachment_consent_id','active attachment binds an explicit consent event');
+select ok(coalesce((select not prosecdef from pg_proc where oid=to_regprocedure('public.freeze_symbolic_run_lens_v1(uuid,timestamptz)')),false),'freeze keeps caller ownership and SECURITY INVOKER');
+select ok(coalesce((select not prosecdef from pg_proc where oid=to_regprocedure('public.set_symbolic_future_attachment_v1(uuid,integer,uuid,boolean,text)')),false),'future consent keeps SECURITY INVOKER');
+select ok(not coalesce(has_function_privilege('anon',to_regprocedure('public.freeze_symbolic_run_lens_v1(uuid,timestamptz)'),'EXECUTE'),true),'anonymous users cannot freeze symbolic account data');
+select ok(not coalesce(has_function_privilege('authenticated',to_regprocedure('public.set_symbolic_future_attachment_v1(uuid,integer,uuid,boolean,text)'),'EXECUTE'),true),'browser users cannot forge grant records');
+select ok(coalesce(has_function_privilege('service_role',to_regprocedure('public.set_symbolic_future_attachment_v1(uuid,integer,uuid,boolean,text)'),'EXECUTE'),false),'verified server route can call the future consent writer');
+select * from finish();
+rollback;
