@@ -7,6 +7,7 @@ import { createFormalSandboxClient, type FormalSandboxResultProjection } from "@
 import type { ResultRequestState } from "@/lib/formal-sandbox/result-request-gate";
 import { actionLabel } from "@/components/formal-sandbox/digital-life-rules-editor";
 import { FrozenSymbolicResult } from "./frozen-symbolic-result";
+import { OutcomeObservations } from "@/components/formal-sandbox/outcome-observations";
 
 type Rating = "useful" | "mixed" | "off";
 export type FeedbackState = { rating: Rating | null; comment: string; message: string; saved: boolean };
@@ -308,7 +309,7 @@ export function ResultWorkbench({ projection, runId }: { projection: FormalSandb
       setTargetFeedbackSaving(false);
     }
   };
-  return <EvidenceWorkbenchView
+  return <><EvidenceWorkbenchView
     projection={projection}
     selectedClaimKey={selectedClaimKey}
     onChooseClaim={setSelectedClaimKey}
@@ -322,7 +323,7 @@ export function ResultWorkbench({ projection, runId }: { projection: FormalSandb
     onTargetRatingChange={(rating) => dispatchTargetFeedback({ type: "rating_changed", rating })}
     onTargetCommentChange={(comment) => dispatchTargetFeedback({ type: "comment_changed", comment })}
     onSaveTargetFeedback={() => void saveTargetFeedback()}
-  />;
+  /><OutcomeObservations key={runId} runId={runId} /></>;
 }
 
 export function ResultLoading() { return <section className="mx-auto max-w-4xl py-12"><p role="status">Reading saved evidence</p></section>; }
