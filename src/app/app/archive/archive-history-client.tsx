@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useReducer, useRef, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
+import { HistoryComparisonDetails } from "./history-comparison-details";
+import { comparisonText } from "./history-comparison-model";
+export { buildHistoryComparisonModel } from "./history-comparison-model";
 import {
   createFormalSandboxClient,
   type FormalSandboxResultProjection,
@@ -124,6 +127,7 @@ function HistoryComparisonColumn({
       <p className="mt-2 text-sm text-[var(--text-secondary)]">
         完成时间：{formatRunTime(run, timeUnavailableLabel)}
       </p>
+      <Button onClick={() => window.location.assign(`/app/simulation/result?run_id=${encodeURIComponent(run.id)}`)} variant="secondary" className="mt-4 min-h-11 !w-auto px-4 py-3">打开此 Run 结果与回填入口</Button>
 
       <section className="mt-6 border-t border-white/10 pt-5">
         <h4 className="text-base font-semibold text-[var(--text-primary)]">冻结的 Reality Profile</h4>
@@ -137,9 +141,9 @@ function HistoryComparisonColumn({
                   <ul className="mt-2 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
                     {profile.facts.map((item) => (
                       <li key={item.key}>
-                        <strong className="text-[var(--text-primary)]">{item.label}：</strong>
-                        {item.statement}
-                        <span className="block text-[var(--text-muted)]">依据：{item.evidenceSummary}</span>
+                        <strong className="text-[var(--text-primary)]">{comparisonText(item.label)}：</strong>
+                        {comparisonText(item.statement)}
+                        <span className="block text-[var(--text-muted)]">依据：{comparisonText(item.evidenceSummary)}</span>
                       </li>
                     ))}
                   </ul>
@@ -151,9 +155,9 @@ function HistoryComparisonColumn({
                   <ul className="mt-2 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
                     {profile.assumptions.map((item) => (
                       <li key={item.key}>
-                        <strong className="text-[var(--text-primary)]">{item.label}：</strong>
-                        {item.statement}
-                        <span className="block text-[var(--text-muted)]">依据：{item.evidenceSummary}</span>
+                        <strong className="text-[var(--text-primary)]">{comparisonText(item.label)}：</strong>
+                        {comparisonText(item.statement)}
+                        <span className="block text-[var(--text-muted)]">依据：{comparisonText(item.evidenceSummary)}</span>
                       </li>
                     ))}
                   </ul>
@@ -163,7 +167,7 @@ function HistoryComparisonColumn({
                 <h5 className="text-sm font-semibold">仍然未知</h5>
                 {profile.unknowns.length ? (
                   <ul className="mt-2 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
-                    {profile.unknowns.map((item) => <li key={item.key}>{item.label}：明确未知</li>)}
+                    {profile.unknowns.map((item) => <li key={item.key}>{comparisonText(item.label)}：明确未知</li>)}
                   </ul>
                 ) : <p className="mt-2 text-sm text-[var(--text-muted)]">没有单独标记为未知的 Profile 项</p>}
               </div>
@@ -183,7 +187,7 @@ function HistoryComparisonColumn({
             {projection.steps.map((step) => (
               <li key={step.key} className="rounded border border-white/10 p-3">
                 <p className="font-mono text-xs text-[var(--evidence-gold)]">步骤 {step.order}</p>
-                <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{step.label}</p>
+                <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{comparisonText(step.label)}</p>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">这是模拟过程记录，不代表现实事件已经发生。</p>
               </li>
             ))}
@@ -197,8 +201,8 @@ function HistoryComparisonColumn({
           <ul className="mt-3 space-y-3">
             {projection.claims.map((claim) => (
               <li key={claim.key} className="rounded border border-[rgba(234,211,160,.22)] p-3">
-                <p className="text-sm font-semibold leading-6 text-[var(--text-primary)]">{claim.statement}</p>
-                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{claim.uncertainty}</p>
+                <p className="text-sm font-semibold leading-6 text-[var(--text-primary)]">{comparisonText(claim.statement)}</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{comparisonText(claim.uncertainty)}</p>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">
                   关联模拟步骤：{claim.stepKeys.map((key) => projection.steps.find((step) => step.key === key)?.order).filter((order) => order !== undefined).join("、") || "未单独列出"}
                 </p>
@@ -218,15 +222,17 @@ export function HistoryComparisonPanel({
   columns: ComparisonColumns;
   timeUnavailableLabel?: string;
 }) {
+  const titleId = useId();
   return (
-    <section aria-labelledby="history-comparison-title" className="mt-10 border-t border-white/10 pt-8">
+    <section aria-labelledby={titleId} className="mt-10 border-t border-white/10 pt-8">
       <header>
         <p className="font-mono text-[10px] uppercase tracking-[.14em] text-[var(--evidence-gold)]">Read-only comparison</p>
-        <h2 id="history-comparison-title" className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">两次正式 Run 并排对照</h2>
+        <h2 id={titleId} className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">两次正式 Run 并排对照</h2>
         <p role="note" className="mt-3 max-w-4xl text-sm leading-7 text-[var(--text-secondary)]">
-          这是两份冻结结果的并排阅读，不证明现实发生了变化，也不是受控因果实验；两次 Run 的 Seed 或 Relation Graph 可能不同。Feedback 只影响后续 Run，不会改写这里的历史结果。
+          这是两份冻结结果的并排阅读，不证明现实发生了变化，也不是受控因果实验；两次 Run 的 Seed 或 Relation Graph 可能不同。反馈作为后续Run记录输入，真实校准效果未完成；不会改写这里的历史结果。
         </p>
       </header>
+      <HistoryComparisonDetails left={columns[0].projection} right={columns[1].projection} />
       <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-2">
         {columns.map((column, index) => (
           <HistoryComparisonColumn
@@ -431,7 +437,7 @@ export function ArchiveHistoryClient({ timeUnavailableLabel }: { timeUnavailable
                           type="checkbox"
                           checked={selected}
                           onChange={() => toggleSelection(run.id)}
-                          aria-label={`选择 ${formatHorizon(run.time_horizon)} Run，${displayTime}`}
+                          aria-label={`选择第 ${index + 1} 条 ${formatHorizon(run.time_horizon)} Run，${displayTime}`}
                           className="h-5 w-5 accent-[var(--evidence-gold)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)]"
                         />
                         <span>{selected ? "已选入对照" : "选择此 Run 对照"}</span>

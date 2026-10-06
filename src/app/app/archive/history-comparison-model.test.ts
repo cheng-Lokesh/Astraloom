@@ -1,6 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import * as archive from "./archive-history-client";
 import type { FormalSandboxResultProjection as Projection } from "@/lib/formal-sandbox/client";
 import { buildSymbolicFrame } from "@/lib/formal-symbolic-lens/frame";
@@ -20,6 +22,22 @@ export function richProjection(): Projection {
     strategyPaths: [],
   };
 }
+// Optional, synthetic-only rendering of the real component for native disclosure QA.
+afterAll(() => {
+  if (process.env.HISTORY_BROWSER_FIXTURE !== "1") return;
+  const left = richProjection(), right = richProjection();
+  right.realityProfile.structuredResources[0].available = 9;
+  right.digitalLifeModel!.background.reverse();
+  const child = structuredClone(left); delete child.strategyPaths;
+  const second = structuredClone(child); second.steps[0].label = "策略乙支持步骤"; second.claims[0].statement = "策略乙结论";
+  left.strategyPaths = [{ key: "path-1", label: "策略甲", projection: child }, { key: "path-2", label: "策略乙", projection: second }];
+  const html = renderToStaticMarkup(createElement(archive.HistoryComparisonPanel, { columns: [{ run: { id: "safe-left", status: "completed", time_horizon: "30_days" }, projection: left }, { run: { id: "safe-right", status: "completed", time_horizon: "90_days" }, projection: right }] }));
+  const stylesPath = resolve(".next/static/chunks");
+  const styles = readdirSync(stylesPath).filter(file => file.endsWith(".css")).map(file => readFileSync(resolve(stylesPath, file), "utf8")).join("\n");
+  const output = resolve("output/playwright/history-comparison-synthetic.html");
+  mkdirSync(resolve("output/playwright"), { recursive: true });
+  writeFileSync(output, `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>合成冻结 History 对照</title><style>${styles}\nbody{margin:0;padding:16px;background:#050505;color:#f5f7fa;font-family:Arial,sans-serif}main{max-width:1152px;margin:auto}</style></head><body><main><p>安全合成记录，仅检查原值展开与排版</p>${html}</main></body></html>`);
+});
 type Category = { id: string; label: string; status: string; left: unknown; right: unknown };
 function compare(left: Projection, right: Projection): Category[] {
   const fn = (archive as unknown as Record<string, unknown>).buildHistoryComparisonModel;
