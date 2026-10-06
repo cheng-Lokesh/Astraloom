@@ -83,7 +83,7 @@ function symbolic(p: Projection): ComparisonSide {
   return side(true, entries);
 }
 function allSections(p: Projection) {
-  const strategies = (p.strategyPaths ?? []).map(path => entry(path.label, "独立策略条件与世界；不与其他策略合并", ...frozenSections(path.projection).flatMap(section => [section.label, ...(section.value.recorded ? section.value.entries.flatMap(item => [item.title, ...item.lines]) : [section.value.note])]), ...(path.projection.digitalLifeModel?.limitations ?? [])));
+  const strategies = (p.strategyPaths ?? []).map(path => entry(path.label, "独立策略世界；不与其他策略合并", "完整冻结条件；本策略实际执行依下方模拟步骤。这里未按策略序号推断专属规则。", ...frozenSections(path.projection).flatMap(section => [section.label, ...(section.value.recorded ? section.value.entries.flatMap(item => [item.title, ...item.lines]) : [section.value.note])]), ...(path.projection.digitalLifeModel?.limitations ?? [])));
   return [...frozenSections(p), { id: "strategies", label: "各自独立策略", value: side(p.strategyPaths !== undefined, strategies), boundary: "每个策略独立读取人物、条件、资源、关系、步骤与结论；相同结论序号不会跨策略查证据。" }, { id: "symbolic", label: "冻结象征五维与限制", value: symbolic(p), boundary: "五维仅供固定维度对照，始终非因果；未记录不会重新计算。" }];
 }
 /** Compares complete safe content collections, never cross-Run entity identifiers. */
