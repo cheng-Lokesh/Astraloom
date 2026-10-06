@@ -646,3 +646,30 @@ supplement flow and remains owner-scoped by its existing route contracts.
 `build_agents`, `review_graph`, `start_run`, `open_running`, or
 `open_latest_result` for authenticated users. Anonymous callers receive 401
 rather than an overview projection.
+
+### Explicit digital-life rules and readonly model context
+
+`POST /api/sandbox/runs` accepts an optional strict `digital_life_rules` value
+(`digital-life-rules-v1`) beside its existing fields. It must bind the requested
+locked Graph, Agent snapshot and exact Profile revision. Strategies and every
+action require explicit simulation confirmation; action rules are assumptions.
+Unknown fields, unsupported actions, invalid selectors, unconfirmed NPC intent,
+cross-path triggers, out-of-bounds resources and foreign/stale scope fail closed.
+No request supplies or overrides owner identity, and legacy requests remain valid.
+
+`GET /api/sandbox/model-context?graph_id=<opaque selector>` returns authenticated,
+owner-scoped readonly safe selectors: Graph/Agent binding ids, Profile revision,
+ordered `person-N` agents, `relation-N` edges and `resource-N` bounded resources.
+Opaque binding ids are transport only and must not be rendered. Labels and
+classification/evidence summaries are safe; no raw Profile narrative, source
+refs, canonical resource keys or third-party-intent inference is returned.
+
+With no `graph_id`, context resolves the newest submitted frozen Seed and its
+newest Graph. That newest Graph must be locked: the endpoint never falls back
+to an older locked Graph or uses account History to select a chain. With a
+selector, it reads only that owned locked Graph's exact Seed/Profile and Agent
+snapshot, never the latest unrelated Profile. Anonymous requests return 401;
+missing/unlocked default context returns 409 `current_graph_required`; foreign
+or malformed selectors and inconsistent object chains are rejected. Responses
+are strict-schema validated and `Cache-Control: no-store`; the route writes
+no database rows. Graph Start views may consume this context alongside overview.

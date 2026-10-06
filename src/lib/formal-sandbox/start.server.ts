@@ -5,16 +5,13 @@ import { z } from "zod";
 import { createEmptyRealityProfileDraft, realityProfileDatabaseColumns, realityProfileDraftFromDatabaseRow } from "@/lib/reality-profile/profile";
 import { persistFormalSandboxRun } from "./repository.server";
 import { buildFormalSandboxRunV2 } from "./runtime";
+import { formalSandboxStartRequestSchema } from "./start-request";
 
-const requestSchema = z.object({
-  graph_snapshot_id: z.string().uuid(),
-  idempotency_key: z.string().uuid(),
-  horizon_days: z.union([z.literal(30), z.literal(90)]),
-}).strict();
+const requestSchema = formalSandboxStartRequestSchema;
 const graphSchema = z.object({ id:z.string().uuid(), user_id:z.string().uuid(), seed_context_id:z.string().uuid(), agent_snapshot_id:z.string().uuid(), graph_locked:z.literal(true), locked_at:z.string(), safety_level:z.enum(["safe","caution"]) }).passthrough();
 const seedSchema = z.object({ id:z.string().uuid(), user_question:z.string(), raw_context:z.string(), safety_flags:z.unknown() }).passthrough();
 const profileIdentitySchema = z.object({ id:z.string().uuid(), user_id:z.string().uuid(), seed_context_id:z.string().uuid() }).passthrough();
-const agentSchema = z.object({ id:z.string().uuid(), display_name:z.string().min(1), agent_type:z.string(), evidence_refs:z.array(z.string()).min(1) }).passthrough();
+const agentSchema = z.object({ id:z.string().uuid(), display_name:z.string().min(1), agent_type:z.enum(["user_core", "user_variant", "npc", "group"]), evidence_refs:z.array(z.string()).min(1) }).passthrough();
 const edgeSchema = z.object({ id:z.string().uuid(), from_agent_id:z.string().uuid(), to_agent_id:z.string().uuid(), relationship_type:z.string().min(1), evidence_refs:z.array(z.string()).min(1) }).passthrough();
 
 function stableSeed(graphId: string, key: string) {
@@ -64,11 +61,12 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
       deterministicSeed:stableSeed(graph.data.id,request.data.idempotency_key),
       startedAt:new Date(graph.data.locked_at).toISOString(),
       seedSummary:[seed.data.user_question,seed.data.raw_context].filter(Boolean).join(" ").slice(0,4000),
-      agents:agents.data.map((item)=>({id:item.id,displayName:item.display_name,actorType:item.agent_type==="user_core"?"self" as const:"third_party" as const,evidenceRefs:item.evidence_refs})),
+      agents:agents.data.map((item)=>({id:item.id,displayName:item.display_name,sourceRole:item.agent_type,actorType:item.agent_type==="user_core"||item.agent_type==="user_variant"?"self" as const:item.agent_type==="group"?"organization" as const:"third_party" as const,evidenceRefs:item.evidence_refs})),
       edges:edges.data.map((item)=>({id:item.id,fromAgentId:item.from_agent_id,toAgentId:item.to_agent_id,relationshipType:item.relationship_type,evidenceRefs:item.evidence_refs})),
       safetyLevel:graph.data.safety_level,
       symbolicLens:{mode:"bounded_fusion",summary:"Symbolic context is optional framing and does not alter causal claims."},
       calibrationSnapshot:buildAccountCalibrationSnapshot(feedbackResult.data??[]),
+      ...(request.data.digital_life_rules ? { digitalLifeRules: request.data.digital_life_rules } : {}),
     });
     if (!built.ok) return built;
     return persistFormalSandboxRun(caller,{userId,graphSnapshotId:graph.data.id,idempotencyKey:request.data.idempotency_key,horizonDays:request.data.horizon_days,bundle:built.bundle});

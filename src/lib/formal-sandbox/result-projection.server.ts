@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { digitalLifeModelSchema } from "@/lib/digital-life/model";
+import { projectDigitalLifeModel, safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
+import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
+import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 
@@ -28,9 +32,9 @@ const structuredResourceSchema = z.object({
 const profileFactSchema = z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), label: safeText, statement: safeText, evidenceSummary: safeText }).strict();
 const profileAssumptionSchema = z.object({ key: z.string().regex(/^assumption-[1-9]\d*$/), label: safeText, statement: safeText, evidenceSummary: safeText }).strict();
 const profileUnknownSchema = z.object({ key: z.string().regex(/^unknown-[1-9]\d*$/), label: safeText }).strict();
-const agentSchema = z.object({ id: reference, displayName: safeText, actorType: z.enum(["self", "third_party"]), evidenceRefs: z.array(z.string()).min(1) }).passthrough();
+const agentSchema = z.object({ id: reference, displayName: safeText, actorType: z.enum(["self", "third_party", "organization"]), evidenceRefs: z.array(z.string()).min(1) }).passthrough();
 const relationSchema = z.object({ id: reference, fromAgentId: reference, toAgentId: reference, relationshipType: safeText, evidenceRefs: z.array(z.string()).min(1) }).passthrough();
-const eventSchema = z.object({ id: reference, eventType: safeText, actorId: reference.optional(), targetEntityIds: z.array(reference).optional(), targetRelationIds: z.array(reference).optional(), causalRealEvidenceIds: z.array(reference).optional(), priorWorldEventIds: z.array(reference).optional() }).passthrough();
+const eventSchema = z.object({ id: reference, eventType: safeText, actorId: reference.optional(), targetEntityIds: z.array(reference).optional(), targetRelationIds: z.array(reference).optional(), causalRealEvidenceIds: z.array(reference).optional(), priorWorldEventIds: z.array(reference).optional(), deltas: z.array(z.object({ valueType: z.string(), path: z.string(), before: z.unknown(), after: z.unknown() }).passthrough()).optional() }).passthrough();
 const claimSchema = z.object({ id: reference, statement: safeText, uncertaintyStatement: safeText, simulationEventIds: z.array(reference).min(1), realEvidenceIds: z.array(reference).optional() }).passthrough();
 const worldVariableSnapshotSchema = z.discriminatedUnion("variableType", [
   z.object({ id: reference, variableType: z.literal("enum"), key: z.string().trim().min(1).max(200), value: safeText, allowedValues: z.array(safeText).min(1).max(16), provisional: z.boolean() }).passthrough(),
@@ -44,8 +48,8 @@ const worldSnapshotSchema = z.object({
   constraints: z.array(z.object({ id: reference, constraintType: z.literal("deadline"), target: z.object({ type: z.literal("resource"), id: reference }).strict(), rule: z.object({ kind: z.literal("before_time"), value: z.string().datetime({ offset: true }) }).strict() }).passthrough()).max(8).optional(),
   externalVariables: z.array(worldVariableSnapshotSchema).max(16).optional(),
 }).passthrough();
-const bundleSchema = z.object({
-  inputSnapshot: z.object({ ownerId: z.string().uuid().optional(), seedContextId: z.string().uuid().optional(), realityProfileSnapshot: realityProfileSnapshotSchema.optional(), agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
+const pathBundleSchema = z.object({
+  inputSnapshot: z.object({ ownerId: z.string().uuid().optional(), seedContextId: z.string().uuid().optional(), realityProfileSnapshot: realityProfileSnapshotSchema.optional(), digitalLifeModel: digitalLifeModelSchema.optional(), activePathKey: z.string().optional(), agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
   sourceBoundary: z.object({ evidenceLedger: z.object({ items: z.array(z.object({ id: reference, statement: z.string().trim().min(1).max(4_000) }).passthrough()).max(200) }).passthrough().optional(), assumptionLedger: z.object({ assumptions: z.array(z.object({ statement: z.string().trim().min(1).max(2_000) }).passthrough()).max(200) }).passthrough().optional() }).passthrough().optional(),
   worldSnapshots: z.array(worldSnapshotSchema).max(500).optional(),
   events: z.array(eventSchema).min(1).max(500),
@@ -53,7 +57,16 @@ const bundleSchema = z.object({
   report: z.object({ claimIds: z.array(reference).min(1).max(100) }).passthrough(),
 }).passthrough();
 
-export const safeResultProjectionSchema = z.object({
+const strategyBundleSchema = pathBundleSchema.extend({
+  runtimePath: z.array(reference).length(7), causalFingerprint: z.string().regex(/^[a-f0-9]{24}$/),
+  symbolicLensSnapshot: z.object({ mode: z.literal("bounded_fusion"), summary: z.string().max(1_000) }).strict(),
+  trajectoryAnalysis: z.record(z.string(), z.unknown()),
+  forecastLockReference: z.object({ streamId: reference, version: z.number().int().positive() }).strict(),
+  versions: z.object({ runtime: z.literal("formal-account-sandbox-m1-v1"), schema: z.literal("formal-run-bundle-m1-v1"), world: reference, trajectory: z.literal("trajectory-engine-v2-stage-4"), analysis: reference }).strict(),
+}).strict();
+const bundleSchema = pathBundleSchema.extend({ strategyPaths: z.object({ version: z.literal("digital-life-paths-v1"), paths: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: safeText, bundle: strategyBundleSchema }).strict()).max(2) }).strict().optional() });
+
+const baseSafeResultProjectionSchema = z.object({
   participants: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: safeText, role: z.enum(["scenario decision maker", "frozen participant"]) }).strict()),
   relationships: z.array(z.object({ key: z.string().regex(/^relation-[1-9]\d*$/), fromPersonKey: z.string().regex(/^person-[1-9]\d*$/), toPersonKey: z.string().regex(/^person-[1-9]\d*$/), label: safeText }).strict()),
   facts: z.array(z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), statement: safeText, boundary: z.literal("user_provided_fact") }).strict()),
@@ -97,6 +110,10 @@ export const safeResultProjectionSchema = z.object({
   steps: z.array(z.object({ key: z.string().regex(/^step-[1-9]\d*$/), order: z.number().int().positive(), label: safeText, kind: z.literal("sandbox_simulation"), boundary: z.literal("simulation_step"), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
   claims: z.array(z.object({ key: z.string().regex(/^claim-[1-9]\d*$/), statement: safeText, uncertainty: safeText, boundary: z.literal("conditional_claim"), stepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), supportingStepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
 }).strict();
+
+const relationshipChangeSchema = z.object({ key: z.string().regex(/^relation-change-[1-9]\d*$/), stepKey: z.string().regex(/^step-[1-9]\d*$/), relationshipKey: z.string().regex(/^relation-[1-9]\d*$/), before: z.enum(["negative", "neutral", "positive"]), after: z.enum(["negative", "neutral", "positive"]), boundary: z.literal("simulation_change") }).strict();
+const safePathProjectionSchema = baseSafeResultProjectionSchema.extend({ digitalLifeModel: safeDigitalLifeModelSchema, relationshipChanges: z.array(relationshipChangeSchema).max(500) }).strict();
+export const safeResultProjectionSchema = safePathProjectionSchema.extend({ strategyPaths: z.array(z.object({ key: z.string().regex(/^path-[1-9]\d*$/), label: safeText, projection: safePathProjectionSchema }).strict()).max(2).default([]) }).strict();
 
 export type SafeResultProjection = z.infer<typeof safeResultProjectionSchema>;
 
@@ -168,6 +185,28 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const parsed = bundleSchema.safeParse(rawBundle);
   if (!parsed.success) return null;
   const bundle = parsed.data;
+  const digitalLifeModel = projectDigitalLifeModel(bundle.inputSnapshot.digitalLifeModel, bundle.inputSnapshot);
+  if (!digitalLifeModel) return null;
+  const frozenModel = bundle.inputSnapshot.digitalLifeModel;
+  if (frozenModel && (!(bundle.worldSnapshots?.length) || bundle.worldSnapshots.some(world => !validateWorldV2(world).ok))) return null;
+  if (frozenModel && (!bundle.strategyPaths && bundle.inputSnapshot.activePathKey === "main")) return null;
+  if (bundle.strategyPaths && (!frozenModel || bundle.inputSnapshot.activePathKey !== "main" || bundle.strategyPaths.paths.length !== frozenModel.rules.strategies.length)) return null;
+  const strategyPaths: SafeResultProjection["strategyPaths"] = [];
+  const allEventIds = new Set(bundle.events.map(event => event.id));
+  for (const [index, path] of (bundle.strategyPaths?.paths ?? []).entries()) {
+    const strategy = frozenModel!.rules.strategies[index];
+    if (!strategy || strategy.participantKey !== path.key || strategy.label !== path.label || path.bundle.inputSnapshot.activePathKey !== path.key || JSON.stringify(canonicalValue(path.bundle.inputSnapshot.digitalLifeModel)) !== JSON.stringify(canonicalValue(frozenModel))) return null;
+    for (const key of ["ownerId", "seedContextId", "graphSnapshotId", "agentSnapshotId", "horizonDays", "startedAt", "deterministicSeed", "realityProfileSnapshot", "agents", "edges"] as const) {
+      if (JSON.stringify(canonicalValue(path.bundle.inputSnapshot[key])) !== JSON.stringify(canonicalValue(bundle.inputSnapshot[key]))) return null;
+    }
+    if (path.bundle.causalFingerprint === bundle.causalFingerprint || path.bundle.events.some(event => allEventIds.has(event.id))) return null;
+    path.bundle.events.forEach(event => allEventIds.add(event.id));
+    const projected = projectFormalSandboxResult(path.bundle);
+    if (!projected) return null;
+    const { strategyPaths: nestedPaths, ...projection } = projected;
+    if (nestedPaths.length > 0) return null;
+    strategyPaths.push({ key: ordinal("path", index), label: path.label, projection });
+  }
   const profileSnapshot = bundle.inputSnapshot.realityProfileSnapshot;
   if (profileSnapshot) {
     if (bundle.inputSnapshot.ownerId !== profileSnapshot.ownerId || bundle.inputSnapshot.seedContextId !== profileSnapshot.seedContextId || profileSnapshot.revision !== profileSnapshot.profile.revision) return null;
@@ -220,12 +259,12 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const frozenSeedSummary = typeof bundle.inputSnapshot.seedSummary === "string" ? bundle.inputSnapshot.seedSummary.trim() : "";
   const visibleEvidenceItems = evidenceItems.filter((item) => {
     const claimKey = typeof item.claimKey === "string" ? item.claimKey : "";
-    return !claimKey.startsWith("reality.profile.")
+    return !claimKey.startsWith("reality.profile.") && !claimKey.startsWith("formal.agent.")
       && (claimKey === "formal.seed.summary" || !frozenSeedSummary || item.statement !== frozenSeedSummary);
   });
   const visibleRunAssumptions = (bundle.sourceBoundary?.assumptionLedger?.assumptions ?? []).filter((item) => {
     const category = typeof item.category === "string" ? item.category : "";
-    return !category.startsWith("reality_profile_");
+    return !category.startsWith("reality_profile_") && !category.startsWith("digital_life_rule_");
   });
   const evidenceIds = evidenceItems.map((item) => item.id);
   if (!unique(evidenceIds)) return null;
@@ -304,14 +343,29 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
 
   const participantKeys = bundle.inputSnapshot.agents.map((_, index) => ordinal("person", index));
   const personKeyById = new Map(bundle.inputSnapshot.agents.map((agent, index) => [agent.id, participantKeys[index]!]));
+  const corePersonKey = frozenModel?.agents.find(agent => agent.role === "user_core")?.key;
+  const activePathKey = bundle.inputSnapshot.activePathKey;
+  const effectivePersonKey = (key: string) => activePathKey && activePathKey !== "main" && key === corePersonKey ? activePathKey : key;
   const relationshipKeys = bundle.inputSnapshot.edges.map((_, index) => ordinal("relation", index));
   const peopleByDisplayName = new Map<string, string[]>();
   bundle.inputSnapshot.agents.forEach((agent) => peopleByDisplayName.set(agent.displayName, [...(peopleByDisplayName.get(agent.displayName) ?? []), personKeyById.get(agent.id)!]));
 
   const personKeyByDefinitionId = new Map<string, string>();
-  for (const [definitionId, displayName] of definitionDisplayById) {
-    const matches = peopleByDisplayName.get(displayName) ?? [];
-    if (matches.length === 1) personKeyByDefinitionId.set(definitionId, matches[0]!);
+  if (frozenModel) {
+    if (typeof bundle.causalFingerprint !== "string" || !/^[a-f0-9]{24}$/.test(bundle.causalFingerprint)) return null;
+    const ids = createStableAgentWorldIdFactoryV2(`formal-${bundle.causalFingerprint}`);
+    for (const agent of frozenModel.agents) {
+      const definitionId = ids("agent_definition", agent.sourceAgentId);
+      const displayName = definitionDisplayById.get(definitionId);
+      if (displayName !== undefined && displayName !== agent.label) return null;
+      if (displayName !== undefined) personKeyByDefinitionId.set(definitionId, agent.key);
+    }
+    if (personKeyByDefinitionId.size !== definitionDisplayById.size) return null;
+  } else {
+    for (const [definitionId, displayName] of definitionDisplayById) {
+      const matches = peopleByDisplayName.get(displayName) ?? [];
+      if (matches.length === 1) personKeyByDefinitionId.set(definitionId, matches[0]!);
+    }
   }
   const personKeyByEntityId = new Map<string, string>();
   for (const [entityId, definitionId] of entityDefinitionById) {
@@ -319,10 +373,10 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     if (personKey) personKeyByEntityId.set(entityId, personKey);
   }
 
-  const relationshipKeyByEndpoints = new Map(bundle.inputSnapshot.edges.map((edge, index) => [directed(personKeyById.get(edge.fromAgentId)!, personKeyById.get(edge.toAgentId)!), relationshipKeys[index]!]));
+  const relationshipKeyByEndpoints = new Map(bundle.inputSnapshot.edges.map((edge, index) => [directed(effectivePersonKey(personKeyById.get(edge.fromAgentId)!), effectivePersonKey(personKeyById.get(edge.toAgentId)!)), relationshipKeys[index]!]));
   const relationshipKeysByUndirectedEndpoints = new Map<string, string[]>();
   bundle.inputSnapshot.edges.forEach((edge, index) => {
-    const key = undirected(personKeyById.get(edge.fromAgentId)!, personKeyById.get(edge.toAgentId)!);
+    const key = undirected(effectivePersonKey(personKeyById.get(edge.fromAgentId)!), effectivePersonKey(personKeyById.get(edge.toAgentId)!));
     relationshipKeysByUndirectedEndpoints.set(key, [...(relationshipKeysByUndirectedEndpoints.get(key) ?? []), relationshipKeys[index]!]);
   });
   const mappedWorldRelations = new Map<string, { fromPersonKey: string; toPersonKey: string; relationshipKey: string | undefined; realEvidenceIds: string[] }>();
@@ -333,6 +387,10 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     const relationshipKey = relationshipKeyByEndpoints.get(directed(fromPersonKey, toPersonKey)) ?? relationshipKeyByEndpoints.get(directed(toPersonKey, fromPersonKey));
     mappedWorldRelations.set(relationId, { fromPersonKey, toPersonKey, relationshipKey, realEvidenceIds: relation.realEvidenceIds });
   }
+  const activeRelationshipKeys = new Set([...mappedWorldRelations.values()].flatMap(relation => relation.relationshipKey ? [relation.relationshipKey] : []));
+  const projectedSourceEdges = bundle.inputSnapshot.edges.flatMap((edge, index) =>
+    !frozenModel || activeRelationshipKeys.has(relationshipKeys[index]!) ? [{ edge, key: relationshipKeys[index]! }] : [],
+  );
 
   const relationshipEvidenceLinks = new Map<string, { relationshipKey: string; participantKeys: string[] }[]>();
   for (const relation of mappedWorldRelations.values()) {
@@ -345,11 +403,11 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     const eventParticipantKeys = [...new Set([event.actorId ? personKeyByDefinitionId.get(event.actorId) : undefined, ...(event.targetEntityIds ?? []).map((id) => personKeyByEntityId.get(id))].filter((key): key is string => Boolean(key)))];
     const targetedRelations = (event.targetRelationIds ?? []).map((id) => mappedWorldRelations.get(id)?.relationshipKey).filter((key): key is string => Boolean(key));
     const eventParticipantSet = new Set(eventParticipantKeys);
-    const inferredRelations = (event.targetRelationIds?.length ?? 0) > 0 ? [] : bundle.inputSnapshot.edges.flatMap((edge, index) => {
-      const from = personKeyById.get(edge.fromAgentId)!;
-      const to = personKeyById.get(edge.toAgentId)!;
+    const inferredRelations = (event.targetRelationIds?.length ?? 0) > 0 ? [] : projectedSourceEdges.flatMap(({ edge, key }) => {
+      const from = effectivePersonKey(personKeyById.get(edge.fromAgentId)!);
+      const to = effectivePersonKey(personKeyById.get(edge.toAgentId)!);
       const candidates = relationshipKeysByUndirectedEndpoints.get(undirected(from, to)) ?? [];
-      return eventParticipantSet.has(from) && eventParticipantSet.has(to) && candidates.length === 1 ? [relationshipKeys[index]!] : [];
+      return eventParticipantSet.has(from) && eventParticipantSet.has(to) && candidates.length === 1 ? [key] : [];
     });
     return [event.id, { participantKeys: eventParticipantKeys, relationshipKeys: [...new Set([...targetedRelations, ...inferredRelations])] }] as const;
   }));
@@ -371,9 +429,23 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
       }];
     }),
   );
+  const relationshipChanges: z.infer<typeof relationshipChangeSchema>[] = [];
+  for (const event of bundle.events) {
+    for (const delta of event.deltas ?? []) {
+      if (delta.valueType !== "relation") continue;
+      const relation = (event.targetRelationIds ?? []).find(id => delta.path === `relations.${id}.signal`);
+      const relationshipKey = relation ? mappedWorldRelations.get(relation)?.relationshipKey : undefined;
+      const changed = relationshipChangeSchema.safeParse({ key: ordinal("relation-change", relationshipChanges.length), stepKey: eventKeyById.get(event.id), relationshipKey, before: delta.before, after: delta.after, boundary: "simulation_change" });
+      if (!changed.success) return null;
+      relationshipChanges.push(changed.data);
+    }
+  }
   const projection = {
+    digitalLifeModel,
+    strategyPaths,
+    relationshipChanges,
     participants: bundle.inputSnapshot.agents.map((agent, index) => ({ key: participantKeys[index]!, label: agent.displayName, role: agent.actorType === "self" ? "scenario decision maker" as const : "frozen participant" as const })),
-    relationships: bundle.inputSnapshot.edges.map((edge, index) => ({ key: relationshipKeys[index]!, fromPersonKey: personKeyById.get(edge.fromAgentId)!, toPersonKey: personKeyById.get(edge.toAgentId)!, label: edge.relationshipType })),
+    relationships: projectedSourceEdges.map(({ edge, key }) => ({ key, fromPersonKey: effectivePersonKey(personKeyById.get(edge.fromAgentId)!), toPersonKey: effectivePersonKey(personKeyById.get(edge.toAgentId)!), label: edge.relationshipType })),
     facts: visibleEvidenceItems.map((fact, index) => ({
       key: ordinal("fact", index),
       statement: fact.claimKey === "formal.seed.summary" ? "本次运行使用已提交的 Seed 作为 Reality evidence；情境原文未展示。" : fact.statement,

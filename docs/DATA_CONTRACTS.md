@@ -1247,3 +1247,38 @@ Writer rules:
   failed, and successful writes.
 - The writer inserts only new generated artifacts; it does not allow admin or
   browser mutation of Claim, EventLog, or Report conclusions.
+
+## Digital-life adapter v1 (formal Track A candidate)
+
+New formal Runs freeze `digital-life-model-v1` in `inputSnapshot.digitalLifeModel`.
+The model binds owner, Seed, locked Graph, Agent snapshot and exact Reality
+Profile revision. All fourteen profile dimensions retain fact/assumption/unknown
+classification and safe source summaries. Goals, values, life themes and long
+structures remain `background_only`: their presence alone is not a causal rule.
+Existing Runs are immutable; a legacy bundle without the model projects
+`not_recorded` rather than reconstructing from today's Profile.
+
+`digital-life-rules-v1` is strict, explicit, confirmed simulation input, never
+extracted actions, personality, numbers or third-party intent from free text.
+Ordinal selectors bind the frozen source ordering. At most two stored
+`user_variant` actors may carry explicitly defined strategies; `user_core` and
+`user_variant` both retain the V2 `self` Actor identity. A strategy runs in its
+own resource world instead of sharing reality with another copy of the self.
+Each path has at most three actions for 30 days or six for 90 days and its own
+three deterministic samples, events and frequency analysis. `strategyPaths`
+uses a strict `digital-life-paths-v1` envelope; cross-path evidence is rejected
+on read, and different conditions are never pooled into one frequency.
+
+Confirmed rules may request information, update a commitment, allocate a
+declared bounded resource, or apply a conditional NPC relationship response
+through existing V2 proposals and controlled transitions. An NPC response must
+follow a named request to that NPC on the same path and remains a user-confirmed
+assumption, not knowledge of the real person's intention. Pressure and external
+enum variables remain current singleton values without invented evolution.
+Symbolic framing never determines Action, World or Evidence.
+
+Safe results expose background/rule summaries and actual controlled resource
+or relationship changes. New-model relationships include only edges present in
+that active World; source Graph edges remain frozen intact and ordinal keys do
+not shift when an inactive parallel-comparison edge is omitted. Raw source
+references, owner/Seed ids and canonical resource keys remain server-side.

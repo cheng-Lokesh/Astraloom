@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { z } from "zod";
+import { buildDigitalLifeModel, digitalLifeAgentInputSchema, digitalLifeEdgeInputSchema, digitalLifeRulesSchema, ordinalPerson, roleForAgent, type DigitalLifeModel } from "@/lib/digital-life/model";
+import { proposeDigitalLifeActions } from "./digital-life-proposals";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
@@ -12,6 +14,7 @@ import {
   type WorldEntityIdV2,
   type WorldResourceIdV2,
   type WorldVariableIdV2,
+  type WorldRelationIdV2,
 } from "@/lib/v2/agent-world/types";
 import { initializeWorldV2 } from "@/lib/v2/agent-world/world-initializer";
 import { buildClaimsV2, buildClaimsReportV2 } from "@/lib/v2/claims-reports";
@@ -35,20 +38,8 @@ import {
   FEATURE_SCHEMA_VERSION_V2,
 } from "@/lib/v2/trajectory-analysis/types";
 
-const agent = z.object({
-  id: z.string().uuid(),
-  displayName: z.string().trim().min(1).max(200),
-  actorType: z.enum(["self", "third_party"]),
-  evidenceRefs: z.array(z.string().trim().min(1).max(500)).min(1),
-}).strict();
-
-const edge = z.object({
-  id: z.string().uuid(),
-  fromAgentId: z.string().uuid(),
-  toAgentId: z.string().uuid(),
-  relationshipType: z.string().trim().min(1).max(100),
-  evidenceRefs: z.array(z.string().trim().min(1).max(500)).min(1),
-}).strict();
+const agent = digitalLifeAgentInputSchema;
+const edge = digitalLifeEdgeInputSchema;
 
 const inputSchema = z.object({
   ownerId: z.string().uuid(),
@@ -71,9 +62,10 @@ const inputSchema = z.object({
   safetyLevel: z.enum(["safe", "caution", "blocked", "downgraded"]),
   symbolicLens: z.object({ mode: z.literal("bounded_fusion"), summary: z.string().trim().max(1_000) }).strict(),
   calibrationSnapshot: z.record(z.string(), z.unknown()),
+  digitalLifeRules: digitalLifeRulesSchema.optional(),
 }).strict().superRefine((value, context) => {
   const ids = new Set(value.agents.map((item) => item.id));
-  if (value.agents.filter((item) => item.actorType === "self").length !== 1) context.addIssue({ code: "custom", message: "one self agent required" });
+  if (value.agents.filter((item) => roleForAgent(item) === "user_core").length !== 1) context.addIssue({ code: "custom", message: "one core self agent required" });
   for (const relation of value.edges) if (!ids.has(relation.fromAgentId) || !ids.has(relation.toAgentId) || relation.fromAgentId === relation.toAgentId) context.addIssue({ code: "custom", message: "edge endpoint mismatch" });
   const profileSnapshot = value.realityProfileSnapshot;
   if (profileSnapshot.ownerId !== value.ownerId || profileSnapshot.seedContextId !== value.seedContextId || profileSnapshot.revision !== profileSnapshot.profile.revision) {
@@ -106,9 +98,23 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
   if (!parsed.success) return { ok: false as const, errorCode: "invalid_run_input" as const };
   const input = parsed.data;
   if (input.safetyLevel === "blocked" || input.safetyLevel === "downgraded") return { ok: false as const, errorCode: "safety_blocked" as const };
-  if (!input.realityProfileSnapshot.profile.worldInputs.resources.some((resource) => resource.usePerTick !== null)) {
+  const modeled = buildDigitalLifeModel(input, input.digitalLifeRules);
+  if (!modeled.ok) return { ok: false as const, errorCode: "invalid_run_input" as const };
+  if (!input.realityProfileSnapshot.profile.worldInputs.resources.some((resource) => resource.usePerTick !== null) && modeled.model.rules.actions.length === 0) {
     return { ok: false as const, errorCode: "world_model_required" as const };
   }
+  const baseline = await buildFormalSandboxPathV2(input, modeled.model, "main");
+  if (!baseline.ok) return baseline;
+  const paths: Array<{ key: string; label: string; bundle: typeof baseline.bundle }> = [];
+  for (const strategy of modeled.model.rules.strategies) {
+    const path = await buildFormalSandboxPathV2(input, modeled.model, strategy.participantKey);
+    if (!path.ok) return path;
+    paths.push({ key: strategy.participantKey, label: strategy.label, bundle: path.bundle });
+  }
+  return { ok: true as const, bundle: { ...baseline.bundle, strategyPaths: { version: "digital-life-paths-v1" as const, paths } } };
+}
+
+async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digitalLifeModel: DigitalLifeModel, activePathKey: string) {
 
   try {
     const causalInput = {
@@ -125,6 +131,8 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       edges: input.edges,
       safetyLevel: input.safetyLevel,
       calibrationSnapshot: input.calibrationSnapshot,
+      digitalLifeModel,
+      activePathKey,
     };
     const causalFingerprint = fingerprint(causalInput);
     const boundaryAt = new Date(Date.parse(input.startedAt) - 2).toISOString();
@@ -155,6 +163,13 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
           verificationStatus: "user_confirmed" as const,
           provenance: [{ sourceRef: `relation_edge:${item.id}`, capturedAt: boundaryAt }],
           limitations: ["Relationship structure is confirmed; private intent is not inferred."],
+        })),
+        ...input.agents.map((item, index) => ({
+          statement: `${item.displayName}：${roleForAgent(item) === "user_core" ? "本人" : roleForAgent(item) === "user_variant" ? "本人在独立条件下的平行策略" : "账户确认的人物角色"}`,
+          claimKey: `formal.agent.${index + 1}`,
+          sourceKind: "user_statement" as const, sourceTier: "tier_1_user_confirmed" as const, verificationStatus: "user_confirmed" as const,
+          provenance: [{ sourceRef: `agent_snapshot:${input.agentSnapshotId}:${item.id}`, capturedAt: boundaryAt }],
+          limitations: ["Snapshot identity is supported; behavior and private intent are not inferred."],
         })),
         ...profileEntries.filter(({ field }) => field.classification === "fact").map(({ key, label, field }) => ({
           statement: `${label}：${field.value}`,
@@ -251,6 +266,15 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
         confirmationRequirement: "not_required" as const,
         confirmationStatus: "confirmed" as const,
       })),
+      ...digitalLifeModel.rules.actions.filter(rule => rule.pathKey === activePathKey).map(rule => ({
+        statement: `用户确认的条件模拟规则：${rule.operation.actionType}。依据：${rule.evidenceSummary}`,
+        subjectType: (digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "npc" || digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "group" ? "third_party" : "self") as "third_party" | "self",
+        category: `digital_life_rule_${rule.key}`,
+        epistemicStatus: "confirmed_for_simulation" as const, impactLevel: "high" as const,
+        supportingRealEvidenceIds: [], contradictingRealEvidenceIds: [],
+        limitations: ["Explicit user-authored conditional simulation rule, not observed behavior or private intent."],
+        confirmationRequirement: "required" as const, confirmationStatus: "confirmed" as const,
+      })),
       ],
     });
     const assumptionId = assumptionLedger.assumptions[0]!.id;
@@ -298,13 +322,15 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
 
     const agentIds = new Map(input.agents.map((item) => [item.id, worldIds("agent_definition", item.id) as AgentDefinitionIdV2]));
     const entityIds = new Map(input.agents.map((item) => [item.id, worldIds("world_entity", item.id) as WorldEntityIdV2]));
-    const provenance = (withAssumption = false) => ({
-      realEvidenceIds: [primaryEvidenceId],
-      assumptionIds: withAssumption ? [assumptionId] : [],
-      provisional: withAssumption,
-      visible: true as const,
-    });
-    const self = input.agents.find((item) => item.actorType === "self")!;
+    const coreSelf = input.agents.find((item) => roleForAgent(item) === "user_core")!;
+    const self = activePathKey === "main" ? coreSelf : input.agents[Number(activePathKey.slice("person-".length)) - 1]!;
+    const activeAgents = input.agents.filter(item => item.id === self.id || (roleForAgent(item) !== "user_core" && roleForAgent(item) !== "user_variant"));
+    // A strategy substitutes for the main self in its own World, never coexists as a second real person.
+    const activeEdges = input.edges.filter(item =>
+      [item.fromAgentId, item.toAgentId].every(id => roleForAgent(input.agents.find(agent => agent.id === id)!) !== "user_variant"),
+    ).map(item => ({ ...item, fromAgentId: item.fromAgentId === coreSelf.id ? self.id : item.fromAgentId, toAgentId: item.toAgentId === coreSelf.id ? self.id : item.toAgentId }));
+    const activeRules = digitalLifeModel.rules.actions.filter(rule => rule.pathKey === activePathKey);
+    const activeRuleIdsFor = (personKey: string) => activeRules.filter(rule => rule.actorKey === personKey).map(rule => assumptionIdFor(`digital_life_rule_${rule.key}`));
     const resourceProvenance = (realEvidenceIds: typeof primaryEvidenceId[], assumptionIds: typeof assumptionId[]) => ({
       realEvidenceIds,
       assumptionIds,
@@ -314,40 +340,40 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
     const worldResult = initializeWorldV2(boundary, {
       seedContextId: input.seedContextId,
       engineVersion: AGENT_WORLD_ENGINE_VERSION_V2,
-      agentDefinitions: input.agents.map((item) => ({
+      agentDefinitions: activeAgents.map((item) => ({
         id: agentIds.get(item.id)!,
         actorType: item.actorType,
         displayName: item.displayName,
-        role: item.actorType === "self" ? "Scenario decision maker" : "Confirmed scenario participant",
-        realEvidenceIds: [primaryEvidenceId],
-        assumptionIds: item.actorType === "self" ? [] : [assumptionId],
-        fieldProvenance: { displayName: provenance(false), role: provenance(item.actorType !== "self") },
+        role: item.id === self.id ? activePathKey === "main" ? "本人数字分身；目标与价值观作为有来源背景" : `本人平行策略：${digitalLifeModel.rules.strategies.find(strategy => strategy.participantKey === activePathKey)!.label}` : `账户确认的关键人物：${input.edges.find(edge => edge.fromAgentId === item.id || edge.toAgentId === item.id)?.relationshipType ?? "角色记录"}`,
+        realEvidenceIds: [evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)],
+        assumptionIds: activeRuleIdsFor(ordinalPerson(input.agents.indexOf(item))),
+        fieldProvenance: { displayName: resourceProvenance([evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)], []), role: resourceProvenance([evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)], activeRuleIdsFor(ordinalPerson(input.agents.indexOf(item)))) },
         constraints: ["Private thoughts and deterministic outcomes are not inferred."],
       })),
-      agentStates: input.agents.map((item) => ({
+      agentStates: activeAgents.map((item) => ({
         agentDefinitionId: agentIds.get(item.id)!,
         observableStatus: "available" as const,
-        commitments: [],
+        commitments: [...new Map(activeRules.filter(rule => rule.actorKey === ordinalPerson(input.agents.indexOf(item)) && rule.operation.actionType === "update_commitment").map(rule => { const operation = rule.operation; const id = operation.actionType === "update_commitment" ? `digital_life_${rule.actorKey}_${operation.commitmentKey}` : ""; return [id, { id, label: operation.actionType === "update_commitment" ? operation.label : "", status: "planned" as const }] as const; })).values()],
         resourceAccessIds: item.id === self.id ? [...resourceIdsByKey.values()] : [],
         observations: [],
         memory: [],
-        activeAssumptionIds: item.actorType === "self" ? [] : [assumptionId],
+        activeAssumptionIds: activeRuleIdsFor(ordinalPerson(input.agents.indexOf(item))),
         lastActionReference: null,
       })),
-      entities: input.agents.map((item) => ({
+      entities: activeAgents.map((item) => ({
         id: entityIds.get(item.id)!,
-        entityType: "person" as const,
+        entityType: item.actorType === "organization" ? "organization" as const : "person" as const,
         label: item.displayName,
         agentDefinitionId: agentIds.get(item.id)!,
-        provenance: provenance(item.actorType !== "self"),
+        provenance: resourceProvenance([evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)], []),
       })),
-      relations: input.edges.map((item) => ({
+      relations: activeEdges.map((item) => ({
         id: worldIds("world_relation", item.id),
         relationType: "collaborates_with" as const,
         fromEntityId: entityIds.get(item.fromAgentId)!,
         toEntityId: entityIds.get(item.toAgentId)!,
         signal: "neutral" as const,
-        provenance: provenance(true),
+        provenance: resourceProvenance([evidenceIdFor(`formal.relation.${input.edges.findIndex(edge => edge.id === item.id) + 1}`)], [assumptionId]),
       })),
       resources: worldInputs.resources.map((resource) => ({
         id: resourceIdsByKey.get(resource.key)!,
@@ -391,7 +417,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       tickIntervalDays: input.horizonDays === 30 ? 10 : 15,
       maxTicks,
       policyId: "formal_account_sandbox_policy",
-      policyVersion: "1",
+      policyVersion: "digital-life-adapter-v1",
       trajectoryEngineVersion: TRAJECTORY_ENGINE_VERSION_V2,
     };
     const seeds = [input.deterministicSeed, input.deterministicSeed + 1, input.deterministicSeed + 2];
@@ -414,7 +440,20 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
       policyFactory: ({ seed }) => createLocalTrajectoryPolicyV2({
         policyId: spec.policyId,
         policyVersion: spec.policyVersion,
-        candidatesForTick: ({ world, tickIndex, occurredAt }): ActionProposalInputV2[] => worldInputs.resources.flatMap((resource) => {
+        candidatesForTick: ({ world, tickIndex, occurredAt }): ActionProposalInputV2[] => {
+          const explicit = proposeDigitalLifeActions({
+            rules: activeRules, world, tickIndex, occurredAt, namespace: `formal_${causalFingerprint}_${seed}`,
+            bindings: {
+              agents: new Map(input.agents.map((item, index) => [ordinalPerson(index), agentIds.get(item.id)!])),
+              entities: new Map(input.agents.map((item, index) => [ordinalPerson(index), entityIds.get(item.id)!])),
+              relations: new Map(input.edges.map((item, index) => [`relation-${index + 1}`, worldIds("world_relation", item.id) as WorldRelationIdV2])),
+              resources: new Map(worldInputs.resources.map((item, index) => [`resource-${index + 1}`, resourceIdsByKey.get(item.key)!])),
+              evidence: new Map(input.agents.map((_, index) => [ordinalPerson(index), evidenceIdFor(`formal.agent.${index + 1}`)])),
+              assumptions: new Map(activeRules.map(rule => [rule.key, assumptionIdFor(`digital_life_rule_${rule.key}`)])),
+            },
+          });
+          if (explicit.length > 0) return explicit;
+          return worldInputs.resources.flatMap((resource) => {
           const resourceId = resourceIdsByKey.get(resource.key)!;
           const currentResource = world.resources.find((item) => item.id === resourceId);
           if (!currentResource || resource.usePerTick === null || currentResource.available - resource.usePerTick < currentResource.min) return [];
@@ -426,7 +465,7 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
             Date.parse(occurredAt) >= Date.parse(constraint.rule.value)
           )) return [];
           return [{
-            id: `action_proposal_v2_formal_${seed}_${tickIndex}_${resource.key}`,
+            id: `action_proposal_v2_formal_${causalFingerprint}_${seed}_${tickIndex}_${resource.key}`,
             seedContextId: world.seedContextId,
             actorAgentId: agentIds.get(self.id)!,
             actionType: "allocate_resource",
@@ -444,7 +483,8 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
             rationaleSummary: `User-declared resource rule at tick ${tickIndex + 1}.`,
             createdAt: occurredAt,
           }];
-        }),
+          });
+        },
       }),
       trajectoryRuntimeFactory: ({ seed }) => ({ agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}-${seed}`) }),
       interventionRuntimeFactory: ({ interventionId }) => ({ clock: () => input.startedAt, idFactory: createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}-${interventionId}`) }),

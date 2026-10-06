@@ -3,10 +3,11 @@ import { z } from "zod";
 
 import { sandboxErrorStatus,sandboxFailure,sandboxTrace } from "@/lib/formal-sandbox/http.server";
 import { startFormalSandboxRun } from "@/lib/formal-sandbox/start.server";
+import { formalSandboxStartRequestSchema } from "@/lib/formal-sandbox/start-request";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseHistoryFilter } from "./history-filter";
 
-const startSchema=z.object({graph_snapshot_id:z.string().uuid(),idempotency_key:z.string().uuid(),horizon_days:z.union([z.literal(30),z.literal(90)])}).strict();
+const startSchema=formalSandboxStartRequestSchema;
 const historyQuery=z.object({limit:z.coerce.number().int().min(1).max(50).default(20),before:z.string().max(500).optional(),horizon:z.enum(["30_days","90_days"]).optional()}).strict();
 function decodeCursor(value:string|undefined){if(!value)return null;try{const parsed=JSON.parse(Buffer.from(value,"base64url").toString("utf8"));const valid=z.tuple([z.string().datetime({offset:true}),z.string().uuid()]).safeParse(parsed);return valid.success?valid.data:null}catch{return null}}
 
