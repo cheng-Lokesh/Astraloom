@@ -1142,6 +1142,19 @@ only then marks the simulation completed. Forced failure rolls the transaction
 back. Completed inputs and generated artifacts reject update/delete; replaying
 the same owner/key/content does not duplicate them.
 
+The formal Run RPC rejects SQL NULL horizons and Bundles, absent or JSON-null
+required fields, and incorrect JSON types before opening its writer gate.
+Owner/Seed/Graph/Agent bindings and runtime/schema/trajectory versions must be
+explicit strings; the snapshot horizon must be the requested JSON number, and
+the deterministic seed must be an integer in the formal runtime's range
+`1..2,000,000,000`.
+Events and Claims must be objects with their consumed required fields, and
+Event evidence, Claim evidence, and Report Claim references must be nonempty
+arrays of nonempty strings. Optional calibration and Symbolic Lens snapshots
+may be absent, but must be objects when present. Invalid shapes return
+`invalid_run_input` or `invalid_run_bundle` without artifacts or receipts;
+well-typed unresolved Event/Claim references retain their existing link errors.
+
 `feedback_logs` is append-only and owner-scoped. Feedback may be summarized
 into the bounded calibration snapshot of a later run, but cannot mutate an old
 Graph, run input, Event, Claim, Report, or result bundle. Owner-scoped compound
