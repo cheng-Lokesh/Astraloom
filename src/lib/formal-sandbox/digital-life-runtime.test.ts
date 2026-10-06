@@ -1,9 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { digitalLifeInput, digitalLifeRules } from "@/lib/digital-life/test-fixtures";
+import { digitalLifeInput, digitalLifeRules, ids } from "@/lib/digital-life/test-fixtures";
 import { buildFormalSandboxRunV2 } from "./runtime";
 import { projectFormalSandboxResult } from "./result-projection.server";
 
 describe("formal digital-life path integration", () => {
+  it("projects only active-world relations while preserving locked Graph ordinals", async () => {
+    const input = digitalLifeInput();
+    input.edges.unshift({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", fromAgentId: ids.self, toAgentId: ids.variant, relationshipType: "平行策略对照", evidenceRefs: ["seed:self"] });
+    const rules = digitalLifeRules();
+    rules.actions[1]!.operation.relationKey = "relation-2";
+    const result = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: rules });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const projection = projectFormalSandboxResult(result.bundle);
+    expect(projection).not.toBeNull();
+    expect((result.bundle.inputSnapshot as { edges: unknown[] }).edges).toHaveLength(2);
+    expect(projection?.relationships).toEqual([{ key: "relation-2", fromPersonKey: "person-1", toPersonKey: "person-2", label: "协作关系" }]);
+    const variant = projection?.strategyPaths[0]?.projection;
+    expect(variant?.relationships).toEqual([{ key: "relation-2", fromPersonKey: "person-3", toPersonKey: "person-2", label: "协作关系" }]);
+    expect(variant?.relationships.every(relation => relation.fromPersonKey !== relation.toPersonKey)).toBe(true);
+    expect(projection?.relationshipChanges.every(change => change.relationshipKey === "relation-2")).toBe(true);
+  }, 60_000);
+
   it("runs main action, confirmed conditional NPC response and independent strategy worlds through canonical transitions", async () => {
     const result = await buildFormalSandboxRunV2({ ...digitalLifeInput(), digitalLifeRules: digitalLifeRules() });
     expect(result.ok).toBe(true);
