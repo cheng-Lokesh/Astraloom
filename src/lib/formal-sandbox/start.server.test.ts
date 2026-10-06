@@ -67,6 +67,12 @@ function createService(profile: Row | null, operations: string[] = [], feedbackR
   };
 
   const client = {
+    rpc: vi.fn(async () => ({ data: [{
+      accepted_at: new Date().toISOString(),
+      simulation_start_at: new Date(Date.now() + 300_000).toISOString(),
+      frozen_source_input: structuredClone(rows),
+      run: null,
+    }], error: null })),
     from(table: string) {
       const value = rows[table];
       const builder: Record<string, (...args: unknown[]) => unknown> = {};
@@ -96,6 +102,51 @@ beforeEach(() => {
 });
 
 describe("formal Run freezes the Reality Profile on its locked owner Seed", () => {
+  it("a new request accepted weeks after Graph lock starts a future simulation instead of backdating current feedback", async () => {
+    const acceptedBefore = Date.now();
+    const service = createService(profileRow(), [], [{ rating: "off", target_type: "claim", created_at: "2026-09-28T01:00:00.000Z" }]);
+    const result = await startFormalSandboxRun(service, ids.owner, { graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30 });
+    expect(result.ok).toBe(true);
+    const runtimeInput = vi.mocked(buildFormalSandboxRunV2).mock.calls[0]?.[0] as { startedAt: string };
+    expect(Date.parse(runtimeInput.startedAt)).toBeGreaterThan(acceptedBefore);
+  });
+  it("uses the first reserved clock and Profile even after a failed generation and a later Profile change", async () => {
+    const originalRows = {
+      relation_graph_snapshots: { id: ids.graph, user_id: ids.owner, seed_context_id: ids.seed, agent_snapshot_id: ids.agentSnapshot, graph_locked: true, locked_at: "2026-09-01T00:00:00.000Z", safety_level: "safe" },
+      seed_contexts: { id: ids.seed, user_question: "A bounded question", raw_context: "Private raw scenario text", safety_flags: [] },
+      agent_profiles: [{ id: ids.self, display_name: "Self", agent_type: "user_core", evidence_refs: ["seed:self"] }, { id: ids.other, display_name: "Colleague", agent_type: "npc", evidence_refs: ["seed:person"] }],
+      relation_edges: [{ id: ids.edge, from_agent_id: ids.self, to_agent_id: ids.other, relationship_type: "professional", evidence_refs: ["seed:person"] }],
+      feedback_logs: [], reality_profiles: profileRow(),
+    };
+    const accepted = new Date().toISOString();
+    const start = new Date(Date.now() + 300_000).toISOString();
+    const changed = profileRow(); changed.revision = 10; changed.life_climate_value = "后来的不同档案";
+    const service = createService(changed);
+    const reserve = vi.fn(async () => ({ data: [{ accepted_at: accepted, simulation_start_at: start, frozen_source_input: originalRows, run: null }], error: null }));
+    Object.assign(service, { rpc: reserve });
+    vi.mocked(buildFormalSandboxRunV2).mockResolvedValueOnce({ ok: false, errorCode: "runtime_failed" } as never);
+    const request = { graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30 };
+    await startFormalSandboxRun(service, ids.owner, request);
+    await startFormalSandboxRun(service, ids.owner, request);
+    const inputs = vi.mocked(buildFormalSandboxRunV2).mock.calls.map(call => call[0]) as Array<{ startedAt: string; realityProfileSnapshot: { revision: number } }>;
+    expect(inputs[1]?.startedAt).toBe(start);
+    expect(inputs[1]?.realityProfileSnapshot.revision).toBe(9);
+    expect(reserve).toHaveBeenCalledTimes(2);
+  });
+  it("an expired pending reservation returns an actionable error instead of moving its frozen start", async () => {
+    const service = createService(profileRow());
+    Object.assign(service, { rpc: vi.fn(async () => ({ data: null, error: { message: "reservation_expired" } })) });
+    expect(await startFormalSandboxRun(service, ids.owner, { graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30 })).toEqual({ ok: false, errorCode: "reservation_expired" });
+    expect(buildFormalSandboxRunV2).not.toHaveBeenCalled();
+  });
+  it("a completed reservation restores the original Run without rereading a changed Profile or regenerating", async () => {
+    const service = createService(profileRow());
+    const run = { id: ids.run, status: "completed", seed_context_id: ids.seed, graph_snapshot_id: ids.graph, time_horizon: "30_days" };
+    Object.assign(service, { rpc: vi.fn(async () => ({ data: [{ accepted_at: "2026-09-29T00:00:00.000Z", simulation_start_at: "2026-09-29T00:05:00.000Z", frozen_source_input: null, run }], error: null })) });
+    expect(await startFormalSandboxRun(service, ids.owner, { graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30 })).toEqual({ ok: true, idempotent: true, run });
+    expect(buildFormalSandboxRunV2).not.toHaveBeenCalled();
+    expect(persistFormalSandboxRun).not.toHaveBeenCalled();
+  });
   it("preserves a user variant as a strategy self rather than reclassifying it as a third party", async () => {
     const service = createService(null, [], [], [{ id: ids.otherOwner, display_name: "Parallel self", agent_type: "user_variant", evidence_refs: ["seed:self"] }]);
     const result = await startFormalSandboxRun(service, ids.owner, { graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30 });

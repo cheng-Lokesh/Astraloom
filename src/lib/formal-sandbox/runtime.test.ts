@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 import { buildFormalSandboxRunV2 } from "./runtime";
@@ -47,6 +47,21 @@ const input = {
 };
 
 describe("formal account sandbox V2 runtime adapter", () => {
+  it("records actual Boundary and forecast-lock times before a reserved future window without one-millisecond backdating", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T07:00:00.000Z"));
+    try {
+      const result = await buildFormalSandboxRunV2({ ...input, acceptedAt: "2026-10-06T07:00:00.000Z", graphLockedAt: input.startedAt, startedAt: "2026-10-06T07:05:00.000Z" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.bundle.sourceBoundary.updatedAt).toBe("2026-10-06T07:00:00.000Z");
+      expect((result.bundle as unknown as { forecastTiming: unknown }).forecastTiming).toEqual({ acceptedAt: "2026-10-06T07:00:00.000Z", boundaryAt: "2026-10-06T07:00:00.000Z", lockedAt: "2026-10-06T07:00:00.000Z", generatedPersistedAt: "2026-10-06T07:00:00.000Z", simulationStartAt: "2026-10-06T07:05:00.000Z" });
+    } finally { vi.useRealTimers(); }
+  }, 30_000);
+  it("rejects execution once the original pending reservation window has started", async () => {
+    const result = await buildFormalSandboxRunV2({ ...input, acceptedAt: input.startedAt, graphLockedAt: input.startedAt });
+    expect(result).toEqual({ ok: false, errorCode: "reservation_expired" });
+  });
   it("reuses the canonical V2 pipeline and emits Event-backed Claims before a Report", async () => {
     const result = await buildFormalSandboxRunV2(input);
     expect(result.ok).toBe(true);
