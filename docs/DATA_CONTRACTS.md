@@ -1100,6 +1100,30 @@ Audit event rules:
 
 ## Phase 4 formal account sandbox persistence
 
+Formal Run admission uses a `formal-run-reservation-v1` row in the existing
+`generation_jobs` ledger. An authenticated `SECURITY INVOKER` RPC binds one
+owner/key to the canonical request hash and locked Graph, then freezes the
+exact Seed, Agent/edge ordering and versions, Reality Profile revision, bounded
+Feedback ids/versions/signals, rules and Symbolic Lens version in one source
+read. Its first database `clock_timestamp()` fixes `formal_accepted_at` and a
+simulation start exactly five minutes later. Graph `locked_at` is provenance,
+not the start of a newly accepted Run. No caller supplies or moves these clocks.
+
+Pending retries reuse these inputs and times; changed request content conflicts.
+An expired pending window returns `reservation_expired` and retains its original
+reservation, requiring a new key. A completed key restores its original Run,
+including simultaneous generators whose actual forecast-lock times differ.
+Completion is atomic with the existing Run receipt and uses real Boundary,
+forecast-lock and database persistence times before the frozen evaluation
+window. New unreserved bundles cannot create Runs; old completed receipts stay
+readable. Reservation inputs/clocks are immutable, and ordinary job reads retain
+owner RLS while reservation reads/writes additionally require the local RPC gate.
+
+`frozen_source_input` is sensitive account data, separate from job observability
+references. It belongs in the eventual account export and controlled privacy
+erasure scope. Daily immutable guards do not imply permanent retention or a
+completed erasure feature; the current privacy flow still records requests.
+
 Phase 4 keeps the existing canonical tables. A formal run is the canonical
 `simulations` row with execution version `formal-account-sandbox-m1-v1`, an
 immutable input snapshot, deterministic seed, schema/runtime versions, Graph
@@ -1161,6 +1185,15 @@ Graph, run input, Event, Claim, Report, or result bundle. Owner-scoped compound
 foreign keys, RLS, restricted grants, and controlled `SECURITY INVOKER` RPCs
 prevent cross-owner selection, mutation, deletion, or association. Anonymous
 business-table and protected-RPC access is denied.
+
+My Sandbox may expose `lifeClimate`, `resources`, and `constraints` as
+`not_modeled` or `saved_profile` with `source=current_reality_profile`, the
+profile revision and classified items. Unknown fields remain unknown; recorded
+life climate is the person's present context, not Destiny. `nextChange` may be
+`recorded_deadlines` with revision, actual server `assessedAt`, and sorted
+`upcoming`/`expired` lists from at most eight saved `before_time` constraints.
+A deadline at or before the server time is expired, never automatically fulfilled.
+These current observations preserve the older World schema and are not forecasts.
 
 ## Track B life-climate runs (B1/B2 functional candidates)
 

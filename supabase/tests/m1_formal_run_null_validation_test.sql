@@ -177,10 +177,10 @@ select is(pg_temp.attempt_run(30,jsonb_set(bundle,path,replacement)),
 from m1_run_fixture cross join (values
   ('{inputSnapshot,calibrationSnapshot}'::text[]),('{symbolicLensSnapshot}'::text[])) as paths(path)
 cross join (values('null'::jsonb),('false'::jsonb)) as mutations(replacement);
-select is(pg_temp.attempt_run(30,(select bundle from m1_run_fixture)), 'accepted',
-  'a valid owner 30-day bundle remains accepted');
-select is(pg_temp.attempt_run(90,jsonb_set((select bundle from m1_run_fixture),'{inputSnapshot,horizonDays}','90')), 'accepted',
-  'a valid owner 90-day bundle remains accepted');
+select is(pg_temp.attempt_run(30,(select bundle from m1_run_fixture)), 'P0001:reservation_required',
+  'even a well-shaped new 30-day bundle requires admission before generation');
+select is(pg_temp.attempt_run(90,jsonb_set((select bundle from m1_run_fixture),'{inputSnapshot,horizonDays}','90')), 'P0001:reservation_required',
+  'even a well-shaped new 90-day bundle requires admission before generation');
 select is(coalesce(nullif(current_setting('app.m1_run_rpc',true),''),'off'),'off',
   'writer guard stays closed across rejected calls and rolled-back valid controls');
 reset role;

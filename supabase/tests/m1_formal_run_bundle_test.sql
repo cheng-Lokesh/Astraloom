@@ -118,6 +118,31 @@ from public.relation_graph_snapshots g
 where g.user_id = '00000000-0000-0000-0000-00000000e401' and not g.graph_locked;
 grant select on m1_run_fixture to service_role, authenticated;
 
+-- Use the production reservation admission before the existing artifact,
+-- ownership and feedback assertions. Only disposable fixture inputs change;
+-- the canonical Event/Claim/Report payloads remain the original test payloads.
+create function pg_temp.m1_reserved_bundle(key_id uuid,template jsonb) returns jsonb language plpgsql security invoker as $$
+declare reservation record; source jsonb; graph jsonb; profile_row jsonb; agents jsonb; edges jsonb; feedback jsonb; rules jsonb;
+  real_now text:=to_char(date_trunc('milliseconds',clock_timestamp()) at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+begin
+  select * into reservation from public.reserve_account_sandbox_run((select graph_id from m1_run_fixture),key_id,30,null);
+  real_now:=to_char(date_trunc('milliseconds',clock_timestamp()) at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+  source:=reservation.frozen_source_input; graph:=source->'relation_graph_snapshots'; profile_row:=nullif(source->'reality_profiles','null'::jsonb);
+  select jsonb_agg(jsonb_build_object('id',a->'id','displayName',a->'display_name','sourceRole',a->'agent_type','actorType',case when a->>'agent_type' in ('user_core','user_variant') then 'self' when a->>'agent_type'='group' then 'organization' else 'third_party' end,'evidenceRefs',a->'evidence_refs') order by ord) into agents from jsonb_array_elements(source->'agent_profiles') with ordinality t(a,ord);
+  select jsonb_agg(jsonb_build_object('id',e->'id','fromAgentId',e->'from_agent_id','toAgentId',e->'to_agent_id','relationshipType',e->'relationship_type','evidenceRefs',e->'evidence_refs') order by ord) into edges from jsonb_array_elements(source->'relation_edges') with ordinality t(e,ord);
+  select jsonb_build_object('source','account_feedback','signals',coalesce(jsonb_agg(jsonb_build_object('rating',f->>'rating','targetType',f->>'target_type','createdAt',f->>'created_at') order by ord),'[]'::jsonb)) into feedback from jsonb_array_elements(source->'feedback_logs') with ordinality t(f,ord);
+  rules:=jsonb_build_object('version','digital-life-rules-v1','graphSnapshotId',graph->'id','agentSnapshotId',graph->'agent_snapshot_id','profileRevision',coalesce(profile_row->'revision','0'::jsonb),'strategies','[]'::jsonb,'actions','[]'::jsonb);
+  return template||jsonb_build_object(
+    'forecastTiming',jsonb_build_object('acceptedAt',reservation.accepted_at,'simulationStartAt',reservation.simulation_start_at,'boundaryAt',real_now,'lockedAt',real_now,'generatedPersistedAt',real_now),
+    'sourceBoundary',jsonb_build_object('updatedAt',real_now),
+    'inputSnapshot',jsonb_build_object('ownerId',graph->'user_id','seedContextId',graph->'seed_context_id','graphSnapshotId',graph->'id','agentSnapshotId',graph->'agent_snapshot_id','horizonDays',30,
+      'acceptedAt',reservation.accepted_at,'startedAt',reservation.simulation_start_at,'graphLockedAt',graph->'locked_at','deterministicSeed',(('x'||left(encode(digest(convert_to((graph->>'id')||':'||key_id::text,'UTF8'),'sha256'),'hex'),7))::bit(28)::integer %1999999999)+1,
+      'seedSummary',btrim(left(concat_ws(' ',source#>>'{seed_contexts,user_question}',source#>>'{seed_contexts,raw_context}'),4000)),
+      'safetyLevel',graph->'safety_level','agents',agents,'edges',edges,'calibrationSnapshot',feedback,'digitalLifeModel',jsonb_build_object('rules',rules),
+      'realityProfileSnapshot',jsonb_build_object('ownerId',graph->'user_id','seedContextId',graph->'seed_context_id','profileId',profile_row->'id','revision',coalesce(profile_row->'revision','0'::jsonb),'profile',public.formal_run_frozen_profile(profile_row))),
+    'symbolicLensSnapshot',source->'symbolic_lens');
+end; $$;
+
 set local role authenticated;
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000409', 30, (select bundle from m1_run_fixture)) $$,
@@ -127,6 +152,10 @@ reset role;
 set local role authenticated;
 select * from public.lock_relation_graph_phase3((select seed_id from m1_run_fixture), '00000000-0000-4000-8000-000000000406');
 reset role;
+set local role authenticated;
+create temporary table m1_reserved_first as select pg_temp.m1_reserved_bundle('00000000-0000-4000-8000-000000000410',(select bundle from m1_run_fixture)) as bundle;
+reset role;
+update m1_run_fixture set bundle=(select bundle from m1_reserved_first);
 set local role authenticated;
 select lives_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, (select bundle from m1_run_fixture)) $$,
@@ -155,8 +184,8 @@ select ok(not exists (
   where r.simulation_id = (select id from m1_owned_runs) and c.id is null
 ), 'the Report references only Claims from the same owner Run');
 select ok((select e.created_at <= c.created_at and c.created_at <= r.created_at from public.event_logs e join public.claims c on c.simulation_id=e.simulation_id join public.reports r on r.simulation_id=e.simulation_id where e.simulation_id=(select id from m1_owned_runs) limit 1), 'Event then Claim then Report persistence order is observable');
-select ok((select symbolic_lens_snapshot = '{"mode":"bounded_fusion","summary":"Optional framing only"}'::jsonb from m1_owned_runs), 'Symbolic Lens is stored as a separate non-causal snapshot');
-select ok((select result_bundle = (select bundle from m1_run_fixture) from m1_owned_runs), 'the immutable Run retains the complete canonical result Bundle');
+select ok((select symbolic_lens_snapshot = (select bundle->'symbolicLensSnapshot' from m1_run_fixture) from m1_owned_runs), 'Symbolic Lens is stored as a separate non-causal snapshot');
+select ok((select result_bundle #- '{forecastTiming,persistedAt}' = (select bundle from m1_run_fixture) from m1_owned_runs), 'the immutable Run retains the complete canonical result Bundle plus actual database persistence time');
 
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000e401',true);
 set local role authenticated;
@@ -232,14 +261,14 @@ select is((select count(*) from public.event_logs where simulation_id=(select id
 set local role authenticated;
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000410', 30, jsonb_set((select bundle from m1_run_fixture), '{symbolicLensSnapshot,summary}', '"changed"')) $$,
-  'P0001', 'idempotency_key_content_conflict', 'same owner key with changed content is rejected'
+  'P0001', 'invalid_run_bundle', 'same owner key cannot replace its frozen Symbolic source'
 );
 select throws_ok(
   $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000f401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000411', 30, jsonb_set((select bundle from m1_run_fixture), '{inputSnapshot,ownerId}', '"00000000-0000-0000-0000-00000000f401"')) $$,
   '42501', 'unauthenticated', 'a foreign owner cannot bind another account Graph'
 );
 select throws_ok(
-  $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000412', 30, jsonb_set((select bundle from m1_run_fixture), '{claims,0,simulationEventIds,0}', '"world_event_v2_missing"')) $$,
+  $$ select * from public.persist_account_sandbox_run_m1('00000000-0000-0000-0000-00000000e401', (select graph_id from m1_run_fixture), '00000000-0000-4000-8000-000000000412', 30, jsonb_set(pg_temp.m1_reserved_bundle('00000000-0000-4000-8000-000000000412',(select bundle from m1_run_fixture)), '{claims,0,simulationEventIds,0}', '"world_event_v2_missing"')) $$,
   'P0001', 'claim_evidence_invalid', 'a Claim with foreign or missing Event evidence aborts the Bundle'
 );
 reset role;
@@ -294,23 +323,23 @@ set local role authenticated;
 select throws_ok($$ select * from public.append_account_sandbox_feedback_m2(current_setting('app.m1_run_id')::uuid,'claim','claim-1','off','','00000000-0000-4000-8000-000000000436') $$,'P0001','run_not_found','another account cannot attach feedback to a foreign Run');
 reset role;
 select is((select md5(result_bundle::text) from m1_owned_runs),current_setting('app.m1_bundle_hash'),'targeted feedback leaves every historical Result Bundle unchanged');
-select ok((select calibration_snapshot='{}'::jsonb from m1_owned_runs),'targeted feedback does not mutate the frozen calibration input of an old Run');
+select ok((select calibration_snapshot='{"source":"account_feedback","signals":[]}'::jsonb from m1_owned_runs),'targeted feedback does not mutate the frozen calibration input of an old Run');
 
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000f401',true);
 set local role authenticated;
 select throws_ok($$ select * from public.append_account_sandbox_feedback_m1(current_setting('app.m1_run_id')::uuid,'mixed','','00000000-0000-4000-8000-000000000431') $$,'P0001','run_not_found','another account cannot append feedback to the Run');
 reset role;
 select is((select md5(result_bundle::text) from m1_owned_runs),current_setting('app.m1_bundle_hash'),'feedback does not rewrite the historical Run Bundle');
-select ok((select calibration_snapshot='{}'::jsonb from m1_owned_runs),'historical calibration snapshot stays frozen after later feedback');
+select ok((select calibration_snapshot='{"source":"account_feedback","signals":[]}'::jsonb from m1_owned_runs),'historical calibration snapshot stays frozen after later feedback');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000e401',true);
 set local role authenticated;
 select lives_ok($$ select * from public.persist_account_sandbox_run_m1(
   '00000000-0000-0000-0000-00000000e401',(select graph_id from m1_run_fixture),'00000000-0000-4000-8000-000000000440',30,
-  jsonb_set(jsonb_set((select bundle from m1_run_fixture),'{causalFingerprint}','"abcdef0123456789abcdef01"'),'{inputSnapshot,calibrationSnapshot}','{"source":"account_feedback","signals":[{"rating":"useful"}]}'::jsonb)
+  pg_temp.m1_reserved_bundle('00000000-0000-4000-8000-000000000440',jsonb_set((select bundle from m1_run_fixture),'{causalFingerprint}','"abcdef0123456789abcdef01"'))
 ) $$,'a later owner Run persists beside the historical Run');
 reset role;
 select is((select count(*) from m1_owned_runs),2::bigint,'two immutable Runs coexist for the same account');
-select ok((select calibration_snapshot='{}'::jsonb from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000410') and (select calibration_snapshot#>>'{source}'='account_feedback' from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000440'),'feedback calibration appears only on the later Run');
+select ok((select calibration_snapshot='{"source":"account_feedback","signals":[]}'::jsonb from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000410') and (select jsonb_array_length(calibration_snapshot->'signals')=4 from public.simulations where idempotency_key='00000000-0000-4000-8000-000000000440'),'feedback calibration appears only on the later Run');
 select ok(
   exists (select 1 from supabase_migrations.schema_migrations where version = '20260830210000')
   and (select column_default from information_schema.columns where table_schema='public' and table_name='simulations' and column_name='created_at') = 'clock_timestamp()'

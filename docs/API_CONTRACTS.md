@@ -537,6 +537,17 @@ All endpoints require the caller's Supabase user session, return the existing
 `{ ok, error_code, trace_id }` family, and scope every lookup by `auth.uid()`.
 Another owner's valid identifier is indistinguishable from a missing object.
 
+Before generation, `POST /api/sandbox/runs` reserves the canonical owner/key
+request through `reserve_account_sandbox_run`. Its database-assigned acceptance
+time, five-minute future simulation start and exact source versions remain
+frozen across pending retries, even if the saved Profile or Feedback changes.
+Graph lock time is provenance only. Completed retries return the original Run
+without generation; changed request content returns 409. An expired pending
+request returns 409 `reservation_expired`; it is not silently retimed or
+automatically resubmitted. Completion checks actual database time and persists
+the precise frozen window and real generation/lock/persistence metadata in the
+immutable bundle. Failure responses use `Cache-Control: no-store`.
+
 - `POST /api/sandbox/runs`: accepts a locked Graph snapshot UUID, a UUID
   idempotency key, and a `30` or `90` day horizon. It revalidates the complete
   owned Seed/People/Agent/Graph chain and returns 201 for a new atomic completed
@@ -634,6 +645,12 @@ Projection:
   summaries, scenario text, emails, or internal keys in the page.
 
 ### Account exploration routes
+
+The overview's `lifeClimate`, `resources` and `constraints` can also return
+`saved_profile` with source, revision and classified items. `nextChange` can
+return `recorded_deadlines` with source, revision, actual server `assessedAt`
+and sorted upcoming/expired saved deadlines. These describe current declared
+inputs; they do not infer fulfillment, Destiny or future simulated changes.
 
 Primary navigation opens `/app/new/people`, `/app/new/agents`, and
 `/app/new/graph` without a selector as current-chain account exploration views.

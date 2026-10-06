@@ -56,6 +56,8 @@ const inputSchema = z.object({
   horizonDays: z.union([z.literal(30), z.literal(90)]),
   deterministicSeed: z.number().int().positive().max(2_000_000_000),
   startedAt: z.string().datetime({ offset: true }),
+  acceptedAt: z.string().datetime({ offset: true }).optional(),
+  graphLockedAt: z.string().datetime({ offset: true }).optional(),
   seedSummary: z.string().trim().min(1).max(4_000),
   agents: z.array(agent).min(1).max(50),
   edges: z.array(edge).min(1).max(200),
@@ -97,6 +99,8 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
   const parsed = inputSchema.safeParse(rawInput);
   if (!parsed.success) return { ok: false as const, errorCode: "invalid_run_input" as const };
   const input = parsed.data;
+  if (input.acceptedAt && Date.now() >= Date.parse(input.startedAt)) return { ok: false as const, errorCode: "reservation_expired" as const };
+  if (input.acceptedAt && (Date.parse(input.acceptedAt) > Date.now() || Date.parse(input.acceptedAt) >= Date.parse(input.startedAt))) return { ok: false as const, errorCode: "invalid_run_input" as const };
   if (input.safetyLevel === "blocked" || input.safetyLevel === "downgraded") return { ok: false as const, errorCode: "safety_blocked" as const };
   const modeled = buildDigitalLifeModel(input, input.digitalLifeRules);
   if (!modeled.ok) return { ok: false as const, errorCode: "invalid_run_input" as const };
@@ -126,6 +130,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       horizonDays: input.horizonDays,
       deterministicSeed: input.deterministicSeed,
       startedAt: input.startedAt,
+      ...(input.acceptedAt ? { acceptedAt: input.acceptedAt, graphLockedAt: input.graphLockedAt } : {}),
       seedSummary: input.seedSummary,
       agents: input.agents,
       edges: input.edges,
@@ -135,7 +140,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       activePathKey,
     };
     const causalFingerprint = fingerprint(causalInput);
-    const boundaryAt = new Date(Date.parse(input.startedAt) - 2).toISOString();
+    const boundaryAt = input.acceptedAt ? new Date().toISOString() : new Date(Date.parse(input.startedAt) - 2).toISOString();
     const realityRuntime = {
       clock: () => boundaryAt,
       idFactory: createStableRealityBoundaryIdFactoryV2(`formal-${causalFingerprint}`),
@@ -503,7 +508,8 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
     });
     if (!reportResult.ok) return { ok: false as const, errorCode: "report_build_failed" as const };
 
-    const lockedAt = lockTime(input.startedAt);
+    const lockedAt = input.acceptedAt ? new Date().toISOString() : lockTime(input.startedAt);
+    if (input.acceptedAt && Date.parse(lockedAt) >= Date.parse(input.startedAt)) return { ok: false as const, errorCode: "reservation_expired" as const };
     const lockResult = buildForecastLockV2({
       forecastLockSpecId: `forecast_lock_spec_v2_formal_${causalFingerprint}`,
       lockedAt,
@@ -515,11 +521,12 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
     if (!lockResult.ok) return { ok: false as const, errorCode: "forecast_lock_failed" as const };
     const outcomeRepository = createInMemoryOutcomeCalibrationRepositoryV2();
     const streamId = `outcome_calibration_stream_v2_formal_${causalFingerprint}` as const;
+    const generatedPersistedAt = input.acceptedAt ? new Date().toISOString() : lockedAt;
     const appended = await outcomeRepository.append({
       streamId,
       expectedVersion: 0,
       idempotencyKey: `stage7_idempotency_v2_formal_${causalFingerprint}`,
-      persistedAt: lockedAt,
+      persistedAt: generatedPersistedAt,
       artifact: { kind: "forecast_lock", value: lockResult.forecastLock },
     });
     if (!appended.ok) return { ok: false as const, errorCode: "forecast_lock_failed" as const };
@@ -543,6 +550,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
     const executor = createControlledAsyncSimulationExecutorV2(jobRepository, outcomeRepository, async () => canonicalBundle);
     const execution = await executor.runOnce("worker_formal_account_sandbox");
     if (execution.status !== "succeeded") return { ok: false as const, errorCode: "stage8_validation_failed" as const };
+    if (input.acceptedAt && Date.now() >= Date.parse(input.startedAt)) return { ok: false as const, errorCode: "reservation_expired" as const };
 
     const events = analyzed.analysis.trajectories.flatMap((trajectory) =>
       trajectory.finalWorld.worldEvents.map((event, tickIndex) => ({
@@ -557,6 +565,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       bundle: {
         runtimePath: ["reality_boundary_v2", "agent_world_v2", "seeded_trajectory_v2", "trajectory_analysis_v2", "claims_reports_v2", "outcome_lock_v2", "stage8_canonical_validation"] as const,
         causalFingerprint,
+        ...(input.acceptedAt ? { forecastTiming: { acceptedAt: input.acceptedAt, boundaryAt, lockedAt, generatedPersistedAt, simulationStartAt: input.startedAt } } : {}),
         inputSnapshot: causalInput,
         symbolicLensSnapshot: input.symbolicLens,
         sourceBoundary: claimSet.realityBoundary,

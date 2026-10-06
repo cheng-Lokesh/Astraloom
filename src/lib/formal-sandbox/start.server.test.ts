@@ -165,8 +165,8 @@ describe("formal Run freezes the Reality Profile on its locked owner Seed", () =
     });
 
     expect(result.ok).toBe(true);
-    expect(operations).toContain(`reality_profiles:eq:user_id:${ids.owner}`);
-    expect(operations).toContain(`reality_profiles:eq:seed_context_id:${ids.seed}`);
+    expect(operations).toEqual([]);
+    expect(service.rpc).toHaveBeenCalledWith("reserve_account_sandbox_run", { p_graph_snapshot_id: ids.graph, p_idempotency_key: ids.request, p_horizon_days: 30, p_digital_life_rules: null });
     expect(vi.mocked(buildFormalSandboxRunV2)).toHaveBeenCalledWith(expect.objectContaining({
       realityProfileSnapshot: {
         ownerId: ids.owner,
@@ -221,7 +221,7 @@ describe("formal Run freezes the Reality Profile on its locked owner Seed", () =
     });
 
     expect(result.ok).toBe(true);
-    expect(operations).toContain("feedback_logs:in:version:formal-run-feedback-m1-v1,formal-run-feedback-m2-v1");
+    expect(operations).toEqual([]);
     expect(vi.mocked(buildFormalSandboxRunV2)).toHaveBeenCalledWith(expect.objectContaining({
       calibrationSnapshot: {
         source: "account_feedback",

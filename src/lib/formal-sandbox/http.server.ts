@@ -5,14 +5,14 @@ export function sandboxTrace(operation: string) {
 }
 
 export function sandboxFailure(status: number, errorCode: string, traceId: string) {
-  return NextResponse.json({ ok:false,error_code:errorCode,trace_id:traceId },{ status });
+  return NextResponse.json({ ok:false,error_code:errorCode,trace_id:traceId },{ status,headers:{ "Cache-Control":"no-store" } });
 }
 
 export function sandboxErrorStatus(errorCode: string) {
   if (errorCode === "unauthenticated") return 401;
   if (errorCode === "safety_blocked") return 403;
   if (["graph_not_found","run_not_found"].includes(errorCode)) return 404;
-  if (["idempotency_key_content_conflict","incomplete_object_chain"].includes(errorCode)) return 409;
+  if (["idempotency_key_content_conflict","incomplete_object_chain","reservation_expired","reservation_required"].includes(errorCode)) return 409;
   if (["invalid_request","invalid_run_input","invalid_run_bundle","invalid_feedback","claim_evidence_invalid","report_claim_invalid","world_model_required"].includes(errorCode)) return 422;
   return 500;
 }

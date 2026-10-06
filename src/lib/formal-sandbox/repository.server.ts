@@ -30,6 +30,8 @@ const stableErrors = new Set([
   "idempotency_key_content_conflict",
   "claim_evidence_invalid",
   "report_claim_invalid",
+  "reservation_expired",
+  "reservation_required",
 ]);
 
 type RpcClient = {
