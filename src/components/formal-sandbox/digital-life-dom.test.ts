@@ -10,13 +10,13 @@ const browserExecutable = process.env.CODEX_BROWSER_EXECUTABLE ?? "C:/Program Fi
 const playwrightPath = path.join(runtimeModules, "playwright");
 type Locator = { waitFor(): Promise<void>; selectOption(value: string): Promise<void>; locator(value: string): Locator; count(): Promise<number>; fill(value: string): Promise<void>; isDisabled(): Promise<boolean>; check(): Promise<void>; click(): Promise<void>; focus(): Promise<void>; filter(value: { hasText: string }): Locator };
 type Page = { setDefaultTimeout(value: number): void; on(event: string, handler: (error: Error) => void): void; setContent(html: string): Promise<void>; addScriptTag(value: { content?: string }): Promise<void>; waitForFunction(fn: () => boolean): Promise<void>; getByLabel(label: string | RegExp): Locator; getByRole(role: string, value?: { name: string | RegExp; exact?: boolean }): Locator; evaluate<T>(fn: () => T): Promise<T> };
-declare global { interface Window { failStart: boolean; contextFailure: boolean; holdStart: boolean; releaseStart?: () => void; navigation?: string; requests: Array<{ horizon_days: number; idempotency_key: string; digital_life_rules: { actions: unknown[] } }>; } }
+declare global { interface Window { failStart: boolean; startErrorCode: string; contextFailure: boolean; holdStart: boolean; releaseStart?: () => void; navigation?: string; requests: Array<{ horizon_days: number; idempotency_key: string; digital_life_rules: { actions: unknown[] } }>; } }
 
 it.skipIf(!existsSync(playwrightPath) || !existsSync(browserExecutable))("uses real React DOM controls to confirm rules, handle dependencies, change horizon and retry a failed start", async () => {
   const { chromium } = require(playwrightPath) as { chromium: { launch: (options: unknown) => Promise<{ newPage(options: unknown): Promise<Page>; close(): Promise<void> }> } };
-  const fixture = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {FormalRunStarter} from '@/components/formal-sandbox/run-starter'; globalThis.React=React; Object.defineProperty(crypto,'randomUUID',{value:()=> '00000000-0000-4000-8000-000000000004'});
+  const fixture = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {FormalRunStarter} from '@/components/formal-sandbox/run-starter'; globalThis.React=React; let uuidSequence=4; Object.defineProperty(crypto,'randomUUID',{value:()=>'00000000-0000-4000-8000-'+String(uuidSequence++).padStart(12,'0')});
   const context={graphSnapshotId:'00000000-0000-4000-8000-000000000001',agentSnapshotId:'00000000-0000-4000-8000-000000000002',profileRevision:2,agents:[{key:'person-4',label:'本人',role:'user_core'},{key:'person-8',label:'合作伙伴',role:'npc'},{key:'person-11',label:'另一种沟通策略',role:'user_variant'}],relationships:[{key:'relation-7',label:'合作关系',fromPersonKey:'person-4',toPersonKey:'person-8'}],resources:[]};
-  window.requests=[];window.failStart=true;window.contextFailure=true;window.holdStart=true;window.fetch=async(input,init)=>{if(String(input).includes('model-context'))return new Response(JSON.stringify(window.contextFailure?{ok:false,error_code:'current_graph_required',trace_id:'safe'}:{ok:true,error_code:null,trace_id:'safe',context}),{status:window.contextFailure?409:200});window.requests.push(JSON.parse(init.body));if(window.holdStart)await new Promise(resolve=>{window.releaseStart=resolve});return new Response(JSON.stringify(window.failStart?{ok:false,error_code:'profile_revision_conflict',trace_id:'safe'}:{ok:true,idempotent:false,run:{id:'00000000-0000-4000-8000-000000000003',status:'completed'}}),{status:window.failStart?409:201})};createRoot(document.getElementById('root')).render(React.createElement(FormalRunStarter,{}));`;
+  window.requests=[];window.failStart=true;window.startErrorCode='profile_revision_conflict';window.contextFailure=true;window.holdStart=true;window.fetch=async(input,init)=>{if(String(input).includes('model-context'))return new Response(JSON.stringify(window.contextFailure?{ok:false,error_code:'current_graph_required',trace_id:'safe'}:{ok:true,error_code:null,trace_id:'safe',context}),{status:window.contextFailure?409:200});window.requests.push(JSON.parse(init.body));if(window.holdStart)await new Promise(resolve=>{window.releaseStart=resolve});return new Response(JSON.stringify(window.failStart?{ok:false,error_code:window.startErrorCode,trace_id:'safe'}:{ok:true,idempotent:false,run:{id:'00000000-0000-4000-8000-000000000003',status:'completed'}}),{status:window.failStart?409:201})};createRoot(document.getElementById('root')).render(React.createElement(FormalRunStarter,{}));`;
   const output = await build({ configFile: false, root: process.cwd(), logLevel: "silent", resolve: { alias: { "@": path.join(process.cwd(), "src"), "next/navigation": "virtual:navigation", "next/link": "virtual:link" } }, plugins: [{ name: "fixture", resolveId(id) { if (id.startsWith("virtual:")) return `\0${id}`; }, load(id) { if (id === "\0virtual:fixture") return fixture; if (id === "\0virtual:navigation") return "export function useRouter(){return {push:(url)=>{window.navigation=url}}}"; if (id === "\0virtual:link") return "import React from 'react'; export default function Link(props){return React.createElement('a',props)}"; } }], build: { write: false, minify: false, rollupOptions: { input: "virtual:fixture", output: { format: "iife", name: "Fixture" } } } });
   const bundle = (Array.isArray(output) ? output[0] : output) as { output: Array<{ type: string; code?: string }> };
   const browser = await chromium.launch({ executablePath: browserExecutable, headless: true });
@@ -31,6 +31,7 @@ it.skipIf(!existsSync(playwrightPath) || !existsSync(browserExecutable))("uses r
     expect(errors).toEqual([]);
     await page.getByRole("button", { name: "重新读取模型", exact: true }).waitFor();
     expect(await page.getByRole("button", { name: "开始 30 天运行", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "保留规则，重新发起", exact: true }).count()).toBe(0);
     await page.evaluate(() => { window.contextFailure = false; });
     await page.getByRole("button", { name: "重新读取模型", exact: true }).click();
     await page.getByLabel("运行时间窗口").waitFor();
@@ -85,5 +86,50 @@ it.skipIf(!existsSync(playwrightPath) || !existsSync(browserExecutable))("uses r
     expect(await page.evaluate(() => window.requests.map(item => item.horizon_days))).toEqual([30, 30]);
     expect(await page.evaluate(() => window.requests.every(item => item.idempotency_key === window.requests[0].idempotency_key))).toBe(true);
     expect(await page.evaluate(() => window.requests.every(item => item.digital_life_rules.actions.length === 1))).toBe(true);
+
+    const expirationPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    expirationPage.setDefaultTimeout(5000);
+    const expirationErrors: string[] = [];
+    expirationPage.on("pageerror", (error: Error) => expirationErrors.push(error.message));
+    await expirationPage.setContent('<html lang="zh"><body><div id="root"></div></body></html>');
+    await expirationPage.addScriptTag({ content: bundle.output.find(item => item.type === "chunk")!.code });
+    await expirationPage.waitForFunction(() => Boolean(document.querySelector("button")));
+    await expirationPage.getByRole("button", { name: "重新读取模型", exact: true }).waitFor();
+    expect(await expirationPage.getByRole("button", { name: "保留规则，重新发起", exact: true }).count()).toBe(0);
+    await expirationPage.evaluate(() => { window.contextFailure = false; window.holdStart = false; });
+    await expirationPage.getByRole("button", { name: "重新读取模型", exact: true }).click();
+    await expirationPage.getByLabel("运行时间窗口").waitFor();
+    await expirationPage.getByLabel("行动人物").selectOption("person-4");
+    await expirationPage.getByLabel("询问对象").selectOption("person-8");
+    await expirationPage.getByLabel("要询问的问题").fill("询问下一步安排");
+    await expirationPage.getByLabel("来源与假设说明").fill("本人拟定的沟通条件");
+    await expirationPage.getByLabel("我确认这是用于本次运行的模拟假设").check();
+    await expirationPage.getByRole("button", { name: "加入本次规则" }).click();
+
+    await expirationPage.evaluate(() => { window.startErrorCode = "reservation_required"; });
+    await expirationPage.getByRole("button", { name: "开始 30 天运行", exact: true }).click();
+    expect(await expirationPage.evaluate(() => window.requests.length)).toBe(1);
+    await expirationPage.getByRole("alert").waitFor();
+    expect(await expirationPage.getByRole("button", { name: "保留规则，重新发起", exact: true }).count()).toBe(0);
+    expect(await expirationPage.evaluate(() => window.requests.length)).toBe(1);
+
+    await expirationPage.evaluate(() => { window.startErrorCode = "reservation_expired"; });
+    await expirationPage.getByRole("button", { name: "开始 30 天运行", exact: true }).click();
+    await expirationPage.getByRole("alert").filter({ hasText: "原请求的运行时间窗口已过期" }).waitFor();
+    expect(await expirationPage.getByRole("alert").filter({ hasText: "本次没有生成新的运行结果" }).count()).toBe(1);
+    expect(await expirationPage.getByRole("button", { name: "保留规则，重新发起", exact: true }).count()).toBe(1);
+    expect(await expirationPage.evaluate(() => window.requests.length)).toBe(2);
+    expect(await expirationPage.evaluate(() => window.requests[1].idempotency_key === window.requests[0].idempotency_key)).toBe(true);
+
+    await expirationPage.getByRole("button", { name: "保留规则，重新发起", exact: true }).click();
+    await expirationPage.getByRole("status").filter({ hasText: "已准备新的运行，请确认后开始" }).waitFor();
+    expect(await expirationPage.evaluate(() => window.requests.length)).toBe(2);
+    await expirationPage.evaluate(() => { window.failStart = false; });
+    await expirationPage.getByRole("button", { name: "开始 30 天运行", exact: true }).click();
+    await expirationPage.waitForFunction(() => window.requests.length === 3 && Boolean(window.navigation));
+    expect(await expirationPage.evaluate(() => window.requests[2].idempotency_key !== window.requests[1].idempotency_key)).toBe(true);
+    expect(await expirationPage.evaluate(() => window.requests[2].horizon_days === window.requests[1].horizon_days)).toBe(true);
+    expect(await expirationPage.evaluate(() => JSON.stringify(window.requests[2].digital_life_rules) === JSON.stringify(window.requests[1].digital_life_rules))).toBe(true);
+    expect(expirationErrors).toEqual([]);
   } finally { await browser.close(); }
 }, 60_000);
