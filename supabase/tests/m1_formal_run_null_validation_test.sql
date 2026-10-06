@@ -160,6 +160,9 @@ from m1_run_fixture;
 select is(pg_temp.attempt_run(30,jsonb_set(bundle,'{inputSnapshot,deterministicSeed}','1.5')),
   'P0001:invalid_run_bundle','fractional deterministic seed is rejected without a cast error')
 from m1_run_fixture;
+select is(pg_temp.attempt_run(30,jsonb_set(bundle,'{inputSnapshot,deterministicSeed}',seed)),
+  'P0001:invalid_run_bundle','deterministic seed stays inside the formal runtime positive range')
+from m1_run_fixture cross join (values ('0'::jsonb),('-1'::jsonb),('2000000001'::jsonb)) as seeds(seed);
 select is(pg_temp.attempt_run(30,jsonb_set(bundle,'{report,claimIds}','[]')),
   'P0001:invalid_run_bundle','Report must have a nonempty Claim reference array')
 from m1_run_fixture;
