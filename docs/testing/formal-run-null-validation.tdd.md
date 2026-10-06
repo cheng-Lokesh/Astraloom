@@ -93,3 +93,21 @@ validator in SQL.
 No SQL branch-coverage percentage is claimed. No full application suite,
 browser acceptance, deployment, remote push, or final product acceptance was
 performed in this bounded repair.
+
+## Independent review closeout (2026-10-06)
+
+Per the independent reviewer's report (recorded here as a supplied review,
+not as tests rerun by this author), the strict verdict is PASS only for SQL
+NULL handling and required-shape validation: the four-file pgTAP CLI run exited
+0 with 282 tests, and the documented test names are the same four files listed
+above. The database function body matched commit `632d83c`; `prosecdef=false`,
+`search_path=public,extensions`, and EXECUTE is denied to `anon` and
+`service_role` while allowed to `authenticated`. Eleven additional transactional
+probes exited 0; the original matrix remained 140 ok, 0 not ok.
+
+The review also observed accepted legacy inputs outside this bounded repair:
+invalid `createdAt` dates, zero or oversized before/after revisions,
+`agents[null]`, and `edges[false]`. These are pre-existing semantic gaps, not
+new regressions covered by this change; track them for a future concentrated
+hardening pass. This scoped PASS does not establish complete V2 SQL semantics,
+browser acceptance, or whole-product acceptance.
