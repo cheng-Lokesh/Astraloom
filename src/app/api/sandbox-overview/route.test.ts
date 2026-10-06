@@ -9,6 +9,8 @@ vi.mock("@/lib/sandbox-overview/overview.server", async (importOriginal) => ({
 }));
 
 import { GET } from "./route";
+import { buildSandboxOverview } from "@/lib/sandbox-overview/overview.server";
+import { createEmptyRealityProfileDraft } from "@/lib/reality-profile/profile";
 
 describe("GET /api/sandbox-overview", () => {
   beforeEach(() => {
@@ -44,6 +46,14 @@ describe("GET /api/sandbox-overview", () => {
 
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("sensitive database detail");
+  });
+
+  it("returns the server's saved-profile basis and explicit unknown classification unchanged", async () => {
+    state.client = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "owner-not-an-input" } } }) } };
+    state.read.mockResolvedValue(buildSandboxOverview({ authenticated: true, seed: { submitted: true }, confirmedPeopleCount: 0, immutableAgentsCount: 0, graph: { exists: false, locked: false, edgeCount: 0 }, runningRun: null, latestCompletedRun: null, historyCount: 0, hasFeedback: false, realityProfile: createEmptyRealityProfileDraft(4) }));
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect((await response.json()).overview).toMatchObject({ lifeClimate: { state: "saved_profile", source: "current_reality_profile", profileRevision: 4, items: [{ classification: "unknown" }] }, nextChange: { state: "not_modeled" } });
   });
 
   it("fails closed when the server client is unavailable or authentication throws", async () => {

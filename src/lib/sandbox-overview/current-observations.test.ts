@@ -34,11 +34,32 @@ describe("current saved reality and observation deadlines", () => {
   });
 
   it("sorts actual saved deadlines using server time and treats equality and past dates as unverified expired", () => {
-    vi.spyOn(Date, "now").mockReturnValue(Date.parse(now));
-    const overview = buildSandboxOverview(source());
+    const overview = buildSandboxOverview(source(), Date.parse(now));
     expect(overview.nextChange).toMatchObject({ state: "recorded_deadlines", source: "current_reality_profile", profileRevision: 7, assessedAt: now, upcoming: [{ label: "最近期限", classification: "fact" }, { label: "稍后复核", classification: "assumption" }], expired: [{ label: "先前期限" }, { label: "此刻期限" }] });
     expect(JSON.stringify(overview.nextChange)).not.toMatch(/weekly-time|fulfilled|cooperation|probability/);
     expect(sandboxOverviewSchema.safeParse({ ...overview, nextChange: { ...overview.nextChange, fulfilled: true } }).success).toBe(false);
+  });
+
+  it("sorts timezone offsets by instant, remains bounded, and retains an expired-only ledger", () => {
+    const saved = profile();
+    saved.worldInputs.constraints = [
+      { ...saved.worldInputs.constraints[0]!, rule: { kind: "before_time", value: "2026-10-07T01:00:00+08:00" } },
+      { ...saved.worldInputs.constraints[2]!, rule: { kind: "before_time", value: "2026-10-06T20:00:00Z" } },
+    ];
+    const overview = buildSandboxOverview(source({ realityProfile: saved }), Date.parse(now));
+    expect(overview.nextChange).toMatchObject({ upcoming: [{ label: "稍后复核" }, { label: "最近期限" }], expired: [] });
+    expect(buildSandboxOverview(source({ realityProfile: saved }), Date.parse("2026-10-09T00:00:00Z")).nextChange).toMatchObject({ upcoming: [], expired: [{ label: "稍后复核" }, { label: "最近期限" }] });
+    saved.worldInputs.constraints[1]!.rule.value = "2026-10-06T17:00:00Z";
+    expect(buildSandboxOverview(source({ realityProfile: saved }), Date.parse(now)).nextChange).toMatchObject({ upcoming: [{ label: "稍后复核" }, { label: "最近期限" }] });
+    expect(buildSandboxOverview(source({ realityProfile: saved }), Date.parse("2026-10-06T17:00:00Z")).nextChange).toMatchObject({ upcoming: [], expired: [{ label: "稍后复核" }, { label: "最近期限" }] });
+    saved.worldInputs.constraints = Array.from({ length: 9 }, (_, index) => ({ ...saved.worldInputs.constraints[0]!, key: `limit-${index}` }));
+    expect(() => buildSandboxOverview(source({ realityProfile: saved }))).toThrow();
+  });
+
+  it("rejects unsafe authored descriptions rather than returning identifiers or secrets", () => {
+    const saved = profile();
+    saved.lifeClimate.value = "raw scenario";
+    expect(() => buildSandboxOverview(source({ realityProfile: saved }))).toThrow();
   });
 
   it("keeps no profile and no recorded deadlines honest, without promoting simulation events", () => {
@@ -48,6 +69,10 @@ describe("current saved reality and observation deadlines", () => {
     const unknown = buildSandboxOverview(source({ realityProfile: createEmptyRealityProfileDraft(9) }));
     expect(unknown.lifeClimate).toMatchObject({ state: "saved_profile", profileRevision: 9, items: [{ classification: "unknown", evidenceSummary: "明确未知" }] });
     expect(unknown.nextChange).toEqual({ state: "not_modeled" });
+    const html = renderToStaticMarkup(createElement(SandboxLedger, { overview: unknown }));
+    expect(html).toContain("尚未填写");
+    expect(html).toContain("分类：未知");
+    expect(html).toContain("下一次现实变化明确未知");
   });
 
   it("renders readable real observation status and keeps simulated changes explicitly separate", () => {

@@ -12,6 +12,9 @@ const ledgerItemSchema = z.object({ label: safeLabelSchema, evidenceSummary: evi
 const classifiedLedgerItemSchema = z.object({ label: safeLabelSchema, classification: z.enum(["fact", "assumption", "unknown"]), evidenceSummary: evidenceSummarySchema }).strict();
 const structuredResourceItemSchema = z.object({ kind: z.literal("structured_resource"), label: safeLabelSchema, classification: z.enum(["fact", "assumption"]), evidenceSummary: evidenceSummarySchema, available: z.number().finite().min(0).max(1_000_000), unit: safeLabelSchema, minimum: z.number().finite().min(0).max(1_000_000), maximum: z.number().finite().min(0).max(1_000_000), usePerTick: z.number().finite().positive().max(1_000_000).nullable() }).strict();
 const structuredConstraintItemSchema = z.object({ kind: z.literal("structured_constraint"), label: safeLabelSchema, classification: z.enum(["fact", "assumption"]), evidenceSummary: evidenceSummarySchema, resourceLabel: safeLabelSchema, deadline: z.string().datetime({ offset: true }) }).strict();
+const profileBasis = { source: z.literal("current_reality_profile"), profileRevision: z.number().int().nonnegative() };
+const savedProfileSchema = <T extends z.ZodType>(items: T) => z.object({ state: z.literal("saved_profile"), ...profileBasis, items }).strict();
+const observationDeadlinesSchema = z.object({ state: z.literal("recorded_deadlines"), ...profileBasis, assessedAt: z.string().datetime({ offset: true }), upcoming: z.array(structuredConstraintItemSchema).max(8), expired: z.array(structuredConstraintItemSchema).max(8) }).strict().refine(value => value.upcoming.length + value.expired.length <= 8, "Observation deadlines remain bounded.");
 const unknownItemSchema = z.object({ label: safeLabelSchema }).strict();
 const dimensionSummarySchema = z.object({ label: z.string().min(1).max(40), facts: z.number().int().nonnegative(), assumptions: z.number().int().nonnegative(), unknowns: z.number().int().nonnegative() }).strict();
 const changeNodeTypeSchema = z.enum(["graph_freeze", "avoidance", "cooperation", "direct_conflict", "disclosure", "resource_competition", "support", "opportunity_signal", "information_gap_widening"]);
@@ -42,10 +45,10 @@ export const sandboxOverviewSchema = z.object({
   latestCompletedRun: z.object({ status: z.literal("completed"), completedAt: z.string().datetime({ offset: true }), href: hrefSchema }).strict().nullable(),
   history: z.object({ count: z.number().int().nonnegative() }).strict(),
   feedback: z.object({ exists: z.boolean() }).strict(),
-  lifeClimate: notModeledSchema,
-  resources: notModeledSchema,
-  constraints: notModeledSchema,
-  nextChange: notModeledSchema,
+  lifeClimate: z.union([notModeledSchema, savedProfileSchema(z.array(classifiedLedgerItemSchema).length(1))]),
+  resources: z.union([notModeledSchema, savedProfileSchema(z.array(z.union([classifiedLedgerItemSchema, structuredResourceItemSchema])).max(9))]),
+  constraints: z.union([notModeledSchema, savedProfileSchema(z.array(z.union([classifiedLedgerItemSchema, structuredConstraintItemSchema])).max(9))]),
+  nextChange: z.union([notModeledSchema, observationDeadlinesSchema]),
   nextAction: z.object({
     kind: z.enum(["sign_in", "start_intake", "review_people", "build_agents", "review_graph", "start_run", "start_next_run", "open_running", "open_latest_result"]),
     href: hrefSchema,
@@ -70,7 +73,7 @@ export type SandboxOverviewSource = {
   realityProfile?: RealityProfileDraft | null;
 };
 
-export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOverview {
+export function buildSandboxOverview(source: SandboxOverviewSource, serverNow = Date.now()): SandboxOverview {
   const noModel = { state: "not_modeled" as const };
   const fallbackReality = {
     facts: source.seed?.submitted ? [{ label: "正式现实情境已提交", evidenceSummary: "账户已保存的正式链状态" }] : [],
@@ -86,6 +89,15 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
   const newestEvent = source.changeNodeTypes?.[0];
   const profileEvent: LatestRunEvent = newestEvent === "avoidance" || newestEvent === "cooperation" || newestEvent === "direct_conflict" || newestEvent === "disclosure" || newestEvent === "resource_competition" || newestEvent === "support" || newestEvent === "opportunity_signal" || newestEvent === "information_gap_widening" ? newestEvent : null;
   const profileProjection = source.realityProfile ? buildRealityWorldProjection(source.realityProfile, { graphLocked: source.graph.locked, latestRunEvent: profileEvent }) : null;
+  const profile = source.realityProfile ? realityProfileDraftSchema.parse(source.realityProfile) : null;
+  const savedProfile = <T,>(items: T[]) => ({ state: "saved_profile" as const, source: "current_reality_profile" as const, profileRevision: profile!.revision, items });
+  const deadlines = (profileProjection?.world.constraints ?? []).filter((item): item is z.infer<typeof structuredConstraintItemSchema> => "kind" in item && item.kind === "structured_constraint").sort((a, b) => Date.parse(a.deadline) - Date.parse(b.deadline));
+  const nextChange = profile && deadlines.length ? {
+    state: "recorded_deadlines" as const, source: "current_reality_profile" as const, profileRevision: profile.revision,
+    assessedAt: new Date(serverNow).toISOString(),
+    upcoming: deadlines.filter(item => Date.parse(item.deadline) > serverNow),
+    expired: deadlines.filter(item => Date.parse(item.deadline) <= serverNow),
+  } : noModel;
   const unknownWorldItems = () => [{ label: "尚未填写", classification: "unknown" as const, evidenceSummary: "明确未知" }];
   const action = !source.authenticated
     ? { kind: "sign_in" as const, href: "/login" }
@@ -118,10 +130,10 @@ export function buildSandboxOverview(source: SandboxOverviewSource): SandboxOver
     latestCompletedRun: source.latestCompletedRun,
     history: { count: source.historyCount },
     feedback: { exists: source.hasFeedback },
-    lifeClimate: noModel,
-    resources: noModel,
-    constraints: noModel,
-    nextChange: noModel,
+    lifeClimate: profile ? savedProfile([{ label: profile.lifeClimate.classification === "unknown" ? "尚未填写" : profile.lifeClimate.value, classification: profile.lifeClimate.classification, evidenceSummary: profile.lifeClimate.evidenceSummary }]) : noModel,
+    resources: profileProjection ? savedProfile(profileProjection.world.resources) : noModel,
+    constraints: profileProjection ? savedProfile(profileProjection.world.constraints) : noModel,
+    nextChange,
     nextAction: action,
   });
 }
@@ -265,5 +277,5 @@ export async function readSandboxOverview(supabase: SupabaseClient, ownerId: str
     runningRun: running ? { href: runHref("running", running.id) } : null,
     latestCompletedRun: completed?.completed_at ? { status: "completed", completedAt: completed.completed_at, href: runHref("result", completed.id) } : null,
     historyCount: historyCount ?? 0, hasFeedback: Boolean(feedbackRecord), changeNodeTypes, realityProfile: profileRecord ? profileFromRow(profileRecord) : null,
-  });
+  }, Date.now());
 }

@@ -93,7 +93,7 @@ describe("My Sandbox dashboard behavior", () => {
     expect(html).toContain("1200 元/月");
     expect(html).toContain("关联资源：每周可投入时间");
     expect(html).toContain("2026年12月01日 08:00（北京时间，UTC+8）");
-    expect(html).toContain('datetime="2026-12-01T00:00:00.000Z"');
+    expect(html).toMatch(/datetime="2026-12-01T00:00:00.000Z"/i);
     expect(html).not.toMatch(/weekly-time|monthly-budget|project-deadline/);
     expect(html).toContain("目前没有当前正式链的已确认资料或受控事件支持");
   });

@@ -182,6 +182,10 @@ describe("My Sandbox overview projection", () => {
     expect(overview.world.constraints).toEqual([
       { kind: "structured_constraint", label: "项目截止期限", classification: "fact", evidenceSummary: "用户确认的项目期限", resourceLabel: "每周可投入时间", deadline: "2026-12-01T00:00:00.000Z" },
     ]);
+    expect(overview.resources).toMatchObject({ state: "saved_profile", source: "current_reality_profile", profileRevision: 3, items: overview.world.resources });
+    expect(overview.constraints).toMatchObject({ state: "saved_profile", source: "current_reality_profile", profileRevision: 3, items: overview.world.constraints });
+    expect(overview.lifeClimate).toMatchObject({ state: "saved_profile", profileRevision: 3, items: [{ label: "尚未填写", classification: "unknown" }] });
+    expect(overview.nextChange).toMatchObject({ state: "recorded_deadlines", profileRevision: 3, assessedAt: expect.any(String) });
     expect(JSON.stringify(overview)).not.toContain(seedId);
     expect(JSON.stringify(overview)).not.toContain(graphId);
     expect(JSON.stringify(overview)).not.toMatch(/weekly-time|monthly-budget|project-deadline/);
