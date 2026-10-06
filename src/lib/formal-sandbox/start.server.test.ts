@@ -52,13 +52,14 @@ function profileRow(ownerId = ids.owner, seedId = ids.seed) {
   };
 }
 
-function createService(profile: Row | null, operations: string[] = [], feedbackRows: Row[] = []) {
+function createService(profile: Row | null, operations: string[] = [], feedbackRows: Row[] = [], additionalAgents: Row[] = []) {
   const rows: Record<string, unknown> = {
     relation_graph_snapshots: { id: ids.graph, user_id: ids.owner, seed_context_id: ids.seed, agent_snapshot_id: ids.agentSnapshot, graph_locked: true, locked_at: "2026-09-01T00:00:00.000Z", safety_level: "safe" },
     seed_contexts: { id: ids.seed, user_question: "A bounded question", raw_context: "Private raw scenario text", safety_flags: [] },
     agent_profiles: [
       { id: ids.self, display_name: "Self", agent_type: "user_core", evidence_refs: ["seed:self"] },
       { id: ids.other, display_name: "Colleague", agent_type: "npc", evidence_refs: ["seed:person"] },
+      ...additionalAgents,
     ],
     relation_edges: [{ id: ids.edge, from_agent_id: ids.self, to_agent_id: ids.other, relationship_type: "professional", evidence_refs: ["seed:person"] }],
     feedback_logs: feedbackRows,
@@ -95,6 +96,12 @@ beforeEach(() => {
 });
 
 describe("formal Run freezes the Reality Profile on its locked owner Seed", () => {
+  it("preserves a user variant as a strategy self rather than reclassifying it as a third party", async () => {
+    const service = createService(null, [], [], [{ id: ids.otherOwner, display_name: "Parallel self", agent_type: "user_variant", evidence_refs: ["seed:self"] }]);
+    const result = await startFormalSandboxRun(service, ids.owner, { graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30 });
+    expect(result.ok).toBe(true);
+    expect(buildFormalSandboxRunV2).toHaveBeenCalledWith(expect.objectContaining({ agents: expect.arrayContaining([expect.objectContaining({ sourceRole: "user_variant", actorType: "self" })]) }));
+  });
   it("reads only this authenticated owner's locked Graph Seed, snapshots the full matching Profile and persists it", async () => {
     const operations: string[] = [];
     const storedProfile = profileRow();
