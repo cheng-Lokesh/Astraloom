@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
+import * as ts from "typescript";
 
 import { describe, expect, it } from "vitest";
 
@@ -13,6 +14,36 @@ const root = process.cwd();
 
 async function source(relativePath: string) {
   return readFile(path.join(root, relativePath), "utf8");
+}
+
+function bindingNames(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) return [name.text];
+  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    return name.elements.flatMap((element) => ts.isOmittedExpression(element) ? [] : bindingNames(element.name));
+  }
+  return [];
+}
+
+function runtimeExportNames(sourceText: string): string[] {
+  const file = ts.createSourceFile("running-page.tsx", sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  return file.statements.flatMap((statement) => {
+    if (ts.isExportAssignment(statement)) return [statement.isExportEquals ? "export=" : "default"];
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.isTypeOnly) return [];
+      if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        return statement.exportClause.elements.filter((specifier) => !specifier.isTypeOnly).map((specifier) => specifier.name.text);
+      }
+      return statement.exportClause ? [statement.exportClause.name.text] : ["*"];
+    }
+    if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) return [];
+    if (!ts.canHaveModifiers(statement)) return [];
+    const modifiers = ts.getModifiers(statement) ?? [];
+    if (!modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return [];
+    if (modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) return ["default"];
+    if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.flatMap((declaration) => bindingNames(declaration.name));
+    if ("name" in statement && statement.name && ts.isIdentifier(statement.name)) return [statement.name.text];
+    return ["<unnamed>"];
+  }).sort();
 }
 
 describe("M2.1 formal entry and legacy isolation", () => {
@@ -106,6 +137,12 @@ describe("M2.1 formal entry and legacy isolation", () => {
     expect(running).toContain("结果已生成");
     expect(running).not.toMatch(/Bundle is ready|>ready<|>\{phase\}<\/p>/i);
     expect(running).toContain(">{statusLabel}</p>");
+  });
+
+  it("keeps the running route entrypoint limited to Next's default page export", async () => {
+    const running = await source("src/app/app/simulation/running/page.tsx");
+
+    expect(runtimeExportNames(running)).toEqual(["default"]);
   });
 
   it("keeps the loading, running, completed, and unreadable Run projections distinct", () => {
