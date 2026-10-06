@@ -115,7 +115,9 @@ it.skipIf(!existsSync(playwrightPath) || !existsSync(browserExecutable))("uses r
 
     await expirationPage.evaluate(() => { window.startErrorCode = "reservation_expired"; });
     await expirationPage.getByRole("button", { name: "开始 30 天运行", exact: true }).click();
-    await expirationPage.getByRole("alert").filter({ hasText: "原请求的运行时间窗口已过期" }).waitFor();
+    await expirationPage.waitForFunction(() => window.requests.length === 2);
+    expect(await expirationPage.evaluate(() => document.body.innerText)).toContain("首次请求冻结的运行时间窗口已过期");
+    await expirationPage.getByRole("alert").filter({ hasText: "首次请求冻结的运行时间窗口已过期" }).waitFor();
     expect(await expirationPage.getByRole("alert").filter({ hasText: "本次没有生成新的运行结果" }).count()).toBe(1);
     expect(await expirationPage.getByRole("button", { name: "保留规则，重新发起", exact: true }).count()).toBe(1);
     expect(await expirationPage.evaluate(() => window.requests.length)).toBe(2);

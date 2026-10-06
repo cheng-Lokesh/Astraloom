@@ -22,6 +22,14 @@ export function FormalRunStartError({ errorCode }: { errorCode: string }) {
     );
   }
 
+  if (errorCode === "reservation_expired") {
+    return (
+      <p role="alert" className="mt-2 max-w-xs text-sm text-[var(--risk-red)]">
+        首次请求冻结的运行时间窗口已过期，本次没有生成新的运行结果。已配置规则会保留。
+      </p>
+    );
+  }
+
   return (
     <p role="alert" className="mt-2 max-w-xs text-sm text-[var(--risk-red)]">
       {errorCode === "profile_revision_conflict" ? "背景资料已更新，请重新读取当前模型并检查规则后重试。" : errorCode === "invalid_digital_life_rules" ? "规则未通过检查。请确认人物、触发条件、资源量和假设说明。" : errorCode === "current_graph_required" || errorCode === "graph_not_locked" ? "请先完成并锁定当前关系图，然后重新读取模型。" : errorCode === "unauthenticated" ? "登录后才能读取模型和开始运行。" : "无法开始运行。请检查已锁定关系图后重试；你的选择仍保留。"}
@@ -88,6 +96,12 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
     }
   }
 
+  function prepareExpiredReservationRetry() {
+    replay.current = null;
+    setError(null);
+    setNotice("已准备新的运行，请确认后开始");
+  }
+
   return (
     <div className="min-w-0 w-full space-y-5">
       <h2 className="text-xl font-semibold">配置本次数字生命运行</h2>
@@ -106,6 +120,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
         开始 {horizon} 天运行
       </Button>
       {error ? <FormalRunStartError errorCode={error} /> : null}
+      {context && error === "reservation_expired" ? <Button variant="ghostOnDark" onClick={prepareExpiredReservationRetry} className="!w-auto px-4 py-3">保留规则，重新发起</Button> : null}
       {context && error === "profile_revision_conflict" ? <Button variant="ghostOnDark" onClick={() => { setNotice("重新读取将更新模型并清空旧规则。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型并检查规则</Button> : null}
     </div>
   );
