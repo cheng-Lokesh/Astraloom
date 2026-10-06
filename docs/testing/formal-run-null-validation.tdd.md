@@ -59,7 +59,10 @@ node $runCli db advisors --local --type security --level warn --fail-on error
 git diff --check
 ```
 
-Both exit 0. Advisors returned one existing warning: `plpgsql_check` is in
+The unstaged whitespace check and Advisors both exited 0. The later staged
+check identified one extra blank line at the new migration's EOF; this was
+removed in a follow-up commit and the staged check then exited 0. The SQL
+function body did not change. Advisors returned one existing warning: `plpgsql_check` is in
 `public`; this migration does not create or relocate extensions. No security
 error was reported. Supabase changelog HTTP fetch returned 200; the September
 25 Postgres minor-release breaking changes do not change ordinary SQL NULL or
