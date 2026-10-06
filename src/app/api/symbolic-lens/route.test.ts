@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 const state = vi.hoisted(() => ({ user: null as null | { id: string; is_anonymous?: boolean }, rpc: vi.fn(), rows: [] as unknown[], eq: vi.fn(), from: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth: { getUser: async () => ({ data: { user: state.user }, error: null }) }, from: state.from }) }));
 vi.mock("@/lib/supabase/service-role.server", () => ({ getServiceRoleSupabaseClient: () => ({ rpc: state.rpc }) }));
@@ -12,6 +13,7 @@ const request = (body: unknown) => new Request("http://localhost/api/symbolic-le
 function preference(frame = buildSymbolicFrame(source, 1, new Date().toISOString())) { return { revision: 1, storage_consent: true, calculation_consent: true, future_attachment_consent: false, source_version: 1, current_snapshot: frame, updated_at: new Date().toISOString() }; }
 
 describe("formal symbolic lens API", () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     state.user = { id: "signed-in-owner" };
     state.rows = [];
@@ -41,6 +43,29 @@ describe("formal symbolic lens API", () => {
     const body = await (await GET()).json();
     expect(body.lens.status).toBe("stale"); expect(body.lens.snapshot.referencePeriod.key).toBe("2025-01");
     expect(state.rpc).not.toHaveBeenCalled();
+  });
+  it("detects a changed approximate month structure within the same calendar month", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-10T00:00:00Z"));
+    state.rows = [preference(buildSymbolicFrame(source, 1, "2026-10-06T00:00:00Z"))];
+    const body = await (await GET()).json();
+    expect(body.lens.status).toBe("stale"); expect(body.lens.snapshot.referencePeriod.key).toBe("2026-10");
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+  it("fails closed on a tampered projection instead of exposing extra source data", async () => {
+    state.rows = [{ ...preference(), birth_date: source.birthDate }];
+    const response = await GET(); const body = await response.json();
+    expect(response.status).toBe(500); expect(JSON.stringify(body).includes(source.birthDate)).toBe(false);
+  });
+  it("refreshes only an already consented owner source", async () => {
+    state.rows = [{ source_id: "owned-source", source_version: 1, revision: 1, storage_consent: true, calculation_consent: true }, { birth_date: source.birthDate, birth_time: null, source_version: 1 }];
+    state.rpc.mockResolvedValue({ data: [{ ...preference(), revision: 2, idempotent: false }], error: null });
+    const response = await PUT(request({ operation: "refresh_period", revision: 1, idempotency_key: requestBody().idempotency_key }));
+    expect(response.status).toBe(201); expect(state.eq).toHaveBeenCalledWith("id", "owned-source");
+    expect(state.rpc.mock.calls[0][1].p_source).toBeNull();
+    expect(state.rpc.mock.calls[0][1].p_frame.sourceVersion).toBe(1);
+    state.rows = [{ source_id: "owned-source", source_version: 1, revision: 2, storage_consent: false, calculation_consent: false }];
+    expect((await PUT(request({ operation: "refresh_period", revision: 2, idempotency_key: requestBody().idempotency_key }))).status).toBe(409);
+    expect(state.rpc).toHaveBeenCalledTimes(1);
   });
   it("never projects withdrawn snapshots as current", async () => {
     state.rows = [{ ...preference(), calculation_consent: false, future_attachment_consent: false }];
