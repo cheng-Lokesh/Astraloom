@@ -41,3 +41,13 @@ Non-negotiables:
 - Paid unlock reveals evidence and strategy depth; it cannot invent stronger claims or bypass safety.
 - High-risk scenarios must trigger safety downgrade before generation or unlock.
 - Do not add social/community/feed/native-app/broad multi-domain prediction features in MVP.
+
+## Task Model Selection
+
+Added 2026-10-06 at the founder's direction. Select the model and reasoning effort by task:
+
+- Complex simulations or cross-module design, difficult repairs, Auth/RLS/database security, and independent reviews: `gpt-6.1-sol` with `high` reasoning.
+- Routine feature development and clearly scoped module integrations: `gpt-6.1-sol` with `medium` reasoning.
+- Simple copy or style adjustments, document organization, and low-risk checks with explicit steps: `gpt-6-luna` with `xhigh` reasoning.
+
+This supersedes any earlier blanket rule to use Luna `max` for every task or `gpt-6.1-sol` `high` for every task. It applies to tasks started or resumed after this instruction; do not rerun completed tasks just to change models. Model selection does not change product goals or safety boundaries.
