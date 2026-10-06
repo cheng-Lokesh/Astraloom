@@ -30,6 +30,7 @@ describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(exe
   }, 30_000);
   afterAll(async () => { await browser?.close(); });
   const cases = [
+    { name: "connected authorized future runs", lens: { ...configured, consent: { ...configured.consent, futureAttachment: true }, futureAttachmentStatus: "connected" }, status: 200, text: "已授权后续新运行保存象征对照", rows: 5 },
     { name: "active five dimensions", lens: configured, status: 200, text: "已配置", rows: 5 },
     { name: "not configured", lens: { revision: 0, status: "not_configured", sourceVersion: null, snapshot: null, consent: { storage: false, calculation: false, futureAttachment: false }, futureAttachmentStatus: "not_connected" }, status: 200, text: "尚未配置", rows: 0 },
     { name: "withdrawn", lens: { ...configured, status: "withdrawn", snapshot: null, consent: { storage: false, calculation: false, futureAttachment: false } }, status: 200, text: "已撤回", rows: 0 },
@@ -56,7 +57,8 @@ describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(exe
       expect(text).toContain(scenario.text);
       expect(text).toContain("本人记录的现实近况");
       expect(text).toContain("唯一下一步");
-      expect(text).toContain("尚未接入新运行");
+      expect(text).toContain("不会改变人物行动、世界状态、推演结论或置信度");
+      expect(text).toContain("不代表任何历史运行已附加框架");
       expect(text).not.toMatch(/1991-06-15|natal_stem_counts|initial_tendency|formal-symbolic-frame-v1/);
       expect(await page.evaluate(() => document.querySelectorAll('[data-dashboard-symbolic-dimension]').length, undefined)).toBe(scenario.rows);
       expect(await page.evaluate(() => [...document.querySelectorAll('a')].filter(a => a.getAttribute('href') === '/app/new/people').length, undefined)).toBe(1);
