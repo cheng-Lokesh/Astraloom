@@ -10,7 +10,10 @@ describe("symbolic lens account surface", () => {
     expect(markup.includes('checked=""')).toBe(false);
     expect(markup.includes("暂时跳过")).toBe(true);
     expect(markup.includes("出生地点")).toBe(false);
-    expect(markup.includes("尚未接入新运行")).toBe(true);
+    expect(markup.includes("后续新推演 · 单独授权附加")).toBe(true);
+    expect(markup.includes("后续推演授权尚未确认")).toBe(true);
+    expect(markup.includes("不改变人物行为、因果关系、证据或模拟频率")).toBe(true);
+    expect(markup.includes("受理即开始")).toBe(true);
   });
   it("renders five explainable rows without birth values or source ids", () => {
     const source = { birthDate: "1991-06-15", birthTime: null };

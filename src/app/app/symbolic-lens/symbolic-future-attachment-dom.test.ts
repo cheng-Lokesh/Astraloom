@@ -7,19 +7,19 @@ import { buildSymbolicFrame } from "@/lib/formal-symbolic-lens/frame";
 
 const runtime = process.env.CODEX_BROWSER_MODULES ?? "C:/Users/clf04/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules";
 const executablePath = process.env.CODEX_BROWSER_EXECUTABLE ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
-type Locator = { waitFor(): Promise<void>; click(): Promise<void>; check(): Promise<void>; count(): Promise<number>; isDisabled(): Promise<boolean>; isChecked(): Promise<boolean> };
+type Locator = { waitFor(): Promise<void>; click(): Promise<void>; check(): Promise<void>; fill(value: string): Promise<void>; count(): Promise<number>; isDisabled(): Promise<boolean>; isChecked(): Promise<boolean> };
 type Page = { setDefaultTimeout(value: number): void; setContent(html: string): Promise<void>; addScriptTag(input: { content: string }): Promise<void>; evaluate<T>(fn: () => T): Promise<T>; waitForFunction(fn: () => boolean): Promise<void>; getByRole(role: string, input: { name: string; exact?: boolean }): Locator; locator(selector: string): Locator; close(): Promise<void> };
 type Browser = { newPage(): Promise<Page>; close(): Promise<void> };
 declare global { interface Window { futureProbe: { requests: Array<{ method: string; body: Record<string, unknown> | null }>; futureReads: number; release?: () => void; released: boolean }; } }
 const active = { revision: 1, status: "active", sourceVersion: 1, snapshot: buildSymbolicFrame({ birthDate: "1991-06-15", birthTime: null }, 1, "2026-10-06T00:00:00Z"), consent: { storage: true, calculation: true, futureAttachment: false }, futureAttachmentStatus: "connected" };
-const scenarios = ["normal", "unknown", "stale", "withdrawn", "not_configured", "stale-enabled", "close-race", "withdraw-race", "mismatch", "refresh", "delayed-confirmation"] as const;
+const scenarios = ["normal", "unknown", "stale", "withdrawn", "not_configured", "stale-enabled", "close-race", "withdraw-race", "mismatch", "refresh", "replace", "delayed-confirmation"] as const;
 type Scenario = typeof scenarios[number];
 const bundles = new Map<Scenario, string>();
 function fixture(scenario: Scenario) {
   return `import React from 'react';import {createRoot} from 'react-dom/client';import {SymbolicLensClient} from '@/app/app/symbolic-lens/symbolic-lens-client';globalThis.React=React;
 let lens=${JSON.stringify(active)};const mode=${JSON.stringify(scenario)};
 if(mode==='stale'||mode==='stale-enabled')lens.status='stale';if(mode==='withdrawn'||mode==='not_configured'){lens.status=mode;lens.snapshot=null;lens.consent={storage:false,calculation:false,futureAttachment:false};if(mode==='not_configured')lens.sourceVersion=null;}
-if(mode.endsWith('race')||mode==='stale-enabled'||mode==='refresh')lens.consent.futureAttachment=true;if(mode==='refresh')lens.status='stale';
+if(mode.endsWith('race')||mode==='stale-enabled'||mode==='refresh'||mode==='replace')lens.consent.futureAttachment=true;if(mode==='refresh')lens.status='stale';
 window.futureProbe={requests:[],futureReads:0,released:false};let nextKey=0;Object.defineProperty(crypto,'randomUUID',{value:()=> '00000000-0000-4000-8000-'+String(++nextKey).padStart(12,'0')});
 const attachment=()=>({revision:lens.revision,enabled:lens.consent.futureAttachment,eligible:lens.status==='active',status:lens.status});
 window.fetch=async(url,init)=>{const method=init?.method||'GET';const body=init?.body?JSON.parse(init.body):null;window.futureProbe.requests.push({method,body});
@@ -57,8 +57,8 @@ describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(exe
       expect(await page.locator('input[name="storage-consent"]').isChecked()).toBe(false); expect(await page.locator('input[name="calculation-consent"]').isChecked()).toBe(false);
       await checkbox(page).check(); await grant(page).click(); await closeGrant(page).waitFor();
       const body = await page.evaluate(() => window.futureProbe.requests.find(r => r.method === 'PUT')?.body);
-      expect(Object.keys(body!)).toEqual(["revision", "enabled", "idempotency_key"]); expect(body?.revision).toBe(1); expect(body?.enabled).toBe(true); expect(body?.idempotency_key).toMatch(/^[a-f0-9-]{36}$/);
-      await reload(page).click(); await closeGrant(page).waitFor(); await closeGrant(page).click(); await grant(page).waitFor(); expect(await checkbox(page).isChecked()).toBe(false);
+      expect(Object.keys(body!)).toEqual(["revision", "enabled", "idempotency_key"]); expect(body?.revision).toBe(1); expect(body?.enabled).toBe(true); expect(/^[a-f0-9-]{36}$/.test(String(body?.idempotency_key))).toBe(true);
+      await reload(page).click(); await closeGrant(page).waitFor(); await closeGrant(page).click(); await page.waitForFunction(() => document.body.textContent?.includes("已关闭后续新推演附加") === true); expect(await checkbox(page).isChecked()).toBe(false);
       expect(await page.evaluate(() => window.futureProbe.requests.filter(r => r.method === 'PUT').map(r => r.body?.enabled))).toEqual([true, false]);
     } finally { await session.close(); }
   });
@@ -108,7 +108,16 @@ describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(exe
   });
   it("requires a fresh explicit grant after period refresh", async () => {
     const session = await open("refresh"); const { page } = session;
-    try { await readComplete(page); await page.getByRole("button", { name: "更新到当前时期", exact: true }).click(); await grant(page).waitFor(); expect(await checkbox(page).isChecked()).toBe(false); expect(await grant(page).isDisabled()).toBe(true); expect(await page.evaluate(() => window.futureProbe.requests.filter(r => r.method === 'PUT').length)).toBe(1); }
+    try { await readComplete(page); await page.getByRole("button", { name: "更新到当前时期", exact: true }).click(); await page.waitForFunction(() => document.body.textContent?.includes("已安全保存") === true); expect(await checkbox(page).isChecked()).toBe(false); expect(await grant(page).isDisabled()).toBe(true); expect(await page.evaluate(() => window.futureProbe.requests.filter(r => r.method === 'PUT').length)).toBe(1); }
     finally { await session.close(); }
+  });
+  it("keeps source replacement consent separate and clears future grant", async () => {
+    const session = await open("replace"); const { page } = session;
+    try {
+      await readComplete(page); await page.locator('input[type="date"]').fill("1991-06-15"); await page.locator('input[name="storage-consent"]').check(); await page.locator('input[name="calculation-consent"]').check(); await page.getByRole("button", { name: "同意并保存象征镜头", exact: true }).click(); await page.waitForFunction(() => document.body.textContent?.includes("已安全保存") === true);
+      expect(await checkbox(page).isChecked()).toBe(false); expect(await grant(page).isDisabled()).toBe(true);
+      expect(await page.evaluate(() => (window.futureProbe.requests.find(r => r.method === 'PUT')?.body?.consent as { futureAttachment: boolean })?.futureAttachment)).toBe(false);
+      expect(await page.evaluate(() => window.futureProbe.requests.filter(r => r.method === 'PUT').length)).toBe(1);
+    } finally { await session.close(); }
   });
 });
