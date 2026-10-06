@@ -9,13 +9,14 @@ const lensSchema = z.object({
   revision: z.number().int().nonnegative(), status: z.enum(["not_configured", "active", "stale", "withdrawn"]),
   sourceVersion: z.number().int().positive().nullable(), snapshot: symbolicFrameSchema.nullable(),
   consent: z.object({ storage: z.boolean(), calculation: z.boolean(), futureAttachment: z.boolean() }).strict(),
-  futureAttachmentStatus: z.literal("not_connected"),
+  futureAttachmentStatus: z.enum(["connected", "not_connected"]),
 }).strict().superRefine((lens, context) => {
   const enabled = lens.consent.storage && lens.consent.calculation;
   const configured = lens.status === "active" || lens.status === "stale";
   if (configured ? !enabled || !lens.snapshot || lens.revision < 1 || lens.snapshot.sourceVersion !== lens.sourceVersion : lens.snapshot !== null || enabled) context.addIssue({ code: "custom", message: "inconsistent_lens" });
   if (lens.status === "not_configured" && (lens.revision !== 0 || lens.sourceVersion !== null || Object.values(lens.consent).some(Boolean))) context.addIssue({ code: "custom", message: "inconsistent_empty_lens" });
   if (lens.status === "withdrawn" && (lens.revision < 1 || lens.consent.futureAttachment)) context.addIssue({ code: "custom", message: "inconsistent_withdrawal" });
+  if (lens.consent.futureAttachment && (!enabled || lens.futureAttachmentStatus !== "connected")) context.addIssue({ code: "custom", message: "inconsistent_attachment_consent" });
 });
 type Load = { phase: "loading" } | { phase: "error" } | { phase: "ready"; lens: z.infer<typeof lensSchema> };
 const control = "inline-flex min-h-11 items-center justify-center rounded border border-white/15 px-4 py-3 text-sm font-semibold text-[var(--text-primary)] transition-[transform,opacity] active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)]";
@@ -51,6 +52,6 @@ export function DashboardSymbolicSummary() {
         <details className="mt-4"><summary className="min-h-11 cursor-pointer py-3 text-sm text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)]">查看框架限制</summary><ul className="max-w-prose space-y-2 text-sm leading-7 text-[var(--text-secondary)]">{frame.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}</ul></details>
       </> : null}
     </>}
-    <p className="mt-4 text-xs leading-6 text-[var(--text-secondary)]">尚未接入新运行。当前框架不会改变人物行动、世界状态、推演结论或置信度；未来挂接仍需独立授权与实现。</p>
+    <p className="mt-4 text-sm leading-7 text-[var(--text-secondary)]">{lens?.futureAttachmentStatus === "connected" ? lens.consent.futureAttachment ? "已授权后续新运行保存象征对照；可在管理页更改授权。" : "后续新运行可保存象征对照，尚未授权；可在管理页按意愿开启。" : "尚未接入新运行。"}当前框架不会改变人物行动、世界状态、推演结论或置信度；不代表任何历史运行已附加框架，请在对应结果中查看冻结记录。</p>
   </section>;
 }

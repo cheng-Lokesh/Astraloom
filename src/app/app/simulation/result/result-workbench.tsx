@@ -6,6 +6,7 @@ import { Button, ButtonLink, SurfaceCard } from "@/components/ui-foundation";
 import { createFormalSandboxClient, type FormalSandboxResultProjection } from "@/lib/formal-sandbox/client";
 import type { ResultRequestState } from "@/lib/formal-sandbox/result-request-gate";
 import { actionLabel } from "@/components/formal-sandbox/digital-life-rules-editor";
+import { FrozenSymbolicResult } from "./frozen-symbolic-result";
 
 type Rating = "useful" | "mixed" | "off";
 export type FeedbackState = { rating: Rating | null; comment: string; message: string; saved: boolean };
@@ -215,6 +216,7 @@ export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseCl
     </header>
     <FrozenRealityProfileCard profile={projection.realityProfile} />
     <DigitalLifeModelCard model={projection.digitalLifeModel} />
+    <FrozenSymbolicResult lens={projection.symbolicLens} />
     <ResourceChangeCard changes={projection.resourceChanges} />
     <RelationshipChangeLedger projection={projection} />
     <StrategyPathsCard paths={projection.strategyPaths} />
