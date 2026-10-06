@@ -63,7 +63,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
     const safeFeedback = "target_type" in parsed.data
       ? { target_type: parsed.data.target_type, target_key: parsed.data.target_key, rating: parsed.data.rating }
       : { target_type: "overall", rating: parsed.data.rating };
-    return NextResponse.json({ ok: true, error_code: null, trace_id: trace, idempotent: data[0].idempotent, feedback: safeFeedback }, { status: data[0].idempotent ? 200 : 201 });
+    return NextResponse.json({ ok: true, error_code: null, trace_id: trace, idempotent: data[0].idempotent, feedback: safeFeedback }, { status: data[0].idempotent ? 200 : 201, headers: { "cache-control": "no-store" } });
   } catch {
     return sandboxFailure(500, "persistence_failed", trace);
   }

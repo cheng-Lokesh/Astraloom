@@ -59,7 +59,7 @@ describe("formal sandbox route contracts",()=>{
 
     expect(forgedOwner.status).toBe(422);
     expect(state.service).not.toHaveBeenCalled();
-    expect(state.start).toHaveBeenCalledOnce();
+    expect(state.start).toHaveBeenCalledTimes(2);
   });
   it("hides a missing or foreign Run behind the same 404",async()=>{
     state.client=authClient(userId,()=>query({data:null,error:null}));
