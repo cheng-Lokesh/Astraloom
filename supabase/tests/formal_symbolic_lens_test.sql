@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(15);
+select plan(16);
 select has_table('public','symbolic_birth_sources','symbolic birth sources are formal and versioned');
 select has_table('public','symbolic_lens_preferences','symbolic preferences have one current owner state');
 select has_table('public','symbolic_lens_snapshots','generated symbolic snapshots are separate from Reality');
@@ -16,5 +16,6 @@ select ok(not coalesce(has_table_privilege('authenticated',to_regclass('public.s
 select ok(not coalesce(has_function_privilege('authenticated',to_regprocedure('public.persist_symbolic_lens_v1(uuid,integer,uuid,text,jsonb,jsonb,text)'),'EXECUTE'),true),'browser cannot call the privileged save writer');
 select ok(coalesce(has_function_privilege('service_role',to_regprocedure('public.persist_symbolic_lens_v1(uuid,integer,uuid,text,jsonb,jsonb,text)'),'EXECUTE'),false),'server service can call save writer');
 select ok(coalesce((select not prosecdef from pg_proc where oid=to_regprocedure('public.persist_symbolic_lens_v1(uuid,integer,uuid,text,jsonb,jsonb,text)')),false),'symbolic writer is SECURITY INVOKER');
+select has_function('public','recover_symbolic_lens_v1',array['uuid','integer','uuid','text','jsonb'],'HTTP retries can recover the owner receipt before recalculation');
 select * from finish();
 rollback;

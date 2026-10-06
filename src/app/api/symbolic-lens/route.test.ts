@@ -100,4 +100,22 @@ describe("formal symbolic lens API", () => {
     const body = await response.json(); expect(response.status).toBe(200); expect(body.lens.status).toBe("withdrawn");
     expect(body.lens.snapshot).toBeNull(); expect(state.rpc.mock.calls[0][0]).toBe("withdraw_symbolic_lens_v1");
   });
+  it("recovers an owner-key refresh receipt before newer revision or source reads", async () => {
+    state.rows = [{ source_id: "owned-source", source_version: 1, revision: 2, storage_consent: true, calculation_consent: true }];
+    state.rpc.mockResolvedValue({ data: [{ ...preference(), revision: 2, idempotent: true }], error: null });
+    const response = await PUT(request({ operation: "refresh_period", revision: 1, idempotency_key: requestBody().idempotency_key }));
+    expect(response.status).toBe(200);
+    expect(state.from).not.toHaveBeenCalled();
+    expect(state.rpc.mock.calls[0][0]).toBe("recover_symbolic_lens_v1");
+    expect(state.rpc.mock.calls[0][1]).not.toHaveProperty("p_frame");
+  });
+  it("recovers a source-save receipt on another day without recalculation or reactivation", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-07T00:00:00Z"));
+    state.rpc.mockResolvedValue({ data: [{ ...preference(), revision: 2, storage_consent: false, calculation_consent: false, current_snapshot: null, idempotent: true }], error: null });
+    const response = await PUT(request(requestBody())); const body = await response.json();
+    expect(response.status).toBe(200); expect(body.lens.status).toBe("withdrawn");
+    expect(state.rpc.mock.calls[0][0]).toBe("recover_symbolic_lens_v1");
+    expect(state.rpc.mock.calls[0][1]).not.toHaveProperty("p_frame");
+    expect(JSON.stringify(body).includes(source.birthDate)).toBe(false);
+  });
 });
