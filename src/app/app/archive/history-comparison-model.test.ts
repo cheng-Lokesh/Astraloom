@@ -68,11 +68,38 @@ describe("Complete frozen History comparison", () => {
     expect(text).toContain("策略乙支持步骤"); expect(text).toContain("策略乙结论"); expect(text).toContain("模拟协调");
     expect(text).not.toContain("claim-1"); expect(text).not.toContain("step-1");
   });
+  it("retains duplicate safe resource labels as separate original rows without producing numeric deltas", () => {
+    const a = richProjection(); a.realityProfile.structuredResources.push({ ...a.realityProfile.structuredResources[0], key: "another-time", available: 7 });
+    const b = structuredClone(a); b.realityProfile.structuredResources.reverse();
+    const category = compare(a, b).find(row => row.id === "resources");
+    expect(category?.status).toBe("order_only");
+    expect((category?.left as { entries: unknown[] }).entries).toHaveLength(2);
+    const original = JSON.stringify(category?.left);
+    expect(original).not.toContain("another-time"); expect(original).not.toContain("改善"); expect(original).not.toContain("%");
+  });
+  it("keeps legacy own Seed facts readable while marking missing Profile snapshots", () => {
+    const a = richProjection(); a.realityProfile.status = "not_recorded";
+    const facts = compare(a, richProjection()).find(row => row.id === "facts");
+    expect(facts?.status).toBe("not_recorded");
+    expect(JSON.stringify(facts?.left)).toContain("已确认安排");
+  });
+  it("does not display injected email, raw evidence, or local ordinal keys", () => {
+    const a = richProjection(); a.realityProfile.facts[0].statement = "fixture@example.test";
+    a.steps[0].label = "internal-key raw evidence"; a.claims[0].statement = "person-1";
+    const html = renderToStaticMarkup(createElement(archive.HistoryComparisonPanel, { columns: [{ run: { id: "private-left", status: "completed" }, projection: a }, { run: { id: "private-right", status: "completed" }, projection: richProjection() }] }));
+    for (const unsafe of ["fixture@example.test", "internal-key", "raw evidence", "person-1", "private-left", "private-right"]) expect(html).not.toContain(unsafe);
+  });
+  it("creates unique disclosure and panel IDs when two comparisons render together", () => {
+    const columns = [{ run: { id: "private-left", status: "completed" }, projection: richProjection() }, { run: { id: "private-right", status: "completed" }, projection: richProjection() }] as const;
+    const html = renderToStaticMarkup(createElement("div", {}, createElement(archive.HistoryComparisonPanel, { columns }), createElement(archive.HistoryComparisonPanel, { columns })));
+    const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+    expect(ids.length).toBeGreaterThan(30); expect(new Set(ids).size).toBe(ids.length);
+  });
   it("renders summary, side-specific original values, accessible disclosures and Result entries without internal keys", () => {
     const a = richProjection(); const b = richProjection(); b.realityProfile.structuredResources[0].available = 9;
     const html = renderToStaticMarkup(createElement(archive.HistoryComparisonPanel, { columns: [{ run: { id: "private-left", status: "completed" }, projection: a }, { run: { id: "private-right", status: "completed" }, projection: b }] }));
     for (const text of ["分类差异摘要", "相同内容", "差异", "一侧未记录", "仅顺序不同", "查看左右原值", "反馈作为后续Run记录输入，真实校准效果未完成", "资源量", "上限", "周期消耗", "截止", "背景维度 14", "明确未知", "象征", "非因果"]) expect(html).toContain(text);
-    expect(html).toContain("<details"); expect(html).toContain("/app/simulation/result?run_id=private-left");
+    expect(html).toContain("<details"); expect(html).toContain("打开此 Run 结果与回填入口");
     for (const key of ["person-1", "claim-1", "background-1", "relation-1", "study-time", "birthDate", "2000-01-01"]) expect(html).not.toContain(key);
   });
 });
