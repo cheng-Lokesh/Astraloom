@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SymbolicFrame } from "@/lib/formal-symbolic-lens/frame";
 import { canWriteSymbolicLens, readSymbolicLensAccount, writeSymbolicLensAccount, type SymbolicAccountState } from "@/lib/formal-symbolic-lens/client-transport";
 
@@ -16,6 +16,8 @@ const messages: Record<string, string> = {
 export function SymbolicLensClient() {
   const [account, setAccount] = useState<SymbolicAccountState>({ ready: false, lens: null });
   const { ready, lens } = account;
+  const requestGeneration = useRef(0);
+  const mounted = useRef(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("正在读取账户中的象征镜头…");
   const [birthDate, setBirthDate] = useState("");
@@ -23,32 +25,35 @@ export function SymbolicLensClient() {
   const [timeMode, setTimeMode] = useState("unknown");
   const [storageConsent, setStorageConsent] = useState(false);
   const [calculationConsent, setCalculationConsent] = useState(false);
-  async function readAccount() {
-    const result = await readSymbolicLensAccount();
-    setAccount(result.account);
-    setNotice(result.error ? messages[result.error] ?? "暂时无法读取，请稍后重试。" : "读取完成。出生资料不会在此回显；纠正时请重新填写。");
-  }
   function load() {
+    const generation = ++requestGeneration.current;
     setAccount({ ready: false, lens: null }); setNotice("正在读取账户资料…");
-    void readAccount();
-  }
-  useEffect(() => {
-    let cancelled = false;
     void readSymbolicLensAccount().then(result => {
-      if (cancelled) return;
+      if (!mounted.current || generation !== requestGeneration.current) return;
       setAccount(result.account);
       setNotice(result.error ? messages[result.error] ?? "暂时无法读取，请稍后重试。" : "读取完成。出生资料不会在此回显；纠正时请重新填写。");
     });
-    return () => { cancelled = true; };
+  }
+  useEffect(() => {
+    mounted.current = true;
+    const generation = ++requestGeneration.current;
+    void readSymbolicLensAccount().then(result => {
+      if (!mounted.current || generation !== requestGeneration.current) return;
+      setAccount(result.account);
+      setNotice(result.error ? messages[result.error] ?? "暂时无法读取，请稍后重试。" : "读取完成。出生资料不会在此回显；纠正时请重新填写。");
+    });
+    return () => { mounted.current = false; };
   }, []);
   async function mutate(operation: "replace_source" | "refresh_period" | "withdraw") {
     if (!canWriteSymbolicLens(account, pending) || !lens) return;
+    const generation = ++requestGeneration.current;
     setPending(true); setNotice("正在保存到账户…");
     const idempotencyKey = crypto.randomUUID();
     const body = operation === "withdraw" ? { revision: lens.revision, idempotency_key: idempotencyKey }
       : operation === "refresh_period" ? { operation, revision: lens.revision, idempotency_key: idempotencyKey }
       : { operation, revision: lens.revision, idempotency_key: idempotencyKey, source: { birthDate, birthTime: timeMode === "unknown" ? null : birthTime }, consent: { storage: storageConsent, calculation: calculationConsent, futureAttachment: false } };
     const result = await writeSymbolicLensAccount(operation, body);
+    if (!mounted.current || generation !== requestGeneration.current) return;
     setAccount(result.account);
     if (result.error) {
       setNotice(`${messages[result.error] ?? "暂时无法确认是否保存；当前表单仍保留。"} 请先重新读取账户状态；不会自动换请求标识重写。`);
