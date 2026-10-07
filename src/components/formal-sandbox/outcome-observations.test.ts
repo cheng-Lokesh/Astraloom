@@ -62,4 +62,17 @@ describe("personal outcome capture", () => {
     expect(html).toContain("零投入仍可记录");
     expect(html).not.toMatch(/<button[^>]+disabled=""[^>]*>保存本人观察/);
   });
+  it("shows frozen real-criteria comparison with safe differences and explicit unknown and legacy boundaries", () => {
+    const historyItem = { key: "observation-1", targetKey: "target-1", observed: "uncertain" as const, recordedAt: "2026-10-06T00:00:00Z", occurredAt: null, source: "user_observation" as const, evidenceSummary: "本人实际投入记录", uncertainty: "high" as const, backtestStatus: "not_observable" as const, correctionAvailable: false, observations: [{ key: "condition-1", value: 3, occurredAt: "2026-10-02T00:00:00Z" }], criteriaComparison: { status: "different" as const, differences: ["condition-1"] } };
+    const comparisons = { ...projection, targets: [{ ...target, status: "not_observable" as const }], history: [historyItem, { ...historyItem, key: "observation-2", observations: [{ key: "condition-1", value: 2, occurredAt: "2026-10-02T00:00:00Z" }], criteriaComparison: { status: "matched" as const, differences: [] } }, { ...historyItem, key: "observation-3", observations: [{ key: "condition-1", value: null, occurredAt: null }], criteriaComparison: { status: "unknown" as const, differences: [] } }, { ...historyItem, key: "observation-4", observations: [], criteriaComparison: { status: "not_recorded" as const, differences: [] } }] };
+    const html = renderToStaticMarkup(createElement(OutcomeObservationsView, { projection: comparisons, draft: initialOutcomeDraft, targetKey: "target-1", phase: "ready", ...handlers }));
+    expect(html).toContain("具体事实条件对照");
+    expect(html).toContain("已记录条件存在差异");
+    expect(html).toContain("已记录条件相符");
+    expect(html).toContain("信息不足，暂不能对照");
+    expect(html).toContain("未记录事前现实条件，仅保留本人观察");
+    expect(html).toContain("差异 · 本人投入的时间 · 事前：2 · 本人观察：3");
+    expect(html).toContain("不表示整组模拟情景发生");
+    expect(html).not.toContain("差异 · condition-1");
+  });
 });
