@@ -7,6 +7,45 @@ import { formalSandboxResultProjectionSchema } from "./client";
 import { digitalLifeRulesSchema } from "@/lib/digital-life/model";
 
 describe("formal default-planning runtime consumer", () => {
+  async function persistedPlanningFixture() {
+    const source = planningSource();
+    const run = await buildFormalSandboxRunV2({ ...digitalLifeInput(), realityProfileSnapshot: source.realityProfileSnapshot,
+      symbolicLens: source.symbolicLens, acceptedAt: source.acceptedAt, startedAt: "2026-10-06T00:05:00.000Z",
+      graphLockedAt: source.acceptedAt, calibrationSnapshot: { source: "account_feedback", signals: [] },
+      defaultPlanning: planningRequest(), planningConsentContext: source.consentContext });
+    if (!run.ok) throw new Error(run.errorCode);
+    expect(projectFormalSandboxResult(run.bundle) !== null).toBe(true);
+    return run.bundle;
+  }
+
+  it("retains exact planning bindings after the complete bundle JSON persistence roundtrip", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T00:00:01.000Z"));
+    try {
+      const bundle = await persistedPlanningFixture();
+      const persisted: typeof bundle = JSON.parse(JSON.stringify(bundle));
+      expect(projectFormalSandboxResult(persisted) !== null).toBe(true);
+      const binding = persisted.defaultPlanningTraces![0].traces[0].worldBinding;
+      expect(() => JSON.parse(binding.actorSignature)).not.toThrow();
+      expect(() => JSON.parse(binding.resources[0].provenanceSignature)).not.toThrow();
+    } finally { vi.useRealTimers(); }
+  }, 30_000);
+
+  it("rejects independently altered persistence events and trajectory branch ownership", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T00:00:01.000Z"));
+    try {
+      const bundle = await persistedPlanningFixture();
+      const changedAmount = { ...bundle, events: bundle.events.map(event => ({ ...event, operation: { ...event.operation } })) };
+      changedAmount.events[0].operation.amount = 999;
+      expect(changedAmount.worldSnapshots === bundle.worldSnapshots).toBe(true);
+      expect(projectFormalSandboxResult(changedAmount) === null).toBe(true);
+      const changedBranch = { ...bundle, events: bundle.events.map(event => ({ ...event })) };
+      changedBranch.events[0].branchId = bundle.trajectoryAnalysis.trajectories[1].trajectoryId;
+      expect(projectFormalSandboxResult(changedBranch) === null).toBe(true);
+    } finally { vi.useRealTimers(); }
+  }, 30_000);
+
   it("executes a separately authorized resource through the actual formal Core pipeline", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-06T00:00:01.000Z"));
