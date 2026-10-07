@@ -52,4 +52,14 @@ describe("personal outcome capture", () => {
     expect(history).toContain(`条件发生时间：${new Date("2026-10-02T00:00:00Z").toLocaleString()}`);
     expect(history).toContain("已保存条件 2：未记录");
   });
+  it("keeps zero as an observation but does not offer an invalid zero-amount correction", () => {
+    const edited = outcomeDraftReducer({ ...initialOutcomeDraft, values: { "condition-1": 3 }, correctionRuleKey: "rule-1", correctionConfirmed: true }, { type: "edit", field: "values", value: { "condition-1": 0 } });
+    expect(edited.correctionRuleKey).toBe("");
+    expect(edited.correctionConfirmed).toBe(false);
+    const mixed = { ...projection, targets: [{ ...target, status: "not_observable" as const }] };
+    const html = renderToStaticMarkup(createElement(OutcomeObservationsView, { projection: mixed, draft: { ...initialOutcomeDraft, evidenceSummary: "本人未投入资源", confirmed: true, values: { "condition-1": 0 }, conditionTimes: { "condition-1": "2026-10-02T08:00" } }, targetKey: "target-1", phase: "ready", ...handlers }));
+    expect(html).not.toContain("供下一次运行参考的条件修正");
+    expect(html).toContain("零投入仍可记录");
+    expect(html).not.toMatch(/<button[^>]+disabled=""[^>]*>保存本人观察/);
+  });
 });
