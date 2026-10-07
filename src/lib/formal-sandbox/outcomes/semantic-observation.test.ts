@@ -27,6 +27,8 @@ it("compares independently frozen resource criteria without scoring an unobserva
  const actor=target.conditions.find(c=>(c as {measurement?:string}).measurement==="actor_scope")!;
  const changed=await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:observations.map(o=>o.key===actor.key?{...o,value:false}:o)},"2026-11-10T04:00:00.000Z");
  expect((changed as unknown as {criteriaComparison:{status:string}}).criteriaComparison.status).toBe("different");
+ const earlyDifference=await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:observations.map(o=>o.key===actor.key?{...o,value:false}:o)},"2026-10-25T04:00:00.000Z");
+ expect(earlyDifference.criteriaComparison.status).toBe("unknown");expect(earlyDifference.criteriaComparison.differences).toContain(actor.key);
  const orderChanged=observations.map(o=>{const c=target.conditions.find(c=>c.key===o.key)!;return c.requiresTime?{...o,occurred_at:c.sequence===1?"2026-10-22T04:00:00.000Z":"2026-10-20T04:00:00.000Z"}:o;});
  expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:orderChanged},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("different");
  expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",input,"2026-10-25T04:00:00.000Z")).criteriaComparison.status).toBe("unknown");
