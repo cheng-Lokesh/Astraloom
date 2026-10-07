@@ -80,7 +80,14 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
 
   useEffect(() => {
     // A lost response must recover the accepted request, never refresh its sources.
-    if (unknownStartRef.current && replay.current) return;
+    if (replay.current && (unknownStartRef.current || inFlight.current)) {
+      if (inFlight.current) {
+        unknownStartRef.current = true;
+        setUnknownStart(true);
+        setError("request_outcome_unknown");
+      }
+      return;
+    }
     const currentGeneration = ++generation.current;
     let active = true;
     const abort = new AbortController();
