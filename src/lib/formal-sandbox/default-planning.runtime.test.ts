@@ -4,6 +4,7 @@ import { planningRequest, planningSource } from "@/lib/formal-planning/test-fixt
 import { buildFormalSandboxRunV2 } from "./runtime";
 import { projectFormalSandboxResult } from "./result-projection.server";
 import { formalSandboxResultProjectionSchema } from "./client";
+import { digitalLifeRulesSchema } from "@/lib/digital-life/model";
 
 describe("formal default-planning runtime consumer", () => {
   it("executes a separately authorized resource through the actual formal Core pipeline", async () => {
@@ -37,8 +38,8 @@ describe("formal default-planning runtime consumer", () => {
       const swapped = structuredClone(run.bundle);
       [swapped.defaultPlanningTraces![0], swapped.defaultPlanningTraces![1]] = [swapped.defaultPlanningTraces![1], swapped.defaultPlanningTraces![0]];
       expect(projectFormalSandboxResult(swapped)).toBeNull();
-      const rules = digitalLifeRules();
-      rules.actions = [rules.actions[0], rules.actions[2]].map(item => ({ ...item, when: { kind: "at_tick", tickIndex: 2 } }));
+      const rules = digitalLifeRulesSchema.parse(digitalLifeRules());
+      rules.actions = [rules.actions[0], rules.actions[2]].map(item => ({ ...item, when: { kind: "at_tick" as const, tickIndex: 2 } }));
       const variantRuns = [];
       for (const enabled of [false, true]) {
         const result = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: rules, defaultPlanning: planningRequest(enabled) });
