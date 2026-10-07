@@ -38,13 +38,19 @@ it("does not label an absent frame attached", () => {
   const html = renderToStaticMarkup(createElement(FrozenSymbolicResult, { lens: { ...attached, frame: null } }));
   expect(html).not.toContain("已附加五维框架");
 });
+it("distinguishes the separately authorized initial planning hypothesis from the read-only frame", () => {
+  const html = renderToStaticMarkup(createElement(FrozenSymbolicResult, { lens: attached, planningHypothesisActive: true }));
+  expect(html.includes("单独授权的初始倾向产品假设，仅影响首轮默认规划候选量")).toBe(true);
+  expect(html.includes("尚未融合初始倾向")).toBe(false);
+  expect(html.includes("不是整个框架与人物关系的融合")).toBe(true);
+});
 
 const runtime = process.env.CODEX_BROWSER_MODULES ?? "C:/Users/clf04/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules";
 const executablePath = process.env.CODEX_BROWSER_EXECUTABLE ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 type Page = { setContent(value: string): Promise<void>; addScriptTag(value: { content: string }): Promise<void>; waitForFunction(fn: () => boolean): Promise<void>; evaluate<T>(fn: () => T): Promise<T> };
 it.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(executablePath))("real result page reads the async Run projection only, keeping an older frozen period", async () => {
   const projection = { participants: [], relationships: [], facts: [], assumptions: [], steps: [], claims: [], realityProfile: { status: "not_recorded", revision: null, facts: [], assumptions: [], unknowns: [], structuredResources: [], structuredConstraints: [], worldVariables: [] }, resourceChanges: [], symbolicLens: attached };
-  const fixture = `import React from 'react';import {createRoot} from 'react-dom/client';import ResultPage from '@/app/app/simulation/result/page';globalThis.React=React;window.resultReadPaths=[];window.fetch=async(url,init)=>{window.resultReadPaths.push(String(url));await new Promise(resolve=>setTimeout(resolve,20));return new Response(JSON.stringify({ok:true,completed_at:null,projection:${JSON.stringify(projection)}}))};createRoot(document.getElementById('root')).render(React.createElement(ResultPage));`;
+  const fixture = `import React from 'react';import {createRoot} from 'react-dom/client';import ResultPage from '@/app/app/simulation/result/page';globalThis.React=React;window.resultReadPaths=[];window.fetch=async(url,init)=>{window.resultReadPaths.push(String(url));await new Promise(resolve=>setTimeout(resolve,20));return new Response(JSON.stringify(String(url).endsWith('/outcomes')?{ok:true,outcomes:{lockStatus:'historical_lock_not_recorded',assessedAt:'2026-10-07T00:00:00Z',targets:[],history:[],calibration:{status:'insufficient_data',sampleCount:0,minimumSampleSize:5}}}:{ok:true,completed_at:null,projection:${JSON.stringify(projection)}}))};createRoot(document.getElementById('root')).render(React.createElement(ResultPage));`;
   const output = await build({ configFile: false, logLevel: "silent", resolve: { alias: { "@/components/app-shell": "virtual:shell", "@": path.join(process.cwd(), "src"), "next/link": "virtual:link", "next/navigation": "virtual:navigation" } }, plugins: [{ name: "fixture", resolveId(id) { if(id.startsWith("virtual:"))return `\0${id}`; }, load(id) { if(id === "\0virtual:fixture")return fixture; if(id === "\0virtual:link")return "import React from 'react';export default function Link(props){return React.createElement('a',props)}"; if(id === "\0virtual:shell")return "export function AppShell({children}){return children}"; if(id === "\0virtual:navigation")return "export function useSearchParams(){return {get:()=> '00000000-0000-4000-8000-000000000001'}}"; } }], build: { write:false, minify:false, rollupOptions:{input:"virtual:fixture",output:{format:"iife",name:"Fixture"}} } });
   const bundle=(Array.isArray(output)?output[0]:output) as { output:Array<{type:string;code?:string}> };
   const {chromium}=createRequire(import.meta.url)(path.join(runtime,"playwright")) as {chromium:{launch(input:unknown):Promise<{newPage():Promise<Page>;close():Promise<void>}>}};
@@ -54,7 +60,7 @@ it.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(executabl
     await page.waitForFunction(()=>Boolean(document.getElementById('frozen-symbolic-title')));
     const result=await page.evaluate(()=>({text:document.body.textContent??"",regions:document.querySelectorAll('[data-frozen-symbolic]').length,paths:(window as unknown as {resultReadPaths:string[]}).resultReadPaths}));
     expect(result.regions).toBe(1);expect(result.text).toContain("2026-09");expect(result.text).not.toContain("2026-10");
-    expect(result.paths).toHaveLength(1);expect(result.paths[0]).toMatch(/^\/api\/sandbox\/runs\/[^/]+\/result$/);expect(result.paths).not.toContain('/api/symbolic-lens');
+    expect(result.paths).toHaveLength(2);expect(result.paths[0]).toMatch(/^\/api\/sandbox\/runs\/[^/]+\/result$/);expect(result.paths[1]).toMatch(/^\/api\/sandbox\/runs\/[^/]+\/outcomes$/);expect(result.paths).not.toContain('/api/symbolic-lens');
     expect(result.text).not.toMatch(/1991-06-15|natal_stem_counts|00000000-0000/);
   } finally {await browser.close();}
 },30_000);

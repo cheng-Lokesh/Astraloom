@@ -16,12 +16,12 @@ const absence = {
 } as const;
 
 /** Display the Run's immutable projection only; never load current preferences here. */
-export function FrozenSymbolicResult({ lens }: { lens?: FrozenLens }) {
+export function FrozenSymbolicResult({ lens, planningHypothesisActive = false }: { lens?: FrozenLens; planningHypothesisActive?: boolean }) {
   const frame = lens?.status === "attached" && lens.causalUse === false ? lens.frame : null;
   const message = !lens ? absence.not_recorded : lens.status === "attached" ? "本次象征对照资料不可用。" : absence[lens.status];
   return <section data-frozen-symbolic aria-labelledby="frozen-symbolic-title" className="mt-8 min-w-0 border-y border-white/15 py-6">
     <h2 id="frozen-symbolic-title" className="text-xl font-semibold text-[var(--text-primary)]">本次冻结的象征对照</h2>
-    <p className="mt-3 max-w-prose text-sm leading-7 text-[var(--text-secondary)]">独立的非因果象征对照，与现实资料分别阅读。不参与人物行动、世界状态、事件证据、结论或模拟频率；尚未融合初始倾向，不提供预测或现实概率。</p>
+    <p className="mt-3 max-w-prose text-sm leading-7 text-[var(--text-secondary)]">{planningHypothesisActive ? "此处是独立只读的象征框架，不是现实证据或预测概率。下方另列本次单独授权的初始倾向产品假设，仅影响首轮默认规划候选量；不是整个框架与人物关系的融合。" : "独立的非因果象征对照，与现实资料分别阅读。不参与人物行动、世界状态、事件证据、结论或模拟频率；尚未融合初始倾向，不提供预测或现实概率。"}</p>
     {frame ? <>
       <p className="mt-4 text-sm font-semibold text-[var(--text-primary)]">已附加五维框架 · 只读冻结记录</p>
       <p className="mt-2 text-sm leading-7 text-[var(--text-secondary)]">参考时期：{frame.referencePeriod.key}（北京时间） · 参考日期：{frame.referencePeriod.referenceDate}。此处保留本次运行开始时的框架，不会随当前月份或配置更新。</p>

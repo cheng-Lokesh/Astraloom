@@ -7,6 +7,7 @@ import { createFormalSandboxClient, type FormalSandboxResultProjection } from "@
 import type { ResultRequestState } from "@/lib/formal-sandbox/result-request-gate";
 import { actionLabel } from "@/components/formal-sandbox/digital-life-rules-editor";
 import { FrozenSymbolicResult } from "./frozen-symbolic-result";
+import { FrozenDefaultPlanningResult } from "./frozen-default-planning";
 import { OutcomeObservations } from "@/components/formal-sandbox/outcome-observations";
 
 type Rating = "useful" | "mixed" | "off";
@@ -181,6 +182,7 @@ export function StrategyPathsCard({ paths = [] }: { paths?: FormalSandboxResultP
       </div>
       <section className="mt-5"><h4 className="font-semibold">本策略独立资源变化</h4>{path.projection.resourceChanges.length ? path.projection.resourceChanges.map(change => <p key={change.key} className="mt-3 text-sm leading-6">{change.label} · {change.before} → {change.after} {change.unit}<br /><span className="text-[var(--text-secondary)]">模拟变化 · 最低保留 {change.minimum} · 上限 {change.maximum}</span></p>) : <p className="mt-3 text-sm">没有已保存的结构化资源变化。</p>}</section>
       <RelationshipChangeLedger projection={path.projection} />
+      <FrozenDefaultPlanningResult planning={path.projection.defaultPlanning} />
       <p className="mt-5 text-sm text-[var(--text-secondary)]">此策略的独立结论暂不支持条目反馈，主路径反馈不会用于替代它。</p>
     </SurfaceCard>) : <p className="mt-4 text-sm text-[var(--text-secondary)]">本次运行未设置独立策略。不会从人物名称自动生成策略。</p>}
   </section>;
@@ -217,7 +219,8 @@ export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseCl
     </header>
     <FrozenRealityProfileCard profile={projection.realityProfile} />
     <DigitalLifeModelCard model={projection.digitalLifeModel} />
-    <FrozenSymbolicResult lens={projection.symbolicLens} />
+    <FrozenSymbolicResult lens={projection.symbolicLens} planningHypothesisActive={projection.defaultPlanning?.frozenHypothesis?.status === "active"} />
+    <FrozenDefaultPlanningResult planning={projection.defaultPlanning} />
     <ResourceChangeCard changes={projection.resourceChanges} />
     <RelationshipChangeLedger projection={projection} />
     <StrategyPathsCard paths={projection.strategyPaths} />

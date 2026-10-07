@@ -11,18 +11,27 @@ import { digitalLifeRulesSchema, type DigitalLifeRules } from "@/lib/digital-lif
 import { DigitalLifeRulesEditor } from "./digital-life-rules-editor";
 import { CalibrationSelection } from "./calibration-selection";
 import type { FormalCalibrationContext } from "@/lib/formal-sandbox/outcomes/contracts";
+import type { DefaultPlanningContext } from "@/lib/formal-planning/contracts";
+import { buildPlanningRequest, DefaultPlanningEditor, emptyPlanningDraft } from "./default-planning-editor";
+
+type StartInput = Parameters<ReturnType<typeof createFormalSandboxClient>["start"]>[0];
 
 export function isCurrentCalibrationContext(context: FormalCalibrationContext, profileRevision: number, requestGeneration: number, currentGeneration: number) {
   return requestGeneration === currentGeneration && context.status === "available" && context.profileRevision === profileRevision;
 }
+export function isCurrentPlanningContext(context: DefaultPlanningContext, profileRevision: number, requestGeneration: number, currentGeneration: number) {
+  return requestGeneration === currentGeneration && context.profileRevision === profileRevision;
+}
 
 export function FormalRunStartError({ errorCode }: { errorCode: string }) {
   if (errorCode === "request_outcome_unknown") return null;
+  if (errorCode === "planning_context_stale") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">资源或象征来源已变化，旧规划授权已清空。请重新读取模型，再逐项确认预算与初始假设。</p>;
+  if (errorCode === "invalid_planning_request") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">默认规划未通过检查。请检查整次预算与独立确认，或关闭默认规划后使用明确行动规则。</p>;
   if (errorCode === "invalid_correction") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">所选观察修正与当前行动条件不相符。请取消修正或恢复对应原行动条件，再重新确认后开始运行。</p>;
   if (errorCode === "world_model_required") {
     return (
       <p role="alert" className="mt-2 max-w-xs text-sm text-[var(--risk-red)]">
-        请在上方添加明确行动规则，或补充资源及每周期投入规则，再开始运行。 {" "}
+        请在上方明确授权资源预算、添加行动规则，或补充资源及每周期投入规则，再开始运行。 {" "}
         <Link href="/app/reality-profile" className="underline underline-offset-4">
           修改背景资料
         </Link>
@@ -61,17 +70,24 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
   const [correctionKeys, setCorrectionKeys] = useState<string[]>([]);
   const [calibrationConfirmed, setCalibrationConfirmed] = useState(false);
   const [unknownStart, setUnknownStart] = useState(false);
+  const [planning, setPlanning] = useState<DefaultPlanningContext | null>(null);
+  const [planningError, setPlanningError] = useState(false);
+  const [planningDraft, setPlanningDraft] = useState(emptyPlanningDraft);
   const generation = useRef(0);
   const inFlight = useRef(false);
-  const replay = useRef<{ signature: string; key: string } | null>(null);
+  const replay = useRef<{ signature: string; input: StartInput } | null>(null);
+  const unknownStartRef = useRef(false);
 
   useEffect(() => {
+    // A lost response must recover the accepted request, never refresh its sources.
+    if (unknownStartRef.current && replay.current) return;
     const currentGeneration = ++generation.current;
     let active = true;
     const abort = new AbortController();
     async function recover() {
       setLoading(true); setContext(null); setError(null); setRules({ actions: [], strategies: [] });
       setCalibration(null); setCalibrationError(false); setCorrectionKeys([]); setCalibrationConfirmed(false);
+      setPlanning(null); setPlanningError(false); setPlanningDraft(emptyPlanningDraft()); replay.current = null;
       try {
         const response = await fetch(`/api/sandbox/model-context${graphId ? `?graph_id=${encodeURIComponent(graphId)}` : ""}`, { cache: "no-store", signal: abort.signal });
         const body = await response.json().catch(() => null);
@@ -79,6 +95,12 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
         const parsed = safeDigitalLifeContextSchema.safeParse(body?.context);
         if (!response.ok || body?.ok !== true || !parsed.success || (graphId && parsed.data.graphSnapshotId !== graphId)) { setError(typeof body?.error_code === "string" ? body.error_code : "context_unavailable"); return; }
         setContext(parsed.data);
+        try {
+          const result = await createFormalSandboxClient().planningContext(parsed.data.graphSnapshotId);
+          if (!active || currentGeneration !== generation.current) return;
+          if (!result.ok || !isCurrentPlanningContext(result.data.context, parsed.data.profileRevision, currentGeneration, generation.current)) setPlanningError(true);
+          else setPlanning(result.data.context);
+        } catch { if (active && currentGeneration === generation.current) setPlanningError(true); }
         try {
           const result = await createFormalSandboxClient().calibrationContext(parsed.data.graphSnapshotId);
           if (!active || currentGeneration !== generation.current) return;
@@ -93,33 +115,54 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
   }, [graphId, reload]);
 
   async function start() {
-    if (!context || inFlight.current) return;
-    if (correctionKeys.length && !calibrationConfirmed) { setNotice("请先明确确认所选观察修正的条件假设，再开始运行。"); return; }
-    const parsed = digitalLifeRulesSchema.safeParse({ version: "digital-life-rules-v1", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules });
-    if (!parsed.success) { setError("invalid_digital_life_rules"); return; }
+    if (inFlight.current) return;
+    let input: StartInput;
+    if (unknownStartRef.current) {
+      if (!replay.current) return;
+      input = replay.current.input;
+    } else {
+      if (!context) return;
+      if (correctionKeys.length && !calibrationConfirmed) { setNotice("请先明确确认所选观察修正的条件假设，再开始运行。"); return; }
+      const parsed = digitalLifeRulesSchema.safeParse({ version: "digital-life-rules-v1", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules });
+      if (!parsed.success) { setError("invalid_digital_life_rules"); return; }
+      const defaultPlanning = planning ? buildPlanningRequest(planning, planningDraft) : undefined;
+      if (defaultPlanning === null) { setNotice("请逐项确认所选整次预算，并单独确认初始假设；也可以关闭所有默认授权。"); return; }
+      const outcomeCalibration = correctionKeys.length ? { version: 1 as const, correction_keys: correctionKeys, confirmed: true as const } : undefined;
+      const body = { graphSnapshotId: context.graphSnapshotId, horizonDays: horizon, digitalLifeRules: parsed.data, ...(outcomeCalibration ? { outcomeCalibration } : {}), ...(defaultPlanning && (defaultPlanning.resources.length || defaultPlanning.fusion.enabled) ? { defaultPlanning } : {}) };
+      const signature = JSON.stringify(body);
+      if (replay.current?.signature !== signature) replay.current = { signature, input: { ...body, idempotencyKey: crypto.randomUUID() } };
+      input = replay.current.input;
+    }
     inFlight.current = true;
     setPending(true);
     setError(null);
-    const outcomeCalibration = correctionKeys.length ? { version: 1 as const, correction_keys: correctionKeys, confirmed: true as const } : undefined;
-    const signature = JSON.stringify({ horizon, rules: parsed.data, outcomeCalibration });
-    if (unknownStart && replay.current?.signature !== signature) return;
-    if (replay.current?.signature !== signature) replay.current = { signature, key: crypto.randomUUID() };
     const currentGeneration = generation.current;
     try {
-      const response = await createFormalSandboxClient().start({ graphSnapshotId: context.graphSnapshotId, idempotencyKey: replay.current.key, horizonDays: horizon, digitalLifeRules: parsed.data, ...(outcomeCalibration ? { outcomeCalibration } : {}) });
+      const response = await createFormalSandboxClient().start(input);
       if (currentGeneration !== generation.current) return;
-      if (!response.ok) { if (response.status >= 500 || response.errorCode === "request_failed" || response.errorCode === "invalid_response") { setUnknownStart(true); setError("request_outcome_unknown"); } else { setUnknownStart(false); setError(response.errorCode); } return; }
+      if (!response.ok) {
+        if (response.status >= 500 || response.errorCode === "request_failed" || response.errorCode === "invalid_response") { unknownStartRef.current = true; setUnknownStart(true); setError("request_outcome_unknown"); }
+        else {
+          unknownStartRef.current = false; setUnknownStart(false); setError(response.errorCode);
+          if (response.errorCode === "planning_context_stale" || response.errorCode === "profile_revision_conflict") { setPlanningDraft(emptyPlanningDraft()); setPlanning(null); setPlanningError(true); replay.current = null; }
+        }
+        return;
+      }
+      unknownStartRef.current = false;
+      setUnknownStart(false);
       router.push(`/app/simulation/running?run_id=${response.data.run.id}`);
-    } catch { if (currentGeneration === generation.current) { setUnknownStart(true); setError("request_outcome_unknown"); } }
+    } catch { if (currentGeneration === generation.current) { unknownStartRef.current = true; setUnknownStart(true); setError("request_outcome_unknown"); } }
     finally { inFlight.current = false; setPending(false); }
   }
 
   function changeHorizon(value: 30 | 90) {
     if (value === horizon) return;
     setHorizon(value);
+    setPlanningDraft(emptyPlanningDraft()); setCalibrationConfirmed(false);
+    setNotice("时间窗口已更改，请重新确认整次预算与所有条件假设。");
     if (rules.actions.length) {
       setRules({ actions: [], strategies: [] });
-      setNotice("时间窗口已更改，原规则已清空，请按新周期重新配置。" );
+      setNotice("时间窗口已更改，原规则与规划授权已清空，请按新周期重新配置。" );
     }
   }
 
@@ -135,11 +178,20 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       <p className="max-w-prose text-sm leading-6 text-[var(--text-secondary)]">30 天包含 3 个模拟周期，90 天包含 6 个周期。周期表达条件变化，不是现实中的精确发生日期。</p>
       {loading ? <p role="status" className="animate-pulse motion-reduce:animate-none">正在读取已锁定模型与可选人物…</p> : null}
       {!loading && !context ? <div><p className="text-sm leading-6">当前模型暂不可读取。请完成当前情境的人物与关系图，再重新读取。</p><Button variant="ghostOnDark" onClick={() => setReload(value => value + 1)} className="!w-auto px-4 py-3">重新读取模型</Button><Link href="/app/new/intake" className="ml-3 inline-flex min-h-11 items-center underline">返回情境准备</Link></div> : null}
-      {context ? <><label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={pending || unknownStart} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label><p role="status" className="text-sm">{notice}</p><DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={setRules} disabled={pending || unknownStart} />{calibration ? <CalibrationSelection context={calibration} selectedKeys={correctionKeys} confirmed={calibrationConfirmed} onChange={setCorrectionKeys} onConfirm={setCalibrationConfirmed} disabled={pending || unknownStart} /> : null}{calibrationError ? <p role="status" className="text-sm">观察修正暂不可读取，本次不应用修正。重新读取模型可再次检查可用条件。</p> : null}</> : null}
+      {context ? <>
+        <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={pending || unknownStart} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
+        <p role="status" className="text-sm">{notice}</p>
+        <DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={setRules} disabled={pending || unknownStart} />
+        {planning ? <DefaultPlanningEditor context={planning} draft={planningDraft} onChange={setPlanningDraft} disabled={pending || unknownStart} explicitRuleResourceKeys={rules.actions.flatMap(action => action.operation.actionType === "allocate_resource" ? [action.operation.resourceKey] : [])} /> : null}
+        {planningError ? <p role="status" className="text-sm leading-6">默认规划来源暂不可读取，旧授权已清空。本次不会应用默认规划；仍可使用明确行动规则。</p> : null}
+        {calibration ? <CalibrationSelection context={calibration} selectedKeys={correctionKeys} confirmed={calibrationConfirmed} onChange={setCorrectionKeys} onConfirm={setCalibrationConfirmed} disabled={pending || unknownStart} /> : null}
+        {calibrationError ? <p role="status" className="text-sm">观察修正暂不可读取，本次不应用修正。重新读取模型可再次检查可用条件。</p> : null}
+        <Button variant="ghostOnDark" disabled={pending || unknownStart || loading} onClick={() => { setNotice("重新读取将清空旧规则与所有规划授权，请重新确认。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型与规划来源</Button>
+      </> : null}
       <Button
         variant="onDark"
         loading={pending}
-        disabled={pending || loading || !context || unknownStart || (correctionKeys.length > 0 && !calibrationConfirmed)}
+        disabled={pending || loading || !context || unknownStart || (correctionKeys.length > 0 && !calibrationConfirmed) || Boolean(planning && !buildPlanningRequest(planning, planningDraft))}
         onClick={() => void start()}
         className="!w-auto px-4 py-3"
         loadingLabel="正在提交本次运行"
@@ -149,7 +201,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       {error ? <FormalRunStartError errorCode={error} /> : null}
       {unknownStart ? <div><p role="alert" className="text-sm leading-6">运行提交结果暂时未知。原请求与选择已保留；请恢复原运行请求，期间不能修改配置或自动发起新运行。</p><Button variant="ghostOnDark" disabled={pending} onClick={() => void start()} className="!w-auto px-4 py-3">恢复原运行请求</Button></div> : null}
       {context && error === "reservation_expired" ? <Button variant="ghostOnDark" onClick={prepareExpiredReservationRetry} className="!w-auto px-4 py-3">保留规则，重新发起</Button> : null}
-      {context && error === "profile_revision_conflict" ? <Button variant="ghostOnDark" onClick={() => { setNotice("重新读取将更新模型并清空旧规则。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型并检查规则</Button> : null}
+      {context && (error === "profile_revision_conflict" || error === "planning_context_stale") && !unknownStart ? <Button variant="ghostOnDark" disabled={pending} onClick={() => { setNotice("重新读取将更新模型并清空旧规则与规划授权。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型并检查规则</Button> : null}
       {context && calibrationError && !unknownStart ? <Button variant="ghostOnDark" disabled={pending} onClick={() => { setNotice("重新读取将清空旧规则，请重新确认条件。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型与观察修正</Button> : null}
     </div>
   );
