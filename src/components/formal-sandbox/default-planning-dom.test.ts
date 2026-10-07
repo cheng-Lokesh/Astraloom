@@ -11,7 +11,7 @@ const executablePath = process.env.CODEX_BROWSER_EXECUTABLE ?? "C:/Program Files
 type Locator = { waitFor(): Promise<void>; click(): Promise<void>; check(): Promise<void>; uncheck(): Promise<void>; fill(value: string): Promise<void>; selectOption(value: string): Promise<void>; isDisabled(): Promise<boolean>; isChecked(): Promise<boolean>; count(): Promise<number> };
 type Page = { setDefaultTimeout(value: number): void; on(event: string, handler: (error: Error) => void): void; setContent(html: string): Promise<void>; addScriptTag(input: { content: string }): Promise<void>; getByLabel(name: string | RegExp): Locator; getByRole(role: string, input?: { name: string | RegExp; exact?: boolean }): Locator; evaluate<T>(fn: () => T): Promise<T>; waitForFunction(fn: () => boolean): Promise<void>; close(): Promise<void> };
 type Browser = { newPage(options?: unknown): Promise<Page>; close(): Promise<void> };
-type Fixture = { context: Record<string, unknown>; revision: number; failWrite: boolean; staleWrite: boolean; requests: Array<Record<string, unknown>>; planningReads: number; navigation: string; holdRead: boolean; releaseRead?: () => void; mount: () => void };
+type Fixture = { context: Record<string, unknown>; revision: number; failWrite: boolean; staleWrite: boolean; requests: Array<Record<string, unknown>>; planningReads: number; modelReads: number; navigation: string; holdRead: boolean; releaseRead?: () => void; holdWrite: boolean; releaseWrite?: () => void; mount: () => void; rerender: (graphId: string) => void };
 declare global { interface Window { planningFixture: Fixture; } }
 
 const model = safeDigitalLifeContextSchema.parse({ graphSnapshotId: "00000000-0000-4000-8000-000000000001", agentSnapshotId: "00000000-0000-4000-8000-000000000002", profileRevision: 3,
@@ -22,8 +22,8 @@ const context = defaultPlanningContextSchema.parse({ version: "formal-default-pl
 
 async function bundleFixture() {
   const fixture = `import React from 'react';import {createRoot} from 'react-dom/client';import {FormalRunStarter} from '@/components/formal-sandbox/run-starter';import '@/app/globals.css';globalThis.React=React;
-  const model=${JSON.stringify(model)},context=${JSON.stringify(context)};let uuid=9,mount=0;Object.defineProperty(crypto,'randomUUID',{value:()=> '00000000-0000-4000-8000-'+String(uuid++).padStart(12,'0')});const f=window.planningFixture={context,revision:3,failWrite:true,staleWrite:false,requests:[],planningReads:0,navigation:'',holdRead:false,mount:()=>{}};const root=createRoot(document.getElementById('root'));
-  window.fetch=async(url,init)=>{url=String(url);if(url.includes('model-context'))return new Response(JSON.stringify({ok:true,context:{...model,profileRevision:f.revision}}));if(url.includes('planning-context')){f.planningReads++;const snapshot=structuredClone(f.context);if(f.holdRead)await new Promise(resolve=>f.releaseRead=resolve);return new Response(JSON.stringify({ok:true,context:snapshot}))}if(url.includes('calibration-context'))return new Response(JSON.stringify({ok:true,context:{status:'available',profileRevision:f.revision,corrections:[]}}));if(init?.method==='POST'){const body=JSON.parse(init.body);f.requests.push(body);if(f.failWrite)throw new Error('synthetic response lost');if(f.staleWrite)return new Response(JSON.stringify({ok:false,error_code:'planning_context_stale',trace_id:'safe'}),{status:409});return new Response(JSON.stringify({ok:true,idempotent:false,run:{id:'00000000-0000-4000-8000-000000000003',status:'completed'}}))}throw new Error('unexpected fixture request')};f.mount=()=>root.render(React.createElement(FormalRunStarter,{key:++mount}));f.mount();`;
+  const model=${JSON.stringify(model)},context=${JSON.stringify(context)};let uuid=9,mount=0;Object.defineProperty(crypto,'randomUUID',{value:()=> '00000000-0000-4000-8000-'+String(uuid++).padStart(12,'0')});const f=window.planningFixture={context,revision:3,failWrite:true,staleWrite:false,requests:[],planningReads:0,modelReads:0,navigation:'',holdRead:false,holdWrite:false,mount:()=>{},rerender:()=>{}};const root=createRoot(document.getElementById('root'));
+  window.fetch=async(url,init)=>{url=String(url);if(url.includes('model-context')){f.modelReads++;return new Response(JSON.stringify({ok:true,context:{...model,profileRevision:f.revision}}))}if(url.includes('planning-context')){f.planningReads++;const snapshot=structuredClone(f.context);if(f.holdRead)await new Promise(resolve=>f.releaseRead=resolve);return new Response(JSON.stringify({ok:true,context:snapshot}))}if(url.includes('calibration-context'))return new Response(JSON.stringify({ok:true,context:{status:'available',profileRevision:f.revision,corrections:[]}}));if(init?.method==='POST'){const body=JSON.parse(init.body);f.requests.push(body);if(f.holdWrite)await new Promise(resolve=>f.releaseWrite=resolve);if(f.failWrite)throw new Error('synthetic response lost');if(f.staleWrite)return new Response(JSON.stringify({ok:false,error_code:'planning_context_stale',trace_id:'safe'}),{status:409});return new Response(JSON.stringify({ok:true,idempotent:false,run:{id:'00000000-0000-4000-8000-000000000003',status:'completed'}}))}throw new Error('unexpected fixture request')};f.mount=()=>root.render(React.createElement(FormalRunStarter,{key:++mount}));f.rerender=graphId=>root.render(React.createElement(FormalRunStarter,{key:mount,graphId}));f.mount();`;
   const result = await build({ configFile: false, logLevel: "silent", resolve: { alias: { "@": path.join(process.cwd(), "src"), "next/link": "virtual:link", "next/navigation": "virtual:navigation" } }, plugins: [{ name: "planning-fixture", resolveId(id) { if (id.startsWith("virtual:")) return `\0${id}`; }, load(id) { if (id === "\0virtual:fixture") return fixture; if (id === "\0virtual:link") return "import React from 'react';export default function Link(props){return React.createElement('a',props)}"; if (id === "\0virtual:navigation") return "export function useRouter(){return {push:url=>{window.planningFixture.navigation=url}}}"; } }], build: { write: false, minify: false, rollupOptions: { input: "virtual:fixture", output: { format: "iife", name: "Fixture" } } } });
   const output = ((Array.isArray(result) ? result[0] : result) as { output: Array<{ type: string; code?: string; source?: string; fileName: string }> }).output;
   return { script: output.find(item => item.type === "chunk")!.code!, css: output.filter(item => item.fileName.endsWith(".css")).map(item => item.source).join("\n") };
@@ -46,6 +46,28 @@ async function authorize(page: Page) {
 }
 
 describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(executablePath))("source-bound planner actual Chrome at 375px", () => {
+  it("preserves the accepted request when the Graph prop changes during a pending POST", async () => {
+    const { browser, page, errors } = await openFixture();
+    try {
+      await authorize(page);
+      await page.evaluate(() => { window.planningFixture.holdWrite = true; window.planningFixture.failWrite = false; });
+      const reads = await page.evaluate(() => ({ model: window.planningFixture.modelReads, planning: window.planningFixture.planningReads }));
+      await page.getByRole("button", { name: "开始 30 天运行", exact: true }).click();
+      await page.waitForFunction(() => Boolean(window.planningFixture.releaseWrite));
+      await page.evaluate(() => { window.planningFixture.rerender("00000000-0000-4000-8000-000000000005"); });
+      await page.getByRole("button", { name: "恢复原运行请求", exact: true }).waitFor();
+      expect(await page.getByLabel("授权默认规划 · 时间").isDisabled()).toBe(true);
+      expect(await page.getByRole("button", { name: "重新读取模型与规划来源", exact: true }).isDisabled()).toBe(true);
+      expect(await page.evaluate(() => ({ model: window.planningFixture.modelReads, planning: window.planningFixture.planningReads }))).toEqual(reads);
+      await page.evaluate(() => { window.planningFixture.holdWrite = false; window.planningFixture.releaseWrite?.(); });
+      await page.waitForFunction(() => !Array.from(document.querySelectorAll("button")).find(button => button.textContent === "恢复原运行请求")?.disabled);
+      await page.getByRole("button", { name: "恢复原运行请求", exact: true }).click();
+      await page.waitForFunction(() => Boolean(window.planningFixture.navigation));
+      expect(await page.evaluate(() => JSON.stringify(window.planningFixture.requests[0]) === JSON.stringify(window.planningFixture.requests[1]))).toBe(true);
+      expect(await page.evaluate(() => window.planningFixture.requests.length)).toBe(2);
+      expect(errors.length).toBe(0);
+    } finally { await page.close(); await browser.close(); }
+  }, 45_000);
   it("keeps default-off requests legacy, requires separate consents and recovers the exact frozen body", async () => {
     const { browser, page, errors } = await openFixture();
     try {
