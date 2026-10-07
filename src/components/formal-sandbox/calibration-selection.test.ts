@@ -20,4 +20,9 @@ describe("explicit next-run calibration selection", () => {
     expect(html).toContain("暂无适用于当前模型的观察修正");
     expect(html).not.toMatch(/提高准确率|科学概率/);
   });
+  it("shows an incompatible stale selection as off and hides its confirmation", () => {
+    const html = renderToStaticMarkup(createElement(CalibrationSelection, { context, selectedKeys: [context.corrections[1].key], confirmed: true, onChange: () => {}, onConfirm: () => {}, disabled: false }));
+    expect(html).not.toContain("checked=");
+    expect(html).not.toContain("我确认将所选本人观察修正");
+  });
 });
