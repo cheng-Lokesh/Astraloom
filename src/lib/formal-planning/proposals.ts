@@ -3,7 +3,16 @@ import type { ActionProposalInputV2, AgentDefinitionIdV2, WorldEntityIdV2, World
 import type { AssumptionIdV2 } from "@/lib/v2/reality-boundary/types";
 import { createPlanningAssumptions, parseFrozenDefaultPlanning } from "./index";
 import type { FrozenDefaultPlanning } from "./contracts";
-import { planningWorldBindingMatches, type PlanningWorldBinding } from "./world-binding";
+import { planningWorldBindingMatches, planningWorldBindingSchema, type PlanningWorldBinding } from "./world-binding";
+import { z } from "zod";
+
+export const planningProposalTraceSchema = z.object({
+  version: z.literal("formal-default-planning-trace-v1"), pathKey: z.string().regex(/^(main|person-[1-9]\d*)$/), tickIndex: z.number().int().min(0).max(5), resourceKey: z.string().regex(/^resource-[1-8]$/),
+  resourceId: z.custom<WorldResourceIdV2>(value => typeof value === "string" && /^world_resource_v2_[a-z0-9_-]+$/i.test(value)),
+  proposalId: z.custom<ActionProposalInputV2["id"]>(value => typeof value === "string" && /^action_proposal_v2_[a-z0-9_-]+$/i.test(value)),
+  neutralAmount: z.number().finite().positive(), proposedAmount: z.number().finite().positive(), priorApplied: z.boolean(), reduction: z.number().finite().min(0).max(0.1), reductionCap: z.literal(0.1),
+  totalBudgetLimit: z.number().finite().positive(), spentBefore: z.number().finite().nonnegative(), causalAssumptionIds: z.array(z.custom<AssumptionIdV2>(value => typeof value === "string" && /^assumption_v2_[a-z0-9]+$/i.test(value))).min(1).max(2), worldBinding: planningWorldBindingSchema,
+}).strict();
 
 export type PlanningBindings = {
   actorAgentId: AgentDefinitionIdV2; actorEntityId: WorldEntityIdV2;
@@ -76,7 +85,7 @@ export function proposeDefaultPlanning(input: {
     const assumptionIds = [baseAssumption, ...(priorAssumption ? [priorAssumption] : [])];
     candidates.push({ id: proposalId, seedContextId: world.seedContextId, actorAgentId: actor.id,
       actionType: "allocate_resource", parameters, ...targets,
-      realEvidenceIds: [...resource.provenance.realEvidenceIds], assumptionIds,
+      realEvidenceIds: [...new Set([...resource.provenance.realEvidenceIds, ...actor.realEvidenceIds])], assumptionIds,
       priorWorldEventIds: [...world.worldEventIds],
       rationaleSummary: "Explicitly authorized default simulation planning; initial quantity is a bounded product hypothesis, not observed behavior.", createdAt: occurredAt,
     });

@@ -1,9 +1,15 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
+import { freezeDefaultPlanning } from "@/lib/formal-planning";
 import { digitalLifeModelSchema } from "@/lib/digital-life/model";
 import { projectDigitalLifeModel, safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
 import { parseFrozenSymbolicLens, projectFrozenSymbolicLens, runSymbolicLensSchema, safeRunSymbolicLensSchema } from "./symbolic-lens";
+import { frozenDefaultPlanningEnvelopeSchema } from "@/lib/formal-planning/contracts";
+import { planningProposalTraceSchema } from "@/lib/formal-planning/proposals";
+import { projectDefaultPlanning, safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
+import type { WorldStateV2 } from "@/lib/v2/agent-world/types";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 
@@ -50,6 +56,9 @@ const worldSnapshotSchema = z.object({
   externalVariables: z.array(worldVariableSnapshotSchema).max(16).optional(),
 }).passthrough();
 const pathBundleSchema = z.object({
+  policyFingerprint: z.string().regex(/^[a-f0-9]{24}$/).optional(),
+  defaultPlanningSnapshot: frozenDefaultPlanningEnvelopeSchema.optional(),
+  defaultPlanningTraces: z.array(z.object({ trajectoryId: reference, trace: z.array(planningProposalTraceSchema).max(48) }).strict()).max(3).optional(),
   symbolicLensSnapshot: runSymbolicLensSchema.optional(),
   forecastTiming: z.object({ acceptedAt: z.string().datetime({ offset: true }), boundaryAt: z.string().datetime({ offset: true }), lockedAt: z.string().datetime({ offset: true }), generatedPersistedAt: z.string().datetime({ offset: true }), simulationStartAt: z.string().datetime({ offset: true }) }).strict().optional(),
   inputSnapshot: z.object({ ownerId: z.string().uuid().optional(), seedContextId: z.string().uuid().optional(), realityProfileSnapshot: realityProfileSnapshotSchema.optional(), digitalLifeModel: digitalLifeModelSchema.optional(), activePathKey: z.string().optional(), agents: z.array(agentSchema).min(1).max(50), edges: z.array(relationSchema).max(200) }).passthrough(),
@@ -73,6 +82,7 @@ const bundleSchema = pathBundleSchema.extend({ strategyPaths: z.object({ version
 
 const baseSafeResultProjectionSchema = z.object({
   symbolicLens: safeRunSymbolicLensSchema,
+  defaultPlanning: safeDefaultPlanningSchema.optional(),
   participants: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: safeText, role: z.enum(["scenario decision maker", "frozen participant"]) }).strict()),
   relationships: z.array(z.object({ key: z.string().regex(/^relation-[1-9]\d*$/), fromPersonKey: z.string().regex(/^person-[1-9]\d*$/), toPersonKey: z.string().regex(/^person-[1-9]\d*$/), label: safeText }).strict()),
   facts: z.array(z.object({ key: z.string().regex(/^fact-[1-9]\d*$/), statement: safeText, boundary: z.literal("user_provided_fact") }).strict()),
@@ -136,6 +146,13 @@ const provenanceSignature = (value: Record<string, unknown> | undefined) => JSON
   realEvidenceIds: [...((value?.realEvidenceIds as string[] | undefined) ?? [])].sort(),
   assumptionIds: [...((value?.assumptionIds as string[] | undefined) ?? [])].sort(),
 }));
+// Match the formal runtime's code-point key order, not locale-dependent sorting.
+function runtimeCanonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(runtimeCanonical).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${runtimeCanonical(record[key])}`).join(",")}}`;
+}
 
 function projectWorldVariables(
   entries: ReturnType<typeof listRealityProfileEntries>,
@@ -205,6 +222,31 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   if (!digitalLifeModel) return null;
   const frozenModel = bundle.inputSnapshot.digitalLifeModel;
   if (frozenModel && (!(bundle.worldSnapshots?.length) || bundle.worldSnapshots.some(world => !validateWorldV2(world).ok))) return null;
+  let defaultPlanning: z.infer<typeof safeDefaultPlanningSchema> | undefined;
+  if (bundle.defaultPlanningSnapshot) {
+    try {
+      const planning = bundle.defaultPlanningSnapshot;
+      if (!frozenModel || !bundle.inputSnapshot.realityProfileSnapshot || !bundle.symbolicLensSnapshot || !bundle.policyFingerprint
+        || !bundle.defaultPlanningTraces || !bundle.worldSnapshots || bundle.defaultPlanningTraces.length !== bundle.worldSnapshots.length) return null;
+      const expected = freezeDefaultPlanning({ version: planning.version, consentContext: planning.sourceBinding.consentContext,
+        resources: planning.resources.map(item => ({ resourceKey: item.resourceKey, totalBudgetLimit: item.totalBudgetLimit, confirmedForSimulation: true })),
+        fusion: { enabled: planning.fusion.enabled, confirmedForSimulation: planning.fusion.confirmedForSimulation } },
+      { model: frozenModel, realityProfileSnapshot: bundle.inputSnapshot.realityProfileSnapshot, symbolicLens: bundle.symbolicLensSnapshot,
+        horizonDays: bundle.inputSnapshot.horizonDays, acceptedAt: bundle.inputSnapshot.acceptedAt, consentContext: planning.sourceBinding.consentContext });
+      if (!expected.ok || JSON.stringify(canonicalValue(expected.planning)) !== JSON.stringify(canonicalValue(planning))) return null;
+      const policyInput = { ...bundle.inputSnapshot }; delete policyInput.planningHypothesis;
+      if (createHash("sha256").update(runtimeCanonical(policyInput)).digest("hex").slice(0, 24) !== bundle.policyFingerprint) return null;
+      const analysis = z.object({ trajectories: z.array(z.object({ trajectoryId: reference, trajectorySeed: z.number().int(), finalWorld: z.record(z.string(), z.unknown()) }).passthrough()).length(bundle.worldSnapshots.length) }).passthrough().parse(bundle.trajectoryAnalysis);
+      defaultPlanning = projectDefaultPlanning(planning, bundle.defaultPlanningTraces.map((item, index) => {
+        const trajectory = analysis.trajectories[index];
+        if (item.trajectoryId !== trajectory.trajectoryId || JSON.stringify(canonicalValue(trajectory.finalWorld)) !== JSON.stringify(canonicalValue(bundle.worldSnapshots![index]))) throw new Error("invalid_planning_event_trace");
+        if (item.trace.some(trace => trace.pathKey !== bundle.inputSnapshot.activePathKey || trace.worldBinding.worldNamespace !== `formal-${bundle.policyFingerprint}`
+          || trace.worldBinding.simulationStartAt !== bundle.inputSnapshot.startedAt
+          || !trace.proposalId.startsWith(`action_proposal_v2_formal_planning_formal_${bundle.policyFingerprint}_${trajectory.trajectorySeed}_`))) throw new Error("invalid_planning_event_trace");
+        return { trace: item.trace, finalWorld: bundle.worldSnapshots![index] as WorldStateV2 };
+      }));
+    } catch { return null; }
+  } else if (bundle.defaultPlanningTraces || bundle.policyFingerprint) return null;
   if (frozenModel && (!bundle.strategyPaths && bundle.inputSnapshot.activePathKey === "main")) return null;
   if (bundle.strategyPaths && (!frozenModel || bundle.inputSnapshot.activePathKey !== "main" || bundle.strategyPaths.paths.length !== frozenModel.rules.strategies.length)) return null;
   const strategyPaths: SafeResultProjection["strategyPaths"] = [];
@@ -370,7 +412,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const personKeyByDefinitionId = new Map<string, string>();
   if (frozenModel) {
     if (typeof bundle.causalFingerprint !== "string" || !/^[a-f0-9]{24}$/.test(bundle.causalFingerprint)) return null;
-    const ids = createStableAgentWorldIdFactoryV2(`formal-${bundle.causalFingerprint}`);
+    const ids = createStableAgentWorldIdFactoryV2(`formal-${bundle.policyFingerprint ?? bundle.causalFingerprint}`);
     for (const agent of frozenModel.agents) {
       const definitionId = ids("agent_definition", agent.sourceAgentId);
       const displayName = definitionDisplayById.get(definitionId);
@@ -459,6 +501,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   }
   const projection = {
     symbolicLens,
+    ...(defaultPlanning ? { defaultPlanning } : {}),
     digitalLifeModel,
     strategyPaths,
     relationshipChanges,

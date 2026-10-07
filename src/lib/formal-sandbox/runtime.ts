@@ -6,6 +6,10 @@ import { proposeDigitalLifeActions } from "./digital-life-proposals";
 import { parseFrozenSymbolicLens, runSymbolicLensSchema } from "./symbolic-lens";
 import { applyFrozenCorrections, frozenOutcomeCalibrationSchema } from "./outcomes/rule-corrections";
 import { buildFrozenRealityCriteria } from "./outcomes/core-adapter";
+import { freezeDefaultPlanning, createPlanningAssumptions } from "@/lib/formal-planning";
+import { defaultPlanningRequestSchema, planningConsentContextSchema, type FrozenDefaultPlanning } from "@/lib/formal-planning/contracts";
+import { bindPlanningWorld } from "@/lib/formal-planning/world-binding";
+import { proposeDefaultPlanning, type PlanningProposalTrace } from "@/lib/formal-planning/proposals";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
@@ -69,6 +73,7 @@ const inputSchema = z.object({
   calibrationSnapshot: z.record(z.string(), z.unknown()),
   digitalLifeRules: digitalLifeRulesSchema.optional(),
   outcomeCalibration: frozenOutcomeCalibrationSchema.optional(),
+  defaultPlanning: defaultPlanningRequestSchema.optional(), planningConsentContext: planningConsentContextSchema.optional(),
 }).strict().superRefine((value, context) => {
   const ids = new Set(value.agents.map((item) => item.id));
   if (value.agents.filter((item) => roleForAgent(item) === "user_core").length !== 1) context.addIssue({ code: "custom", message: "one core self agent required" });
@@ -113,24 +118,31 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
   catch { return { ok:false as const,errorCode:"invalid_correction" as const }; }
   const modeled = buildDigitalLifeModel(input, effectiveRules);
   if (!modeled.ok) return { ok: false as const, errorCode: "invalid_run_input" as const };
-  if (!input.realityProfileSnapshot.profile.worldInputs.resources.some((resource) => resource.usePerTick !== null) && modeled.model.rules.actions.length === 0) {
+  let planning: FrozenDefaultPlanning | undefined;
+  if (input.defaultPlanning) {
+    if (!input.acceptedAt || !input.planningConsentContext) return { ok: false as const, errorCode: "invalid_planning_source" as const };
+    const frozen = freezeDefaultPlanning(input.defaultPlanning, { model: modeled.model, realityProfileSnapshot: input.realityProfileSnapshot, horizonDays: input.horizonDays, acceptedAt: input.acceptedAt, symbolicLens: input.symbolicLens, consentContext: input.planningConsentContext });
+    if (!frozen.ok) return frozen;
+    planning = frozen.planning;
+  } else if (input.planningConsentContext) return { ok: false as const, errorCode: "invalid_planning_source" as const };
+  if (!input.realityProfileSnapshot.profile.worldInputs.resources.some((resource) => resource.usePerTick !== null) && modeled.model.rules.actions.length === 0 && planning?.status !== "active") {
     return { ok: false as const, errorCode: "world_model_required" as const };
   }
-  const baseline = await buildFormalSandboxPathV2(input, modeled.model, "main");
+  const baseline = await buildFormalSandboxPathV2(input, modeled.model, "main", planning);
   if (!baseline.ok) return baseline;
   const paths: Array<{ key: string; label: string; bundle: typeof baseline.bundle }> = [];
   for (const strategy of modeled.model.rules.strategies) {
-    const path = await buildFormalSandboxPathV2(input, modeled.model, strategy.participantKey);
+    const path = await buildFormalSandboxPathV2(input, modeled.model, strategy.participantKey, planning);
     if (!path.ok) return path;
     paths.push({ key: strategy.participantKey, label: strategy.label, bundle: path.bundle });
   }
   return { ok: true as const, bundle: { ...baseline.bundle, strategyPaths: { version: "digital-life-paths-v1" as const, paths } } };
 }
 
-async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digitalLifeModel: DigitalLifeModel, activePathKey: string) {
+async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digitalLifeModel: DigitalLifeModel, activePathKey: string, planning?: FrozenDefaultPlanning) {
 
   try {
-    const causalInput = {
+    const policyInput = {
       ownerId: input.ownerId,
       seedContextId: input.seedContextId,
       graphSnapshotId: input.graphSnapshotId,
@@ -148,12 +160,16 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       ...(input.outcomeCalibration ? {outcomeCalibration:input.outcomeCalibration} : {}),
       digitalLifeModel,
       activePathKey,
+      ...(planning ? { defaultPlanningAuthorization: { version: planning.version, resources: input.defaultPlanning!.resources } } : {}),
     };
+    // Prior changes the causal quantity, never candidate identity/ordering or the seeded policy lane.
+    const policyFingerprint = fingerprint(policyInput);
+    const causalInput = { ...policyInput, ...(planning ? { planningHypothesis: { version: planning.fusion.version, enabled: planning.fusion.enabled, status: planning.fusion.status, reductionCap: planning.fusion.reductionCap, reduction: planning.fusion.reduction, initialAmountFactor: planning.fusion.initialAmountFactor, inputs: planning.fusion.inputs, derivation: planning.fusion.derivation, classification: "hypothesis" as const, scientificProbability: false, realWorldEvidence: false } } : {}) };
     const causalFingerprint = fingerprint(causalInput);
     const boundaryAt = input.acceptedAt ? new Date().toISOString() : new Date(Date.parse(input.startedAt) - 2).toISOString();
     const realityRuntime = {
       clock: () => boundaryAt,
-      idFactory: createStableRealityBoundaryIdFactoryV2(`formal-${causalFingerprint}`),
+      idFactory: createStableRealityBoundaryIdFactoryV2(`formal-${policyFingerprint}`),
     };
     const profileEntries = listRealityProfileEntries(input.realityProfileSnapshot.profile).filter(({ key }) => !key.startsWith(LIFE_MODEL_DOMAIN_ENTRY_PREFIX));
     const worldInputs = input.realityProfileSnapshot.profile.worldInputs;
@@ -296,12 +312,13 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
         limitations: ["Explicit user-authored conditional simulation rule, not observed behavior or private intent."],
         confirmationRequirement: "required" as const, confirmationStatus: "confirmed" as const,
       })),
+      ...(planning ? createPlanningAssumptions(planning) : []),
       ],
     });
     const assumptionId = assumptionLedger.assumptions[0]!.id;
     const evidenceIdFor = (claimKey: string) => evidenceLedger.items.find((item) => item.claimKey === claimKey)!.id;
     const assumptionIdFor = (category: string) => assumptionLedger.assumptions.find((item) => item.category === category)!.id;
-    const worldIds = createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}`);
+    const worldIds = createStableAgentWorldIdFactoryV2(`formal-${policyFingerprint}`);
     const resourceIdsByKey = new Map<string, WorldResourceIdV2>(worldInputs.resources.map((resource) => [
       resource.key,
       worldIds("world_resource", resource.key) as WorldResourceIdV2,
@@ -424,11 +441,13 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       externalVariables: profileVariableSpecs,
     }, { clock: () => input.startedAt, idFactory: worldIds });
     if (!worldResult.ok) return { ok: false as const, errorCode: "world_initialization_failed" as const };
+    const planningWorldBinding = planning ? bindPlanningWorld(planning, worldResult.world, `formal-${policyFingerprint}`, activePathKey, input.startedAt) : undefined;
+    const planningTracesBySeed = new Map<number, PlanningProposalTrace[]>();
 
     const maxTicks = input.horizonDays === 30 ? 3 : 6;
     const trajectoryTemplate = {
-      runSpecId: `trajectory_run_spec_v2_formal_${causalFingerprint}` as const,
-      trajectoryId: `trajectory_v2_formal_${causalFingerprint}` as const,
+      runSpecId: `trajectory_run_spec_v2_formal_${policyFingerprint}` as const,
+      trajectoryId: `trajectory_v2_formal_${policyFingerprint}` as const,
       seedContextId: input.seedContextId,
       initialWorld: worldResult.world,
       expectedInitialWorldRevision: worldResult.world.revision,
@@ -463,7 +482,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
         policyVersion: spec.policyVersion,
         candidatesForTick: ({ world, tickIndex, occurredAt }): ActionProposalInputV2[] => {
           const explicit = proposeDigitalLifeActions({
-            rules: activeRules, world, tickIndex, occurredAt, namespace: `formal_${causalFingerprint}_${seed}`,
+            rules: activeRules, world, tickIndex, occurredAt, namespace: `formal_${policyFingerprint}_${seed}`,
             bindings: {
               agents: new Map(input.agents.map((item, index) => [ordinalPerson(index), agentIds.get(item.id)!])),
               entities: new Map(input.agents.map((item, index) => [ordinalPerson(index), entityIds.get(item.id)!])),
@@ -474,7 +493,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
             },
           });
           if (explicit.length > 0) return explicit;
-          return worldInputs.resources.flatMap((resource) => {
+          const declared: ActionProposalInputV2[] = worldInputs.resources.flatMap((resource) => {
           const resourceId = resourceIdsByKey.get(resource.key)!;
           const currentResource = world.resources.find((item) => item.id === resourceId);
           if (!currentResource || resource.usePerTick === null || currentResource.available - resource.usePerTick < currentResource.min) return [];
@@ -486,7 +505,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
             Date.parse(occurredAt) >= Date.parse(constraint.rule.value)
           )) return [];
           return [{
-            id: `action_proposal_v2_formal_${causalFingerprint}_${seed}_${tickIndex}_${resource.key}`,
+            id: `action_proposal_v2_formal_${policyFingerprint}_${seed}_${tickIndex}_${resource.key}`,
             seedContextId: world.seedContextId,
             actorAgentId: agentIds.get(self.id)!,
             actionType: "allocate_resource",
@@ -505,10 +524,20 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
             createdAt: occurredAt,
           }];
           });
+          if (!planning || !planningWorldBinding) return declared;
+          const proposed = proposeDefaultPlanning({ planning, world, tickIndex, occurredAt, namespace: `formal_${policyFingerprint}_${seed}`, pathKey: activePathKey,
+            bindings: { actorAgentId: agentIds.get(self.id)!, actorEntityId: entityIds.get(self.id)!, worldBinding: planningWorldBinding,
+              resources: new Map(worldInputs.resources.map((item, index) => [`resource-${index + 1}`, resourceIdsByKey.get(item.key)!])),
+              assumptions: new Map(assumptionLedger.assumptions.map(item => [item.category, item.id])),
+            } });
+          const previous = planningTracesBySeed.get(seed) ?? [];
+          previous.push(...proposed.trace);
+          planningTracesBySeed.set(seed, previous);
+          return [...declared, ...proposed.candidates];
         },
       }),
-      trajectoryRuntimeFactory: ({ seed }) => ({ agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}-${seed}`) }),
-      interventionRuntimeFactory: ({ interventionId }) => ({ clock: () => input.startedAt, idFactory: createStableAgentWorldIdFactoryV2(`formal-${causalFingerprint}-${interventionId}`) }),
+      trajectoryRuntimeFactory: ({ seed }) => ({ agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`formal-${policyFingerprint}-${seed}`) }),
+      interventionRuntimeFactory: ({ interventionId }) => ({ clock: () => input.startedAt, idFactory: createStableAgentWorldIdFactoryV2(`formal-${policyFingerprint}-${interventionId}`) }),
     });
     const analyzed = analyzeTrajectoryBatchV2(spec, adapter);
     if (!analyzed.ok) return { ok: false as const, errorCode: "trajectory_execution_failed" as const };
@@ -579,6 +608,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
     const bundle = {
         runtimePath: ["reality_boundary_v2", "agent_world_v2", "seeded_trajectory_v2", "trajectory_analysis_v2", "claims_reports_v2", "outcome_lock_v2", "stage8_canonical_validation"] as const,
         causalFingerprint,
+        ...(planning ? { policyFingerprint, defaultPlanningSnapshot: planning, defaultPlanningTraces: analyzed.analysis.trajectories.map((trajectory, index) => ({ trajectoryId: trajectory.trajectoryId, trace: planningTracesBySeed.get(seeds[index]) ?? [] })) } : {}),
         ...(input.acceptedAt ? { forecastTiming: { acceptedAt: input.acceptedAt, boundaryAt, lockedAt, generatedPersistedAt, simulationStartAt: input.startedAt } } : {}),
         inputSnapshot: causalInput,
         symbolicLensSnapshot: input.symbolicLens,

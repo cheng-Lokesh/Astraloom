@@ -2,6 +2,15 @@ import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import type { AgentDefinitionIdV2, WorldEntityIdV2, WorldResourceIdV2, WorldStateV2 } from "@/lib/v2/agent-world/types";
 import { parseFrozenDefaultPlanning } from "./index";
 import type { FrozenDefaultPlanning } from "./contracts";
+import { z } from "zod";
+
+export const planningWorldBindingSchema = z.object({
+  acceptedSourceSignature: z.string().min(1).max(50_000), worldNamespace: z.string().regex(/^[a-zA-Z0-9_-]{1,180}$/), pathKey: z.string().regex(/^(main|person-[1-9]\d*)$/),
+  actorAgentId: z.custom<AgentDefinitionIdV2>(value => typeof value === "string" && /^agent_definition_v2_[a-z0-9_-]+$/i.test(value)),
+  actorEntityId: z.custom<WorldEntityIdV2>(value => typeof value === "string" && /^world_entity_v2_[a-z0-9_-]+$/i.test(value)),
+  actorSignature: z.string().min(1).max(20_000), capturedBoundaryAt: z.string().datetime({ offset: true }), simulationStartAt: z.string().datetime({ offset: true }),
+  resources: z.array(z.object({ resourceKey: z.string().regex(/^resource-[1-8]$/), resourceId: z.custom<WorldResourceIdV2>(value => typeof value === "string" && /^world_resource_v2_[a-z0-9_-]+$/i.test(value)), definitionSignature: z.string().min(1).max(4_000), provenanceSignature: z.string().min(1).max(20_000) }).strict()).max(8),
+}).strict();
 
 /** Server-created, internal-only receipt. No client field accepts a namespace or Core ID. */
 export type PlanningWorldBinding = {
@@ -14,18 +23,24 @@ export type PlanningWorldBinding = {
 
 // A structural receipt, not a signature authenticating arbitrary untrusted requests. Admission and
 // immutable persistence establish trust; this exact comparison detects source/world substitutions.
+function structuralSignature(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(structuralSignature).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${structuralSignature(record[key])}`).join(",")}}`;
+}
 export function acceptedPlanningSourceSignature(planning: FrozenDefaultPlanning) {
-  return JSON.stringify({ sourceBinding: planning.sourceBinding, resources: planning.resources, maxTicks: planning.maxTicks });
+  return structuralSignature({ sourceBinding: planning.sourceBinding, resources: planning.resources, maxTicks: planning.maxTicks });
 }
 
 function resourceDefinition(resource: WorldStateV2["resources"][number]) {
-  return JSON.stringify({ id: resource.id, resourceType: resource.resourceType, label: resource.label, unit: resource.unit,
+  return structuralSignature({ id: resource.id, resourceType: resource.resourceType, label: resource.label, unit: resource.unit,
     ownerEntityId: resource.ownerEntityId, controllerAgentId: resource.controllerAgentId, min: resource.min, max: resource.max });
 }
 
 function resourceProvenance(resource: WorldStateV2["resources"][number], world: WorldStateV2) {
   const boundary = world.realityBoundarySnapshot;
-  return JSON.stringify({ provenance: resource.provenance,
+  return structuralSignature({ provenance: resource.provenance,
     evidence: resource.provenance.realEvidenceIds.map(id => boundary.evidenceLedger.items.find(item => item.id === id)),
     assumptions: resource.provenance.assumptionIds.map(id => boundary.assumptionLedger.assumptions.find(item => item.id === id)),
   });
@@ -73,7 +88,7 @@ export function bindPlanningWorld(planningInput: FrozenDefaultPlanning, initialW
     }
     return { resourceKey: plan.resourceKey, resourceId, definitionSignature: resourceDefinition(resource), provenanceSignature: resourceProvenance(resource, initialWorld) };
   });
-  return { acceptedSourceSignature: acceptedPlanningSourceSignature(planning), worldNamespace, pathKey, actorAgentId, actorEntityId, actorSignature: JSON.stringify({ actor, entity, actorEvidence }), capturedBoundaryAt, simulationStartAt, resources };
+  return { acceptedSourceSignature: acceptedPlanningSourceSignature(planning), worldNamespace, pathKey, actorAgentId, actorEntityId, actorSignature: structuralSignature({ actor, entity, actorEvidence }), capturedBoundaryAt, simulationStartAt, resources };
 }
 
 /** Every continuation and Result comparison stays sealed to the same accepted path and source. */
@@ -90,7 +105,7 @@ export function planningWorldBindingMatches(planning: FrozenDefaultPlanning, wor
   const entity = world.entities.find(item => item.id === binding.actorEntityId);
   if (actor?.actorType !== "self" || entity?.agentDefinitionId !== binding.actorAgentId) return false;
   const actorEvidence = world.realityBoundarySnapshot.evidenceLedger.items.find(item => item.id === actor.realEvidenceIds[0]);
-  if (JSON.stringify({ actor, entity, actorEvidence }) !== binding.actorSignature) return false;
+  if (structuralSignature({ actor, entity, actorEvidence }) !== binding.actorSignature) return false;
   const active = planning.resources.filter(item => item.status === "active");
   if (active.length !== binding.resources.length) return false;
   return active.every(plan => {
