@@ -16,7 +16,7 @@ export function outcomeDraftReducer(state: OutcomeDraft, action: DraftAction): O
   if (action.type === "recover") return state;
   if (state.unknown) return state;
   if (action.type === "target") return initialOutcomeDraft;
-  if (action.type === "edit") return { ...state, [action.field]: action.value, ...(["observed", "values", "conditionTimes", "correctionRuleKey"].includes(action.field) ? { correctionConfirmed: false } : {}) };
+  if (action.type === "edit") return { ...state, [action.field]: action.value, ...(["observed", "values"].includes(action.field) ? { correctionRuleKey: "" } : {}), ...(["observed", "values", "conditionTimes", "correctionRuleKey"].includes(action.field) ? { correctionConfirmed: false } : {}) };
   return state;
 }
 const control = "mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 py-2 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-60";
@@ -29,7 +29,7 @@ function validTime(target: FormalOutcomeTarget, value: string) {
   return Number.isFinite(date) && date >= Date.parse(target.observationWindow.startAt) && date <= Date.parse(target.observationWindow.horizonEnd) && date <= Date.now();
 }
 function correctionConditions(target: FormalOutcomeTarget, draft: OutcomeDraft) {
-  return target.correctionAllowed ? target.conditions.filter(condition => condition.correctable && condition.ruleKey && draft.values[condition.key] != null && draft.values[condition.key] !== condition.expectedValue) : [];
+  return target.correctionAllowed ? target.conditions.filter(condition => condition.correctable && condition.ruleKey && draft.values[condition.key] != null && draft.values[condition.key] !== condition.expectedValue && (condition.kind !== "allocate_resource" || typeof draft.values[condition.key] === "number" && Number(draft.values[condition.key]) > 0)) : [];
 }
 function validDraft(target: FormalOutcomeTarget | undefined, draft: OutcomeDraft) {
   if (!target || !draft.confirmed || !draft.evidenceSummary.trim()) return false;
@@ -80,6 +80,7 @@ export function OutcomeObservationsView({ projection, draft, targetKey, phase, m
           </> : null}
           <label className="block">观察依据简述<textarea value={draft.evidenceSummary} disabled={locked} maxLength={160} onChange={event => edit("evidenceSummary", event.target.value)} className={`${control} min-h-24`} placeholder="简述本人观察，不填写姓名、联系方式或原始聊天内容" /></label>
           <label className="block">观察的不确定性<select value={draft.uncertainty} disabled={locked} onChange={event => edit("uncertainty", event.target.value as OutcomeDraft["uncertainty"])} className={control}><option value="high">高 · 仍有较多未知</option><option value="medium">中 · 部分情况无法确认</option><option value="low">低 · 本人观察较清楚</option></select></label>
+          {target.conditions.some(item => item.correctable && item.kind === "allocate_resource" && draft.values[item.key] === 0) ? <p className="text-sm leading-6">零投入仍可记录为本人观察；当前资源金额修正仅支持正数，暂不能用零投入建立下一次运行的金额条件。</p> : null}
           {correctionConditions(target, draft).length ? <label className="block">供下一次运行参考的条件修正（可不选）<select disabled={locked} value={draft.correctionRuleKey} onChange={event => edit("correctionRuleKey", event.target.value)} className={control}><option value="">不建立修正</option>{correctionConditions(target, draft).map(item => <option key={item.key} value={item.ruleKey!}>{item.label} · 根据上述实际观察建立条件假设</option>)}</select><span className="mt-1 block text-sm">它是未来运行的条件假设，不表示整组预测已在现实发生。保存后仍需在下一次运行中单独选择并确认，不会自动应用。</span></label> : null}
           {draft.correctionRuleKey ? <label className="flex min-h-11 items-start gap-3 py-2 focus-within:outline focus-within:outline-2"><input type="checkbox" checked={draft.correctionConfirmed} disabled={locked} onChange={event => edit("correctionConfirmed", event.target.checked)} className="mt-1" /><span>我单独确认建立所选条件修正，仅供下一次运行参考</span></label> : null}
           <label className="flex min-h-11 items-start gap-3 py-2 focus-within:outline focus-within:outline-2"><input type="checkbox" checked={draft.confirmed} disabled={locked} onChange={event => edit("confirmed", event.target.checked)} className="mt-1" /><span>我确认以上是本人观察，仍可能有记录和理解上的局限</span></label>

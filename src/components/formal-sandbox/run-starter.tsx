@@ -12,6 +12,10 @@ import { DigitalLifeRulesEditor } from "./digital-life-rules-editor";
 import { CalibrationSelection } from "./calibration-selection";
 import type { FormalCalibrationContext } from "@/lib/formal-sandbox/outcomes/contracts";
 
+export function isCurrentCalibrationContext(context: FormalCalibrationContext, profileRevision: number, requestGeneration: number, currentGeneration: number) {
+  return requestGeneration === currentGeneration && context.status === "available" && context.profileRevision === profileRevision;
+}
+
 export function FormalRunStartError({ errorCode }: { errorCode: string }) {
   if (errorCode === "request_outcome_unknown") return null;
   if (errorCode === "invalid_correction") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">所选观察修正与当前行动条件不相符。请取消修正或恢复对应原行动条件，再重新确认后开始运行。</p>;
@@ -76,9 +80,9 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
         if (!response.ok || body?.ok !== true || !parsed.success || (graphId && parsed.data.graphSnapshotId !== graphId)) { setError(typeof body?.error_code === "string" ? body.error_code : "context_unavailable"); return; }
         setContext(parsed.data);
         try {
-          const result = await createFormalSandboxClient().calibrationContext(graphId);
+          const result = await createFormalSandboxClient().calibrationContext(parsed.data.graphSnapshotId);
           if (!active || currentGeneration !== generation.current) return;
-          if (!result.ok || result.data.context.graphSnapshotId !== parsed.data.graphSnapshotId || result.data.context.profileRevision !== parsed.data.profileRevision) { setCalibrationError(true); return; }
+          if (!result.ok || !isCurrentCalibrationContext(result.data.context, parsed.data.profileRevision, currentGeneration, generation.current)) { setCalibrationError(true); return; }
           setCalibration(result.data.context);
         } catch { if (active) setCalibrationError(true); }
       } catch { if (active) setError("context_unavailable"); }

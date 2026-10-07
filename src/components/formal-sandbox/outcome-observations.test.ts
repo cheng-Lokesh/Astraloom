@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { OutcomeObservationsView, initialOutcomeDraft, outcomeDraftReducer } from "./outcome-observations";
 
-const target = { key: "target-1", label: "本人主路径的资源投入条件", observationWindow: { startAt: "2026-10-01T00:00:00Z", horizonEnd: "2026-10-31T00:00:00Z" }, status: "observable" as const, reason: null, canRecordDidNotOccur: false, canRecordTypedObservation: true, correctionAllowed: true, conditions: [{ key: "condition-1", label: "本人投入的时间", kind: "allocate_resource" as const, expectedValue: 2, ruleKey: "rule-1", correctable: true, requiresTime: true, measurement: "operation" as const, actorLabel: "本人", resourceLabel: "时间", sequence: 1 }] };
+const target = { key: "target-1", label: "本人主路径的资源投入条件", observationWindow: { startAt: "2026-10-01T00:00:00Z", horizonEnd: "2026-10-31T00:00:00Z" }, status: "observable" as const, reason: null, canRecordDidNotOccur: false, canRecordTypedObservation: true, correctionAllowed: true, criteriaStatus: "available" as const, conditions: [{ key: "condition-1", label: "本人投入的时间", kind: "allocate_resource" as const, expectedValue: 2, ruleKey: "rule-1", correctable: true, requiresTime: true, measurement: "operation" as const, actorLabel: "本人", resourceLabel: "时间", sequence: 1 }] };
 const projection = { lockStatus: "available" as const, assessedAt: "2026-10-06T00:00:00Z", targets: [target], history: [], calibration: { status: "insufficient_data" as const, sampleCount: 0, minimumSampleSize: 5 as const } };
 const handlers = { onTargetChange: () => {}, onDraftChange: () => {}, onSave: () => {}, onRetry: () => {}, onRecover: () => {} };
 describe("personal outcome capture", () => {
@@ -46,7 +46,7 @@ describe("personal outcome capture", () => {
     const selected = renderToStaticMarkup(createElement(OutcomeObservationsView, { projection: mixed, draft: { ...initialOutcomeDraft, values: { "condition-1": 3 }, correctionRuleKey: "rule-1", confirmed: true }, targetKey: "target-1", phase: "ready", ...handlers }));
     expect(selected).toContain("我单独确认建立所选条件修正");
     expect(selected).toMatch(/<button[^>]+disabled=""[^>]*>保存本人观察/);
-    const recorded = { ...mixed, history: [{ key: "observation-1", targetKey: "target-1", observed: "uncertain" as const, recordedAt: "2026-10-06T00:00:00Z", occurredAt: null, source: "user_observation" as const, evidenceSummary: "本人已记录投入", uncertainty: "high" as const, backtestStatus: "not_observable" as const, correctionAvailable: true, observations: [{ key: "condition-1", value: 3, occurredAt: "2026-10-02T00:00:00Z" }, { key: "condition-2", value: null, occurredAt: null }] }] };
+    const recorded = { ...mixed, history: [{ key: "observation-1", targetKey: "target-1", observed: "uncertain" as const, recordedAt: "2026-10-06T00:00:00Z", occurredAt: null, source: "user_observation" as const, evidenceSummary: "本人已记录投入", uncertainty: "high" as const, backtestStatus: "not_observable" as const, correctionAvailable: true, criteriaComparison: { status: "different" as const, differences: ["condition-1"] }, observations: [{ key: "condition-1", value: 3, occurredAt: "2026-10-02T00:00:00Z" }, { key: "condition-2", value: null, occurredAt: null }] }] };
     const history = renderToStaticMarkup(createElement(OutcomeObservationsView, { projection: recorded, draft: initialOutcomeDraft, targetKey: "target-1", phase: "ready", ...handlers }));
     expect(history).toContain("本人投入的时间：3");
     expect(history).toContain(`条件发生时间：${new Date("2026-10-02T00:00:00Z").toLocaleString()}`);
