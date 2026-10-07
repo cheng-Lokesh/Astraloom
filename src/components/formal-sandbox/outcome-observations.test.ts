@@ -72,7 +72,16 @@ describe("personal outcome capture", () => {
     expect(html).toContain("信息不足，暂不能对照");
     expect(html).toContain("未记录事前现实条件，仅保留本人观察");
     expect(html).toContain("差异 · 本人投入的时间 · 事前：2 · 本人观察：3");
+    expect(html).toContain("数值相同也可能存在时间或顺序差异");
     expect(html).toContain("不表示整组模拟情景发生");
     expect(html).not.toContain("差异 · condition-1");
+  });
+  it("limits action counts to whole numbers without limiting resource amounts",()=>{
+    const countTarget={...target,status:"not_observable" as const,conditions:[{...target.conditions[0],key:"condition-2",label:"实际次数",measurement:"event_count" as const,requiresTime:false}]};
+    const draft={...initialOutcomeDraft,confirmed:true,evidenceSummary:"本人实际次数",values:{"condition-2":1.5}};
+    const html=renderToStaticMarkup(createElement(OutcomeObservationsView,{projection:{...projection,targets:[countTarget]},draft,targetKey:"target-1",phase:"ready",...handlers}));
+    expect(html).toContain('step="1"');expect(html).toMatch(/<button[^>]+disabled=""[^>]*>保存本人观察/);
+    const amount=renderToStaticMarkup(createElement(OutcomeObservationsView,{projection,draft:initialOutcomeDraft,targetKey:"target-1",phase:"ready",...handlers}));
+    expect(amount).toContain('step="any"');
   });
 });

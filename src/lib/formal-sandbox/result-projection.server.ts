@@ -65,6 +65,8 @@ const strategyBundleSchema = pathBundleSchema.extend({
   symbolicLensSnapshot: runSymbolicLensSchema,
   trajectoryAnalysis: z.record(z.string(), z.unknown()),
   forecastLockReference: z.object({ streamId: reference, version: z.number().int().positive() }).strict(),
+  forecastPersistenceHistory: z.array(z.record(z.string(), z.unknown())).length(1).optional(),
+  frozenRealityCriteria:z.record(z.string(),z.unknown()).optional(),
   versions: z.object({ runtime: z.literal("formal-account-sandbox-m1-v1"), schema: z.literal("formal-run-bundle-m1-v1"), world: reference, trajectory: z.literal("trajectory-engine-v2-stage-4"), analysis: reference }).strict(),
 }).strict();
 const bundleSchema = pathBundleSchema.extend({ strategyPaths: z.object({ version: z.literal("digital-life-paths-v1"), paths: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: safeText, bundle: strategyBundleSchema }).strict()).max(2) }).strict().optional() });

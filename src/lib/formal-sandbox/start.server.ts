@@ -20,7 +20,7 @@ const reservationSchema = z.object({
   frozen_source_input: z.record(z.string(), z.unknown()).nullable(),
   run: z.object({ id:z.string().uuid(), status:z.literal("completed"), graph_snapshot_id:z.string().uuid(), time_horizon:z.enum(["30_days", "90_days"]) }).passthrough().nullable(),
 }).strict();
-const reservationErrors = new Set(["unauthenticated", "invalid_request", "graph_not_found", "seed_not_found", "safety_blocked", "incomplete_object_chain", "idempotency_key_content_conflict", "reservation_expired"]);
+const reservationErrors = new Set(["unauthenticated", "invalid_request", "graph_not_found", "seed_not_found", "safety_blocked", "incomplete_object_chain", "idempotency_key_content_conflict", "reservation_expired", "invalid_correction", "current_graph_required"]);
 
 function stableSeed(graphId: string, key: string) {
   return (Number.parseInt(createHash("sha256").update(`${graphId}:${key}`).digest("hex").slice(0, 7), 16) % 1_999_999_999) + 1;
@@ -39,6 +39,7 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
       p_idempotency_key: request.data.idempotency_key,
       p_horizon_days: request.data.horizon_days,
       p_digital_life_rules: request.data.digital_life_rules ?? null,
+      p_outcome_calibration: request.data.outcome_calibration ?? null,
     });
     if (reserved.error) return { ok:false as const,errorCode:reservationErrors.has(reserved.error.message) ? reserved.error.message : "persistence_failed" };
     const result = z.array(reservationSchema).length(1).safeParse(reserved.data);
@@ -83,6 +84,7 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
       safetyLevel:graph.data.safety_level,
       symbolicLens:parseFrozenSymbolicLens(source.symbolic_lens,userId,reservation.accepted_at),
       calibrationSnapshot:buildAccountCalibrationSnapshot(z.array(z.object({ rating:z.unknown(),target_type:z.unknown(),created_at:z.unknown() })).parse(source.feedback_logs)),
+      ...(source.outcome_calibration ? {outcomeCalibration:source.outcome_calibration} : {}),
       ...(source.digital_life_rules ? { digitalLifeRules: source.digital_life_rules } : request.data.digital_life_rules ? { digitalLifeRules: request.data.digital_life_rules } : {}),
     });
     if (!built.ok) return built;

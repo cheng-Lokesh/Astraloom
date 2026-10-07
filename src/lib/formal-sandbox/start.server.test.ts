@@ -168,7 +168,7 @@ describe("formal Run freezes the Reality Profile on its locked owner Seed", () =
 
     expect(result.ok).toBe(true);
     expect(operations).toEqual([]);
-    expect(service.rpc).toHaveBeenCalledWith("reserve_account_sandbox_run", { p_graph_snapshot_id: ids.graph, p_idempotency_key: ids.request, p_horizon_days: 30, p_digital_life_rules: null });
+    expect(service.rpc).toHaveBeenCalledWith("reserve_account_sandbox_run", { p_graph_snapshot_id: ids.graph, p_idempotency_key: ids.request, p_horizon_days: 30, p_digital_life_rules: null, p_outcome_calibration: null });
     expect(vi.mocked(buildFormalSandboxRunV2)).toHaveBeenCalledWith(expect.objectContaining({
       realityProfileSnapshot: {
         ownerId: ids.owner,

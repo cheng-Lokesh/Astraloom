@@ -439,3 +439,21 @@ records are not personal models. Initial-inclination fusion is not claimed
 complete. An ambiguous save failure blocks new writes until the user
 explicitly reloads current account state; it never automatically changes the key
 and resubmits. Real signed-in browser acceptance remains a separate check.
+
+## Outcome independent comparison candidate
+
+Show typed actual observations and per-condition actual times, with unknown
+explicitly supported. Historical records show prior frozen values alongside
+actual values and safe difference labels. During the open observation window,
+the overall comparison stays unknown even when a current difference is known.
+Separate self/resource scope checkboxes describe concrete reality, not Core
+provenance or hidden NPC intentions. Different resource totals remain saveable.
+
+Whole-cluster scoring is unavailable; independent resource matched/different
+states must not be labeled accuracy, calibrated probability or Core backtest.
+Mixed NPC typed records remain useful and may independently confirm next-run
+visible-response rules. Zero amount is recordable but cannot select a positive
+allocation correction. New-run correction selection defaults off. Historical
+runs remain frozen; missing historical lock/criteria is plainly not_recorded.
+Raw provenance, private UUIDs and birth data must not render or log. Pure logic
+and synthetic UI checks do not replace signed-in owner/RLS/DB acceptance.

@@ -12,4 +12,8 @@ describe("formal sandbox failure status", () => {
   it("treats a missing explicit World model as a correctable input error", () => {
     expect(sandboxErrorStatus("world_model_required")).toBe(422);
   });
+  it("reports stale or invalid next-run corrections as recoverable conflicts",()=>{
+    expect(sandboxErrorStatus("invalid_correction")).toBe(409);
+    expect(sandboxErrorStatus("current_graph_required")).toBe(409);
+  });
 });

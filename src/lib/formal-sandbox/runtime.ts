@@ -4,6 +4,8 @@ import { z } from "zod";
 import { buildDigitalLifeModel, digitalLifeAgentInputSchema, digitalLifeEdgeInputSchema, digitalLifeRulesSchema, ordinalPerson, roleForAgent, type DigitalLifeModel } from "@/lib/digital-life/model";
 import { proposeDigitalLifeActions } from "./digital-life-proposals";
 import { parseFrozenSymbolicLens, runSymbolicLensSchema } from "./symbolic-lens";
+import { applyFrozenCorrections, frozenOutcomeCalibrationSchema } from "./outcomes/rule-corrections";
+import { buildFrozenRealityCriteria } from "./outcomes/core-adapter";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
@@ -66,6 +68,7 @@ const inputSchema = z.object({
   symbolicLens: runSymbolicLensSchema,
   calibrationSnapshot: z.record(z.string(), z.unknown()),
   digitalLifeRules: digitalLifeRulesSchema.optional(),
+  outcomeCalibration: frozenOutcomeCalibrationSchema.optional(),
 }).strict().superRefine((value, context) => {
   const ids = new Set(value.agents.map((item) => item.id));
   if (value.agents.filter((item) => roleForAgent(item) === "user_core").length !== 1) context.addIssue({ code: "custom", message: "one core self agent required" });
@@ -105,7 +108,10 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
   if (input.acceptedAt && Date.now() >= Date.parse(input.startedAt)) return { ok: false as const, errorCode: "reservation_expired" as const };
   if (input.acceptedAt && (Date.parse(input.acceptedAt) > Date.now() || Date.parse(input.acceptedAt) >= Date.parse(input.startedAt))) return { ok: false as const, errorCode: "invalid_run_input" as const };
   if (input.safetyLevel === "blocked" || input.safetyLevel === "downgraded") return { ok: false as const, errorCode: "safety_blocked" as const };
-  const modeled = buildDigitalLifeModel(input, input.digitalLifeRules);
+  let effectiveRules;
+  try { effectiveRules = applyFrozenCorrections(input, input.digitalLifeRules, input.outcomeCalibration); }
+  catch { return { ok:false as const,errorCode:"invalid_correction" as const }; }
+  const modeled = buildDigitalLifeModel(input, effectiveRules);
   if (!modeled.ok) return { ok: false as const, errorCode: "invalid_run_input" as const };
   if (!input.realityProfileSnapshot.profile.worldInputs.resources.some((resource) => resource.usePerTick !== null) && modeled.model.rules.actions.length === 0) {
     return { ok: false as const, errorCode: "world_model_required" as const };
@@ -139,6 +145,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       edges: input.edges,
       safetyLevel: input.safetyLevel,
       calibrationSnapshot: input.calibrationSnapshot,
+      ...(input.outcomeCalibration ? {outcomeCalibration:input.outcomeCalibration} : {}),
       digitalLifeModel,
       activePathKey,
     };
@@ -178,6 +185,12 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
           sourceKind: "user_statement" as const, sourceTier: "tier_1_user_confirmed" as const, verificationStatus: "user_confirmed" as const,
           provenance: [{ sourceRef: `agent_snapshot:${input.agentSnapshotId}:${item.id}`, capturedAt: boundaryAt }],
           limitations: ["Snapshot identity is supported; behavior and private intent are not inferred."],
+        })),
+        ...(input.outcomeCalibration?.corrections ?? []).map(correction=>({
+          statement:correction.evidenceSummary,claimKey:`formal.outcome.correction.${correction.ruleKey}`,
+          sourceKind:"user_statement" as const,sourceTier:"tier_1_user_confirmed" as const,verificationStatus:"user_confirmed" as const,
+          provenance:[{sourceRef:`formal_user_observation:${correction.observationSignature}`,capturedAt:correction.recordedAt}],
+          limitations:["本人观察记录，未独立核实；仅支持下次条件假设，不证明未来会重复。"],
         })),
         ...profileEntries.filter(({ field }) => field.classification === "fact").map(({ key, label, field }) => ({
           statement: `${label}：${field.value}`,
@@ -279,7 +292,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
         subjectType: (digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "npc" || digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "group" ? "third_party" : "self") as "third_party" | "self",
         category: `digital_life_rule_${rule.key}`,
         epistemicStatus: "confirmed_for_simulation" as const, impactLevel: "high" as const,
-        supportingRealEvidenceIds: [], contradictingRealEvidenceIds: [],
+        supportingRealEvidenceIds: input.outcomeCalibration?.corrections.some(c=>c.ruleKey===rule.key) ? [evidenceLedger.items.find(e=>e.claimKey===`formal.outcome.correction.${rule.key}`)!.id] : [], contradictingRealEvidenceIds: [],
         limitations: ["Explicit user-authored conditional simulation rule, not observed behavior or private intent."],
         confirmationRequirement: "required" as const, confirmationStatus: "confirmed" as const,
       })),
@@ -563,9 +576,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       })),
     );
     const claims = [...claimsResult.claims].sort((left, right) => left.id.localeCompare(right.id));
-    return {
-      ok: true as const,
-      bundle: {
+    const bundle = {
         runtimePath: ["reality_boundary_v2", "agent_world_v2", "seeded_trajectory_v2", "trajectory_analysis_v2", "claims_reports_v2", "outcome_lock_v2", "stage8_canonical_validation"] as const,
         causalFingerprint,
         ...(input.acceptedAt ? { forecastTiming: { acceptedAt: input.acceptedAt, boundaryAt, lockedAt, generatedPersistedAt, simulationStartAt: input.startedAt } } : {}),
@@ -578,6 +589,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
         claims,
         report: reportResult.report,
         forecastLockReference: canonicalBundle.stage7.forecastLockReference,
+        forecastPersistenceHistory: [appended.data],
         versions: {
           runtime: "formal-account-sandbox-m1-v1",
           schema: "formal-run-bundle-m1-v1",
@@ -585,8 +597,8 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
           trajectory: TRAJECTORY_ENGINE_VERSION_V2,
           analysis: ANALYSIS_ENGINE_VERSION_V2,
         },
-      },
-    };
+      };
+    return {ok:true as const,bundle:{...bundle,frozenRealityCriteria:buildFrozenRealityCriteria(bundle)}};
   } catch {
     return { ok: false as const, errorCode: "runtime_failed" as const };
   }

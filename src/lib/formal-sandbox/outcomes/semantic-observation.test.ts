@@ -33,6 +33,8 @@ it("compares independently frozen resource criteria without scoring an unobserva
  expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:orderChanged},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("different");
  expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",input,"2026-10-25T04:00:00.000Z")).criteriaComparison.status).toBe("unknown");
  const unknown=observations.map(o=>({key:o.key,value:null}));
+ const count=target.conditions.find(c=>c.measurement==="event_count")!;
+ await expect(buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:observations.map(o=>o.key===count.key?{...o,value:1.5}:o)},"2026-11-10T04:00:00.000Z")).rejects.toThrow("invalid_observation");
  expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:unknown},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("unknown");
  const before=target.conditions.find(c=>c.measurement==="resource_before")!;
  expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:observations.map(o=>o.key===before.key?{...o,value:1}:o)},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("different");

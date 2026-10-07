@@ -1376,3 +1376,28 @@ Reality/Evidence, assumptions, proposal weights, causal events, World, Claims
 and probability/frequency. Explicit anonymous JWT claims cannot freeze new data;
 missing anonymous flags in older owner-scoped legal tokens stay compatible.
 Direct-DB banned/deleted stale-token hardening beyond existing RLS is not claimed.
+
+### Outcome / independent reality criteria candidate (2026-10-07)
+
+New runs retain the canonical Core forecast persistence record and atomically store
+its actual database time before the observation window. An independent immutable
+`formal-reality-criteria-v1` frame binds owner, Seed, path, forecast reference and
+frozen source fingerprint. Resource criteria name the self/resource/unit scope,
+action order, amount, before/after availability, window and total action count.
+GET and POST both replay the canonical lock and deterministically validate the
+criteria before any observation write. Legacy missing locks/criteria stay missing;
+no retrospective pre-lock is fabricated.
+
+Confirmed typed observations append immutably with per-item actual time and an
+independent `matched/different/unknown` comparison. External changes and different
+before/after times are preserved, not rewritten to fit simulation conservation.
+Before window end the overall comparison is unknown; known differences remain
+available. Mixed NPC observations may independently authorize an explicit rule
+correction for a new run. Stable opaque keys and row version bind owner, source
+run, Seed/Graph/Agent/Profile and exact rule fingerprint. Old runs are unchanged.
+
+The entire Core cluster remains not_observable: this layer does not produce Core
+occurrences, Brier scores, accuracy or reality probabilities. Calibration remains
+insufficient_data with compatible sample count zero; statistical calibration is
+unfinished. The forward SQL rollout and owner/RLS/atomicity acceptance await the
+local database daemon; authored SQL is not execution evidence.

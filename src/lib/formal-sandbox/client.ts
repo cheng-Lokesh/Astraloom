@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formalOutcomeProjectionSchema,formalCalibrationContextSchema,type FormalOutcomeInput,type OutcomeCalibrationSelection } from "./outcomes/contracts";
 import type { DigitalLifeRules } from "@/lib/digital-life/model";
 import { safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
 import { safeRunSymbolicLensSchema } from "./symbolic-lens";
@@ -85,7 +86,10 @@ type FormalFeedbackInput = OverallFeedbackInput | TargetedFeedbackInput;
 type Fetcher = typeof fetch;
 async function read<T>(response: Response, schema: z.ZodType<T>) { const json = await response.json().catch(() => null); const failed = failure.safeParse(json); if (!response.ok) return { ok: false as const, status: response.status, errorCode: failed.success ? failed.data.error_code : "request_failed" }; const parsed = schema.safeParse(json); return parsed.success ? { ok: true as const, data: parsed.data } : { ok: false as const, status: 500, errorCode: "invalid_response" }; }
 export function createFormalSandboxClient(fetcher: Fetcher = fetch) { return {
-  start: async (input: { graphSnapshotId: string; idempotencyKey: string; horizonDays: 30 | 90; digitalLifeRules?: DigitalLifeRules }) => read(await fetcher("/api/sandbox/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_snapshot_id: input.graphSnapshotId, idempotency_key: input.idempotencyKey, horizon_days: input.horizonDays, ...(input.digitalLifeRules ? { digital_life_rules: input.digitalLifeRules } : {}) }) }), startSuccess),
+  start: async (input: { graphSnapshotId: string; idempotencyKey: string; horizonDays: 30 | 90; digitalLifeRules?: DigitalLifeRules;outcomeCalibration?:OutcomeCalibrationSelection }) => read(await fetcher("/api/sandbox/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_snapshot_id: input.graphSnapshotId, idempotency_key: input.idempotencyKey, horizon_days: input.horizonDays, ...(input.digitalLifeRules ? { digital_life_rules: input.digitalLifeRules } : {}),...(input.outcomeCalibration?{outcome_calibration:input.outcomeCalibration}:{}) }) }), startSuccess),
+  outcomes:async(runId:string)=>read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}/outcomes`,{cache:"no-store"}),z.object({ok:z.literal(true),outcomes:formalOutcomeProjectionSchema}).passthrough()),
+  saveOutcome:async(runId:string,input:FormalOutcomeInput)=>read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}/outcomes`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(input)}),z.object({ok:z.literal(true),idempotent:z.boolean(),outcomes:formalOutcomeProjectionSchema}).passthrough()),
+  calibrationContext:async(graphId?:string)=>read(await fetcher(`/api/sandbox/calibration-context${graphId?`?graph_id=${encodeURIComponent(graphId)}`:""}`,{cache:"no-store"}),z.object({ok:z.literal(true),context:formalCalibrationContextSchema}).passthrough()),
   status: async (runId: string) => read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}`, { cache: "no-store" }), statusSuccess),
   result: async (runId: string) => read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}/result`, { cache: "no-store" }), resultSuccess),
   history: async (limit = 20, before?: string, horizon?: "30_days" | "90_days") => read(await fetcher(`/api/sandbox/runs?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}${horizon ? `&horizon=${horizon}` : ""}`, { cache: "no-store" }), historySuccess),

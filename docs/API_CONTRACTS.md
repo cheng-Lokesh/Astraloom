@@ -733,3 +733,27 @@ preferenceRevision, frame, causalUse:false), stripping all internal provenance
 IDs; legacy static entries return `not_recorded`. No new personal frame enters
 causal input or changes frozen historical artifacts. Run POST refuses an
 explicitly anonymous verified user before admission.
+
+### Outcome account candidate (2026-10-07)
+
+`GET/POST /api/sandbox/runs/[runId]/outcomes` verify a non-anonymous owner.
+POST accepts strict target/key, confirmed observation, uncertainty, summary and
+`observations[{key,value,occurred_at?}]`; explicit next-run correction confirmation
+is independent. Known timed conditions require actual time inside the frozen
+window and no later than recording time; unknown items omit time. Legacy notes
+are permitted without late lock construction. Safe history returns typed values,
+`occurredAt` and `criteriaComparison{status,differences}`; no internal source IDs.
+
+`GET /api/sandbox/calibration-context?graph_id=...` binds the current graph and
+returns safe stable correction keys, schema version, profile revision and
+eligibility. Run POST optionally accepts `outcome_calibration{version:1,
+confirmed:true,correction_keys}`, default absent. New keys freeze the selected
+original correction; pending/completed replay uses the old receipt, not current
+state. Changed selection conflicts. Four-argument admission delegates to the same
+mandatory-lock implementation; null-selection old hashes remain recoverable.
+
+Responses use no-store, 401 for unauthenticated/anonymous, 422 malformed, 404
+missing owned run, and 409 for known observation/correction/lock/window/conflict
+errors. Unknown database details are never returned. New service-only writer
+stores criteria comparison but refuses Core scoring/calibration artifacts.
+Database/Auth/RLS execution acceptance is still outstanding.
