@@ -25,7 +25,7 @@ describe("formal default-planning runtime consumer", () => {
       const bundle = await persistedPlanningFixture();
       const persisted: typeof bundle = JSON.parse(JSON.stringify(bundle));
       expect(projectFormalSandboxResult(persisted) !== null).toBe(true);
-      const binding = persisted.defaultPlanningTraces![0].traces[0].worldBinding;
+      const binding = persisted.defaultPlanningTraces![0].trace[0].worldBinding;
       expect(() => JSON.parse(binding.actorSignature)).not.toThrow();
       expect(() => JSON.parse(binding.resources[0].provenanceSignature)).not.toThrow();
     } finally { vi.useRealTimers(); }
@@ -37,6 +37,7 @@ describe("formal default-planning runtime consumer", () => {
     try {
       const bundle = await persistedPlanningFixture();
       const changedAmount = { ...bundle, events: bundle.events.map(event => ({ ...event, operation: { ...event.operation } })) };
+      if (changedAmount.events[0].operation.actionType !== "allocate_resource") throw new Error("expected_allocation_fixture");
       changedAmount.events[0].operation.amount = 999;
       expect(changedAmount.worldSnapshots === bundle.worldSnapshots).toBe(true);
       expect(projectFormalSandboxResult(changedAmount) === null).toBe(true);

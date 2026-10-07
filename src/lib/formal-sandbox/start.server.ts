@@ -7,6 +7,7 @@ import { persistFormalSandboxRun } from "./repository.server";
 import { buildFormalSandboxRunV2 } from "./runtime";
 import { formalSandboxStartRequestSchema } from "./start-request";
 import { parseFrozenSymbolicLens } from "./symbolic-lens";
+import { defaultPlanningRequestSchema, planningConsentContextSchema } from "@/lib/formal-planning/contracts";
 
 const requestSchema = formalSandboxStartRequestSchema;
 const graphSchema = z.object({ id:z.string().uuid(), user_id:z.string().uuid(), seed_context_id:z.string().uuid(), agent_snapshot_id:z.string().uuid(), graph_locked:z.literal(true), locked_at:z.string(), safety_level:z.enum(["safe","caution"]) }).passthrough();
@@ -20,7 +21,7 @@ const reservationSchema = z.object({
   frozen_source_input: z.record(z.string(), z.unknown()).nullable(),
   run: z.object({ id:z.string().uuid(), status:z.literal("completed"), graph_snapshot_id:z.string().uuid(), time_horizon:z.enum(["30_days", "90_days"]) }).passthrough().nullable(),
 }).strict();
-const reservationErrors = new Set(["unauthenticated", "invalid_request", "graph_not_found", "seed_not_found", "safety_blocked", "incomplete_object_chain", "idempotency_key_content_conflict", "reservation_expired", "invalid_correction", "current_graph_required"]);
+const reservationErrors = new Set(["unauthenticated", "invalid_request", "graph_not_found", "seed_not_found", "safety_blocked", "incomplete_object_chain", "idempotency_key_content_conflict", "reservation_expired", "invalid_correction", "current_graph_required", "planning_context_stale", "invalid_planning_request"]);
 
 function stableSeed(graphId: string, key: string) {
   return (Number.parseInt(createHash("sha256").update(`${graphId}:${key}`).digest("hex").slice(0, 7), 16) % 1_999_999_999) + 1;
@@ -40,6 +41,7 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
       p_horizon_days: request.data.horizon_days,
       p_digital_life_rules: request.data.digital_life_rules ?? null,
       p_outcome_calibration: request.data.outcome_calibration ?? null,
+      ...(request.data.default_planning ? { p_default_planning: request.data.default_planning } : {}),
     });
     if (reserved.error) return { ok:false as const,errorCode:reservationErrors.has(reserved.error.message) ? reserved.error.message : "persistence_failed" };
     const result = z.array(reservationSchema).length(1).safeParse(reserved.data);
@@ -52,6 +54,13 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
     if (Date.now() >= Date.parse(reservation.simulation_start_at)) return { ok:false as const,errorCode:"reservation_expired" as const };
     const source = reservation.frozen_source_input;
     if (!source) return { ok:false as const,errorCode:"persistence_failed" as const };
+    let defaultPlanning;
+    if (source.default_planning !== undefined && source.default_planning !== null) {
+      const frozen = defaultPlanningRequestSchema.safeParse(source.default_planning);
+      const context = planningConsentContextSchema.safeParse(source.planning_consent_context);
+      if (!frozen.success || !context.success || context.data !== frozen.data.consentContext) return { ok: false as const, errorCode: "invalid_planning_source" as const };
+      defaultPlanning = { defaultPlanning: frozen.data, planningConsentContext: context.data };
+    } else if (request.data.default_planning) return { ok: false as const, errorCode: "invalid_planning_source" as const };
     const graph = graphSchema.safeParse(source.relation_graph_snapshots);
     if (!graph.success || graph.data.user_id !== userId || graph.data.id !== request.data.graph_snapshot_id) return { ok:false as const,errorCode:"graph_not_found" as const };
     const seed = seedSchema.safeParse(source.seed_contexts);
@@ -85,6 +94,7 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
       symbolicLens:parseFrozenSymbolicLens(source.symbolic_lens,userId,reservation.accepted_at),
       calibrationSnapshot:buildAccountCalibrationSnapshot(z.array(z.object({ rating:z.unknown(),target_type:z.unknown(),created_at:z.unknown() })).parse(source.feedback_logs)),
       ...(source.outcome_calibration ? {outcomeCalibration:source.outcome_calibration} : {}),
+      ...(defaultPlanning ?? {}),
       ...(source.digital_life_rules ? { digitalLifeRules: source.digital_life_rules } : request.data.digital_life_rules ? { digitalLifeRules: request.data.digital_life_rules } : {}),
     });
     if (!built.ok) return built;

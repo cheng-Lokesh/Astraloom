@@ -237,6 +237,13 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
       const policyInput = { ...bundle.inputSnapshot }; delete policyInput.planningHypothesis;
       if (createHash("sha256").update(runtimeCanonical(policyInput)).digest("hex").slice(0, 24) !== bundle.policyFingerprint) return null;
       const analysis = z.object({ trajectories: z.array(z.object({ trajectoryId: reference, trajectorySeed: z.number().int(), finalWorld: z.record(z.string(), z.unknown()) }).passthrough()).length(bundle.worldSnapshots.length) }).passthrough().parse(bundle.trajectoryAnalysis);
+      // Persistence consumes these top-level events, not the World snapshots. Bind the
+      // complete ledger, including branch ownership/order/time, to the accepted samples.
+      const persistedEvents = analysis.trajectories.flatMap((trajectory, index) =>
+        (bundle.worldSnapshots![index] as WorldStateV2).worldEvents.map((event, tickIndex) => ({
+          ...event, branchId: trajectory.trajectoryId, tickIndex,
+        })));
+      if (JSON.stringify(canonicalValue(bundle.events)) !== JSON.stringify(canonicalValue(persistedEvents))) return null;
       defaultPlanning = projectDefaultPlanning(planning, bundle.defaultPlanningTraces.map((item, index) => {
         const trajectory = analysis.trajectories[index];
         if (item.trajectoryId !== trajectory.trajectoryId || JSON.stringify(canonicalValue(trajectory.finalWorld)) !== JSON.stringify(canonicalValue(bundle.worldSnapshots![index]))) throw new Error("invalid_planning_event_trace");

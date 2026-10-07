@@ -1,8 +1,8 @@
 # Formal default planning functional candidate
 
-Scope: the independent `formal-planning` module only. Formal Start, source-owner
-database admission, runtime installation and real Result UI remain to be integrated.
-This is not full Destiny fusion or final product acceptance.
+The first checkpoint scoped the independent `formal-planning` module only. Later
+sections record formal Start/runtime/Result integration and its remaining database
+execution boundary. This is not full Destiny fusion or final product acceptance.
 
 The planner budget is a whole-run maximum of simulated resource allocation for
 each independent path and sample. A separate, default-off hypothesis consent can
@@ -106,3 +106,63 @@ actual initial boundary `updatedAt` and matches its provenance exactly, with
 acceptedAt <= capturedBoundaryAt <= simulationStartAt; it does not substitute the
 DB reservation clock for actual runtime capture time. The module remains a
 functional candidate pending complete source admission and persisted replay.
+
+## Formal consumer integration candidate
+
+The formal runtime consumer first executed an intended RED (one assertion failure:
+the authorized input did not run). It then reused the existing actual Core pipeline:
+three samples / nine controlled events, first quantity 0.9 versus neutral 1. Real
+actor provenance is included alongside resource provenance so Claims can retain
+existing Reality Evidence without reclassifying symbolic input as Evidence.
+
+The expanded one-fixture seam exercises actual capture time after DB acceptance,
+main and explicit variant paths, identical on/off policy IDs/RNG, full safe Result
+and client schema round-trip, altered source rejection and exchanged sample trace
+rejection. Structural receipts use code-point canonical property order so Zod or
+JSONB object-key ordering cannot break legitimate replay. Projection invalidity
+returns null, never fabricated unselected/zero quantities. Independent review also
+reexecuted these counterexamples; this is runtime evidence, not database evidence.
+
+Start transports optional six-argument planning authorization from the frozen
+reservation source; old requests retain five named parameters. New targeted
+admission tests use a typed DB-shaped source and real Profile/model/planner parsing;
+completed receipt recovery makes one reservation RPC and zero current reads,
+runtime rebuilds or completion writes. Mismatched frozen context performs no
+runtime/completion write. Current critical target: five files / 44 tests, exit 0;
+full-repo TypeScript and changed-source ESLint exit 0.
+
+Forward migration 20261007143918 was created by Supabase CLI and authored only.
+It has not been applied, linted against a live DB or exercised for Auth/RLS/trigger
+behavior because the local daemon is unavailable. No reset, bypass or remote paid
+call was attempted. The complete user journey remains a functional candidate until
+source admission and real signed-in persistence can be verified.
+
+## Independent persistence review: two actual P1 regressions
+
+The reviewer reused the actual nine-event runtime bundle with account-feedback
+input. Optional Evidence properties containing undefined were incorrectly emitted
+inside structural signature strings. Full JSON serialization/reload rejected the
+otherwise valid bundle, and SQL signature-to-jsonb casts would reject completion.
+Separately, independently copying only top-level events and changing amount 0.9
+to 999 left World snapshots/traces unchanged, yet the safe projection accepted it.
+The database persistence loop consumes this top-level ledger, so World-only budget
+checks did not establish persisted event-budget consistency.
+
+The two actual behavior tests executed RED: one file / two failures / one pass,
+exit 1. Only that regression test was committed as `87fcb6e` before the production
+fix. Fixture type declarations were subsequently narrowed normally; no ignored
+errors, Core/config changes or invalid loading failures counted as RED.
+
+Structural receipts now canonicalize the exact persisted JSON semantics before
+sorting keys: undefined object fields are omitted and absent array values become
+null. All substantive source/actor/resource/provenance fields remain exact. For
+planner bundles only, Result and forward SQL require the complete top-level events
+to equal all accepted sample World events expanded in trajectory/event order with
+the actual branchId/tickIndex; createdAt, amounts, references and deltas remain
+part of full equality. The old no-planner path is unchanged.
+
+Focused GREEN: runtime + admission + own module, five files / 46 tests, exit 0;
+full-repo `npx tsc --noEmit` and changed-source ESLint exit 0. The regression covers
+the complete runtime bundle JSON persistence roundtrip, parseable actor/resource
+signatures, altered top-level amount and altered branch ownership. This is source
+and actual-Core evidence, not execution of the forward SQL on a live database.

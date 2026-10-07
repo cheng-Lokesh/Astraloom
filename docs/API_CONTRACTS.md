@@ -757,3 +757,41 @@ missing owned run, and 409 for known observation/correction/lock/window/conflict
 errors. Unknown database details are never returned. New service-only writer
 stores criteria comparison but refuses Core scoring/calibration artifacts.
 Database/Auth/RLS execution acceptance is still outstanding.
+
+## Bounded default planning API candidate (2026-10-07)
+
+`GET /api/sandbox/planning-context?graph_id=...` uses only the current authenticated
+non-anonymous session and an invoker/RLS RPC `read_formal_default_planning_context_v1`.
+The optional unique UUID graph parameter must match the current submitted
+crossroad/locked safe chain. One MVCC source yields both its safe resource labels
+and 64-hex `consentContext`. The DTO is version, context, Profile revision,
+resources `{resourceKey,label,unit,available,minimum,declaredRate,explicitRulePresent}`
+and symbolic eligibility `{status:eligible|off|unavailable,classification:hypothesis,
+relationshipEffect:not_implemented}`; it never exposes owner/Agent/source UUIDs.
+Draft rules are not current DB sources; admission still checks all effective
+rules, including independently selected Outcome corrections.
+
+Run POST adds optional strict `default_planning{version:formal-default-planner-v1,
+consentContext,resources:[{resourceKey,totalBudgetLimit,confirmedForSimulation:true}],
+fusion:{enabled,confirmedForSimulation}}`. The separate fusion switch defaults
+off and both fusion booleans must agree. Clients cannot supply owner, frame,
+Core ID, cap, weight or source receipt. Default absence remains the old contract.
+
+Six-argument `reserve_account_sandbox_run` freezes the accepted permission and
+source context before execution. Old four/five-argument callers delegate with
+null planning, preserving old content-hash and receipt recovery. Receipt-first
+pending/completed recovery does not read or rebuild today's Profile/lens. New
+planner keys compare the same frozen source context before any reservation insert;
+changed request bodies conflict. Stale context / invalid authorization returns a
+safe 409, not raw database details. All context/Start/Result responses are no-store.
+
+Result adds optional safe `projection.defaultPlanning`, also per strategy. It
+contains frozen hypothesis, initial/minimum/budget quantities and actual controlled
+Event comparisons with safe Assumption categories. Sample trajectory identity,
+seed namespace, final World and resource source binding are validated before
+projection. The complete top-level event ledger consumed by persistence must match
+sample World events with exact trajectory branch, tick order, time and payload;
+changing only a displayed/persisted amount is rejected. Complete JSON roundtrip
+retains the structural binding. Invalid persisted bundles return no safe projection.
+Missing legacy planning remains absent, not reconstructed from current preferences. SQL source
+review and mock transport tests do not prove actual DB/RLS execution acceptance.

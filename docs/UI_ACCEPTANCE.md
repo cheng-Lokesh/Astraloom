@@ -457,3 +457,32 @@ allocation correction. New-run correction selection defaults off. Historical
 runs remain frozen; missing historical lock/criteria is plainly not_recorded.
 Raw provenance, private UUIDs and birth data must not render or log. Pure logic
 and synthetic UI checks do not replace signed-in owner/RLS/DB acceptance.
+
+## Bounded default planning user journey candidate (2026-10-07)
+
+Start separately explains and confirms each selected resource's whole-run budget
+per hypothetical path/sample. The independent first-tick hypothesis switch starts
+off and is available only with current eligible symbolic source consent. Explicit
+rate/action resources are not silently rescaled; they remain governed by the
+owner's rules. The 10% cap is a versioned product planning assumption, not a
+probability, traditional authority or behavioral conclusion.
+
+Profile/resource/source changes require fresh context and fresh authorization for
+a new key. A pending/unknown POST instead preserves its full typed request and key
+for recovery; graph prop changes must not erase that receipt or replace its body.
+A 409 context rejection clears new planning consent and asks for explicit reload.
+No planning permission omits the new request field and retains the old path.
+
+Result shows frozen consent/hypothesis beside neutral and proposed quantity,
+selected versus unselected controlled Event and actual amount, with budget and
+minimum resource reserve. A hypothesis proposal is not an actual action until a
+controlled Event exists. Neither selected-null nor an unselected invented amount
+is shown as zero. Main and explicit strategy worlds keep their own trace scope;
+no private source/Core identifiers are rendered. Legacy absence stays explicit.
+
+The symbolic lens remains `causalUse:false`; a separately authorized quantity
+hypothesis is described as its own planner lane. Relationship sensitivity is
+not implemented, and neither full Destiny fusion nor scientific probability is
+claimed. Current source/logic/DOM evidence is a functional candidate; DB ownership,
+RLS, frozen replay and real signed-in browser acceptance remain unverified until
+the local database service is available. Do not reset it to bypass this gate.

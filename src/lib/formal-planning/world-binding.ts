@@ -24,10 +24,15 @@ export type PlanningWorldBinding = {
 // A structural receipt, not a signature authenticating arbitrary untrusted requests. Admission and
 // immutable persistence establish trust; this exact comparison detects source/world substitutions.
 function structuralSignature(value: unknown): string {
+  // Seal the exact persisted JSON representation: optional object properties disappear,
+  // while absent array values become null. Canonical ordering does not weaken equality.
+  return canonicalJson(JSON.parse(JSON.stringify(value)));
+}
+function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(structuralSignature).join(",")}]`;
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${structuralSignature(record[key])}`).join(",")}}`;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
 }
 export function acceptedPlanningSourceSignature(planning: FrozenDefaultPlanning) {
   return structuralSignature({ sourceBinding: planning.sourceBinding, resources: planning.resources, maxTicks: planning.maxTicks });

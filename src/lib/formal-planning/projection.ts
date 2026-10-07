@@ -24,7 +24,9 @@ export const safeDefaultPlanningSchema = z.object({
     assumptionCategories: z.array(z.string().regex(/^formal_(default_planning_resource_[1-8]|symbolic_initial_planning_v1)$/)).min(1).max(2),
     evidenceSummary: z.literal("实际变化来自本次运行的受控模拟事件；不是现实发生证明"),
   }).strict()).max(512),
-}).strict();
+}).strict().superRefine((projection, context) => {
+  if (projection.trace.some(item => item.status === "selected" ? item.actualAmount === null : item.actualAmount !== null)) context.addIssue({ code: "custom", message: "invalid_planning_event_trace" });
+});
 export type SafeDefaultPlanning = z.infer<typeof safeDefaultPlanningSchema>;
 
 /** A legacy result must remain absent instead of being reconstructed from current preferences. */

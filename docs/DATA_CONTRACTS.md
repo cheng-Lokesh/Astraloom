@@ -1401,3 +1401,44 @@ occurrences, Brier scores, accuracy or reality probabilities. Calibration remain
 insufficient_data with compatible sample count zero; statistical calibration is
 unfinished. The forward SQL rollout and owner/RLS/atomicity acceptance await the
 local database daemon; authored SQL is not execution evidence.
+
+## Bounded default planning candidate (2026-10-07)
+
+`formal-default-planner-v1` is a separate formal product lane. Its resource budget
+is a maximum simulated allocation for one entire Run, independently per path and
+sample, not spending of actual money or a budget shared between hypothetical
+Worlds. A non-anonymous owner selects an ordinal resource and explicitly confirms
+its budget only against a server-issued `consentContext`. The context binds the
+current Seed/Graph/Agent, complete Profile revision/resource definitions and
+symbolic consent/frame/period. Resource reordering or source changes invalidate a
+new reservation; old-key replay retains the original immutable source.
+
+The server freezes the canonical Profile resource key/type/range/classification
+and actual self/strategy source agent. A server-only initial-World receipt derives
+Core actor/entity/resource IDs from that source and the neutral policy namespace,
+checks real Ledger provenance and captures the actual boundary clock. Continuation
+and Result compare the same structural receipt. This is not a client signature or
+Evidence. Timing remains acceptedAt <= capturedBoundaryAt <= simulationStartAt.
+
+No permission preserves the old runtime output and metadata absence. With planner
+permission, fusion off uses neutral candidates. Independently confirmed
+`symbolic-initial-planning-hypothesis-v1` can reduce only first-tick candidate
+quantity by at most 10% (two explicit 5% product hypotheses). Neither science nor
+traditional probability weights are asserted. Identity/order/count, Core uniform
+selection, seeds, declared rates, explicit actions, World initial values and
+Reality Evidence remain outside this hypothesis. Any explicit allocation rule on
+any path, or a declared rate, makes that resource inactive. Too-small headroom is
+inactive; fractions use a downward neutral slice with strict accumulation guards.
+
+Hypotheses have real confirmed self-Assumption Ledger references; symbolic refs
+are frozen background trace only. `defaultPlanningSnapshot` and per-trajectory
+`defaultPlanningTraces` remain immutable with the run. Complete runtime-bundle
+JSON serialization preserves exact structural bindings:
+optional object fields follow JSON omission semantics and array gaps become null.
+The persistence-consumed top-level event ledger must equal the controlled sample
+World events expanded in trajectory/event order, including branch, tick and time;
+World-only quantities are insufficient proof of a persisted budget. Safe Result
+exposes the frozen hypothesis, neutral/proposed quantity, actual selected/not-selected Event
+comparison, budget and safe assumption categories, never source or Event UUIDs.
+Relationship sensitivity is explicitly not implemented; this is not full Destiny
+fusion. CLI forward migration 20261007143918 is authored but not yet DB-verified.
