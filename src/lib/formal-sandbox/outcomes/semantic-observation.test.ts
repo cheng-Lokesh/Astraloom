@@ -27,5 +27,16 @@ it("compares independently frozen resource criteria without scoring an unobserva
  const actor=target.conditions.find(c=>(c as {measurement?:string}).measurement==="actor_scope")!;
  const changed=await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:observations.map(o=>o.key===actor.key?{...o,value:false}:o)},"2026-11-10T04:00:00.000Z");
  expect((changed as unknown as {criteriaComparison:{status:string}}).criteriaComparison.status).toBe("different");
+ const orderChanged=observations.map(o=>{const c=target.conditions.find(c=>c.key===o.key)!;return c.requiresTime?{...o,occurred_at:c.sequence===1?"2026-10-22T04:00:00.000Z":"2026-10-20T04:00:00.000Z"}:o;});
+ expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:orderChanged},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("different");
+ expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",input,"2026-10-25T04:00:00.000Z")).criteriaComparison.status).toBe("unknown");
+ const unknown=observations.map(o=>({key:o.key,value:null}));
+ expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:unknown},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("unknown");
+ const before=target.conditions.find(c=>c.measurement==="resource_before")!;
+ expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:observations.map(o=>o.key===before.key?{...o,value:1}:o)},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("different");
+ const realTimes=observations.map(o=>o.key===before.key?{...o,occurred_at:"2026-10-19T04:00:00.000Z"}:o);
+ expect((await buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:realTimes},"2026-11-10T04:00:00.000Z")).criteriaComparison.status).toBe("matched");
+ const tampered=structuredClone(result.bundle);tampered.frozenRealityCriteria.targets[0].conditions[0].expectedValue=7;
+ await expect(buildObservedOutcome(tampered,"2026-10-06T03:59:59.999Z",input,"2026-11-10T04:00:00.000Z")).rejects.toThrow("invalid_forecast_lock");
  await expect(buildObservedOutcome(result.bundle,"2026-10-06T03:59:59.999Z",{...input,observations:observations.slice(0,1)},"2026-11-10T04:00:00.000Z")).rejects.toThrow("invalid_observation");
 },60000);
