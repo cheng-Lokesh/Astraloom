@@ -1474,3 +1474,44 @@ resource reserve. Legacy absence is explicit; an empty unauthorized strategy tra
 cannot acquire the main path's relationship samples. The forward relationship SQL
 is authored in 20261007153523; database execution, Auth/RLS, atomic rollback and
 real signed-in frozen replay remain pending while the local daemon is unavailable.
+
+## Current digital-life model draft candidate (2026-10-13)
+
+digital_life_model_drafts is an owner-scoped append-only revision ledger for
+unconfirmed configuration. Its revision sequence is global to the owner, not
+per Seed: (user_id, revision) is the primary key, parent_revision must be the
+prior revision, and (user_id, idempotency_key) is unique. Each row is bound to
+its Seed through the owner-composite foreign key. The authored trigger rejects
+update/delete, serializes writes for one owner, and compares the expected
+revision to that owner's latest revision.
+
+The current source snapshot is the owner's newest submitted, frozen Seed and
+its newest Graph and matching Agent snapshot, plus the current Reality Profile
+when present. The SQL source reader captures source identities, complete
+contents, and ordered Agent/relationship/resource arrays in one stable read.
+The stored source signature binds that complete snapshot. The safe model
+context preserves the ordered labels and ordinal bindings needed to interpret
+the saved rules; stale mappings are never rebound by ordinal to a newer source.
+
+A saved request contains only the versioned draft, expected revision,
+idempotency key, 30- or 90-day horizon, source context, and typed draft rules.
+Every saved action and strategy has confirmedForSimulation=false. Saving does
+not create a Run, Reality/Evidence record, budget permission, planning
+permission, or other consent ledger entry. Those remain independent actions
+and ledgers.
+
+Reads project current, stale, or not_saved and keep the saved sourceContext
+separate from currentSourceContext. A stale draft retains its original source
+labels for inspection only. If no current source is available, the current
+context can be null; the saved source and rules remain unchanged. An idempotent
+save receipt alone does not establish today's source freshness.
+
+The forward SQL adds a draft-specific text validator intended to mirror the
+existing TypeScript safe-text boundary, including trim-first limits,
+control-character, identifier/contact/secret/URL checks, and safety screening.
+Source-level assertions cover ASCII word boundaries, JavaScript whitespace and
+UTF-16 limits, UUID shape, and unsafe legacy Profile display values. This is
+static parity evidence only; direct-RPC SQL execution is not accepted yet.
+Existing Run validators are unchanged. The migration is authored source only:
+database execution, owner RLS behavior, concurrent compare-and-swap, and
+authenticated persistence have not been verified in a running database.

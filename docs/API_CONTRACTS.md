@@ -858,3 +858,38 @@ original body and key for recovery, including across changed source props.
 This connected UI and canonical Core execution are functional-candidate evidence.
 Synthetic HTTP/DOM checks do not verify real database JSON-path transport, Auth/RLS,
 atomic persistence, cross-account access or a real signed-in rerun.
+
+### Current digital-life model draft API candidate (2026-10-13)
+
+GET /api/sandbox/model-draft reads the authenticated, non-anonymous owner's
+saved revision and current source projection. POST appends a draft revision.
+Both routes reject query parameters, return no-store, and use the existing
+sandbox response envelope. The strict POST body has exactly version,
+expectedRevision, idempotencyKey, horizonDays, sourceContext, and draftRules;
+the horizon is 30 or 90 days and all action/strategy confirmation flags must be
+false. Unknown request keys fail closed.
+
+The read projection distinguishes current, stale, and not_saved.
+sourceContext preserves the saved source and its ordered labels; the separate
+currentSourceContext describes the source observed by that read. Stale rules
+remain bound to their saved context and cannot be applied to current ordinals.
+
+For a repeated owner/key, the original request receipt is checked before
+reading mutable current sources. Canonical JSON comparison ignores object-key
+order while preserving array order. An exact replay returns the original
+revision; changed content with the same key conflicts. Because the replay is a
+historical receipt, its response may have status=stale and a null
+currentSourceContext; clients must issue GET after the receipt and verify that
+the saved source is current before presenting it as today's model.
+
+The authored SQL writer repeats replay, owner-global revision, source, and
+draft-rule checks inside its transaction. These are candidate contracts, not
+evidence that the migration or database RPCs have run. Auth/RLS, actual
+compare-and-swap concurrency, cross-device persistence, and database replay
+remain unverified.
+
+Malformed or extra-query requests map to 422, unauthenticated/anonymous access
+to 401, stale or conflicting source/revision/key requests to 409, and sanitized
+persistence failures to 500. A first append returns 201; an idempotent receipt
+returns 200. Error and success responses are no-store and do not persist the
+response trace identifier.

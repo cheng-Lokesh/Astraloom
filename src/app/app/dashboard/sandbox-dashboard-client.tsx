@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import type { SandboxOverview } from "@/lib/sandbox-overview/overview.server";
 import { DashboardSymbolicSummary } from "./symbolic-summary";
+import { DashboardCurrentModelSummary } from "./current-model-summary";
 
 type Load = { phase: "loading" } | { phase: "error"; message: string } | { phase: "ready"; overview: SandboxOverview };
 const action: Record<SandboxOverview["nextAction"]["kind"], string> = {
@@ -42,6 +43,7 @@ export function SandboxLedger({ overview }: { overview: SandboxOverview }) {
     <section aria-labelledby="runs-title" className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]"><div><Header id="runs-title" eyebrow="运行与记录" title="沙盘的当前位置" /><dl className="divide-y divide-white/10"><Row label="运行中" value={overview.running.exists ? "有进行中的 Run" : "暂无"} detail={overview.running.exists ? "状态由服务端确认" : ""} tone={overview.running.exists ? "gold" : "muted"} /><Row label="最近完成" value={done ? "已完成" : "暂无已完成 Run"} detail={done ? new Date(done.completedAt).toLocaleString() : ""} tone={done ? "verified" : "muted"} /><Row label="历史" value={`${overview.history.count}`} detail="账户中的正式 Run" tone={overview.history.count ? "verified" : "muted"} /><Row label="最近反馈" value={overview.feedback.exists ? "已有反馈" : "暂无反馈"} detail="反馈只影响新的 Run" tone={overview.feedback.exists ? "verified" : "muted"} /></dl></div><aside className="border-t border-white/10 pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"><p className="font-mono text-[11px] uppercase tracking-[.14em] text-[var(--evidence-gold)]">唯一下一步</p><p className="mt-3 text-lg font-semibold leading-7 text-[var(--text-primary)]">{action[overview.nextAction.kind]}</p><p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">每次只给出与当前服务端链一致的一个动作。</p><Action overview={overview} /></aside></section>
     <section aria-labelledby="not-modeled-title" className="border-y border-white/10 py-7"><p className="font-mono text-[11px] uppercase tracking-[.14em] text-[var(--text-muted)]">模型边界</p><h2 id="not-modeled-title" className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">当前视图不推断</h2><div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{["现实变化历史", "资源变化轨迹", "未来状态转移", "外部变量影响"].map(label => <div key={label} className="border-t border-white/10 pt-3"><p className="text-sm font-semibold text-[var(--text-primary)]">{label}</p><p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">目前没有当前正式链的已确认资料或受控事件支持。</p></div>)}</div></section>
     <DashboardSymbolicSummary />
+    <DashboardCurrentModelSummary />
   </section></main>;
 }
 

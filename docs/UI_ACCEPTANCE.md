@@ -532,3 +532,34 @@ neutral; only the first selected post-response allocation consumes the hypothesi
 Unauthorized strategy paths do not display main samples even when their traces
 are empty. No raw IDs/provenance are rendered. Browser synthesis and DOM checks
 remain separate from real signed-in owner/database acceptance.
+
+## Current digital-life model draft journey candidate (2026-10-13)
+
+The dashboard reads the current owner's draft and shows its saved revision,
+horizon, and action/strategy counts without exposing transport identifiers.
+The entry opens current-model configuration, not a historical Run. An unsaved
+account can configure a draft; a saved current draft can be reviewed; an
+unavailable read has an explicit retry/error state.
+
+When the saved source is current, Start may load its rules for review, but each
+action and strategy must be confirmed again before Run. Saving writes only
+unconfirmed draft rules. It does not start a Run or authorize actions,
+strategies, budgets, or optional hypotheses. After save or idempotent replay,
+the UI reads GET again and checks the current source before treating the draft
+as current.
+
+When the source is stale, the original saved labels and rules remain visible in
+a disabled, read-only editor. They are not rebound to current ordinal
+positions. A separate action starts a blank draft against freshly read current
+source, requiring the user to configure and confirm again.
+
+Unknown Save and Run responses retain the original full request body and key
+in the mounted Start component's recovery references; recovery resends that
+same request without silently refreshing its source. This is in-memory
+component recovery only. A page reload, remount, browser crash, or device
+change is not established as unknown-request recovery. Run creation and its
+separate permissions remain governed by the existing Run flow.
+
+These are source-level UI contracts. A synthetic or static UI check does not
+prove real signed-in behavior, database persistence, Auth/RLS, or cross-device
+recovery; visual and authenticated acceptance remain outstanding.

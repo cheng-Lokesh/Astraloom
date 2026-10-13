@@ -24,12 +24,23 @@
 - 关系回应仍是 `formal-default-planner-v2` 的局部候选：同路径的用户请求之后，NPC 的消极回应只影响该路径首个实际选中的资源分配；基础调整 5%，另有独立确认的 Symbolic 假设时合计最多 10%。本地观察值为 `1 → 0.9`；Symbolic 关闭为 `0.95`，开启为 `0.9`；积极/中性回应不降额。它不改变核心 RNG/抽样身份，但会改变因果事件链，不能据此宣称 Track A 或 Destiny 完成。
 - 有关候选的源文件边界见[数字生命规则模型](../src/lib/digital-life/model.ts)、[关系回应授权与解析](../src/lib/formal-planning/relationship-response.ts)、[受控 proposal](../src/lib/formal-planning/proposals.ts)、[安全结果投影](../src/lib/formal-planning/projection.ts)和[结果界面](../src/app/app/simulation/result/frozen-relationship-response.tsx)。相关局部测试包括[关系回应测试](../src/lib/formal-planning/relationship-response.test.ts)、[规划投影测试](../src/lib/formal-planning/projection.test.ts)与[结果组件测试](../src/app/app/simulation/result/frozen-relationship-response.test.ts)。这些是本地代码/合成样本证据，不是已部署或真实账户验收。
 - 最近 main/variant 空 trace 的 P1 修复记录：5 项定向测试失败 0，另有实际 Node 探针退出码 0。样本中 main 的三个关系 sample 正常；child 有 9 条 commitment，3 条空 trace 不含主路径关系摘要；将被篡改的 child `activePathKey` 改为 `main` 后，投影会拒绝。该窄证据只支持对应 trace/投影边界，不构成整个规划路径或安全验收。证据见[关系回应运行时专项测试](../src/lib/formal-sandbox/relationship-response.runtime.test.ts)及[规划投影](../src/lib/formal-planning/projection.ts)。
-- 2026-10-13 本轮 UI 静态检查覆盖 2 个文件、9 项测试、失败 0；Root 确认 V2 Core 未改变。另有 safe DTO/JSON round-trip、源码检查及 375px 合成 UI 检查。均未验证真实 Auth、RLS、数据库写入或真实用户浏览器旅程。
-- 2026-10-13 当前交付基线：隔离 Webpack build 在 `5641c0dc044ea395dc1ac4df25ba3f3ea0e395f1` 退出码 0，输出 110 pages；production preview `52340`（session `72380`）已 ready。基础 HTTP 检查：首页 200；未配置 Supabase 时 planning 返回 401，correction-context 的 null client 安全返回 500 且 `no-store`。这不证明 Auth 通过、环境可用或真实数据库读取。worker 对 current dev ref 作非强制 push 退出码 0；live `ls-remote` 确认远端为同一 `5641c0d`，HEAD/upstream 为 `0/0`，index 为空。
+- 2026-10-13 上一批 UI 静态检查覆盖 2 个文件、9 项测试、失败 0；Root 确认 V2 Core 未改变。另有 safe DTO/JSON round-trip、源码检查及 375px 合成 UI 检查。均未验证真实 Auth、RLS、数据库写入或真实用户浏览器旅程。
+- 2026-10-13 上一批稳定交付基线：提交 `ac491b87a5dcc98ecaea1d1a3584f51dca0694cc` 限定 11 个路径（7 code、3 docs、1 ledger），已对 current dev ref 非强制推送，退出码 0；live `ls-remote` 确认远端同一提交，HEAD/upstream 为 `0/0`，index 为空。Root 在精确 `ac491` HEAD 上隔离 Webpack build 退出码 0、输出 110 pages；production preview `52340`（session `72380`）在 215ms 内 ready。HTTP：首页 200；无效和有效 revision 均为 200 且 `no-store`；未配置时 new correction 的 null client 安全返回 500 且 `no-store`。这些结果不证明 Auth 通过或真实数据库读取；本提交未改用户 Hero 等页面，也不是本批 current-model-draft 新候选的 build/push 证据。
 - 关系回应前向迁移 `20261007153523` 已形成独立 SQL 源码闭环候选，不是数据库 PASS。为保证全新安装能继续到达该前向迁移，仅对旧 `20261007143918` 的一行括号优先级作修正，没有整体重写旧迁移；V2 Core 未改变。SQL 尚未执行数据库。2026-10-13 Docker engine pipe 实时检查为 `False`，因此没有数据库/RLS/持久化验收结论。
 - 模型规则来源新接口由 RED `111d43b` 推进至 GREEN `bf115bf8c483af47978ff48d9ae92867556a5000`，已随 `5641c0dc044ea395dc1ac4df25ba3f3ea0e395f1` 推送。实现 helper 的 46 项测试失败 0；4 个文件的 66 项相关回归失败 0，lint 和 TypeScript 检查退出码均为 0。独立复核的 46 项测试失败 0，SDK JSON selector/source/no-confirm/reset 检查未发现新 P1；这些仍是定向证据，不是 DB/RLS 验收。
-- 模型规则修订 UI 已保存为功能候选：Result 显式进入 Start 修订分支，从服务器载入原本人、NPC、策略与资源规则，逐项重新确认，再通过既有 typed Run POST 另跑。询问周期、承诺、可见回应与同资源投入量可改；原 Run/Graph/Evidence 不改。4 个相关文件 12 项测试失败 0，lint/TypeScript 退出码均为 0，375px Chrome 合成流程退出码 0；实际 Core 消费修订后的规则并生成受控 Event。Sol high 独立窄审查重跑新 7 项测试退出码 0，未发现可复现 P1；范围不包含数据库/真实账户或九阶段完整验收。本批构建待在新的固定 HEAD 上完成，不属于 `5641c0dc` 的旧 build，也尚未推送。
+- 模型规则修订 UI 候选已随 `ac491` 提交并推送：Result 可进入 Start 修订分支，载入服务端草稿、逐项确认，再经 typed Run POST 运行；实际 Core 消费修订规则并生成受控 Event。4 个文件 12 项测试失败 0，lint/TypeScript 退出码均为 0；375px 实际 DOM 中资源量由 `1` 变为 `2`，unknown 请求的 body/key 完全相同。独立 high 窄审查的 7 项命名测试失败 0、未发现 P1。该 UI 不在旧 `5641c0d` build 中，上方精确 `ac491` build 已覆盖；这些证据仍不代表真实 Auth/DB/RLS 或九阶段验收。见[修订测试证据](testing/formal-model-rule-revision.tdd.md)。
 - 修订请求的组件 ref 恢复保护保留完整旧 body/key，覆盖组件内 props/来源变化及未知提交响应；整页刷新、退出页面或跨设备后的持久请求恢复尚未证明。当前 source/DOM/实际 Core/合成传输只支持功能候选，未证明 Auth、RLS、真实数据库 JSON-path 读取、原子写入、真实历史保留或 full Fork。实际 RED 行为、未先提交 RED 的限制及精确验证命令见 [修订测试证据](testing/formal-model-rule-revision.tdd.md)。
+- `current_model_draft_backend` 本批已形成 append-only 保存/读取、owner-global revision/source binding、false-confirmation 草稿和 Save/Run 原请求恢复的功能候选；该候选仍在当前 HEAD 之上的未提交工作中，build/push 待完成。
+
+## Current digital-life model draft candidate (2026-10-13)
+
+本批候选在页面显示账户当前模型草稿；支持读取、保存未确认规则、按账户全局 revision 追加、识别 source 是否 stale，并在保存回执后重新读取当前 source。旧 source 的标签与规则只读保留，不按新顺序重新绑定。未知 Save/Run 结果在挂载中的组件引用里保留原请求 body/key 供重试；整页刷新与跨设备恢复未证明。保存本身不创建 Run，也不授权预算或策略。
+
+本批验证时的 RED 基线为 `5ff6fbb4fc9775556ec6f10d635321c3b2fd5df7`；后续修复已形成 GREEN 候选，提交、固定 HEAD build 与 push 待以 Git 和构建实证收尾。上一批稳定交付基线仍是远端 `ac491`，不能作为本批 HEAD/build/push 证据。
+
+候选验证记录：backend producer 的两文件定向命令为 `npx vitest run src/lib/digital-life/model-draft.test.ts src/lib/digital-life/model-draft-runtime.test.ts --reporter=verbose`，15 tests PASS，exit 0；independent reviewer 以 `npm test -- src/lib/digital-life/model-draft.test.ts src/lib/digital-life/model-draft-runtime.test.ts` 重跑，15 tests PASS，exit 0。producer 报告 `npx tsc --noEmit` 与本批五路径 ESLint 命令均 exit 0。375px synthetic browser harness exit 0，review scope 内没有可复现 P1。SQL source-parity assertions 的源码哈希为 `B099A7DBCF9F0D303204AE1B17C43CF2CB5A7F44BEAAC508D1405AB64B5AA080`；这是源码识别信息，不代表迁移执行。更完整的命令、RED/GREEN 顺序和范围见[本批 TDD 记录](testing/current-model-draft.tdd.md)。
+
+迁移和新增 pgTAP 案例尚未在数据库执行。Auth/RLS、owner isolation、append-only/CAS 并发、真实跨设备持久化仍 pending。V2 Core 未改变；本批不构成九阶段 PASS、阶段推进或最终独立验收。候选 build/push 尚待 Root 后续处理。
 
 ## 尚未验证的交付门槛
 
