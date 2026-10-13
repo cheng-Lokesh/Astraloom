@@ -795,3 +795,50 @@ changing only a displayed/persisted amount is rejected. Complete JSON roundtrip
 retains the structural binding. Invalid persisted bundles return no safe projection.
 Missing legacy planning remains absent, not reconstructed from current preferences. SQL source
 review and mock transport tests do not prove actual DB/RLS execution acceptance.
+
+### Bounded relationship-response request v2 (2026-10-13)
+
+Run POST also accepts `default_planning.version=formal-default-planner-v2` with
+strict `relationshipResponse` containing version, pathKey, authorized resourceKey,
+explicit confirmation, complete requestRule/responseRule and an independent
+`symbolicSensitivity{enabled,confirmedForSimulation}` pair. Both sensitivity
+booleans agree and default false. Unknown fields, missing budget permission,
+cross-path pairs, stale source context and rules differing from the exact effective
+accepted rules fail closed. Clients cannot supply frozen source IDs, reductions,
+assumption IDs or World receipts. The context DTO stays compatible with v1.
+
+The six-argument admission binds the complete v2 request in its content hash;
+same-key recovery reads the original receipt before current Profile/lens/Graph
+selection. Four/five/six-argument old requests retain their hashes and behavior.
+Start rejects a mismatched frozen planning body or consent context before runtime
+or persistence. Only new keys use current-source authorization.
+
+Result optionally returns safe `defaultPlanning.relationshipResponse` for the
+authorized path, with frozen labels, cap, Hypothesis classification and at most
+three sample comparisons. Actual amount requires a controlled selected Event;
+not-selected/not-triggered/inactive amounts stay null. Strategy paths never inherit
+main-path samples. Internal IDs, evidence references and symbolic source provenance
+are excluded. SQL completion validates the causal request/response chain, source
+binding and per-sample budgets before the existing mandatory completion gates.
+Mock transport/runtime checks are functional evidence, not actual DB/RLS acceptance.
+
+### Readonly next-run correction preparation candidate (2026-10-13)
+
+`GET /api/sandbox/runs/[runId]/correction-context` requires a verified,
+non-anonymous owner and an owned completed formal Run. It revalidates the frozen
+typed model/rules and requires exact compatibility with the latest submitted Seed,
+latest locked safe Graph, Agent ordering/bindings and current Profile content and
+revision. Legacy absence, incomplete Runs, stale sources and invalid frozen models
+fail closed. It never restores a source from a newer unrelated chain.
+
+The strict DTO contains the original `frozenRules`, safe selectors, horizon and
+`draftRules` whose action/strategy confirmations are all false. All four
+`permissionsReset` flags are true: planning, symbolic, outcomeCalibration and
+requestIdentity. It returns no old planning/symbolic/outcome permission or request
+key and performs no write, Run admission or historical mutation.
+
+Responses use no-store and the existing envelope: 401 unauthenticated/anonymous,
+404 missing/foreign Run, 409 legacy/incomplete/stale/invalid source, 422 malformed
+UUID or any query parameter, and sanitized 500 persistence failure. This is a
+readonly preparation API candidate; the UI correction-and-rerun journey and real
+database JSON-path transport are not claimed connected or verified by this contract.

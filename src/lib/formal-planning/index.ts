@@ -1,7 +1,8 @@
 import { GENERATES, CONTROLS } from "@/lib/destiny/constants";
 import type { AssumptionInputV2 } from "@/lib/v2/reality-boundary/types";
+import { freezeRelationshipResponse, parseRelationshipResponse, createRelationshipAssumption } from "./relationship-response";
 import {
-  DEFAULT_PLANNER_VERSION, INITIAL_REDUCTION_CAP, MINIMUM_PLANNING_AMOUNT, PLANNING_HYPOTHESIS_VERSION,
+  INITIAL_REDUCTION_CAP, MINIMUM_PLANNING_AMOUNT, PLANNING_HYPOTHESIS_VERSION,
   defaultPlanningRequestSchema, defaultPlanningSourceSchema, frozenDefaultPlanningEnvelopeSchema,
   type FrozenDefaultPlanning, type PlanningPriorInputs,
 } from "./contracts";
@@ -77,8 +78,11 @@ export function freezeDefaultPlanning(requestInput: unknown, sourceInput: unknow
       neutralAmount: status === "active" ? neutralAmount : 0, declaredRate: resource.usePerTick, explicitRulePresent,
       assumptionCategory: `formal_default_planning_resource_${ordinal}` });
   }
+  let relationshipResponse;
+  try { if (request.data.version === "formal-default-planner-v2") relationshipResponse = freezeRelationshipResponse(request.data.relationshipResponse, source.data, resources); }
+  catch { return { ok: false, errorCode: "invalid_planning_request" }; }
   const planning = frozenDefaultPlanningEnvelopeSchema.parse({
-    version: DEFAULT_PLANNER_VERSION, status: resources.some(resource => resource.status === "active") ? "active" : "inactive",
+    version: request.data.version, ...(relationshipResponse ? { relationshipResponse } : {}), status: resources.some(resource => resource.status === "active") ? "active" : "inactive",
     sourceBinding: { ownerId: model.ownerId, seedContextId: model.seedContextId, graphSnapshotId: model.graphSnapshotId, agentSnapshotId: model.agentSnapshotId, profileRevision: model.profileRevision, profileId: realityProfileSnapshot.profileId, acceptedAt, consentContext: source.data.consentContext,
       allowedPaths: [{ pathKey: "main", sourceAgentId: model.agents.find(agent => agent.role === "user_core")!.sourceAgentId, sourceAgentOrdinal: model.agents.findIndex(agent => agent.role === "user_core") + 1 }, ...model.rules.strategies.map(strategy => ({ pathKey: strategy.participantKey, sourceAgentId: model.agents.find(agent => agent.key === strategy.participantKey && agent.role === "user_variant")!.sourceAgentId, sourceAgentOrdinal: model.agents.findIndex(agent => agent.key === strategy.participantKey) + 1 }))],
     },
@@ -90,6 +94,12 @@ export function freezeDefaultPlanning(requestInput: unknown, sourceInput: unknow
 /** Reject structurally plausible tampering before proposing or displaying a frozen hypothesis. */
 export function parseFrozenDefaultPlanning(input: unknown): FrozenDefaultPlanning {
   const frozen = frozenDefaultPlanningEnvelopeSchema.parse(input);
+  if (frozen.version === "formal-default-planner-v2") {
+    const response = parseRelationshipResponse(frozen.relationshipResponse);
+    const resource = frozen.resources.find(item => item.resourceKey === response.authorization.resourceKey);
+    const path = frozen.sourceBinding.allowedPaths.find(item => item.pathKey === response.authorization.pathKey);
+    if (!resource || resource.status !== response.status || path?.sourceAgentId !== response.selfSourceAgentId) throw new Error("invalid_frozen_planning");
+  }
   if (new Set(frozen.resources.map(item => item.resourceKey)).size !== frozen.resources.length) throw new Error("invalid_frozen_planning");
   for (const resource of frozen.resources) {
     const ordinal = resource.resourceKey.slice("resource-".length);
@@ -112,7 +122,7 @@ export function parseFrozenDefaultPlanning(input: unknown): FrozenDefaultPlannin
 /** These are executable self assumptions, never symbolic Real Evidence. */
 export function createPlanningAssumptions(input: FrozenDefaultPlanning): AssumptionInputV2[] {
   const planning = parseFrozenDefaultPlanning(input);
-  return planning.resources.filter(resource => resource.status === "active").map((resource): AssumptionInputV2 => ({
+  const assumptions = planning.resources.filter(resource => resource.status === "active").map((resource): AssumptionInputV2 => ({
     statement: `本人授权的默认模拟规划：每条路径每个样本整次运行最多分配 ${resource.totalBudgetLimit} ${resource.unit}，每轮中性候选 ${resource.neutralAmount} ${resource.unit}；首轮仅按可关闭的产品规划假设缩减，最多百分之十。`,
     subjectType: "self", category: resource.assumptionCategory, epistemicStatus: "confirmed_for_simulation", impactLevel: "low",
     supportingRealEvidenceIds: [], contradictingRealEvidenceIds: [], confirmationRequirement: "required", confirmationStatus: "confirmed",
@@ -125,4 +135,5 @@ export function createPlanningAssumptions(input: FrozenDefaultPlanning): Assumpt
     parameterRange: { min: 0, max: 10, defaultValue: planning.fusion.reduction * 100, unit: "percent reduction" },
     limitations: ["这是明示的产品规划假设，不代表传统权威、科学权重或现实概率。", "符号镜头仍独立保存，不是现实证据；每个实际变化仍须通过受控转换。", "关系敏感度仅供对照，尚未改变关系。"],
   }] : []);
+  return [...assumptions, ...(planning.version === "formal-default-planner-v2" && planning.relationshipResponse.status === "active" ? [createRelationshipAssumption(planning.relationshipResponse)] : [])];
 }

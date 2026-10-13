@@ -230,11 +230,13 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
         || !bundle.defaultPlanningTraces || !bundle.worldSnapshots || bundle.defaultPlanningTraces.length !== bundle.worldSnapshots.length) return null;
       const expected = freezeDefaultPlanning({ version: planning.version, consentContext: planning.sourceBinding.consentContext,
         resources: planning.resources.map(item => ({ resourceKey: item.resourceKey, totalBudgetLimit: item.totalBudgetLimit, confirmedForSimulation: true })),
-        fusion: { enabled: planning.fusion.enabled, confirmedForSimulation: planning.fusion.confirmedForSimulation } },
+        fusion: { enabled: planning.fusion.enabled, confirmedForSimulation: planning.fusion.confirmedForSimulation },
+        ...(planning.version === "formal-default-planner-v2" ? { relationshipResponse: planning.relationshipResponse.authorization } : {}) },
       { model: frozenModel, realityProfileSnapshot: bundle.inputSnapshot.realityProfileSnapshot, symbolicLens: bundle.symbolicLensSnapshot,
         horizonDays: bundle.inputSnapshot.horizonDays, acceptedAt: bundle.inputSnapshot.acceptedAt, consentContext: planning.sourceBinding.consentContext });
       if (!expected.ok || JSON.stringify(canonicalValue(expected.planning)) !== JSON.stringify(canonicalValue(planning))) return null;
       const policyInput = { ...bundle.inputSnapshot }; delete policyInput.planningHypothesis;
+      delete policyInput.relationshipResponseHypothesis;
       if (createHash("sha256").update(runtimeCanonical(policyInput)).digest("hex").slice(0, 24) !== bundle.policyFingerprint) return null;
       const analysis = z.object({ trajectories: z.array(z.object({ trajectoryId: reference, trajectorySeed: z.number().int(), finalWorld: z.record(z.string(), z.unknown()) }).passthrough()).length(bundle.worldSnapshots.length) }).passthrough().parse(bundle.trajectoryAnalysis);
       // Persistence consumes these top-level events, not the World snapshots. Bind the
@@ -250,7 +252,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
         if (item.trace.some(trace => trace.pathKey !== bundle.inputSnapshot.activePathKey || trace.worldBinding.worldNamespace !== `formal-${bundle.policyFingerprint}`
           || trace.worldBinding.simulationStartAt !== bundle.inputSnapshot.startedAt
           || !trace.proposalId.startsWith(`action_proposal_v2_formal_planning_formal_${bundle.policyFingerprint}_${trajectory.trajectorySeed}_`))) throw new Error("invalid_planning_event_trace");
-        return { trace: item.trace, finalWorld: bundle.worldSnapshots![index] as WorldStateV2 };
+        return { trace: item.trace, finalWorld: bundle.worldSnapshots![index] as WorldStateV2, pathKey: String(bundle.inputSnapshot.activePathKey), namespace: `formal_${bundle.policyFingerprint}_${trajectory.trajectorySeed}` };
       }));
     } catch { return null; }
   } else if (bundle.defaultPlanningTraces || bundle.policyFingerprint) return null;

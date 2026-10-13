@@ -3,6 +3,7 @@ import type { AgentDefinitionIdV2, WorldEntityIdV2, WorldResourceIdV2, WorldStat
 import { parseFrozenDefaultPlanning } from "./index";
 import type { FrozenDefaultPlanning } from "./contracts";
 import { z } from "zod";
+import { relationshipPolicyAuthorization } from "./relationship-contracts";
 
 export const planningWorldBindingSchema = z.object({
   acceptedSourceSignature: z.string().min(1).max(50_000), worldNamespace: z.string().regex(/^[a-zA-Z0-9_-]{1,180}$/), pathKey: z.string().regex(/^(main|person-[1-9]\d*)$/),
@@ -35,7 +36,11 @@ function canonicalJson(value: unknown): string {
   return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
 }
 export function acceptedPlanningSourceSignature(planning: FrozenDefaultPlanning) {
-  return structuralSignature({ sourceBinding: planning.sourceBinding, resources: planning.resources, maxTicks: planning.maxTicks });
+  return structuralSignature({ sourceBinding: planning.sourceBinding, resources: planning.resources, maxTicks: planning.maxTicks,
+    ...(planning.version === "formal-default-planner-v2" ? { relationshipSource: {
+      authorization: relationshipPolicyAuthorization(planning.relationshipResponse.authorization),
+      ruleBindings: planning.relationshipResponse.ruleBindings, effectiveRulesSignature: planning.relationshipResponse.effectiveRulesSignature,
+    } } : {}) });
 }
 
 function resourceDefinition(resource: WorldStateV2["resources"][number]) {

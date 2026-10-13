@@ -5,6 +5,12 @@ import { createPlanningAssumptions, parseFrozenDefaultPlanning } from "./index";
 import type { FrozenDefaultPlanning } from "./contracts";
 import { planningWorldBindingMatches, planningWorldBindingSchema, type PlanningWorldBinding } from "./world-binding";
 import { z } from "zod";
+import { resolveRelationshipTrigger, RELATIONSHIP_ASSUMPTION_CATEGORY } from "./relationship-response";
+
+export const relationshipProposalTraceSchema = z.object({
+  requestEventId: z.string().min(1), responseEventId: z.string().min(1), responseTickIndex: z.number().int().min(0).max(5),
+  signal: z.enum(["negative", "neutral", "positive"]), reduction: z.number().finite().min(0).max(0.1), firstResponseAllocation: z.boolean(),
+}).strict();
 
 export const planningProposalTraceSchema = z.object({
   version: z.literal("formal-default-planning-trace-v1"), pathKey: z.string().regex(/^(main|person-[1-9]\d*)$/), tickIndex: z.number().int().min(0).max(5), resourceKey: z.string().regex(/^resource-[1-8]$/),
@@ -12,6 +18,7 @@ export const planningProposalTraceSchema = z.object({
   proposalId: z.custom<ActionProposalInputV2["id"]>(value => typeof value === "string" && /^action_proposal_v2_[a-z0-9_-]+$/i.test(value)),
   neutralAmount: z.number().finite().positive(), proposedAmount: z.number().finite().positive(), priorApplied: z.boolean(), reduction: z.number().finite().min(0).max(0.1), reductionCap: z.literal(0.1),
   totalBudgetLimit: z.number().finite().positive(), spentBefore: z.number().finite().nonnegative(), causalAssumptionIds: z.array(z.custom<AssumptionIdV2>(value => typeof value === "string" && /^assumption_v2_[a-z0-9]+$/i.test(value))).min(1).max(2), worldBinding: planningWorldBindingSchema,
+  relationshipResponse: relationshipProposalTraceSchema.optional(),
 }).strict();
 
 export type PlanningBindings = {
@@ -27,6 +34,7 @@ export type PlanningProposalTrace = {
   totalBudgetLimit: number; spentBefore: number;
   causalAssumptionIds: AssumptionIdV2[];
   worldBinding: PlanningWorldBinding;
+  relationshipResponse?: z.infer<typeof relationshipProposalTraceSchema>;
 };
 
 /** Only returns candidates; Core retains uniform selection, approval and every World mutation. */
@@ -77,22 +85,39 @@ export function proposeDefaultPlanning(input: {
     const spentBefore = priorAllocations.reduce((total, event) => total + (event.operation.actionType === "allocate_resource" ? event.operation.amount : 0), 0);
     // Count accepted neutral slices, not rounded prior-dependent sums; this gate stays equal under on/off.
     if ((priorAllocations.length + 1) * resourcePlan.neutralAmount > resourcePlan.totalBudgetLimit || spentBefore > resourcePlan.totalBudgetLimit) continue;
-    const amount = resourcePlan.neutralAmount * (priorApplied ? planning.fusion.initialAmountFactor : 1);
+    let amount = resourcePlan.neutralAmount * (priorApplied ? planning.fusion.initialAmountFactor : 1);
+    let relationshipResponse: PlanningProposalTrace["relationshipResponse"];
+    let relationshipAssumption: AssumptionIdV2 | undefined;
+    let relationshipPrior: typeof world.worldEventIds | undefined;
+    if (planning.version === "formal-default-planner-v2" && planning.relationshipResponse.authorization.pathKey === pathKey && planning.relationshipResponse.authorization.resourceKey === resourcePlan.resourceKey) {
+      const frame = planning.relationshipResponse;
+      const trigger = resolveRelationshipTrigger(frame, world, namespace, bindings.worldBinding.worldNamespace, occurredAt, bindings.worldBinding.simulationStartAt, planning.maxTicks);
+      if (trigger && tickIndex > trigger.responseTickIndex) {
+        const selfAssumption = resolve(RELATIONSHIP_ASSUMPTION_CATEGORY);
+        if (!selfAssumption) continue;
+        const consumed = priorAllocations.some(event => event.causalAssumptionIds.includes(selfAssumption) && event.priorWorldEventIds.includes(trigger.response.id));
+        const responseReduction = !consumed && trigger.signal === "negative" ? frame.negativeReduction : 0;
+        amount = resourcePlan.neutralAmount * (1 - responseReduction);
+        relationshipResponse = { requestEventId: trigger.request.id, responseEventId: trigger.response.id, responseTickIndex: trigger.responseTickIndex, signal: trigger.signal, reduction: responseReduction, firstResponseAllocation: !consumed };
+        if (!consumed) relationshipAssumption = selfAssumption;
+        relationshipPrior = [trigger.request.id, trigger.response.id];
+      }
+    }
     const parameters = { actionType: "allocate_resource" as const, resourceId, amount };
     const targets = { targetEntityIds: [entity.id], targetResourceIds: [resourceId], targetRelationIds: [], targetVariableIds: [] };
     // Check the same neutral operation for eligibility; Core repeats all guards for the actual candidate.
     if (violatesWorldConstraintsV2(world, { actorId: actor.id, operation: { ...parameters, amount: resourcePlan.neutralAmount }, ...targets, now: occurredAt })) continue;
-    const assumptionIds = [baseAssumption, ...(priorAssumption ? [priorAssumption] : [])];
+    const assumptionIds = [baseAssumption, ...(relationshipAssumption ? [relationshipAssumption] : priorAssumption ? [priorAssumption] : [])];
     candidates.push({ id: proposalId, seedContextId: world.seedContextId, actorAgentId: actor.id,
       actionType: "allocate_resource", parameters, ...targets,
       realEvidenceIds: [...new Set([...resource.provenance.realEvidenceIds, ...actor.realEvidenceIds])], assumptionIds,
-      priorWorldEventIds: [...world.worldEventIds],
+      priorWorldEventIds: relationshipPrior ?? [...world.worldEventIds],
       rationaleSummary: "Explicitly authorized default simulation planning; initial quantity is a bounded product hypothesis, not observed behavior.", createdAt: occurredAt,
     });
     trace.push({ version: "formal-default-planning-trace-v1", pathKey, tickIndex, resourceKey: resourcePlan.resourceKey,
       resourceId, proposalId, neutralAmount: resourcePlan.neutralAmount, proposedAmount: amount, priorApplied,
       reduction: priorApplied ? planning.fusion.reduction : 0, reductionCap: 0.1,
-      totalBudgetLimit: resourcePlan.totalBudgetLimit, spentBefore, causalAssumptionIds: [...assumptionIds], worldBinding: structuredClone(bindings.worldBinding) });
+      totalBudgetLimit: resourcePlan.totalBudgetLimit, spentBefore, causalAssumptionIds: [...assumptionIds], worldBinding: structuredClone(bindings.worldBinding), ...(relationshipResponse ? { relationshipResponse } : {}) });
   }
   return { candidates, trace };
 }

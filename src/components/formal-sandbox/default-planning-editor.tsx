@@ -3,11 +3,13 @@
 import { useId } from "react";
 import Link from "next/link";
 import { defaultPlanningRequestSchema, type DefaultPlanningContext, type DefaultPlanningRequest } from "@/lib/formal-planning/contracts";
+import type { RelationshipResponseRequest } from "@/lib/formal-planning/relationship-contracts";
 
 export type DefaultPlanningDraft = {
   resources: Record<string, { enabled: boolean; budget: string; confirmed: boolean }>;
   fusionEnabled: boolean;
   fusionConfirmed: boolean;
+  relationshipResponse?: RelationshipResponseRequest;
 };
 export function emptyPlanningDraft(): DefaultPlanningDraft {
   return { resources: {}, fusionEnabled: false, fusionConfirmed: false };
@@ -16,9 +18,10 @@ export function buildPlanningRequest(context: DefaultPlanningContext, draft: Def
   if (draft.fusionEnabled && (context.symbolicFusion.status !== "eligible" || !draft.fusionConfirmed)) return null;
   const selected = Object.entries(draft.resources).filter(([, item]) => item.enabled);
   if (selected.some(([key, item]) => !context.resources.some(resource => resource.resourceKey === key) || !item.confirmed || item.budget.trim() === "")) return null;
-  const parsed = defaultPlanningRequestSchema.safeParse({ version: context.version, consentContext: context.consentContext,
+  const parsed = defaultPlanningRequestSchema.safeParse({ version: draft.relationshipResponse ? "formal-default-planner-v2" : context.version, consentContext: context.consentContext,
     resources: selected.map(([resourceKey, item]) => ({ resourceKey, totalBudgetLimit: Number(item.budget), confirmedForSimulation: true })),
     fusion: draft.fusionEnabled ? { enabled: true, confirmedForSimulation: true } : { enabled: false, confirmedForSimulation: false },
+    ...(draft.relationshipResponse ? { relationshipResponse: draft.relationshipResponse } : {}),
   });
   return parsed.success ? parsed.data : null;
 }
@@ -53,7 +56,7 @@ export function DefaultPlanningEditor({ context, draft, onChange, disabled, expl
     <div className="mt-5 border-t border-white/10 pt-4">
       <h4 className="font-medium">独立授权：初始倾向假设（Hypothesis）</h4>
       <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">与资源预算分开，默认关闭。版本 symbolic-initial-planning-hypothesis-v1：两项产品假设各最多减少 5%，合计上限 10%，仅减少首轮中性候选用量；不改写手写规则、明确投入量或现实 / 世界初值。</p>
-      <p className="mt-2 text-sm leading-6">不是预测概率、传统或科学权重、现实证据；关系影响尚未实现。</p>
+      <p className="mt-2 text-sm leading-6">不是预测概率、传统或科学权重、现实证据；本项不调整关系回应，后续投入调整需在下方独立授权。</p>
       <label className="mt-3 flex min-h-11 items-start gap-3 py-2 text-sm leading-6 focus-within:outline focus-within:outline-2 focus-within:outline-[var(--evidence-gold)]"><input type="checkbox" className="mt-1" checked={draft.fusionEnabled} disabled={disabled || context.symbolicFusion.status !== "eligible"} onChange={event => onChange({ ...draft, fusionEnabled: event.target.checked, fusionConfirmed: false })} /><span>启用本次独立初始倾向假设</span></label>
       {context.symbolicFusion.status !== "eligible" ? <p className="mt-2 text-sm leading-6">{context.symbolicFusion.status === "off" ? "尚未授权未来运行附加象征对照，此开关不可启用。" : "当前象征来源不可用、已撤回或已过期，此开关不可启用。"} 请先检查 <Link href="/app/symbolic-lens" className="underline underline-offset-4">象征对照设置</Link>，然后重新读取模型并确认预算。</p> : null}
       {draft.fusionEnabled ? <label className="mt-3 flex min-h-11 items-start gap-3 py-2 text-sm leading-6 focus-within:outline focus-within:outline-2 focus-within:outline-[var(--evidence-gold)]"><input type="checkbox" className="mt-1" checked={draft.fusionConfirmed} disabled={disabled} onChange={event => onChange({ ...draft, fusionConfirmed: event.target.checked })} /><span>我单独确认本次仅将上述产品假设用于首轮候选用量</span></label> : null}

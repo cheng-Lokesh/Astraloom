@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { digitalLifeModelSchema, digitalLifeProfileSnapshotSchema, digitalLifeSafeText } from "@/lib/digital-life/model";
 import { runSymbolicLensSchema } from "@/lib/formal-sandbox/symbolic-lens";
+import { relationshipResponseRequestSchema, frozenRelationshipResponseSchema } from "./relationship-contracts";
 
 export const DEFAULT_PLANNER_VERSION = "formal-default-planner-v1" as const;
 export const PLANNING_HYPOTHESIS_VERSION = "symbolic-initial-planning-hypothesis-v1" as const;
@@ -22,7 +23,7 @@ export type DefaultPlanningContext = z.infer<typeof defaultPlanningContextSchema
 const resourceAuthorizationSchema = z.object({ resourceKey, totalBudgetLimit: amount, confirmedForSimulation: z.literal(true) }).strict();
 
 /** The client never chooses a source, owner, frame, assumption ID, cap or actor. */
-export const defaultPlanningRequestSchema = z.object({
+export const defaultPlanningV1RequestSchema = z.object({
   version: z.literal(DEFAULT_PLANNER_VERSION),
   consentContext: planningConsentContextSchema,
   resources: z.array(resourceAuthorizationSchema).max(8),
@@ -30,8 +31,13 @@ export const defaultPlanningRequestSchema = z.object({
     z.object({ enabled: z.literal(false), confirmedForSimulation: z.literal(false) }).strict(),
     z.object({ enabled: z.literal(true), confirmedForSimulation: z.literal(true) }).strict(),
   ]),
-}).strict().superRefine((request, ctx) => {
+}).strict();
+export const defaultPlanningV2RequestSchema = defaultPlanningV1RequestSchema.extend({
+  version: z.literal("formal-default-planner-v2"), relationshipResponse: relationshipResponseRequestSchema,
+}).strict();
+export const defaultPlanningRequestSchema = z.discriminatedUnion("version", [defaultPlanningV1RequestSchema, defaultPlanningV2RequestSchema]).superRefine((request, ctx) => {
   if (new Set(request.resources.map(item => item.resourceKey)).size !== request.resources.length) ctx.addIssue({ code: "custom", message: "duplicate_resource_authorization" });
+  if (request.version === "formal-default-planner-v2" && !request.resources.some(resource => resource.resourceKey === request.relationshipResponse.resourceKey)) ctx.addIssue({ code: "custom", message: "relationship_budget_authorization_required" });
 });
 export type DefaultPlanningRequest = z.infer<typeof defaultPlanningRequestSchema>;
 
@@ -79,7 +85,7 @@ export const planningResourceSchema = z.object({
   declaredRate: amount.nullable(), explicitRulePresent: z.boolean(),
   assumptionCategory: z.string().regex(/^formal_default_planning_resource_[1-8]$/),
 }).strict();
-export const frozenDefaultPlanningEnvelopeSchema = z.object({
+const frozenDefaultPlanningV1Schema = z.object({
   version: z.literal(DEFAULT_PLANNER_VERSION), status: z.enum(["active", "inactive"]),
   sourceBinding: z.object({ ownerId: z.string().uuid(), seedContextId: z.string().uuid(), graphSnapshotId: z.string().uuid(), agentSnapshotId: z.string().uuid(), profileRevision: z.number().int().nonnegative(), profileId: z.string().uuid().nullable(), acceptedAt: z.string().datetime({ offset: true }), consentContext: planningConsentContextSchema,
     allowedPaths: z.array(z.object({ pathKey: z.string().regex(/^(main|person-[1-9]\d*)$/), sourceAgentId: z.string().uuid(), sourceAgentOrdinal: z.number().int().min(1).max(50) }).strict()).min(1).max(3),
@@ -88,4 +94,7 @@ export const frozenDefaultPlanningEnvelopeSchema = z.object({
   budgetSemantics: z.literal("per_path_per_sample_whole_run"),
   resources: z.array(planningResourceSchema).max(8), fusion: planningFusionSchema,
 }).strict();
+export const frozenDefaultPlanningEnvelopeSchema = z.discriminatedUnion("version", [frozenDefaultPlanningV1Schema,
+  frozenDefaultPlanningV1Schema.extend({ version: z.literal("formal-default-planner-v2"), relationshipResponse: frozenRelationshipResponseSchema }).strict(),
+]);
 export type FrozenDefaultPlanning = z.infer<typeof frozenDefaultPlanningEnvelopeSchema>;

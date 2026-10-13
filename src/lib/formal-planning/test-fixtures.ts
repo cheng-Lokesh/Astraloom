@@ -1,5 +1,5 @@
 import { buildDigitalLifeModel } from "@/lib/digital-life/model";
-import { digitalLifeInput } from "@/lib/digital-life/test-fixtures";
+import { digitalLifeInput, digitalLifeRules } from "@/lib/digital-life/test-fixtures";
 import { attachedSymbolicFixture } from "@/lib/formal-sandbox/symbolic-lens.test-fixtures";
 import { buildAssumptionLedgerV2 } from "@/lib/v2/reality-boundary/assumption-ledger";
 import { createStableRealityBoundaryIdFactoryV2 } from "@/lib/v2/reality-boundary/ids";
@@ -26,6 +26,17 @@ export function planningSource(): DefaultPlanningSource {
 }
 
 export const planningRequest = (enabled = true) => ({ version: "formal-default-planner-v1", consentContext: "a".repeat(64), resources: [{ resourceKey: "resource-1", totalBudgetLimit: 3, confirmedForSimulation: true }], fusion: { enabled, confirmedForSimulation: enabled } });
+export function relationshipRequest(symbolic = true) {
+  const rules = digitalLifeRules();
+  const requestRule = structuredClone(rules.actions[0]);
+  const responseRule = structuredClone(rules.actions[1]);
+  if (responseRule.operation.actionType !== "update_relation_signal") throw new Error("fixture_invalid");
+  responseRule.operation.signal = "negative";
+  return { ...planningRequest(false), version: "formal-default-planner-v2",
+    relationshipResponse: { version: "formal-relationship-response-hypothesis-v1", pathKey: "main", resourceKey: "resource-1",
+      requestRule, responseRule, confirmedForSimulation: true,
+      symbolicSensitivity: { enabled: symbolic, confirmedForSimulation: symbolic } } };
+}
 
 const worldNamespace = "planning-tests-accepted-source";
 const bindingsByWorld = new WeakMap<WorldStateV2, ReturnType<typeof bindPlanningWorld>>();

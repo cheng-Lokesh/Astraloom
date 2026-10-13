@@ -4,7 +4,7 @@ import { buildDigitalLifeModel } from "@/lib/digital-life/model";
 import { digitalLifeInput } from "@/lib/digital-life/test-fixtures";
 import { freezeDefaultPlanning } from "@/lib/formal-planning";
 import { defaultPlanningRequestSchema } from "@/lib/formal-planning/contracts";
-import { planningRequest, planningSource } from "@/lib/formal-planning/test-fixtures";
+import { planningRequest, planningSource, relationshipRequest } from "@/lib/formal-planning/test-fixtures";
 import { realityProfileDraftFromDatabaseRow } from "@/lib/reality-profile/profile";
 import { buildFormalSandboxRunV2, type FormalSandboxRuntimeInput } from "./runtime";
 import { persistFormalSandboxRun } from "./repository.server";
@@ -16,7 +16,7 @@ vi.mock("./repository.server", () => ({ persistFormalSandboxRun: vi.fn() }));
 const key = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const runId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-function fixture(withPlanning = true) {
+function fixture(withPlanning = true, planningValue: unknown = planningRequest()) {
   const accepted = planningSource();
   const people = digitalLifeInput();
   const profile = accepted.realityProfileSnapshot.profile;
@@ -30,7 +30,8 @@ function fixture(withPlanning = true) {
   };
   // Validate the database-shaped synthetic Profile rather than relying on a loose mock row.
   expect(JSON.stringify(realityProfileDraftFromDatabaseRow(profileRow)) === JSON.stringify(profile)).toBe(true);
-  const planning = defaultPlanningRequestSchema.parse(planningRequest());
+  const planning = defaultPlanningRequestSchema.parse(planningValue);
+  if (planning.version === "formal-default-planner-v2") accepted.model.rules.actions = [planning.relationshipResponse.requestRule, planning.relationshipResponse.responseRule];
   const request = formalSandboxStartRequestSchema.parse({ graph_snapshot_id: accepted.model.graphSnapshotId, idempotency_key: key, horizon_days: 30,
     digital_life_rules: accepted.model.rules, ...(withPlanning ? { default_planning: planning } : {}),
   });
@@ -61,6 +62,25 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("default planning Start admission and frozen receipt transport", () => {
+  it("binds the complete v2 request to frozen source before runtime and rejects source substitution without completion writes", async () => {
+    const input = fixture(true, relationshipRequest());
+    const result = await startFormalSandboxRun(input.caller, input.accepted.model.ownerId, input.request);
+    expect(result.ok).toBe(true);
+    const runtime = vi.mocked(buildFormalSandboxRunV2).mock.calls[0][0] as FormalSandboxRuntimeInput;
+    const model = buildDigitalLifeModel(runtime, runtime.digitalLifeRules);
+    if (!model.ok) throw new Error("fixture_invalid");
+    expect(freezeDefaultPlanning(runtime.defaultPlanning, { model: model.model, realityProfileSnapshot: runtime.realityProfileSnapshot,
+      horizonDays: runtime.horizonDays, acceptedAt: runtime.acceptedAt, symbolicLens: runtime.symbolicLens, consentContext: runtime.planningConsentContext }).ok).toBe(true);
+    expect(JSON.stringify(vi.mocked(input.caller.rpc).mock.calls[0][1]?.p_default_planning) === JSON.stringify(input.planning)).toBe(true);
+    vi.clearAllMocks();
+    const changed = fixture(true, relationshipRequest());
+    if (changed.source.default_planning?.version !== "formal-default-planner-v2") throw new Error("fixture_invalid");
+    changed.source.default_planning.relationshipResponse.resourceKey = "resource-2";
+    expect(await startFormalSandboxRun(changed.caller, changed.accepted.model.ownerId, changed.request)).toMatchObject({ ok: false, errorCode: "invalid_planning_source" });
+    expect(vi.mocked(buildFormalSandboxRunV2).mock.calls.length).toBe(0);
+    expect(vi.mocked(persistFormalSandboxRun).mock.calls.length).toBe(0);
+    expect(changed.from.mock.calls.length).toBe(0);
+  });
   it("sends the sixth planning parameter and forwards only the reserved request/context to the runtime", async () => {
     const input = fixture();
     const result = await startFormalSandboxRun(input.caller, input.accepted.model.ownerId, input.request);

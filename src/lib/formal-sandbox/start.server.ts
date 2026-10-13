@@ -8,6 +8,7 @@ import { buildFormalSandboxRunV2 } from "./runtime";
 import { formalSandboxStartRequestSchema } from "./start-request";
 import { parseFrozenSymbolicLens } from "./symbolic-lens";
 import { defaultPlanningRequestSchema, planningConsentContextSchema } from "@/lib/formal-planning/contracts";
+import { canonicalRelationshipValue } from "@/lib/formal-planning/relationship-contracts";
 
 const requestSchema = formalSandboxStartRequestSchema;
 const graphSchema = z.object({ id:z.string().uuid(), user_id:z.string().uuid(), seed_context_id:z.string().uuid(), agent_snapshot_id:z.string().uuid(), graph_locked:z.literal(true), locked_at:z.string(), safety_level:z.enum(["safe","caution"]) }).passthrough();
@@ -58,7 +59,8 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
     if (source.default_planning !== undefined && source.default_planning !== null) {
       const frozen = defaultPlanningRequestSchema.safeParse(source.default_planning);
       const context = planningConsentContextSchema.safeParse(source.planning_consent_context);
-      if (!frozen.success || !context.success || context.data !== frozen.data.consentContext) return { ok: false as const, errorCode: "invalid_planning_source" as const };
+      if (!frozen.success || !context.success || context.data !== frozen.data.consentContext
+        || canonicalRelationshipValue(frozen.data) !== canonicalRelationshipValue(request.data.default_planning)) return { ok: false as const, errorCode: "invalid_planning_source" as const };
       defaultPlanning = { defaultPlanning: frozen.data, planningConsentContext: context.data };
     } else if (request.data.default_planning) return { ok: false as const, errorCode: "invalid_planning_source" as const };
     const graph = graphSchema.safeParse(source.relation_graph_snapshots);

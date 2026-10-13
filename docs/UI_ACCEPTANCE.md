@@ -481,8 +481,27 @@ is shown as zero. Main and explicit strategy worlds keep their own trace scope;
 no private source/Core identifiers are rendered. Legacy absence stays explicit.
 
 The symbolic lens remains `causalUse:false`; a separately authorized quantity
-hypothesis is described as its own planner lane. Relationship sensitivity is
-not implemented, and neither full Destiny fusion nor scientific probability is
-claimed. Current source/logic/DOM evidence is a functional candidate; DB ownership,
+hypothesis is described as its own planner lane. The v1 lane has no relationship
+effect, and neither full Destiny fusion nor scientific probability is claimed.
+Current source/logic/DOM evidence is a functional candidate; DB ownership,
 RLS, frozen replay and real signed-in browser acceptance remain unverified until
 the local database service is available. Do not reset it to bypass this gate.
+
+## Bounded self response to relationship candidate (2026-10-13)
+
+Start exposes one independently confirmed self-response assumption only after an
+explicit same-path self request and conditional NPC response are present. The
+resource must have its own whole-run budget permission. The independent symbolic
+sensitivity switch starts off and needs eligible source consent. Changing the
+pair, path, resource or source clears authorization for a new key; pending recovery
+preserves the complete old typed request and key.
+
+Result explains the response as a simulation assumption about the user's own
+resource quantity, not private NPC intention or a real-world fact. It shows the
+neutral/proposed/actual comparison, negative reduction capped at 10%, independent
+symbolic contribution, and selected/not-selected/not-triggered/inactive state.
+Positive/neutral responses do not reduce quantity. No-response candidates stay
+neutral; only the first selected post-response allocation consumes the hypothesis.
+Unauthorized strategy paths do not display main samples even when their traces
+are empty. No raw IDs/provenance are rendered. Browser synthesis and DOM checks
+remain separate from real signed-in owner/database acceptance.

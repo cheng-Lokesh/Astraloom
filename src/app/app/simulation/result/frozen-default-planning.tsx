@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import type { SafeDefaultPlanning } from "@/lib/formal-planning/projection";
+import { FrozenRelationshipResponseResult } from "./frozen-relationship-response";
 
 const resourceStatus = {
   active: "预算已生效，仅用于受控模拟",
@@ -33,14 +34,15 @@ export function FrozenDefaultPlanningResult({ planning }: { planning?: SafeDefau
         <h3 className="font-medium">独立的初始倾向假设（Hypothesis）</h3>
         <p className="mt-2 text-sm leading-6">{hypothesis?.status === "active" ? "本次已单独授权此假设。" : hypothesis?.status === "unavailable" ? "本次象征来源不可用，初始假设未生效。" : "本次初始假设关闭。"} 两项产品假设各最多减少 5%，合计上限 10%，仅影响首轮候选用量；不改写手写规则或世界初值。</p>
         {hypothesis ? <p className="mt-2 break-words text-xs text-[var(--text-secondary)]">版本：{hypothesis.version}。本次两项减少量 {quantity.format(hypothesis.cautionReduction * 100)}% + {quantity.format(hypothesis.rhythmReduction * 100)}%，合计 {quantity.format(hypothesis.reduction * 100)}%。</p> : null}
-        <p className="mt-2 text-sm leading-6">这不是预测概率、科学权重或现实证据；关系影响尚未实现。</p>
+        <p className="mt-2 text-sm leading-6">这不是预测概率、科学权重或现实证据；{planning.relationshipResponse ? "本项初始倾向不承担回应调整，另见下方独立授权。" : "关系影响尚未实现。"}</p>
       </div>
+      <FrozenRelationshipResponseResult response={planning.relationshipResponse} />
       <div className="mt-4 border-t border-white/10 pt-4"><h3 className="font-medium">候选与实际受控事件对照</h3>
         {planning.trace.length ? <ol className="mt-3 space-y-3">{planning.trace.map(trace => <li key={trace.key} className="min-w-0 rounded-lg bg-white/5 p-3 text-sm leading-6">
           <p className="break-words font-medium">{trace.pathKey === "main" ? "主路径" : `人物路径 ${trace.pathKey.slice(7)}`} · 周期 {trace.tickNumber} · {trace.resourceLabel}</p>
           <p>{trace.tickNumber === 1 ? "首轮候选用量" : "本周期候选用量"}：中性 {quantity.format(trace.neutralAmount)} → 候选 {quantity.format(trace.proposedAmount)} {trace.unit}{trace.priorApplied ? `（初始假设减少 ${quantity.format(trace.reduction * 100)}%）` : "（未应用初始假设）"}</p>
           <p>{trace.status === "selected" ? `已被模拟选中，实际受控事件投入 ${trace.actualAmount === null ? "未记录" : `${quantity.format(trace.actualAmount)} ${trace.unit}`}` : "未被模拟选中；没有对应的实际投入事件。"}</p>
-          <p>所用条件假设：{trace.assumptionCategories.map(category => category === "formal_symbolic_initial_planning_v1" ? "独立初始倾向产品假设" : "本人确认的整次资源预算假设").join("、")}</p>
+          <p>所用条件假设：{trace.assumptionCategories.map(category => category === "formal_symbolic_initial_planning_v1" ? "独立初始倾向产品假设" : category === "formal_relationship_response_v1" ? "独立回应后的投入产品假设" : "本人确认的整次资源预算假设").join("、")}</p>
           <p className="text-[var(--text-secondary)]">{trace.evidenceSummary}</p>
         </li>)}</ol> : <p className="mt-2 text-sm">本次没有默认规划候选事件记录；不会据此推断实际投入。</p>}
       </div>

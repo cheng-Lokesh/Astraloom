@@ -13,6 +13,7 @@ import { CalibrationSelection } from "./calibration-selection";
 import type { FormalCalibrationContext } from "@/lib/formal-sandbox/outcomes/contracts";
 import type { DefaultPlanningContext } from "@/lib/formal-planning/contracts";
 import { buildPlanningRequest, DefaultPlanningEditor, emptyPlanningDraft } from "./default-planning-editor";
+import { buildRelationshipResponseRequest, emptyRelationshipResponseDraft, RelationshipResponseEditor } from "./relationship-response-editor";
 
 type StartInput = Parameters<ReturnType<typeof createFormalSandboxClient>["start"]>[0];
 
@@ -73,6 +74,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
   const [planning, setPlanning] = useState<DefaultPlanningContext | null>(null);
   const [planningError, setPlanningError] = useState(false);
   const [planningDraft, setPlanningDraft] = useState(emptyPlanningDraft);
+  const [relationshipDraft, setRelationshipDraft] = useState(emptyRelationshipResponseDraft);
   const generation = useRef(0);
   const inFlight = useRef(false);
   const replay = useRef<{ signature: string; input: StartInput } | null>(null);
@@ -94,7 +96,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
     async function recover() {
       setLoading(true); setContext(null); setError(null); setRules({ actions: [], strategies: [] });
       setCalibration(null); setCalibrationError(false); setCorrectionKeys([]); setCalibrationConfirmed(false);
-      setPlanning(null); setPlanningError(false); setPlanningDraft(emptyPlanningDraft()); replay.current = null;
+      setPlanning(null); setPlanningError(false); setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); replay.current = null;
       try {
         const response = await fetch(`/api/sandbox/model-context${graphId ? `?graph_id=${encodeURIComponent(graphId)}` : ""}`, { cache: "no-store", signal: abort.signal });
         const body = await response.json().catch(() => null);
@@ -132,7 +134,9 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       if (correctionKeys.length && !calibrationConfirmed) { setNotice("请先明确确认所选观察修正的条件假设，再开始运行。"); return; }
       const parsed = digitalLifeRulesSchema.safeParse({ version: "digital-life-rules-v1", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules });
       if (!parsed.success) { setError("invalid_digital_life_rules"); return; }
-      const defaultPlanning = planning ? buildPlanningRequest(planning, planningDraft) : undefined;
+      const relationshipResponse = planning ? buildRelationshipResponseRequest(context, parsed.data, planning, planningDraft, relationshipDraft) : undefined;
+      if (relationshipResponse === null) { setNotice("请重新选择已确认的询问与模拟回应，单独确认资源预算、回应调整与可选象征假设；也可以关闭回应调整。"); return; }
+      const defaultPlanning = planning ? buildPlanningRequest(planning, { ...planningDraft, ...(relationshipResponse ? { relationshipResponse } : {}) }) : undefined;
       if (defaultPlanning === null) { setNotice("请逐项确认所选整次预算，并单独确认初始假设；也可以关闭所有默认授权。"); return; }
       const outcomeCalibration = correctionKeys.length ? { version: 1 as const, correction_keys: correctionKeys, confirmed: true as const } : undefined;
       const body = { graphSnapshotId: context.graphSnapshotId, horizonDays: horizon, digitalLifeRules: parsed.data, ...(outcomeCalibration ? { outcomeCalibration } : {}), ...(defaultPlanning && (defaultPlanning.resources.length || defaultPlanning.fusion.enabled) ? { defaultPlanning } : {}) };
@@ -151,7 +155,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
         if (response.status >= 500 || response.errorCode === "request_failed" || response.errorCode === "invalid_response") { unknownStartRef.current = true; setUnknownStart(true); setError("request_outcome_unknown"); }
         else {
           unknownStartRef.current = false; setUnknownStart(false); setError(response.errorCode);
-          if (response.errorCode === "planning_context_stale" || response.errorCode === "profile_revision_conflict") { setPlanningDraft(emptyPlanningDraft()); setPlanning(null); setPlanningError(true); replay.current = null; }
+          if (response.errorCode === "planning_context_stale" || response.errorCode === "profile_revision_conflict") { setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); setPlanning(null); setPlanningError(true); replay.current = null; }
         }
         return;
       }
@@ -165,7 +169,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
   function changeHorizon(value: 30 | 90) {
     if (value === horizon) return;
     setHorizon(value);
-    setPlanningDraft(emptyPlanningDraft()); setCalibrationConfirmed(false);
+    setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); setCalibrationConfirmed(false);
     setNotice("时间窗口已更改，请重新确认整次预算与所有条件假设。");
     if (rules.actions.length) {
       setRules({ actions: [], strategies: [] });
@@ -179,6 +183,14 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
     setNotice("已准备新的运行，请确认后开始");
   }
 
+  function changeRules(value: Pick<DigitalLifeRules, "actions" | "strategies">) {
+    setRules(value); setRelationshipDraft(emptyRelationshipResponseDraft());
+    setPlanningDraft(draft => ({ ...draft, fusionConfirmed: false, resources: Object.fromEntries(Object.entries(draft.resources).map(([key, resource]) => [key, { ...resource, confirmed: false }])) }));
+    setNotice("行动条件已更改，请重新确认整次预算；如需回应调整，请重新选择组合并确认。");
+  }
+  const relationshipResponse = context && planning ? buildRelationshipResponseRequest(context, rules, planning, planningDraft, relationshipDraft) : undefined;
+  const authorizedPlanning = planning ? buildPlanningRequest(planning, { ...planningDraft, ...(relationshipResponse ? { relationshipResponse } : {}) }) : undefined;
+
   return (
     <div className="min-w-0 w-full space-y-5">
       <h2 className="text-xl font-semibold">配置本次数字生命运行</h2>
@@ -188,8 +200,9 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       {context ? <>
         <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={pending || unknownStart} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
         <p role="status" className="text-sm">{notice}</p>
-        <DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={setRules} disabled={pending || unknownStart} />
-        {planning ? <DefaultPlanningEditor context={planning} draft={planningDraft} onChange={setPlanningDraft} disabled={pending || unknownStart} explicitRuleResourceKeys={rules.actions.flatMap(action => action.operation.actionType === "allocate_resource" ? [action.operation.resourceKey] : [])} /> : null}
+        <div id="formal-action-rules"><DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={changeRules} disabled={pending || unknownStart} /></div>
+        {planning ? <DefaultPlanningEditor context={planning} draft={planningDraft} onChange={draft => { setPlanningDraft(draft); setRelationshipDraft(value => ({ ...value, confirmed: false, symbolicConfirmed: false })); }} disabled={pending || unknownStart} explicitRuleResourceKeys={rules.actions.flatMap(action => action.operation.actionType === "allocate_resource" ? [action.operation.resourceKey] : [])} /> : null}
+        {planning ? <RelationshipResponseEditor context={context} rules={rules} planning={planning} budgets={planningDraft} draft={relationshipDraft} onChange={setRelationshipDraft} disabled={pending || unknownStart} /> : null}
         {planningError ? <p role="status" className="text-sm leading-6">默认规划来源暂不可读取，旧授权已清空。本次不会应用默认规划；仍可使用明确行动规则。</p> : null}
         {calibration ? <CalibrationSelection context={calibration} selectedKeys={correctionKeys} confirmed={calibrationConfirmed} onChange={setCorrectionKeys} onConfirm={setCalibrationConfirmed} disabled={pending || unknownStart} /> : null}
         {calibrationError ? <p role="status" className="text-sm">观察修正暂不可读取，本次不应用修正。重新读取模型可再次检查可用条件。</p> : null}
@@ -198,7 +211,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       <Button
         variant="onDark"
         loading={pending}
-        disabled={pending || loading || !context || unknownStart || (correctionKeys.length > 0 && !calibrationConfirmed) || Boolean(planning && !buildPlanningRequest(planning, planningDraft))}
+        disabled={pending || loading || !context || unknownStart || (correctionKeys.length > 0 && !calibrationConfirmed) || relationshipResponse === null || Boolean(planning && !authorizedPlanning)}
         onClick={() => void start()}
         className="!w-auto px-4 py-3"
         loadingLabel="正在提交本次运行"

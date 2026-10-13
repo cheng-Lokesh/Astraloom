@@ -39,7 +39,7 @@ returns text language sql immutable security invoker set search_path=public,exte
   'seed',jsonb_build_object('id',p_source#>'{seed_contexts,id}','version',p_source#>'{seed_contexts,version}',
     'submittedAt',p_source#>'{seed_contexts,submitted_at}','frozenAt',p_source#>'{seed_contexts,frozen_at}'),
   'agents',p_source->'agent_profiles','edges',p_source->'relation_edges','profile',p_source->'reality_profiles',
-  'symbolic',p_source->'symbolic_lens'-'frozenAt')::text,'UTF8'),'sha256'),'hex');
+  'symbolic',(p_source->'symbolic_lens')-'frozenAt')::text,'UTF8'),'sha256'),'hex');
 $$;
 
 create function public.formal_default_planning_safe_context_v1(p_source jsonb)

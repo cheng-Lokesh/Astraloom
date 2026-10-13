@@ -10,6 +10,7 @@ import { freezeDefaultPlanning, createPlanningAssumptions } from "@/lib/formal-p
 import { defaultPlanningRequestSchema, planningConsentContextSchema, type FrozenDefaultPlanning } from "@/lib/formal-planning/contracts";
 import { bindPlanningWorld } from "@/lib/formal-planning/world-binding";
 import { proposeDefaultPlanning, type PlanningProposalTrace } from "@/lib/formal-planning/proposals";
+import { relationshipPolicyAuthorization } from "@/lib/formal-planning/relationship-contracts";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
@@ -97,7 +98,7 @@ function canonical(value: unknown): string {
 }
 
 function fingerprint(value: unknown) {
-  return createHash("sha256").update(canonical(value)).digest("hex").slice(0, 24);
+  return createHash("sha256").update(canonical(JSON.parse(JSON.stringify(value)))).digest("hex").slice(0, 24);
 }
 
 function lockTime(startedAt: string) {
@@ -161,10 +162,12 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       digitalLifeModel,
       activePathKey,
       ...(planning ? { defaultPlanningAuthorization: { version: planning.version, resources: input.defaultPlanning!.resources } } : {}),
+      ...(planning?.version === "formal-default-planner-v2" ? { relationshipResponseAuthorization: relationshipPolicyAuthorization(planning.relationshipResponse.authorization) } : {}),
     };
     // Prior changes the causal quantity, never candidate identity/ordering or the seeded policy lane.
     const policyFingerprint = fingerprint(policyInput);
-    const causalInput = { ...policyInput, ...(planning ? { planningHypothesis: { version: planning.fusion.version, enabled: planning.fusion.enabled, status: planning.fusion.status, reductionCap: planning.fusion.reductionCap, reduction: planning.fusion.reduction, initialAmountFactor: planning.fusion.initialAmountFactor, inputs: planning.fusion.inputs, derivation: planning.fusion.derivation, classification: "hypothesis" as const, scientificProbability: false, realWorldEvidence: false } } : {}) };
+    const causalInput = { ...policyInput, ...(planning ? { planningHypothesis: { version: planning.fusion.version, enabled: planning.fusion.enabled, status: planning.fusion.status, reductionCap: planning.fusion.reductionCap, reduction: planning.fusion.reduction, initialAmountFactor: planning.fusion.initialAmountFactor, inputs: planning.fusion.inputs, derivation: planning.fusion.derivation, classification: "hypothesis" as const, scientificProbability: false, realWorldEvidence: false } } : {}),
+      ...(planning?.version === "formal-default-planner-v2" ? { relationshipResponseHypothesis: planning.relationshipResponse } : {}) };
     const causalFingerprint = fingerprint(causalInput);
     const boundaryAt = input.acceptedAt ? new Date().toISOString() : new Date(Date.parse(input.startedAt) - 2).toISOString();
     const realityRuntime = {

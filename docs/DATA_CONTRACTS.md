@@ -1440,5 +1440,37 @@ World events expanded in trajectory/event order, including branch, tick and time
 World-only quantities are insufficient proof of a persisted budget. Safe Result
 exposes the frozen hypothesis, neutral/proposed quantity, actual selected/not-selected Event
 comparison, budget and safe assumption categories, never source or Event UUIDs.
-Relationship sensitivity is explicitly not implemented; this is not full Destiny
-fusion. CLI forward migration 20261007143918 is authored but not yet DB-verified.
+The v1 lane has no relationship-response effect; it is not full Destiny fusion.
+CLI forward migration 20261007143918 is authored but not yet DB-verified.
+
+## Bounded relationship-response planning candidate (2026-10-13)
+
+`formal-default-planner-v2` adds independently confirmed
+`formal-relationship-response-hypothesis-v1` beside the compatible v1 lane.
+Authorization names one path, resource, exact self information-request rule and
+exact conditional NPC response rule. It binds effective rules, complete ordinal
+source mappings, owner/Seed/locked Graph/Agent/Profile and accepted source context.
+Outcome corrections are applied before comparing the authorized rule pair.
+
+Only a controlled request followed by that NPC's controlled response, including
+every `after_rule` ancestor, can trigger the hypothesis. Event actor, targets,
+source Evidence/Assumption, sample namespace, command membership and exact tick
+times must match. A negative simulated signal reduces the first actually selected
+self allocation by 5%; an independent default-off symbolic sensitivity permission
+adds 5% only when frozen responsibility count exceeds peer count. The total cap is
+10%. Positive/neutral signals keep neutral quantity. Pre-response candidates stay
+neutral; unselected candidates do not consume the first-response allocation.
+
+The relationship hypothesis never stacks with the first-tick hypothesis. It
+changes candidate quantity only, preserving proposal IDs/order/count, uniform
+selection, seeded RNG, NPC actions, explicit resource rules/rates, Graph weights,
+initial World and Reality Evidence. Symbolic fields remain Hypothesis/background,
+never Real Evidence or scientific probability. This bounded self response does
+not complete the third product stage or full Destiny fusion.
+
+Frozen relationship metadata and traces remain per-path/per-sample. Persistence
+requires the exact top-level controlled Event ledger and whole-run budget/minimum
+resource reserve. Legacy absence is explicit; an empty unauthorized strategy trace
+cannot acquire the main path's relationship samples. The forward relationship SQL
+is authored in 20261007153523; database execution, Auth/RLS, atomic rollback and
+real signed-in frozen replay remain pending while the local daemon is unavailable.
