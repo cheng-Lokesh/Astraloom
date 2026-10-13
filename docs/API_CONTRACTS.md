@@ -839,6 +839,22 @@ key and performs no write, Run admission or historical mutation.
 
 Responses use no-store and the existing envelope: 401 unauthenticated/anonymous,
 404 missing/foreign Run, 409 legacy/incomplete/stale/invalid source, 422 malformed
-UUID or any query parameter, and sanitized 500 persistence failure. This is a
-readonly preparation API candidate; the UI correction-and-rerun journey and real
-database JSON-path transport are not claimed connected or verified by this contract.
+UUID or any query parameter, and sanitized 500 persistence failure. The typed
+browser client now consumes this readonly preparation API for Result's explicit
+correction-and-rerun entry. `/app/start?revise_run=<opaque selector>` accepts one
+UUID selector only; duplicate, malformed and unknown query fields are rejected.
+Ordinary Start still opens new scenario preparation.
+
+Before showing the source draft, Start independently reads the current safe
+model context and compares exact Graph/Agent identity, Profile revision, ordered
+participant/relationship labels and complete resource definitions. A stale async
+generation cannot apply its source. Each action and strategy starts unconfirmed;
+changes reset the affected confirmation, and prerequisite changes reset dependent
+actions. Confirmed revised rules use the existing Run POST with a new request key,
+without old planning, symbolic or Outcome permissions. Independent current
+permissions can be newly selected. An in-flight or unknown POST retains its full
+original body and key for recovery, including across changed source props.
+
+This connected UI and canonical Core execution are functional-candidate evidence.
+Synthetic HTTP/DOM checks do not verify real database JSON-path transport, Auth/RLS,
+atomic persistence, cross-account access or a real signed-in rerun.

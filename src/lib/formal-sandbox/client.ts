@@ -5,6 +5,7 @@ import { safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
 import { safeRunSymbolicLensSchema } from "./symbolic-lens";
 import { defaultPlanningContextSchema, type DefaultPlanningRequest } from "@/lib/formal-planning/contracts";
 import { safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
+import { safeDigitalLifeCorrectionContextSchema } from "./correction-context";
 
 const failure = z.object({ ok: z.literal(false), error_code: z.string(), trace_id: z.string() }).passthrough();
 const run = z.object({ id: z.string().uuid(), status: z.string(), graph_snapshot_id: z.string().uuid().nullable().optional(), time_horizon: z.enum(["30_days", "90_days"]).optional(), completed_at: z.string().nullable().optional() }).passthrough();
@@ -89,6 +90,7 @@ type FormalFeedbackInput = OverallFeedbackInput | TargetedFeedbackInput;
 type Fetcher = typeof fetch;
 async function read<T>(response: Response, schema: z.ZodType<T>) { const json = await response.json().catch(() => null); const failed = failure.safeParse(json); if (!response.ok) return { ok: false as const, status: response.status, errorCode: failed.success ? failed.data.error_code : "request_failed" }; const parsed = schema.safeParse(json); return parsed.success ? { ok: true as const, data: parsed.data } : { ok: false as const, status: 500, errorCode: "invalid_response" }; }
 export function createFormalSandboxClient(fetcher: Fetcher = fetch) { return {
+  correctionContext: async (runId: string) => read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}/correction-context`, { cache: "no-store" }), z.object({ ok: z.literal(true), context: safeDigitalLifeCorrectionContextSchema }).passthrough()),
   start: async (input: { graphSnapshotId: string; idempotencyKey: string; horizonDays: 30 | 90; digitalLifeRules?: DigitalLifeRules;outcomeCalibration?:OutcomeCalibrationSelection;defaultPlanning?:DefaultPlanningRequest }) => read(await fetcher("/api/sandbox/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_snapshot_id: input.graphSnapshotId, idempotency_key: input.idempotencyKey, horizon_days: input.horizonDays, ...(input.digitalLifeRules ? { digital_life_rules: input.digitalLifeRules } : {}),...(input.outcomeCalibration?{outcome_calibration:input.outcomeCalibration}:{}), ...(input.defaultPlanning ? { default_planning: input.defaultPlanning } : {}) }) }), startSuccess),
   planningContext: async(graphId?:string)=>read(await fetcher(`/api/sandbox/planning-context${graphId?`?graph_id=${encodeURIComponent(graphId)}`:""}`,{cache:"no-store"}),z.object({ok:z.literal(true),context:defaultPlanningContextSchema}).passthrough()),
   outcomes:async(runId:string)=>read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}/outcomes`,{cache:"no-store"}),z.object({ok:z.literal(true),outcomes:formalOutcomeProjectionSchema}).passthrough()),

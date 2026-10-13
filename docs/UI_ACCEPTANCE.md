@@ -294,6 +294,33 @@ and strategy branches are labelled separately.
 Result shows the frozen digital-life background as facts/assumptions/unknowns,
 confirmed action sources/triggers, simulated relationship changes and separate
 strategy Event/Claim support. Old Runs without this model remain not recorded.
+Result explicitly offers `修订这些假设并另跑`, opening a dedicated branch of Start
+with the original server-read rules rather than a blank scenario. Normal Start
+still opens scenario preparation. The opaque source selector is navigation only
+and never displayed. Cancel returns to the original result with history retained.
+
+The revision view shows original self/NPC/strategy rules, safe participant and
+relationship labels, source summaries and separate per-action/per-strategy
+confirmation controls, initially unchecked. It permits changes to request cycle
+and question, self commitment, visible NPC response hypothesis and the existing
+resource's allocation amount, retaining its original amount for comparison.
+Allocation must pass the existing finite positive bounded rules schema; resource
+identity and original Graph remain fixed. Every edit revokes its confirmation;
+editing a prerequisite also revokes dependent action confirmations. Rule changes
+clear budget/response authorization. No old budget, symbolic, observation or
+request permission is inherited. All required confirmations must be valid before
+starting a separate new Run through the existing POST.
+
+Loading, missing legacy rules, source mismatch, incomplete history and read errors
+show safe recovery guidance without raw API bodies, UUIDs or trace data. Start
+checks the exact current safe model before loading the draft; outdated async
+responses cannot replace newer state. In-flight/unknown request recovery preserves
+the complete original POST and key and disables edits or source refresh. Browser
+synthetic verification at 375px covers draft loading, individual confirmations,
+edited request/response/commitment/resource inputs, exact unknown-request replay,
+and stale/legacy refusal. This is a model-rule correction functional candidate,
+not full Fork, real signed-in DB acceptance or complete nine-stage acceptance.
+
 Model-correction links apply to a later Run. Strategy child claims currently
 have no targeted-feedback controls because the baseline feedback writer cannot
 address them. These candidates are not final nine-stage product acceptance.

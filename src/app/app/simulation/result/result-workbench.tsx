@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useReducer, useRef, useState } from "react";
 
@@ -326,7 +327,7 @@ export function ResultWorkbench({ projection, runId }: { projection: FormalSandb
     onTargetRatingChange={(rating) => dispatchTargetFeedback({ type: "rating_changed", rating })}
     onTargetCommentChange={(comment) => dispatchTargetFeedback({ type: "comment_changed", comment })}
     onSaveTargetFeedback={() => void saveTargetFeedback()}
-  /><OutcomeObservations key={runId} runId={runId} /></>;
+  /><div className="mx-auto my-6 max-w-6xl"><Link href={`/app/start?revise_run=${encodeURIComponent(runId)}`} className="inline-flex min-h-11 items-center underline underline-offset-4">修订这些假设并另跑</Link><p className="mt-2 max-w-prose text-sm">从本次冻结规则开始，重新确认后另开运行。历史结果与证据保留。</p></div><OutcomeObservations key={runId} runId={runId} /></>;
 }
 
 export function ResultLoading() { return <section className="mx-auto max-w-4xl py-12"><p role="status">Reading saved evidence</p></section>; }

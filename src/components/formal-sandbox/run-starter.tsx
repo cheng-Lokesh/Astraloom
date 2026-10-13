@@ -14,6 +14,9 @@ import type { FormalCalibrationContext } from "@/lib/formal-sandbox/outcomes/con
 import type { DefaultPlanningContext } from "@/lib/formal-planning/contracts";
 import { buildPlanningRequest, DefaultPlanningEditor, emptyPlanningDraft } from "./default-planning-editor";
 import { buildRelationshipResponseRequest, emptyRelationshipResponseDraft, RelationshipResponseEditor } from "./relationship-response-editor";
+import { ModelRuleRevision } from "./model-rule-revision";
+import { compatibleRevision } from "./model-rule-revision-query";
+import type { SafeDigitalLifeCorrectionContext } from "@/lib/formal-sandbox/correction-context";
 
 type StartInput = Parameters<ReturnType<typeof createFormalSandboxClient>["start"]>[0];
 
@@ -26,6 +29,7 @@ export function isCurrentPlanningContext(context: DefaultPlanningContext, profil
 
 export function FormalRunStartError({ errorCode }: { errorCode: string }) {
   if (errorCode === "request_outcome_unknown") return null;
+  if (errorCode.startsWith("correction_") || errorCode === "run_not_completed" || errorCode === "run_not_found") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">{errorCode === "correction_source_stale" ? "背景资料、人物或关系来源已变化，原规则不能套用到新模型。请返回原结果，或从当前情境重新准备运行。" : errorCode === "correction_rules_not_recorded" ? "这次历史运行未保存可修订的行动规则。请从当前情境准备新的运行。" : errorCode === "run_not_completed" ? "原运行尚未完成，请回到原运行查看状态后重试。" : "原运行的规则暂不可读取，请重新读取，或返回历史选择已完成的结果。"}</p>;
   if (errorCode === "planning_context_stale") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">资源或象征来源已变化，旧规划授权已清空。请重新读取模型，再逐项确认预算与初始假设。</p>;
   if (errorCode === "invalid_planning_request") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">默认规划未通过检查。请检查整次预算与独立确认，或关闭默认规划后使用明确行动规则。</p>;
   if (errorCode === "invalid_correction") return <p role="alert" className="mt-2 max-w-prose text-sm text-[var(--risk-red)]">所选观察修正与当前行动条件不相符。请取消修正或恢复对应原行动条件，再重新确认后开始运行。</p>;
@@ -55,11 +59,13 @@ export function FormalRunStartError({ errorCode }: { errorCode: string }) {
   );
 }
 
-export function FormalRunStarter({ graphId }: { graphId?: string }) {
+export function FormalRunStarter({ graphId, revisionRunId }: { graphId?: string; revisionRunId?: string }) {
   const router = useRouter();
   const id = useId();
   const [context, setContext] = useState<SafeDigitalLifeContext | null>(null);
   const [loading, setLoading] = useState(true);
+  const [revisionSource, setRevisionSource] = useState<SafeDigitalLifeCorrectionContext | null>(null);
+  const [revisionConfirmed, setRevisionConfirmed] = useState(false);
   const [reload, setReload] = useState(0);
   const [horizon, setHorizon] = useState<30 | 90>(30);
   const [rules, setRules] = useState<Pick<DigitalLifeRules, "actions" | "strategies">>({ actions: [], strategies: [] });
@@ -95,14 +101,29 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
     const abort = new AbortController();
     async function recover() {
       setLoading(true); setContext(null); setError(null); setRules({ actions: [], strategies: [] });
+      setRevisionSource(null); setRevisionConfirmed(false);
       setCalibration(null); setCalibrationError(false); setCorrectionKeys([]); setCalibrationConfirmed(false);
       setPlanning(null); setPlanningError(false); setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); replay.current = null;
       try {
+        let source: SafeDigitalLifeCorrectionContext | null = null;
+        if (revisionRunId) {
+          const result = await createFormalSandboxClient().correctionContext(revisionRunId);
+          if (!active || currentGeneration !== generation.current) return;
+          if (!result.ok) { setError(result.errorCode); return; }
+          source = result.data.context;
+        }
         const response = await fetch(`/api/sandbox/model-context${graphId ? `?graph_id=${encodeURIComponent(graphId)}` : ""}`, { cache: "no-store", signal: abort.signal });
         const body = await response.json().catch(() => null);
-        if (!active) return;
+        if (!active || currentGeneration !== generation.current) return;
         const parsed = safeDigitalLifeContextSchema.safeParse(body?.context);
         if (!response.ok || body?.ok !== true || !parsed.success || (graphId && parsed.data.graphSnapshotId !== graphId)) { setError(typeof body?.error_code === "string" ? body.error_code : "context_unavailable"); return; }
+        if (source && !compatibleRevision(source, parsed.data)) { setError("correction_source_stale"); return; }
+        if (source) {
+          setRevisionSource(source); setHorizon(source.horizonDays);
+          const empty = source.draftRules.actions.length === 0 && source.draftRules.strategies.length === 0;
+          setRevisionConfirmed(empty);
+          setNotice("原规则已载入，所有授权已重置。修改后请逐项重新确认，再另跑一次。");
+        }
         setContext(parsed.data);
         try {
           const result = await createFormalSandboxClient().planningContext(parsed.data.graphSnapshotId);
@@ -121,7 +142,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
     }
     void recover();
     return () => { active = false; generation.current += 1; abort.abort(); };
-  }, [graphId, reload]);
+  }, [graphId, revisionRunId, reload]);
 
   async function start() {
     if (inFlight.current) return;
@@ -130,7 +151,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       if (!replay.current) return;
       input = replay.current.input;
     } else {
-      if (!context) return;
+      if (!context || (revisionRunId && !revisionConfirmed)) return;
       if (correctionKeys.length && !calibrationConfirmed) { setNotice("请先明确确认所选观察修正的条件假设，再开始运行。"); return; }
       const parsed = digitalLifeRulesSchema.safeParse({ version: "digital-life-rules-v1", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules });
       if (!parsed.success) { setError("invalid_digital_life_rules"); return; }
@@ -198,9 +219,9 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       {loading ? <p role="status" className="animate-pulse motion-reduce:animate-none">正在读取已锁定模型与可选人物…</p> : null}
       {!loading && !context ? <div><p className="text-sm leading-6">当前模型暂不可读取。请完成当前情境的人物与关系图，再重新读取。</p><Button variant="ghostOnDark" onClick={() => setReload(value => value + 1)} className="!w-auto px-4 py-3">重新读取模型</Button><Link href="/app/new/intake" className="ml-3 inline-flex min-h-11 items-center underline">返回情境准备</Link></div> : null}
       {context ? <>
-        <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={pending || unknownStart} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
+        <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={pending || unknownStart || Boolean(revisionRunId)} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
         <p role="status" className="text-sm">{notice}</p>
-        <div id="formal-action-rules"><DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={changeRules} disabled={pending || unknownStart} /></div>
+        <div id="formal-action-rules">{revisionSource ? <ModelRuleRevision key={`${revisionRunId}-${reload}`} source={revisionSource} disabled={pending || unknownStart} onChange={value => { setRevisionConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }); }} /> : <DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={changeRules} disabled={pending || unknownStart} />}</div>
         {planning ? <DefaultPlanningEditor context={planning} draft={planningDraft} onChange={draft => { setPlanningDraft(draft); setRelationshipDraft(value => ({ ...value, confirmed: false, symbolicConfirmed: false })); }} disabled={pending || unknownStart} explicitRuleResourceKeys={rules.actions.flatMap(action => action.operation.actionType === "allocate_resource" ? [action.operation.resourceKey] : [])} /> : null}
         {planning ? <RelationshipResponseEditor context={context} rules={rules} planning={planning} budgets={planningDraft} draft={relationshipDraft} onChange={setRelationshipDraft} disabled={pending || unknownStart} /> : null}
         {planningError ? <p role="status" className="text-sm leading-6">默认规划来源暂不可读取，旧授权已清空。本次不会应用默认规划；仍可使用明确行动规则。</p> : null}
@@ -211,7 +232,7 @@ export function FormalRunStarter({ graphId }: { graphId?: string }) {
       <Button
         variant="onDark"
         loading={pending}
-        disabled={pending || loading || !context || unknownStart || (correctionKeys.length > 0 && !calibrationConfirmed) || relationshipResponse === null || Boolean(planning && !authorizedPlanning)}
+        disabled={pending || loading || !context || unknownStart || Boolean(revisionRunId && !revisionConfirmed) || (correctionKeys.length > 0 && !calibrationConfirmed) || relationshipResponse === null || Boolean(planning && !authorizedPlanning)}
         onClick={() => void start()}
         className="!w-auto px-4 py-3"
         loadingLabel="正在提交本次运行"
