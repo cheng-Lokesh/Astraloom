@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { digitalLifeInput, digitalLifeRules, ids } from "./test-fixtures";
 import { canonicalModelDraftJson, digitalLifeModelDraftSchema, saveDigitalLifeModelDraftSchema } from "./model-draft";
 import { readFormalModelDraft, saveFormalModelDraft } from "./model-draft.server";
+import { safeDigitalLifeContextSchema } from "@/lib/formal-sandbox/model-context";
+import { realityProfileWorldInputsSchema } from "@/lib/reality-profile/profile";
 const state = vi.hoisted(() => ({ user: { id: "11111111-1111-4111-8111-111111111111", is_anonymous: false } as { id: string; is_anonymous: boolean } | null, caller: undefined as unknown }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ ...(state.caller as object), auth: { getUser: async () => ({ data: { user: state.user }, error: null }) } }) }));
 import { GET, POST } from "@/app/api/sandbox/model-draft/route";
@@ -49,6 +51,19 @@ describe("current model draft durable boundary", () => {
     const sqlRegex = new RegExp(match![2], match![1] ? "i" : "");
     for (const idempotencyKey of accepted) expect(sqlRegex.test(idempotencyKey)).toBe(true);
     for (const idempotencyKey of rejected) expect(sqlRegex.test(idempotencyKey)).toBe(false);
+  });
+  it("rejects legacy Profile display values before a direct draft can poison its saved projection", () => {
+    const f = fixture();
+    for (const evidenceSummary of ["https://example.test/source", "bearer credential", "private key material"]) {
+      const worldInputs = structuredClone(digitalLifeInput().realityProfileSnapshot.profile.worldInputs);
+      worldInputs.resources[0].evidenceSummary = evidenceSummary;
+      expect(realityProfileWorldInputsSchema.safeParse(worldInputs).success).toBe(true);
+      const context = structuredClone(f.request.sourceContext.modelContext);
+      context.resources[0].evidenceSummary = evidenceSummary;
+      expect(safeDigitalLifeContextSchema.safeParse(context).success).toBe(false);
+    }
+    const migration = readFileSync("supabase/migrations/20261013093300_current_digital_life_model_draft.sql", "utf8");
+    expect(migration).toContain("public.digital_life_model_draft_context_valid_v1(body->'sourceContext') is not true");
   });
   it("preserves a valid optional own-undefined rule in same-key JSON recovery", async () => {
     const f = fixture(); const request = structuredClone(f.request);
