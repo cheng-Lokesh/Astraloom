@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { digitalLifeInput, ids } from "@/lib/digital-life/test-fixtures";
-import type { ActionParametersV2, WorldStateV2 } from "@/lib/v2/agent-world/types";
+import type { ActionParametersV2, WorldEventV2, WorldStateV2 } from "@/lib/v2/agent-world/types";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
 import { buildFormalSandboxRunV2 } from "./runtime";
 import { projectFormalSandboxResult } from "./result-projection.server";
@@ -53,7 +53,7 @@ function assertCausalEnvironmentChain(world: WorldStateV2, expectedTick: number,
   if (!condition || condition.operation.actionType !== "update_external_variable") throw new Error("missing canonical environment transition");
   const variableId = condition.operation.variableId;
   const expectedAt = new Date(Date.parse("2026-10-06T04:00:00.000Z") + expectedTick * (expectedTick === 1 ? 10 : 15) * 86_400_000).toISOString();
-  expect(condition.occurredAt).toBe(expectedAt);
+  expect(condition.createdAt).toBe(expectedAt);
   expect(condition.operation.value).toBe(alternative);
   expect(condition.targetVariableIds).toEqual([variableId]);
   expect(condition.deltas).toContainEqual({ path: `externalVariables.${variableId}.value`, valueType: "variable", before: "家庭支持尚未确定", after: alternative });
@@ -64,7 +64,7 @@ function assertCausalEnvironmentChain(world: WorldStateV2, expectedTick: number,
   const allocation = world.worldEvents.find(event => event.operation.actionType === "allocate_resource");
   expect(allocation).toBeDefined();
   if (!allocation || allocation.operation.actionType !== "allocate_resource") throw new Error("missing declared successor allocation");
-  expect(Date.parse(allocation.occurredAt)).toBeGreaterThan(Date.parse(condition.occurredAt));
+  expect(Date.parse(allocation.createdAt)).toBeGreaterThan(Date.parse(condition.createdAt));
   expect(allocation.priorWorldEventIds).toContain(condition.id);
   expect(allocation.operation.amount).toBe(amount);
   expect(world.resources[0].available).toBe(initialAvailable - amount);
@@ -89,9 +89,34 @@ describe("environment conditions through real formal Core execution", () => {
     const projection = projectFormalSandboxResult(built.bundle);
     expect(projection).not.toBeNull();
     expect(JSON.stringify(projection)).toContain("家庭支持可用");
+    expect(projection?.environmentConditions).toMatchObject([{ variableKey: "external-variable-1", initialValue: "家庭支持尚未确定", initialClassification: "fact", proposedValue: "家庭支持可用", boundary: "confirmed_simulation_assumption", samples: [{ state: "selected", actualValue: "家庭支持可用" }, { state: "selected", actualValue: "家庭支持可用" }, { state: "selected", actualValue: "家庭支持可用" }] }]);
+    expect(projection?.environmentConditions?.[0].samples.every(sample => sample.stepKey !== null && sample.successorStepKeys.length === 1)).toBe(true);
     expect(JSON.stringify(projection)).not.toMatch(/11111111-1111|seed:self|seed:person|world_variable_v2_/);
     expect(projectFormalSandboxResult(JSON.parse(JSON.stringify(built.bundle)))).toEqual(projection);
     expect(JSON.stringify(input)).toBe(before);
+
+    const forgedInitialDelta = JSON.parse(JSON.stringify(built.bundle)) as typeof built.bundle;
+    for (const [index, world] of forgedInitialDelta.worldSnapshots.entries()) {
+      const event = world.worldEvents.find(item => item.operation.actionType === "update_external_variable");
+      if (!event || event.operation.actionType !== "update_external_variable") throw new Error("missing environment transition for baseline forgery");
+      event.deltas = event.deltas.map(delta => delta.valueType === "variable" ? { ...delta, before: event.operation.actionType === "update_external_variable" ? event.operation.value : "" } : delta);
+      forgedInitialDelta.trajectoryAnalysis.trajectories[index].finalWorld = structuredClone(world);
+      const stored = forgedInitialDelta.events.find(item => item.id === event.id)!;
+      stored.deltas = structuredClone(event.deltas);
+      // Core validates an enum before-value inside its range; the product adapter must bind the actual initial source.
+      expect(validateWorldV2(world).ok).toBe(true);
+    }
+    expect(projectFormalSandboxResult(forgedInitialDelta)).toBeNull();
+
+    const forgedVariableProvenance = JSON.parse(JSON.stringify(built.bundle)) as typeof built.bundle;
+    for (const [index, world] of forgedVariableProvenance.worldSnapshots.entries()) {
+      const unrelated = world.realityBoundarySnapshot.evidenceLedger.items.find(item => item.claimKey === "formal.agent.1");
+      if (!unrelated) throw new Error("missing unrelated legitimate evidence for provenance forgery");
+      world.externalVariables[0].provenance.realEvidenceIds = [unrelated.id];
+      forgedVariableProvenance.trajectoryAnalysis.trajectories[index].finalWorld = structuredClone(world);
+      expect(validateWorldV2(world).ok).toBe(true);
+    }
+    expect(projectFormalSandboxResult(forgedVariableProvenance)).toBeNull();
 
     const forgedDelta = structuredClone(built.bundle);
     const condition = forgedDelta.events.find(event => event.operation.actionType === "update_external_variable");
@@ -149,6 +174,7 @@ describe("environment conditions through real formal Core execution", () => {
     }
     const projection = projectFormalSandboxResult(built.bundle);
     expect(projection).not.toBeNull();
+    expect(projection?.environmentConditions?.[0].samples.every(sample => sample.state === "not_reached" && sample.stepKey === null && sample.actualValue === null && sample.successorStepKeys.length === 0)).toBe(true);
     const actions = built.bundle.events.map(event => event.operation.actionType as ActionParametersV2["actionType"]);
     expect(actions).not.toContain("update_external_variable");
     expect(actions).not.toContain("allocate_resource");
@@ -172,6 +198,66 @@ describe("environment conditions through real formal Core execution", () => {
       expect(world.worldEvents.map(event => event.operation.actionType)).toEqual(["update_commitment", "update_commitment", "allocate_resource"]);
       expect(world.resources[0].available).toBe(6);
       expect(world.externalVariables[0].value).toBe("家庭支持尚未确定");
+    }
+    expect(projectFormalSandboxResult(JSON.parse(JSON.stringify(built.bundle)))).not.toBeNull();
+  }, 60_000);
+});
+
+describe("environment envelope source binding", () => {
+  const forgeries: Array<[string, (world: WorldStateV2, event: WorldEventV2) => void]> = [
+    ["extra target entities", (world, event) => { event.targetEntityIds = world.entities.map(entity => entity.id); }],
+    ["another participant's legitimate evidence", (world, event) => {
+      const evidence = world.realityBoundarySnapshot.evidenceLedger.items.find(item => item.claimKey === "formal.agent.2");
+      if (!evidence) throw new Error("missing legitimate foreign-actor evidence fixture");
+      event.causalRealEvidenceIds = [evidence.id];
+    }],
+    ["an unrelated executable assumption", (world, event) => {
+      const assumption = world.realityBoundarySnapshot.assumptionLedger.assumptions.find(item => item.category === "reality_profile_world_resource_focus-time");
+      if (!assumption) throw new Error("missing unrelated executable assumption fixture");
+      event.causalAssumptionIds.push(assumption.id);
+    }],
+    ["an undeclared prior event on an at-tick condition", (world, event) => { event.priorWorldEventIds = [world.worldEvents[0].id]; }],
+  ];
+
+  it.each(forgeries)("rejects synchronously forged %s even when every Core World stays valid", async (_label, forge) => {
+    const input = environmentInput();
+    const built = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: scenarioRules(30) });
+    expect(built.ok, !built.ok ? built.errorCode : undefined).toBe(true);
+    if (!built.ok) throw new Error(`missing valid source Run: ${built.errorCode}`);
+    expect(projectFormalSandboxResult(built.bundle)).not.toBeNull();
+    const forged = JSON.parse(JSON.stringify(built.bundle)) as typeof built.bundle;
+    for (const [index, world] of forged.worldSnapshots.entries()) {
+      const event = world.worldEvents.find(item => item.operation.actionType === "update_external_variable");
+      if (!event) throw new Error("missing controlled environment Event fixture");
+      forge(world, event);
+      forged.trajectoryAnalysis.trajectories[index].finalWorld = structuredClone(world);
+      const stored = forged.events.find(item => item.id === event.id);
+      if (!stored) throw new Error("missing persisted Event copy");
+      Object.assign(stored, structuredClone(event));
+      expect(validateWorldV2(world)).toEqual({ ok: true, issues: [] });
+    }
+    expect(projectFormalSandboxResult(forged) === null).toBe(true);
+  }, 60_000);
+
+  it.each(["fact", "assumption"] as const)("keeps canonical after-rule environment Events valid with %s baseline provenance", async classification => {
+    const input = environmentInput();
+    input.realityProfileSnapshot.profile.externalVariables[0].classification = classification;
+    const rules = scenarioRules(30);
+    rules.actions[1].when = { kind: "after_rule", ruleKey: "rule-1" };
+    const built = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: rules });
+    expect(built.ok, !built.ok ? built.errorCode : undefined).toBe(true);
+    if (!built.ok) throw new Error(`missing canonical after-rule Run: ${built.errorCode}`);
+    for (const world of built.bundle.worldSnapshots) {
+      const condition = world.worldEvents[1];
+      const actorEvidence = world.realityBoundarySnapshot.evidenceLedger.items.find(item => item.claimKey === "formal.agent.1");
+      const assumption = world.realityBoundarySnapshot.assumptionLedger.assumptions.find(item => item.category === "digital_life_rule_rule-2");
+      if (!actorEvidence || !assumption) throw new Error("missing canonical proposal source fixture");
+      expect(condition.causalRealEvidenceIds).toEqual([actorEvidence.id]);
+      // The producer names this explicit rule only; the variable's baseline assumption stays in its own provenance.
+      expect(condition.causalAssumptionIds).toEqual([assumption.id]);
+      expect(condition.priorWorldEventIds).toEqual([world.worldEvents[0].id]);
+      expect(condition.targetEntityIds).toEqual([world.entities.find(entity => entity.agentDefinitionId === condition.actorId)!.id]);
+      expect(validateWorldV2(world).ok).toBe(true);
     }
     expect(projectFormalSandboxResult(JSON.parse(JSON.stringify(built.bundle)))).not.toBeNull();
   }, 60_000);
