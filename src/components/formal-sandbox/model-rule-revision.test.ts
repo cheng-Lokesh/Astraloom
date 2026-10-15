@@ -24,6 +24,17 @@ export function revisionFixture() {
 }
 
 describe("model correction entry", () => {
+  it("preserves exact legacy six-field correction matching while v2 compares environment values", () => {
+    const source = revisionFixture();
+    const variables = [{ key: "pressure-1", category: "pressure" as const, label: "协作压力", value: "需要协调", classification: "fact" as const, evidenceSummary: "本人记录" }];
+    const current = { ...source.modelContext, variables };
+    expect(compatibleRevision(source, current)).toBe(true);
+    expect(compatibleRevision(source, { ...current, agents: [...current.agents].reverse() })).toBe(false);
+    const v2 = { ...source, frozenRules: { ...source.frozenRules, version: "digital-life-rules-v2" as const }, draftRules: { ...source.draftRules, version: "digital-life-rules-v2" as const }, modelContext: current };
+    expect(compatibleRevision(v2, current)).toBe(true);
+    expect(compatibleRevision(v2, { ...current, variables: [{ ...variables[0], value: "压力降低" }] })).toBe(false);
+    expect(compatibleRevision(v2, source.modelContext)).toBe(false);
+  });
   it("opens existing-run assumptions rather than redirecting to a blank scene", async () => {
     const page = await Reflect.apply(StartPage, undefined, [{ searchParams: Promise.resolve({ revise_run: "10000000-0000-4000-8000-000000000001" }) }]);
     expect(page).toBeTruthy();

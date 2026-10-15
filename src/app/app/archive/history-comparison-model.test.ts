@@ -45,6 +45,14 @@ function compare(left: Projection, right: Projection): Category[] {
   return (fn as (a: Projection, b: Projection) => Category[])(left, right);
 }
 describe("Complete frozen History comparison", () => {
+  it("compares environment conditions as explicit assumptions without treating them as resource allocations", () => {
+    const a = richProjection(); a.digitalLifeModel!.version = "digital-life-model-v2";
+    a.digitalLifeModel!.rules = [{ ...a.digitalLifeModel!.rules[0], actionType: "update_external_variable", operation: { actionType: "update_external_variable", variableKey: "pressure-1", value: "协作压力减轻" } }];
+    a.realityProfile.worldVariables[0].state = "explicit_condition";
+    const rows = compare(a, structuredClone(a)); const rules = JSON.stringify(rows.find(row => row.id === "rules"));
+    expect(rules).toContain("环境条件假设"); expect(rules).toContain("协作压力减轻"); expect(rules).toContain("不代表实际变化"); expect(rules).not.toContain("资源分配"); expect(rules).not.toContain("pressure-1");
+    expect(JSON.stringify(rows.find(row => row.id === "world"))).toContain("冻结初始值，已配置环境条件假设");
+  });
   it("classifies every frozen category and detects changes without matching ordinals", () => {
     const a = richProjection(); const b = structuredClone(a);
     b.digitalLifeModel!.background[0].value = "不同背景";
