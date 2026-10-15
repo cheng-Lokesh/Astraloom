@@ -48,7 +48,7 @@
 
 每次规则变更撤销自身、传递后继及相关策略、预算、Symbolic、outcome 权限的确认；Save 仅存储所有 confirmation=false 的规则，Run 需要全新确认。未知 Save/Run 回执锁定编辑和来源刷新，直到原 body/key 完整重放。新规则能够进入现有 Core typed transition：新增 `amount=2` 的资源分配产生受控 Event；级联删除其前置 NPC 回应规则后，新 bundle 不再包含该回应及下游分配 Event，旧 bundle JSON 保持一致。
 
-本批 GREEN 局部证据：logic helper/runtime 2 files、11 tests PASS；375×812 实际 Chrome 检查渲染真实 React 与 typed browser client，使用 mock HTTP；UI 单文件 3 tests PASS；五文件 19 tests 定向回归 PASS；TypeScript、scoped ESLint exit 0。独立窄审查于 2026-10-15 22:16:10 用时 14.57s，3 files、14 tests PASS、exit 0，未发现可复现 P1。Root 于 23:02:58 以同一 3-target 命令复跑，耗时 21.26s，3 files、14 tests PASS、exit 0。mock HTTP 不是真实账户验收；未验证 DB/RLS/owner isolation/CAS/跨设备或生产 CSS/页面视觉，也未跑完整 suite。本批 UI/helper GREEN 尚未提交；没有新 build 或 push 证据。详见[本批 TDD](testing/complete-model-rules.tdd.md)。
+本批 GREEN 局部证据：logic helper/runtime 2 files、11 tests PASS；375×812 实际 Chrome 检查渲染真实 React 与 typed browser client，使用 mock HTTP；UI 单文件 3 tests PASS；五文件 19 tests 定向回归 PASS；TypeScript、scoped ESLint exit 0。独立窄审查于 2026-10-15 22:16:10 用时 14.57s，3 files、14 tests PASS、exit 0，未发现可复现 P1。Root 于 23:02:58 以同一 3-target 命令复跑，耗时 21.26s，3 files、14 tests PASS、exit 0。功能已进入 9-path 提交 `d22f89ca3454ee4377655043db4786878db0c484`：精确 HEAD 的隔离 clean Webpack build 为 111/111 pages、exit 0；production preview Ready 321ms；push exit 0 且 live origin 同 SHA、upstream `0/0`、index 空。mock HTTP 不是真实账户验收；未验证 DB/RLS/owner isolation/CAS/跨设备或生产 CSS/页面视觉，也未跑完整 suite。本账本/TDD 的后续文档更新不改变已 build 的功能代码，也不另称 build；本候选仍非完整验收。详细命令与 HTTP 结果见[本批 TDD](testing/complete-model-rules.tdd.md)。
 
 V2 Core、API 与 SQL 合同无变化。九阶段仍均未获正式完成裁决；本候选不代表完整 Fork，也不推进阶段 PASS。
 

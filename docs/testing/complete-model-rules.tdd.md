@@ -95,7 +95,9 @@ npm test -- src/components/formal-sandbox/model-rule-draft-operations.test.ts sr
 
 The review ran at `6e7c79fc71564c31da992f6b033b02085b2bfbc4` on 2026-10-15 at
 22:16:10 and took 14.57 seconds. The reviewer found no reproducible P1 in the
-stated scope. The UI/helper GREEN changes were uncommitted.
+stated scope. The UI/helper GREEN changes were uncommitted at review time; they
+were later included in functional commit `d22f89ca3454ee4377655043db4786878db0c484`
+(9 paths).
 
 Root reran the same three targets on 2026-10-15 at 23:02:58; the run took
 21.26 seconds and passed all 14 tests across 3 files with exit 0:
@@ -111,9 +113,20 @@ index was empty. No new API, SQL, or V2 Core changes are claimed.
 
 ## Remaining acceptance boundary
 
-These are targeted source, runtime, and synthetic-browser results. No build or
-push is claimed for this batch. Real signed-in behavior, database persistence,
-Auth/RLS and owner isolation, concurrent CAS, cross-device recovery, and
-nine-stage acceptance remain pending. No full suite or production-page visual
-acceptance was performed. The feature is not a full Fork and does not establish
-psychology inference, Graph-weight editing, or a real-world probability model.
+These are targeted source, runtime, synthetic-browser, build, preview, and push
+results. At exact functional HEAD `d22f89ca3454ee4377655043db4786878db0c484`,
+the isolated clean `npm.cmd run build -- --webpack` exited 0 (session 47598,
+111/111 pages; compile 30.2s, TypeScript 53s). Production preview
+`npm.cmd run start -- --hostname 127.0.0.1 --port 52340` reached Ready in 321ms
+(session 11952). `/` returned 200 with `s-maxage`; current and invalid
+`model_draft` entries returned 200 with `no-store`. With Supabase unconfigured,
+the draft API returned 500 with `no-store`, confirming only fail-closed behavior
+for missing configuration, not Auth or database access. Push to the current dev
+ref exited 0; live origin matched the functional SHA, upstream was `0/0`, and
+the index was empty. This documentation-only follow-up does not change the
+built functional code and has no separate build claim. Real signed-in behavior,
+database persistence, Auth/RLS and owner isolation, concurrent CAS, cross-device
+recovery, and nine-stage acceptance remain pending. No full suite or
+production-page visual acceptance was performed. The feature is not a full Fork
+and does not establish psychology inference, Graph-weight editing, or a
+real-world probability model.
