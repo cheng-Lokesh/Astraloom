@@ -904,3 +904,35 @@ to 401, stale or conflicting source/revision/key requests to 409, and sanitized
 persistence failures to 500. A first append returns 201; an idempotent receipt
 returns 200. Error and success responses are no-store and do not persist the
 response trace identifier.
+
+#### Explicit Profile-update reconciliation read (2026-10-16 candidate)
+
+`GET /api/sandbox/model-draft?prepare_version=v2&reconcile_revision=N` is the
+explicit, read-only path for continuing a saved model after a Profile revision
+changes. `N` must be a positive safe integer and must equal the authenticated
+owner's latest saved draft revision. If another save has advanced that revision,
+the route returns `409 revision_conflict` before the extra scope lookup.
+
+The route prepares the current v2 source and returns the ordinary draft, a
+separate `preparedSourceContext`, and a strict
+`digital-life-model-reconciliation-v1` plan. A plan is available only when the
+Profile revision strictly increased and the saved draft still belongs to the
+same submitted Seed, locked Graph, Agent snapshot, ordered Agents, and ordered
+relationships. In this branch only, the server makes an additional owner/RLS
+scoped lookup of the saved revision's Seed id and requires it to match the
+current source Seed. A changed Seed, Graph, Agent snapshot, ordered participant
+or relationship source, non-increasing Profile revision, or inconsistent row
+fails closed with `409 model_reconciliation_scope_changed`. This is a pair of
+read-only checks, not an atomic snapshot; the existing Save compare-and-swap and
+source validation remain authoritative. If no valid current v2 source can be
+prepared, the route fails closed with the existing `409 model_source_stale`.
+
+The plan keeps the saved source and rules unchanged and lists explicit
+requirements for each old resource selector, environment-variable selector,
+and Profile-linked commitment. It does not choose a current selector by ordinal,
+label, or inferred identity. The existing `GET` and
+`GET ...?prepare_version=v2` contracts remain unchanged. `POST` still rejects
+all query parameters. The reconciliation read adds no write, migration, table,
+source version, or Run permission. Invalid or duplicate query parameters return
+422; authentication and persistence failures retain the existing 401/500
+envelope.

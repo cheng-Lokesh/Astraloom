@@ -1548,3 +1548,55 @@ are independently scoped to each sample/path and distinguish
 Event may expose the changed value and downstream events. An early-ending
 candidate may be `not_reached`; no exact real-world timing is promised. V2 Core,
 Reality snapshots, Graph, and RNG are unchanged.
+
+### Explicit Profile-update model reconciliation candidate (2026-10-16)
+
+Reconciliation is an in-memory plan over the owner's existing saved draft and
+the current prepared v2 source. It adds no table, migration, persisted source
+version, or mutable draft row. The saved draft remains an immutable historical
+revision until the user separately saves a new unconfirmed revision through the
+existing append-only `digital_life_model_drafts` writer.
+
+The plan is valid only for the same submitted Seed, locked Graph, Agent
+snapshot, ordered Agents, and ordered relationships, with a strictly increased
+Reality Profile revision. A source-chain change is not an ordinal migration:
+the caller must start a new draft through the existing current-source flow.
+The prepare read verifies that the requested revision is still the owner's
+latest draft and performs a separate owner/RLS-scoped Seed binding lookup. These
+two reads are not atomic. Existing Save source validation, owner-global revision
+compare-and-swap, and idempotency checks remain authoritative for persistence.
+
+The reconciliation plan carries the original `sourceRules` and identifies each
+rule that needs an explicit decision:
+
+- An `allocate_resource` rule requires an explicitly selected current resource
+  and a newly validated amount within that resource's available bounds. Old
+  resource ordinals and labels are shown for context only; matching by name or
+  position is never inferred.
+- An `update_external_variable` rule requires an explicitly selected current,
+  non-unknown Profile variable and a safe replacement that differs from its
+  current baseline. The old variable ordinal is not rebound automatically.
+- A commitment with `profileEntryKey` requires the user to detach that old
+  Profile association or remove the rule. Detaching removes only the obsolete
+  key and preserves the commitment text and status; the new Profile is not used
+  to invent the old background text.
+- The user may explicitly remove a rule. The UI previews and confirms its
+  dependent action and strategy cascade before applying that decision.
+
+Application revalidates the plan against the stale draft and prepared current
+source, including graph/Agent/order bindings and the exact requirements. Missing
+decisions return `reconciliation_incomplete`; forged, unknown, mismatched,
+over-budget, empty, baseline-equal, or otherwise invalid decisions fail closed
+without producing a saveable result. A valid result is an unsaved
+`digital-life-rules-v2` draft bound to the prepared current source; every action
+and strategy has `confirmedForSimulation=false`. Existing rule text,
+dependencies, and still-valid strategies are retained unless explicitly
+removed. `planning`, `symbolic`, `outcomeCalibration`, and `requestIdentity` are
+all reset. Applying the plan writes nothing and grants no permission; Save,
+fresh source verification, fresh user confirmation, and a new Run remain
+separate operations.
+
+Reconciliation never modifies a prior draft, Run, World, Event, Claim, or
+Report. This candidate follows the current user-directed persistent personal
+digital-life sandbox direction; it does not make Career the product's final
+domain or alter the frozen V2 Core.

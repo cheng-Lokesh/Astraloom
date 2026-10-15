@@ -1,6 +1,6 @@
 # 产品交付状态账本
 
-更新日期：2026-10-15
+更新日期：2026-10-16
 仓库：`C:\Users\clf04\Documents\AI推演\Astraloom-stage2`
 
 产品交付权威是用户确认的固定九阶段路线与当前总控交付目标：持续存在的个人数字生命沙盘，并保留独立、有限且明确授权的 Hypothesis。旧[未来模拟器 V2](FUTURE_SIMULATOR_V2.md)文档在此账本中仅作为已验收 V2 Core 不可变边界的依据；与最新用户计划冲突时，以用户计划为准，但不因此改写 V2 Core。[产品宪章](PRODUCT_CONSTITUTION.md)可作实现约束参考，不覆盖最新用户目标。阶段完成度不以猜测百分比表示；目前九阶段均没有足以证明全阶段完成的独立验收证据，也没有阶段级 PASS 裁决。
@@ -85,6 +85,64 @@ upstream `0/0`、index 空。之后的 5-path 文档专用提交不改变该 bui
 功能代码，也不单独重跑 build。pgTAP 56 条未在数据库运行。真实
 Auth/RLS、DB/CAS、全量 suite、生产 CSS 视觉与九阶段验收仍 pending。本候选
 不是阶段 PASS；文档专用提交也不会改变已固定的功能源码。
+
+## Profile 更新后的模型显式核对与延续候选（2026-10-16）
+
+本批提供一个显式继续旧模型的只读准备入口：Profile revision 严格递增，
+且提交 Seed、锁定 Graph、Agent 快照、参与者顺序和关系顺序均保持同一链时，
+用户可逐条重新选择当前资源/环境变量，或解除承诺的旧 Profile 条目关联，
+之后保存为新的未确认草稿并逐项重新确认再创建新 Run。规则不会按旧序号或
+名称自动重绑；旧 Run 与旧草稿保持不可变。Career/职业仍可作为领域输入，
+不作为最新持续个人数字生命沙盘路线的最终产品边界。V2 Core、SQL/schema、
+source-version 和历史数据均未修改。
+
+本批可核验 RED：backend checkpoint `5f516f4` 的两文件定向运行有 22 tests，
+11 项业务断言失败、11 项通过，exit 1；纯函数 apply 的 9 项预期行为在
+fail-closed stub 上失败（该 RED 是 runtime-stage/stub 状态，没有单独的 Git
+checkpoint）。375px React/typed-client/mock-HTTP UI 起始 checkpoint 因缺少核对
+CTA 有 1 项业务失败。Profile 保存后入口集成曾有 2 项失败、5 项通过；这两项已
+修复。另一个已提交 UI-only RED checkpoint `e1448c4` 发现删除平行自我最后一项
+self action 时缺少完整策略 cascade preview，随后已修复。
+
+backend 当前候选证据：5 个定向测试文件共 72 tests PASS、exit 0；9 路径
+scoped ESLint exit 0、无 warnings。修复 helper 无用解构后，纯函数 18 tests
+PASS、exit 0。范围包括 API 路由、apply helper、受控 Run runtime 及旧 model-draft/
+rule-operation 回归。实际 runtime 样本中，旧 8 小时资源与旧请求 JSON 保持不变；
+更新资料后新增的 ordinal 1“休息时间”余额 4 未被旧规则消费，用户重选 ordinal
+2“可投入时间”并投入 2 后余额从 6 到 4，Event 依赖链保持有效。
+
+UI 最终聚焦命令为：
+
+    npx vitest run src/components/formal-sandbox/model-reconciliation-ui.test.ts src/components/formal-sandbox/model-rule-draft-operations.test.ts src/components/formal-sandbox/current-model-draft.test.ts src/app/app/reality-profile/reality-profile-client.test.ts
+
+4 files、18 tests PASS、exit 0；8-path scoped ESLint 和 `git diff --check` 均
+exit 0。
+375px 实际 React/typed-client/mock-HTTP 检查覆盖成功保存 Profile 后才显示
+“核对并继续调整行动模型”入口，保存失败/未完成时不显示；Dashboard stale 文案
+区分 Profile 更新可延续与人物/关系变化需重新配置。核对期间 source 再变化会被
+第二次 prepare 拒绝，409 scope-change 保持只读且不 Save/Run；删除最后一个平行
+self action 会预览策略 cascade，取消不改草稿，删除 main 前置会列出三条后继。
+
+独立 reviewer 串行重跑 API/apply/runtime/最终 UI/旧 operations 五个目标，5 targets、
+52 tests PASS、exit 0、18.35 秒；未改文件，未发现该审查范围内可复现的 P1/P2。
+上述均为局部 functional candidate 证据，不是数据库或账户验收。
+
+Root 在精确功能提交 `ed978e3e1efd0c22e0d10f32d9e362862b7e6fe9`（17 paths，
+`+518/-73`）的隔离 clean detached worktree 执行 `npm.cmd run build -- --webpack`，
+exit 0：compile 29.4 秒、TypeScript 50 秒、111/111 pages 用时 6.3 秒。生产预览
+session `46823` 于 `127.0.0.1:52340` 启动，405ms Ready；旧 session `74224` 已停止，
+并在 checkout 前确认 listener 为 0。该 SHA 上 `/` 返回 200、`s-maxage`；当前与无效
+model-draft 入口均返回 200、`no-store`；`/app/reality-profile` 返回 200、
+`s-maxage`。reconciliation GET 在缺少 Supabase 配置时返回 500、`no-store`，只证明
+null-client fail-closed，不是 Auth、数据库或 RLS 通过。Gitworker 对当前 dev ref
+精确 SHA 非强制 push，exit 0；live origin ref 与该 SHA 一致，upstream ahead/behind
+为 `0/0`、index 为空。未 push main、未建 PR、未 deploy。此 build/preview 对应功能 SHA；
+本批后续 docs-only 编辑不改变其功能源码，也未单独重跑 build。
+
+GET preparation 为两次只读检查，不是原子 snapshot。当前 Docker/DB 不可用，
+没有本批 DB/Auth/RLS/pgTAP/CAS 并发或跨设备证据；不得将代码测试、build、preview
+或 push 记为数据库、账户或阶段 PASS。详细合同、RED/GREEN 边界和后续门禁见
+[模型核对 TDD 记录](testing/model-reconciliation.tdd.md)。
 
 ## 尚未验证的交付门槛
 

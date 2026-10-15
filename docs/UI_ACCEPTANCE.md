@@ -626,3 +626,52 @@ The focused 375×812 Chrome exercise used the real React component and typed
 client with mock HTTP and a stub router, not production CSS or a real account.
 It supports a functional candidate only, not authenticated, database, or
 full-page visual acceptance.
+
+#### Explicit Profile-update reconciliation (2026-10-16 candidate)
+
+After the user saves an updated Reality Profile, an existing model draft may be
+continued only through an explicit action labelled `按当前资料继续调整` when
+the saved source still matches the current Seed, locked Graph, Agent snapshot,
+ordered Agents, and relationships, and the Profile revision increased. The
+reconciliation view is titled `核对当前资料并延续模型`. It keeps the original
+source labels and rules visible for reference and does not bind old resource or
+variable ordinals to current entries.
+
+The Reality Profile page may show `核对并继续调整行动模型` linking to
+`/app/start?model_draft=current` only after a Profile save succeeds. While saving
+or after a failed save, it must not display that success link. Dashboard stale
+copy may offer continuation for a Profile-only revision change; if people or
+relationships changed, it must direct the user to configure from the new source.
+Before Apply, the editor re-reads preparation and compares the complete current
+source. A further source change keeps the old draft read-only with no Save or Run;
+a `409 model_reconciliation_scope_changed` has the same fail-closed behavior.
+
+Each affected resource and environment rule requires a new, visible current
+selector choice, with no selector preselected. Resource amounts must fit the
+selected current resource's available bounds. An environment assumption equal
+to its current baseline, empty, or otherwise invalid cannot be applied. A
+Profile-linked commitment requires explicit detachment, which keeps the user's
+commitment text, or removal of the rule. Before removal, show the dependent
+action and strategy cascade and require explicit confirmation. When removal
+would delete a variant's last self action, include that strategy in the preview;
+cancelling preserves the rule and strategy. Removing a main predecessor must
+list every dependent rule before confirmation. Unaffected text,
+dependencies, and valid strategy details remain reviewable; every action and
+strategy still requires a fresh confirmation.
+
+Applying reconciliation updates only the in-progress client draft. It does not
+save, start a Run, carry forward the previous planning/Symbolic/outcome
+permissions, or change a historical result. Save appends a new unconfirmed
+revision; the client then reads GET again and verifies the saved source before
+enabling fresh per-rule/per-strategy confirmation and a new Run. An unknown
+Save or Run response locks editing/source refresh until the exact original body
+and idempotency key are replayed. Recovery is established only while the
+component remains mounted; reload and cross-device recovery are not claimed.
+Stale Seed/Graph/Agent/relationship scope remains read-only and must use the
+separate blank-current-draft path.
+
+These are functional acceptance requirements for the persistent personal
+digital-life sandbox direction. They do not make Career the product's final
+domain or change the frozen V2 Core. Mock-HTTP and viewport checks do not prove
+authenticated account, database/RLS, production-style visual, or full-product
+acceptance.
