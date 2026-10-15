@@ -7,7 +7,7 @@ import { safeRunSymbolicLensSchema } from "./symbolic-lens";
 import { defaultPlanningContextSchema, type DefaultPlanningRequest } from "@/lib/formal-planning/contracts";
 import { safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
 import { safeDigitalLifeCorrectionContextSchema } from "./correction-context";
-import { digitalLifeModelDraftSchema, preparedModelDraftSourceSchema, type SaveDigitalLifeModelDraft } from "@/lib/digital-life/model-draft";
+import { digitalLifeModelDraftSchema, preparedModelDraftSourceSchema, modelReconciliationSchema, type SaveDigitalLifeModelDraft } from "@/lib/digital-life/model-draft";
 
 const failure = z.object({ ok: z.literal(false), error_code: z.string(), trace_id: z.string() }).passthrough();
 const run = z.object({ id: z.string().uuid(), status: z.string(), graph_snapshot_id: z.string().uuid().nullable().optional(), time_horizon: z.enum(["30_days", "90_days"]).optional(), completed_at: z.string().nullable().optional() }).passthrough();
@@ -95,6 +95,10 @@ async function read<T>(response: Response, schema: z.ZodType<T>) { const json = 
 export function createFormalSandboxClient(fetcher: Fetcher = fetch) { return {
   modelDraft: async () => read(await fetcher("/api/sandbox/model-draft", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict()),
   prepareModelDraftV2: async () => read(await fetcher("/api/sandbox/model-draft?prepare_version=v2", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, preparedSourceContext: preparedModelDraftSourceSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict()),
+  prepareModelReconciliation: async (revision: number) => {
+    if (!Number.isSafeInteger(revision) || revision < 1) return { ok: false as const, status: 422, errorCode: "invalid_request" };
+    return read(await fetcher(`/api/sandbox/model-draft?prepare_version=v2&reconcile_revision=${revision}`, { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, preparedSourceContext: preparedModelDraftSourceSchema, reconciliation: modelReconciliationSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict());
+  },
   saveModelDraft: async (input: SaveDigitalLifeModelDraft) => read(await fetcher("/api/sandbox/model-draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }), z.object({ ok: z.literal(true), idempotent: z.boolean(), draft: digitalLifeModelDraftSchema }).passthrough()),
   correctionContext: async (runId: string) => read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}/correction-context`, { cache: "no-store" }), z.object({ ok: z.literal(true), context: safeDigitalLifeCorrectionContextSchema }).passthrough()),
   start: async (input: { graphSnapshotId: string; idempotencyKey: string; horizonDays: 30 | 90; digitalLifeRules?: DigitalLifeRules;outcomeCalibration?:OutcomeCalibrationSelection;defaultPlanning?:DefaultPlanningRequest }) => read(await fetcher("/api/sandbox/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_snapshot_id: input.graphSnapshotId, idempotency_key: input.idempotencyKey, horizon_days: input.horizonDays, ...(input.digitalLifeRules ? { digital_life_rules: input.digitalLifeRules } : {}),...(input.outcomeCalibration?{outcome_calibration:input.outcomeCalibration}:{}), ...(input.defaultPlanning ? { default_planning: input.defaultPlanning } : {}) }) }), startSuccess),

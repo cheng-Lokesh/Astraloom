@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { digitalLifeInput, ids } from "./test-fixtures";
 import { saveDigitalLifeModelDraftSchema } from "./model-draft";
+import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
 
 const state = vi.hoisted(() => ({ caller: undefined as unknown }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ ...(state.caller as object), auth: { getUser: async () => ({ data: { user: { id: "11111111-1111-4111-8111-111111111111", is_anonymous: false } }, error: null }) } }) }));
@@ -72,8 +73,11 @@ describe("explicit current-model reconciliation preparation", () => {
     expect(JSON.stringify(body.reconciliation.requirements)).not.toContain("新的目标文字不能充当旧背景内容");
     expect(body.reconciliation).not.toHaveProperty("draftRules");
     expect(db.from).toHaveBeenCalledWith("digital_life_model_drafts");
+    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(db.query.select).toHaveBeenCalledExactlyOnceWith("seed_context_id");
     expect(db.query.eq).toHaveBeenCalledWith("user_id", ids.owner);
     expect(db.query.eq).toHaveBeenCalledWith("revision", 3);
+    expect(db.query.eq).toHaveBeenCalledTimes(2);
     expect(db.rpc).toHaveBeenCalledTimes(1);
     expect(db.rpc.mock.calls[0][0]).toBe("read_digital_life_model_draft_v1");
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -131,5 +135,17 @@ describe("explicit current-model reconciliation preparation", () => {
     expect(response.status).toBe(422);
     expect(db.rpc).not.toHaveBeenCalled();
     expect(db.from).not.toHaveBeenCalled();
+  });
+  it("has a distinct strict client response and validates the revision before issuing a fetch", async () => {
+    const response = await prepare(); const body = await response.json();
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+    const client = createFormalSandboxClient(fetcher);
+    expect((await client.prepareModelReconciliation(3)).ok).toBe(true);
+    expect(fetcher).toHaveBeenLastCalledWith("/api/sandbox/model-draft?prepare_version=v2&reconcile_revision=3", { cache: "no-store" });
+    expect(await client.modelDraft()).toMatchObject({ ok: false, errorCode: "invalid_response" });
+    expect(await client.prepareModelDraftV2()).toMatchObject({ ok: false, errorCode: "invalid_response" });
+    fetcher.mockClear();
+    for (const revision of [0, -1, 3.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) expect(await client.prepareModelReconciliation(revision)).toMatchObject({ ok: false, errorCode: "invalid_request" });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

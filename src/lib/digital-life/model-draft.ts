@@ -59,5 +59,15 @@ export const digitalLifeModelDraftSchema = z.object({
 export type DigitalLifeModelDraftSource = z.infer<typeof digitalLifeModelDraftSourceSchema>;
 export type DigitalLifeModelDraft = z.infer<typeof digitalLifeModelDraftSchema>;
 export type SaveDigitalLifeModelDraft = z.infer<typeof saveDigitalLifeModelDraftSchema>;
-export type ModelDraftError = "invalid_request" | "unauthenticated" | "model_source_stale" | "model_source_invalid" | "revision_conflict" | "idempotency_key_content_conflict" | "persistence_failed";
-export type ModelDraftResult = { ok: true; draft: DigitalLifeModelDraft; idempotent?: boolean; preparedSourceContext?: z.infer<typeof preparedModelDraftSourceSchema> } | { ok: false; errorCode: ModelDraftError };
+export const modelReconciliationSchema = z.object({
+  version: z.literal("digital-life-model-reconciliation-v1"),
+  draftRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  horizonDays: z.union([z.literal(30), z.literal(90)]),
+  sourceRules: digitalLifeRulesDraftSchema,
+  requirements: z.array(z.object({ ruleKey: z.string().regex(/^rule-[1-9]\d*$/), kind: z.enum(["resource", "variable", "detach_profile_entry"]), previousSelector: z.string().min(1).max(100), previousLabel: z.string().optional() }).strict()).max(18),
+  permissionsReset: z.object({ planning: z.literal(true), symbolic: z.literal(true), outcomeCalibration: z.literal(true), requestIdentity: z.literal(true) }).strict(),
+}).strict();
+export type ModelReconciliation = z.infer<typeof modelReconciliationSchema>;
+export type PreparedModelDraftSource = z.infer<typeof preparedModelDraftSourceSchema>;
+export type ModelDraftError = "invalid_request" | "unauthenticated" | "model_source_stale" | "model_source_invalid" | "revision_conflict" | "model_reconciliation_scope_changed" | "idempotency_key_content_conflict" | "persistence_failed";
+export type ModelDraftResult = { ok: true; draft: DigitalLifeModelDraft; idempotent?: boolean; preparedSourceContext?: PreparedModelDraftSource; reconciliation?: ModelReconciliation } | { ok: false; errorCode: ModelDraftError };

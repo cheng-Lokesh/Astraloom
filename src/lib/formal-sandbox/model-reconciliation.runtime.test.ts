@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { digitalLifeInput, ids } from "@/lib/digital-life/test-fixtures";
 import { saveDigitalLifeModelDraftSchema } from "@/lib/digital-life/model-draft";
 import { saveFormalModelDraft } from "@/lib/digital-life/model-draft.server";
+import { applyModelReconciliation } from "@/lib/digital-life/model-reconciliation";
 import { buildDigitalLifeModel } from "@/lib/digital-life/model";
 import { buildFormalSandboxRunV2 } from "./runtime";
 import { projectFormalSandboxResult } from "./result-projection.server";
@@ -63,12 +64,15 @@ describe("reconciled current model through canonical execution", () => {
     expect(data.preparedSourceContext.modelContext.resources[1]).toMatchObject({ key: "resource-2", label: "可投入时间", available: 6 });
 
     // Explicit user choices: select today's resource, reduce its amount, reselect the variable, detach the unverifiable background link.
-    const resolved = { ...data.reconciliation.sourceRules, version: "digital-life-rules-v2", profileRevision: 3, actions: [
-      { ...f.oldRequest.draftRules.actions[0], operation: { actionType: "update_external_variable", variableKey: "external-variable-1", value: "家庭支持已安排" }, confirmedForSimulation: false },
-      { ...f.oldRequest.draftRules.actions[1], operation: { actionType: "update_commitment", commitmentKey: "commitment-1", label: "先确认共同安排", status: "active" }, confirmedForSimulation: false },
-      { ...f.oldRequest.draftRules.actions[2], operation: { actionType: "allocate_resource", resourceKey: "resource-2", amount: 2 }, confirmedForSimulation: false },
-    ] };
-    const request = saveDigitalLifeModelDraftSchema.parse({ version: "digital-life-model-draft-v2", expectedRevision: 3, idempotencyKey: ids.npc, horizonDays: 30, sourceContext: data.preparedSourceContext, draftRules: resolved });
+    expect(applyModelReconciliation({ draft: data.draft, reconciliation: data.reconciliation, preparedSourceContext: data.preparedSourceContext, resolutions: {} })).toMatchObject({ ok: false, errorCode: "reconciliation_incomplete" });
+    const resolved = applyModelReconciliation({ draft: data.draft, reconciliation: data.reconciliation, preparedSourceContext: data.preparedSourceContext, resolutions: {
+      "rule-1": { kind: "variable", variableKey: "external-variable-1", value: "家庭支持已安排" },
+      "rule-2": { kind: "detach_profile_entry" },
+      "rule-3": { kind: "resource", resourceKey: "resource-2", amount: 2 },
+    } });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) throw new Error(`explicit reconciliation failed: ${resolved.errorCode}`);
+    const request = saveDigitalLifeModelDraftSchema.parse({ version: "digital-life-model-draft-v2", expectedRevision: resolved.expectedRevision, idempotencyKey: ids.npc, horizonDays: resolved.horizonDays, sourceContext: resolved.sourceContext, draftRules: resolved.draftRules });
     const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn(async () => ({ data: null, error: null })) };
     const saveDb = { from: vi.fn(() => query), rpc: vi.fn(async (name: string) => ({ data: name === "read_digital_life_model_draft_v1" ? { source: f.source, current: f.oldRow } : { row: { user_id: ids.owner, revision: 4, request }, idempotent: false }, error: null })) };
     const saved = await saveFormalModelDraft(saveDb as never, ids.owner, request);
@@ -104,6 +108,7 @@ describe("reconciled current model through canonical execution", () => {
     expect(data.reconciliation.permissionsReset).toEqual({ planning: true, symbolic: true, outcomeCalibration: true, requestIdentity: true });
     expect(data.reconciliation.requirements).toEqual(expect.arrayContaining([expect.objectContaining({ ruleKey: "rule-1", kind: "variable" }), expect.objectContaining({ ruleKey: "rule-3", kind: "resource" })]));
     expect(data.reconciliation).not.toHaveProperty("confirmedRules");
+    expect(applyModelReconciliation({ draft: data.draft, reconciliation: data.reconciliation, preparedSourceContext: data.preparedSourceContext, resolutions: { "rule-1": { kind: "variable", variableKey: "external-variable-1", value: "家庭支持可用" }, "rule-2": { kind: "detach_profile_entry" }, "rule-3": { kind: "resource", resourceKey: "resource-2", amount: 7 } } })).toMatchObject({ ok: false, errorCode: "invalid_reconciliation" });
     expect(f.db.rpc).toHaveBeenCalledTimes(1);
   });
 });

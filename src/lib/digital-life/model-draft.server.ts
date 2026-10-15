@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { buildDigitalLifeModel, listDigitalLifeEnvironmentVariables } from "./model";
 import { createEmptyRealityProfileDraft, realityProfileDraftFromDatabaseRow } from "@/lib/reality-profile/profile";
+import { buildModelReconciliation } from "./model-reconciliation";
 import { canonicalModelDraftJson, digitalLifeModelDraftSchema, digitalLifeModelDraftSourceSchema, preparedModelDraftSourceSchema, saveDigitalLifeModelDraftSchema, type DigitalLifeModelDraftSource, type ModelDraftError, type ModelDraftResult, type SaveDigitalLifeModelDraft } from "./model-draft";
 
 const uuid = z.string().uuid();
@@ -50,8 +51,9 @@ function projected(rawRow: unknown, ownerId: string, current: DigitalLifeModelDr
   return result.success ? { ok: true, draft: result.data, ...(idempotent === undefined ? {} : { idempotent }) } : failure("persistence_failed");
 }
 
-export async function readFormalModelDraft(caller: SupabaseClient, ownerId: string, prepareV2 = false): Promise<ModelDraftResult> {
+export async function readFormalModelDraft(caller: SupabaseClient, ownerId: string, prepareV2 = false, reconcileRevision?: number): Promise<ModelDraftResult> {
   if (!uuid.safeParse(ownerId).success) return failure("invalid_request");
+  if (reconcileRevision !== undefined && (!prepareV2 || !Number.isSafeInteger(reconcileRevision) || reconcileRevision < 1)) return failure("invalid_request");
   try {
     const found = await caller.rpc("read_digital_life_model_draft_v1");
     if (found.error) return databaseFailure(found.error);
@@ -59,13 +61,21 @@ export async function readFormalModelDraft(caller: SupabaseClient, ownerId: stri
     if (!read.success) return failure("persistence_failed");
     const saved = read.data.current === null ? null : rowSchema.safeParse(read.data.current);
     if (saved && !saved.success) return failure("persistence_failed");
+    if (reconcileRevision !== undefined && (!saved?.success || saved.data.user_id !== ownerId || saved.data.revision !== reconcileRevision)) return failure("revision_conflict");
     const current = currentSource(read.data.source, ownerId, 30, saved?.success ? saved.data.request.version : undefined);
-    if (read.data.source !== null && !current) return failure("model_source_invalid");
+    if (read.data.source !== null && !current) return failure(reconcileRevision !== undefined ? "model_reconciliation_scope_changed" : "model_source_invalid");
     const projection = projected(read.data.current, ownerId, current?.binding ?? null);
     if (!prepareV2 || !projection.ok) return projection;
     const prepared = currentSource(read.data.source, ownerId, 30, "digital-life-model-draft-v2");
     const context = preparedModelDraftSourceSchema.safeParse(prepared?.binding);
-    return context.success ? { ...projection, preparedSourceContext: context.data } : failure("model_source_stale");
+    if (!context.success) return failure("model_source_stale");
+    if (reconcileRevision === undefined) return { ...projection, preparedSourceContext: context.data };
+    // Owner/RLS-scoped original Seed binding, only for this explicit read branch. This is not an atomic snapshot.
+    const original = await caller.from("digital_life_model_drafts").select("seed_context_id").eq("user_id", ownerId).eq("revision", reconcileRevision).maybeSingle();
+    const originalSeed = z.object({ seed_context_id: uuid }).strict().safeParse(original.data);
+    if (original.error || !originalSeed.success || originalSeed.data.seed_context_id !== prepared!.input.seedContextId) return failure("model_reconciliation_scope_changed");
+    const reconciliation = buildModelReconciliation(projection.draft, context.data);
+    return reconciliation ? { ...projection, preparedSourceContext: context.data, reconciliation } : failure("model_reconciliation_scope_changed");
   } catch { return failure("persistence_failed"); }
 }
 

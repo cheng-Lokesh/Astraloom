@@ -20,11 +20,18 @@ import { digitalLifeRulesDraftSchema, type DigitalLifeRulesDraft } from "@/lib/f
 import { compatibleRevision } from "./model-rule-revision-query";
 import type { SafeDigitalLifeCorrectionContext } from "@/lib/formal-sandbox/correction-context";
 import { normalizeDraftForSave } from "./model-rule-draft-operations";
+import { ModelReconciliationPanel, type ReconciliationPlan } from "./model-reconciliation-panel";
+import type { ModelReconciliationApplication } from "@/lib/digital-life/model-reconciliation";
 
 type StartInput = Parameters<ReturnType<typeof createFormalSandboxClient>["start"]>[0];
 function matchesModelSource(source: DigitalLifeModelDraftSource, current: SafeDigitalLifeContext) {
   const legacy = { graphSnapshotId: current.graphSnapshotId, agentSnapshotId: current.agentSnapshotId, profileRevision: current.profileRevision, agents: current.agents, relationships: current.relationships, resources: current.resources };
   return JSON.stringify(source.modelContext) === JSON.stringify("version" in source ? current : legacy);
+}
+function canReconcileModel(draft: DigitalLifeModelDraft | null) {
+  const old = draft?.sourceContext?.modelContext;
+  const current = draft?.currentSourceContext?.modelContext;
+  return Boolean(draft?.status === "stale" && old && current && current.profileRevision > old.profileRevision && old.graphSnapshotId === current.graphSnapshotId && old.agentSnapshotId === current.agentSnapshotId && JSON.stringify(old.agents) === JSON.stringify(current.agents) && JSON.stringify(old.relationships) === JSON.stringify(current.relationships));
 }
 
 export function isCurrentCalibrationContext(context: FormalCalibrationContext, profileRevision: number, requestGeneration: number, currentGeneration: number) {
@@ -105,6 +112,8 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
   const [initialDraft, setInitialDraft] = useState<DigitalLifeRulesDraft | null>(null);
   const [preparedSource, setPreparedSource] = useState<DigitalLifeModelDraftSource | null>(null);
   const [preparingSource, setPreparingSource] = useState(false);
+  const [reconciliation, setReconciliation] = useState<ReconciliationPlan | null>(null);
+  const [reconciledUnsaved, setReconciledUnsaved] = useState(false);
 
   useEffect(() => {
     if (saveReplay.current) return;
@@ -123,7 +132,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
     async function recover() {
       setLoading(true); setContext(null); setError(null); setRules({ actions: [], strategies: [] });
       setRevisionSource(null); setRevisionConfirmed(false);
-      setSavedDraft(null); setPreparedSource(null); setEditableDraft(null); setInitialDraft(null); setDraftConfirmed(false); setDraftError(null);
+      setSavedDraft(null); setPreparedSource(null); setReconciliation(null); setReconciledUnsaved(false); setEditableDraft(null); setInitialDraft(null); setDraftConfirmed(false); setDraftError(null);
       setCalibration(null); setCalibrationError(false); setCorrectionKeys([]); setCalibrationConfirmed(false);
       setPlanning(null); setPlanningError(false); setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); replay.current = null;
       try {
@@ -201,7 +210,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
       if (!replay.current) return;
       input = replay.current.input;
     } else {
-      if (!context || saveFlight.current || unknownSave || (editableDraft && !draftConfirmed) || (revisionRunId && !revisionConfirmed)) return;
+      if (!context || reconciledUnsaved || saveFlight.current || unknownSave || (editableDraft && !draftConfirmed) || (revisionRunId && !revisionConfirmed)) return;
       if (correctionKeys.length && !calibrationConfirmed) { setNotice("请先明确确认所选观察修正的条件假设，再开始运行。"); return; }
       const parsed = digitalLifeRulesSchema.safeParse({ version: editableDraft?.version ?? (rules.actions.some(action => action.operation.actionType === "update_external_variable") ? "digital-life-rules-v2" : "digital-life-rules-v1"), graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules });
       if (!parsed.success) { setError("invalid_digital_life_rules"); return; }
@@ -270,6 +279,35 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
   const authorizedPlanning = planning ? buildPlanningRequest(planning, { ...planningDraft, ...(relationshipResponse ? { relationshipResponse } : {}) }) : undefined;
   const locked = pending || unknownStart || savePending || unknownSave || preparingSource;
 
+  async function prepareReconciliation() {
+    if (locked || inFlight.current || saveFlight.current || !savedDraft || !canReconcileModel(savedDraft)) return;
+    const requestGeneration = generation.current;
+    setPreparingSource(true); setDraftError(null);
+    try {
+      const response = await createFormalSandboxClient().prepareModelReconciliation(savedDraft.currentRevision);
+      if (requestGeneration !== generation.current) return;
+      if (!response.ok) { setDraftError(response.errorCode); return; }
+      setReconciliation({ draft: response.data.draft, reconciliation: response.data.reconciliation, preparedSourceContext: response.data.preparedSourceContext });
+    } catch { setDraftError("draft_reload_failed"); }
+    finally { setPreparingSource(false); }
+  }
+
+  async function applyReconciliation(result: Extract<ModelReconciliationApplication, { ok: true }>) {
+    if (locked || inFlight.current || saveFlight.current || !reconciliation) return;
+    const requestGeneration = generation.current;
+    setPreparingSource(true); setDraftError(null);
+    try {
+      const current = await createFormalSandboxClient().prepareModelReconciliation(result.expectedRevision);
+      if (requestGeneration !== generation.current) return;
+      if (!current.ok || current.data.draft.currentRevision !== result.expectedRevision || JSON.stringify(current.data.preparedSourceContext) !== JSON.stringify(result.sourceContext)) { setReconciliation(null); setDraftError(current.ok ? "reconciliation_source_changed" : current.errorCode); return; }
+      setSavedDraft(current.data.draft); setPreparedSource(result.sourceContext); setContext(result.sourceContext.modelContext); setHorizon(result.horizonDays);
+      setInitialDraft(result.draftRules); setEditableDraft(result.draftRules); setDraftConfirmed(false); setEditorRevision(value => value + 1); setReconciledUnsaved(true); setReconciliation(null);
+      setPlanning(null); setCalibration(null); setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); setCorrectionKeys([]); setCalibrationConfirmed(false); replay.current = null;
+      setRules({ actions: [], strategies: [] }); setNotice("核对结果已装入当前草稿。请先保存并重新读取，再逐项确认行动与策略；尚未开始运行。");
+    } catch { setDraftError("draft_reload_failed"); }
+    finally { setPreparingSource(false); }
+  }
+
   async function prepareEnvironment() {
     if (locked || inFlight.current || saveFlight.current || !context) return;
     const prepareGeneration = generation.current;
@@ -324,6 +362,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
         if (!context || latest.status !== "current" || !latest.draftRules || !latest.sourceContext || !latest.currentSourceContext || JSON.stringify(latest.sourceContext) !== JSON.stringify(latest.currentSourceContext) || !matchesModelSource(latest.sourceContext, context)) { setContext(null); setDraftError("model_source_stale"); return; }
         setInitialDraft(latest.draftRules); setEditableDraft(latest.draftRules); setHorizon(latest.horizonDays!); setDraftConfirmed(latest.draftRules.actions.length === 0 && latest.draftRules.strategies.length === 0); setEditorRevision(value => value + 1);
         setNotice(`模型草稿版本 ${latest.currentRevision} 已保存。尚未开始运行；请逐项重新确认。`);
+        setReconciledUnsaved(false);
       } catch { setContext(null); setDraftError("draft_reload_failed"); }
     } catch { setUnknownSave(true); setDraftError("save_outcome_unknown"); }
     finally { saveFlight.current = false; setSavePending(false); }
@@ -338,6 +377,9 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
       {loading ? <p role="status" className="animate-pulse motion-reduce:animate-none">正在读取已锁定模型与可选人物…</p> : null}
       {!loading && !context ? <div><p className="text-sm leading-6">当前模型暂不可读取。请完成当前情境的人物与关系图，再重新读取。</p><Button disabled={locked} variant="ghostOnDark" onClick={() => setReload(value => value + 1)} className="!w-auto px-4 py-3">重新读取模型</Button><Link href="/app/new/intake" className="ml-3 inline-flex min-h-11 items-center underline">返回情境准备</Link></div> : null}
       {!loading && currentDraftMode && !context && savedDraft?.draftRules && savedDraft.sourceContext && savedDraft.horizonDays ? <section className="space-y-4"><p role="alert">已保存版本 {savedDraft.currentRevision} 暂不能用于当前运行。下方保留原模型，只可查看；请重新读取并核对当前来源。</p><ModelRulesDraftEditor key={`stale-${savedDraft.currentRevision}`} source={{ draftRules: savedDraft.draftRules, modelContext: savedDraft.sourceContext.modelContext, horizonDays: savedDraft.horizonDays }} currentModel disabled onChange={() => {}} />{savedDraft.status === "stale" && savedDraft.currentSourceContext ? <Button disabled={locked} variant="ghostOnDark" onClick={() => { freshCurrent.current = true; setReload(value => value + 1); }} className="!w-auto px-4 py-3">为当前模型重新配置空草稿</Button> : null}</section> : null}
+      {!context && canReconcileModel(savedDraft) && !reconciliation ? <Button disabled={locked} variant="ghostOnDark" onClick={() => void prepareReconciliation()} className="!w-auto px-4 py-3">按当前资料继续调整</Button> : null}
+      {reconciliation ? <ModelReconciliationPanel plan={reconciliation} disabled={locked} onApply={result => void applyReconciliation(result)} onCancel={() => { if (!locked) setReconciliation(null); }} /> : null}
+      {draftError === "reconciliation_source_changed" ? <p role="alert" className="text-sm leading-6">核对期间资料再次变化，未应用这次核对。原模型保留只读，请重新读取后再核对。</p> : draftError === "model_reconciliation_scope_changed" ? <p role="alert" className="text-sm leading-6">当前人物、关系或模型范围已变化，不能延续原规则。原模型保留只读，请为当前模型重新配置空草稿。</p> : null}
       {context ? <fieldset disabled={locked} className="min-w-0 space-y-5"><legend className="sr-only">配置当前模型与本次运行</legend>
         <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={locked || Boolean(revisionRunId)} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
         <p role="status" className="text-sm">{notice}</p>
@@ -353,7 +395,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
       <Button
         variant="onDark"
         loading={pending}
-        disabled={locked || loading || !context || Boolean(editableDraft && !draftConfirmed) || Boolean(revisionRunId && !revisionConfirmed) || (correctionKeys.length > 0 && !calibrationConfirmed) || relationshipResponse === null || Boolean(planning && !authorizedPlanning)}
+        disabled={locked || loading || !context || reconciledUnsaved || Boolean(editableDraft && !draftConfirmed) || Boolean(revisionRunId && !revisionConfirmed) || (correctionKeys.length > 0 && !calibrationConfirmed) || relationshipResponse === null || Boolean(planning && !authorizedPlanning)}
         onClick={() => void start()}
         className="!w-auto px-4 py-3"
         loadingLabel="正在提交本次运行"

@@ -63,7 +63,8 @@ describe("saved model transport and truthful summary", () => {
     expect(html).toContain("已保存版本 2"); expect(html).toContain('href="/app/start?model_draft=current"');
     expect(html).not.toContain(draft.sourceContext!.signature); expect(html).not.toContain(draft.sourceContext!.modelContext.graphSnapshotId);
     const stale = renderToStaticMarkup(createElement(CurrentModelSummary, { draft: { ...draft, status: "stale", currentSourceContext: null } }));
-    expect(stale).toContain("须为当前模型重新配置");
+    expect(stale).toContain("符合条件时可核对并延续原规则");
+    expect(stale).toContain("人物或关系变化时须重新配置");
     const empty = digitalLifeModelDraftSchema.parse({ ...draft, status: "not_saved", currentRevision: 0, horizonDays: null, sourceContext: null, draftRules: null });
     expect(renderToStaticMarkup(createElement(CurrentModelSummary, { draft: empty }))).toContain("尚未保存行动与策略草稿");
   });

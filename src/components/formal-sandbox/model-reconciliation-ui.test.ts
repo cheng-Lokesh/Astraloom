@@ -19,6 +19,7 @@ it("offers explicit reconciliation of a stale saved model after only Reality pro
   const browser = await chromium.launch({ executablePath: process.env.CODEX_BROWSER_EXECUTABLE ?? "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 375, height: 812 } }); page.setDefaultTimeout(4000);
+    const errors: string[] = []; page.on("pageerror", (error: Error) => errors.push(error.message));
     await page.setContent('<html lang="zh"><style>body{margin:0;background:#101525;color:#f3f5fa;font-family:system-ui}#root{width:343px;padding:16px}input,select{box-sizing:border-box;max-width:100%;min-height:44px}button{min-height:44px}label{display:block}section,fieldset,div{min-width:0;box-sizing:border-box}fieldset{margin:0;width:100%}p{overflow-wrap:anywhere}</style><body><div id="root"></div></body></html>');
     await page.addScriptTag({ content: bundle.output.find(item => item.type === "chunk")!.code });
     await page.getByLabel("修订投入量", { exact: true }).waitFor();
@@ -77,5 +78,35 @@ it("offers explicit reconciliation of a stale saved model after only Reality pro
     await deletionPage.getByRole("button", { name: "确认移除列出的规则", exact: true }).click();
     await deletionPage.getByRole("button", { name: "核对时删除行动 5 并查看后继影响", exact: true }).click();
     expect(await deletionPage.getByRole("region", { name: "核对规则删除影响", exact: true }).textContent()).toContain("策略：谨慎准备");
+    await deletionPage.getByRole("button", { name: "取消此次移除", exact: true }).click();
+    expect(await deletionPage.getByRole("button", { name: "核对时删除行动 5 并查看后继影响", exact: true }).count()).toBe(1);
+    await deletionPage.getByRole("button", { name: "核对时删除行动 1 并查看后继影响", exact: true }).click();
+    const cascade = await deletionPage.getByRole("region", { name: "核对规则删除影响", exact: true }).textContent();
+    expect(cascade).toContain("行动 1"); expect(cascade).toContain("行动 2"); expect(cascade).toContain("行动 3");
+    await deletionPage.getByRole("button", { name: "确认移除列出的规则", exact: true }).click();
+    await deletionPage.getByRole("button", { name: "应用核对结果到当前草稿", exact: true }).click();
+    await deletionPage.getByRole("status").filter({ hasText: "核对结果已装入当前草稿" }).waitFor();
+    expect(await deletionPage.getByLabel("修订投入量", { exact: true }).count()).toBe(0);
+    expect(await deletionPage.getByLabel("我重新确认行动 1 的模拟假设").count()).toBe(1);
+    expect(await deletionPage.getByRole("button", { name: "开始 30 天运行", exact: true }).isDisabled()).toBe(true);
+    expect(await deletionPage.evaluate("window.reconciliationTest.saves.length")).toBe(0);
+    const changedPage = await browser.newPage({ viewport: { width: 375, height: 812 } }); changedPage.setDefaultTimeout(4000);
+    await changedPage.setContent('<html lang="zh"><body><div id="root"></div></body></html>');
+    await changedPage.addScriptTag({ content: bundle.output.find(item => item.type === "chunk")!.code });
+    await changedPage.evaluate("{const original=window.fetch;window.fetch=async(url,init)=>{const response=await original(url,init);if(String(url).includes('reconcile_revision')&&response.ok){const body=await response.json();body.draft.currentSourceContext=body.preparedSourceContext;return new Response(JSON.stringify(body));}return response;}} ");
+    await changedPage.getByRole("button", { name: "按当前资料继续调整", exact: true }).click();
+    await changedPage.getByLabel("行动 1 当前资源").selectOption("resource-1"); await changedPage.getByLabel("行动 1 核对投入量").fill("4");
+    await changedPage.getByLabel("行动 2 当前环境条件").selectOption("pressure-1"); await changedPage.getByLabel("行动 2 核对新条件").fill("需要重新协调");
+    await changedPage.getByLabel("解除行动 3 的旧背景关联").check(); await changedPage.evaluate("window.reconciliationTest.changed=true");
+    await changedPage.getByRole("button", { name: "应用核对结果到当前草稿", exact: true }).click();
+    await changedPage.getByRole("alert").filter({ hasText: "核对期间资料再次变化" }).waitFor();
+    expect(await changedPage.getByLabel("修订投入量", { exact: true }).isDisabled()).toBe(true);
+    expect(await changedPage.getByRole("region", { name: "核对当前资料并延续模型", exact: true }).count()).toBe(0);
+    expect(await changedPage.evaluate("window.reconciliationTest.saves.length+window.reconciliationTest.runs.length")).toBe(0);
+    await changedPage.evaluate("{const original=window.fetch;window.fetch=async(url,init)=>String(url).includes('reconcile_revision')?new Response(JSON.stringify({ok:false,error_code:'model_reconciliation_scope_changed',trace_id:'synthetic-check'}),{status:409}):original(url,init);} ");
+    await changedPage.getByRole("button", { name: "按当前资料继续调整", exact: true }).click();
+    await changedPage.getByRole("alert").filter({ hasText: "当前人物、关系或模型范围已变化" }).waitFor();
+    expect(await changedPage.getByLabel("修订投入量", { exact: true }).isDisabled()).toBe(true);
+    expect(errors).toEqual([]);
   } finally { await browser.close(); }
 }, 60_000);

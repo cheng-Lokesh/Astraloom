@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   createEmptyRealityProfileDraft,
   createUnknownRealityProfileField,
@@ -40,6 +41,7 @@ export function RealityProfileClient() {
   const [profile, setProfile] = useState<RealityProfileDraft>(() => createEmptyRealityProfileDraft());
   const [status, setStatus] = useState("读取已保存资料…");
   const [ready, setReady] = useState(false);
+  const [savedForModelReview, setSavedForModelReview] = useState(false);
 
   useEffect(() => {
     void fetch("/api/reality-profile", { cache: "no-store" }).then(async response => {
@@ -83,12 +85,14 @@ export function RealityProfileClient() {
   };
 
   const save = async () => {
+    setSavedForModelReview(false);
     setStatus("正在安全保存…");
     try {
       const response = await fetch("/api/reality-profile", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(profile) });
       const body = await response.json().catch(() => null) as { profile?: RealityProfileDraft; error_code?: string } | null;
       if (response.ok && body?.profile) {
         setProfile(body.profile);
+        setSavedForModelReview(true);
         setStatus("已保存到当前正式链。事实、假设和未知会分别显示，世界状态只反映这些已保存资料。");
         return;
       }
@@ -119,6 +123,7 @@ export function RealityProfileClient() {
     </div>
     <button type="button" disabled={!ready} onClick={() => void save()} className="mt-7 min-h-11 rounded bg-[var(--evidence-gold)] px-5 py-3 text-sm font-semibold text-black transition-[transform,opacity] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-50">保存当前正式链资料</button>
     <p role="status" className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{status}</p>
+    {savedForModelReview ? <div className="mt-4 space-y-3"><p className="max-w-prose text-sm leading-6 text-[var(--text-secondary)]">现实资料已保存。可继续核对行动模型；符合条件时能延续已有规则，人物或关系变化时需重新配置。</p><Link href="/app/start?model_draft=current" className="inline-flex min-h-11 items-center rounded border border-white/15 px-4 py-3 text-sm font-semibold text-[var(--text-primary)] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]">核对并继续调整行动模型</Link></div> : null}
   </main>;
 }
 
