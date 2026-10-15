@@ -563,3 +563,40 @@ separate permissions remain governed by the existing Run flow.
 These are source-level UI contracts. A synthetic or static UI check does not
 prove real signed-in behavior, database persistence, Auth/RLS, or cross-device
 recovery; visual and authenticated acceptance remain outstanding.
+
+#### Complete current-model rule editing candidate (2026-10-15)
+
+The current-model editor lets the owner add, edit, and remove the four existing
+typed action kinds: information request, self commitment, bounded resource
+allocation, and conditional relationship response. It can add or edit strategies
+only for existing parallel-self variants, with at most two strategies. A
+strategy cannot be saved until its own path contains an action by that variant.
+
+Each new action requires an explicit path, actor, trigger, typed operation, and
+safe source summary. A third-party response must name its NPC actor and an
+existing locked relation edge connected to that NPC; an information request
+target must be a current NPC/group connected to the user core by an existing
+relation edge. The editor never edits edge weights or infers private intent.
+Changing a request target does not silently move its old NPC actor or edge to a
+different person. The old rule remains invalid until its actor and edge are
+explicitly repaired or the rule is removed. A changed source stays stale and
+read-only until the owner explicitly starts a new draft from current sources.
+
+Within one mounted editing session, action keys remain stable and a deleted key
+is not reused; behavior after a full reload or in a new session has not been
+established. Prerequisites stay within one path, cannot form cycles, and are
+reordered topologically when a valid dependency changes. Before removing an
+action or strategy, show the full dependent action/strategy cascade and require
+explicit confirmation; cancelling keeps the draft intact. Every mutation revokes
+the changed rule's confirmation, dependent confirmations, and affected strategy,
+budget, Symbolic, and outcome permissions. Save writes every rule unconfirmed and
+never starts a Run. Run requires fresh, valid per-rule and per-strategy
+confirmations. Empty or invalid input must fail closed without a parse crash or
+applying a stale model. An unknown Save or Run response locks edits and source
+refresh until the exact original request body and key are replayed.
+
+The focused UI and narrow independent review gates passed for this functional
+candidate. The 375×812 check used the real React component and typed browser
+client in Chrome with mock HTTP. This does not establish real account behavior,
+database/Auth/RLS, cross-device recovery, production CSS/page visual acceptance,
+or nine-stage acceptance.

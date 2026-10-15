@@ -19,6 +19,7 @@ import type { DigitalLifeModelDraft, SaveDigitalLifeModelDraft } from "@/lib/dig
 import { digitalLifeRulesDraftSchema, type DigitalLifeRulesDraft } from "@/lib/formal-sandbox/correction-context";
 import { compatibleRevision } from "./model-rule-revision-query";
 import type { SafeDigitalLifeCorrectionContext } from "@/lib/formal-sandbox/correction-context";
+import { normalizeDraftForSave } from "./model-rule-draft-operations";
 
 type StartInput = Parameters<ReturnType<typeof createFormalSandboxClient>["start"]>[0];
 
@@ -155,6 +156,10 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
               } else if (stored.status === "current") { setDraftError("model_source_stale"); return; }
               else setNotice("当前账户尚未保存模型草稿，可先配置并保存。");
             }
+            if (currentDraftMode && (freshCurrent.current || stored.status === "not_saved")) {
+              const empty: DigitalLifeRulesDraft = { version: "digital-life-rules-v1", graphSnapshotId: parsed.data.graphSnapshotId, agentSnapshotId: parsed.data.agentSnapshotId, profileRevision: parsed.data.profileRevision, actions: [], strategies: [] };
+              setInitialDraft(empty); setEditableDraft(empty); setDraftConfirmed(true); freshCurrent.current = false;
+            }
           }
         }
         if (source) {
@@ -227,12 +232,16 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
   }
 
   function changeHorizon(value: 30 | 90) {
+    if (inFlight.current || unknownStartRef.current || saveFlight.current || unknownSave) return;
     if (value === horizon) return;
     setHorizon(value);
-    setEditableDraft(null); setDraftConfirmed(false);
-    setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); setCalibrationConfirmed(false);
+    if (currentDraftMode && context) {
+      const empty: DigitalLifeRulesDraft = { version: "digital-life-rules-v1", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, actions: [], strategies: [] };
+      setInitialDraft(empty); setEditableDraft(empty); setDraftConfirmed(true); setEditorRevision(value => value + 1);
+    } else { setEditableDraft(null); setDraftConfirmed(false); }
+    setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); setCorrectionKeys([]); setCalibrationConfirmed(false);
     setNotice("时间窗口已更改，请重新确认整次预算与所有条件假设。");
-    if (rules.actions.length) {
+    if (rules.actions.length || editableDraft?.actions.length || editableDraft?.strategies.length) {
       setRules({ actions: [], strategies: [] });
       setNotice("时间窗口已更改，原规则与规划授权已清空，请按新周期重新配置。" );
     }
@@ -244,8 +253,10 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
     setNotice("已准备新的运行，请确认后开始");
   }
 
-  function changeRules(value: Pick<DigitalLifeRules, "actions" | "strategies">) {
-    setRules(value); setRelationshipDraft(emptyRelationshipResponseDraft());
+  function changeRules(value: Pick<DigitalLifeRules, "actions" | "strategies">, resetPermissions = true) {
+    setRules(value);
+    if (!resetPermissions) return;
+    setRelationshipDraft(emptyRelationshipResponseDraft()); setCorrectionKeys([]); setCalibrationConfirmed(false);
     setPlanningDraft(draft => ({ ...draft, fusionConfirmed: false, resources: Object.fromEntries(Object.entries(draft.resources).map(([key, resource]) => [key, { ...resource, confirmed: false }])) }));
     setNotice("行动条件已更改，请重新确认整次预算；如需回应调整，请重新选择组合并确认。");
   }
@@ -260,7 +271,8 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
       const binding = savedDraft?.currentSourceContext;
       if (!context || !binding || JSON.stringify(binding.modelContext) !== JSON.stringify(context)) { setDraftError("model_source_stale"); return; }
       const raw = editableDraft ?? { version: "digital-life-rules-v1", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules };
-      const parsed = digitalLifeRulesDraftSchema.safeParse({ ...raw, actions: raw.actions.map(item => ({ ...item, confirmedForSimulation: false })), strategies: raw.strategies.map(item => ({ ...item, confirmedForSimulation: false })) });
+      const normalized = normalizeDraftForSave({ modelContext: context, horizonDays: horizon }, raw);
+      const parsed = digitalLifeRulesDraftSchema.safeParse(normalized);
       if (!parsed.success) { setDraftError("invalid_model_draft"); return; }
       input = { version: "digital-life-model-draft-v1", expectedRevision: savedDraft!.currentRevision, idempotencyKey: crypto.randomUUID(), horizonDays: horizon, sourceContext: binding, draftRules: parsed.data };
       saveReplay.current = input;
@@ -286,7 +298,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
         if (!refreshed.ok) { setContext(null); setDraftError("draft_reload_failed"); return; }
         const latest = refreshed.data.draft;
         setSavedDraft(latest);
-        if (latest.status !== "current" || !latest.draftRules || !latest.sourceContext || JSON.stringify(latest.sourceContext.modelContext) !== JSON.stringify(context)) { setContext(null); setDraftError("model_source_stale"); return; }
+        if (latest.status !== "current" || !latest.draftRules || !latest.sourceContext || !latest.currentSourceContext || JSON.stringify(latest.sourceContext) !== JSON.stringify(latest.currentSourceContext) || JSON.stringify(latest.sourceContext.modelContext) !== JSON.stringify(context)) { setContext(null); setDraftError("model_source_stale"); return; }
         setInitialDraft(latest.draftRules); setEditableDraft(latest.draftRules); setHorizon(latest.horizonDays!); setDraftConfirmed(latest.draftRules.actions.length === 0 && latest.draftRules.strategies.length === 0); setEditorRevision(value => value + 1);
         setNotice(`模型草稿版本 ${latest.currentRevision} 已保存。尚未开始运行；请逐项重新确认。`);
       } catch { setContext(null); setDraftError("draft_reload_failed"); }
@@ -296,15 +308,15 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
 
   return (
     <div className="min-w-0 w-full space-y-5">
-      <h2 className="text-xl font-semibold">配置本次数字生命运行</h2>
+      <h2 className="text-xl font-semibold">{currentDraftMode ? "配置当前模型草稿与本次运行" : "配置本次数字生命运行"}</h2>
       <p className="max-w-prose text-sm leading-6 text-[var(--text-secondary)]">30 天包含 3 个模拟周期，90 天包含 6 个周期。周期表达条件变化，不是现实中的精确发生日期。</p>
       {loading ? <p role="status" className="animate-pulse motion-reduce:animate-none">正在读取已锁定模型与可选人物…</p> : null}
       {!loading && !context ? <div><p className="text-sm leading-6">当前模型暂不可读取。请完成当前情境的人物与关系图，再重新读取。</p><Button disabled={locked} variant="ghostOnDark" onClick={() => setReload(value => value + 1)} className="!w-auto px-4 py-3">重新读取模型</Button><Link href="/app/new/intake" className="ml-3 inline-flex min-h-11 items-center underline">返回情境准备</Link></div> : null}
       {!loading && currentDraftMode && !context && savedDraft?.draftRules && savedDraft.sourceContext && savedDraft.horizonDays ? <section className="space-y-4"><p role="alert">已保存版本 {savedDraft.currentRevision} 暂不能用于当前运行。下方保留原模型，只可查看；请重新读取并核对当前来源。</p><ModelRulesDraftEditor key={`stale-${savedDraft.currentRevision}`} source={{ draftRules: savedDraft.draftRules, modelContext: savedDraft.sourceContext.modelContext, horizonDays: savedDraft.horizonDays }} currentModel disabled onChange={() => {}} />{savedDraft.status === "stale" && savedDraft.currentSourceContext ? <Button disabled={locked} variant="ghostOnDark" onClick={() => { freshCurrent.current = true; setReload(value => value + 1); }} className="!w-auto px-4 py-3">为当前模型重新配置空草稿</Button> : null}</section> : null}
       {context ? <fieldset disabled={locked} className="min-w-0 space-y-5"><legend className="sr-only">配置当前模型与本次运行</legend>
-        <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={pending || unknownStart || Boolean(revisionRunId)} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
+        <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={locked || Boolean(revisionRunId)} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
         <p role="status" className="text-sm">{notice}</p>
-        <div id="formal-action-rules">{revisionSource ? <ModelRuleRevision key={`${revisionRunId}-${reload}`} source={revisionSource} disabled={locked} onChange={value => { setRevisionConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }); }} /> : editableDraft && initialDraft ? <ModelRulesDraftEditor key={`current-${reload}-${editorRevision}`} source={{ draftRules: initialDraft, modelContext: context, horizonDays: horizon }} currentModel disabled={locked} onDraftChange={setEditableDraft} onChange={value => { setDraftConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }); }} /> : <DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={changeRules} disabled={locked} />}</div>
+        <div id="formal-action-rules">{revisionSource ? <ModelRuleRevision key={`${revisionRunId}-${reload}`} source={revisionSource} disabled={locked} onChange={value => { setRevisionConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }); }} /> : editableDraft && initialDraft ? <ModelRulesDraftEditor key={`current-${reload}-${editorRevision}`} source={{ draftRules: initialDraft, modelContext: context, horizonDays: horizon }} originalRules={initialDraft} currentModel disabled={locked} onDraftChange={(draft, resetPermissions) => { setEditableDraft(draft); if (resetPermissions) changeRules({ actions: [], strategies: [] }); }} onChange={value => { setDraftConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }, false); }} /> : <DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={changeRules} disabled={locked} />}</div>
         {planning ? <DefaultPlanningEditor context={planning} draft={planningDraft} onChange={draft => { setPlanningDraft(draft); setRelationshipDraft(value => ({ ...value, confirmed: false, symbolicConfirmed: false })); }} disabled={pending || unknownStart} explicitRuleResourceKeys={rules.actions.flatMap(action => action.operation.actionType === "allocate_resource" ? [action.operation.resourceKey] : [])} /> : null}
         {planning ? <RelationshipResponseEditor context={context} rules={rules} planning={planning} budgets={planningDraft} draft={relationshipDraft} onChange={setRelationshipDraft} disabled={pending || unknownStart} /> : null}
         {planningError ? <p role="status" className="text-sm leading-6">默认规划来源暂不可读取，旧授权已清空。本次不会应用默认规划；仍可使用明确行动规则。</p> : null}
@@ -325,9 +337,9 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
       </Button>
       {error ? <FormalRunStartError errorCode={error} /> : null}
       {unknownStart ? <div><p role="alert" className="text-sm leading-6">运行提交结果暂时未知。原请求与选择已保留；请恢复原运行请求，期间不能修改配置或自动发起新运行。</p><Button variant="ghostOnDark" disabled={pending} onClick={() => void start()} className="!w-auto px-4 py-3">恢复原运行请求</Button></div> : null}
-      {context && error === "reservation_expired" ? <Button variant="ghostOnDark" onClick={prepareExpiredReservationRetry} className="!w-auto px-4 py-3">保留规则，重新发起</Button> : null}
-      {context && (error === "profile_revision_conflict" || error === "planning_context_stale") && !unknownStart ? <Button variant="ghostOnDark" disabled={pending} onClick={() => { setNotice("重新读取将更新模型并清空旧规则与规划授权。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型并检查规则</Button> : null}
-      {context && calibrationError && !unknownStart ? <Button variant="ghostOnDark" disabled={pending} onClick={() => { setNotice("重新读取将清空旧规则，请重新确认条件。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型与观察修正</Button> : null}
+      {context && error === "reservation_expired" ? <Button variant="ghostOnDark" disabled={locked} onClick={prepareExpiredReservationRetry} className="!w-auto px-4 py-3">保留规则，重新发起</Button> : null}
+      {context && (error === "profile_revision_conflict" || error === "planning_context_stale") && !unknownStart ? <Button variant="ghostOnDark" disabled={locked} onClick={() => { setNotice("重新读取将更新模型并清空旧规则与规划授权。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型并检查规则</Button> : null}
+      {context && calibrationError && !unknownStart ? <Button variant="ghostOnDark" disabled={locked} onClick={() => { setNotice("重新读取将清空旧规则，请重新确认条件。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型与观察修正</Button> : null}
     </div>
   );
 }
