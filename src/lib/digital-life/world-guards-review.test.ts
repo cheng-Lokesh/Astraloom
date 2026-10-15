@@ -2,6 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { NoEligibleActions } from "@/components/formal-sandbox/no-eligible-actions";
+import { addDraftAction, validateRevisionDraft, type RevisionDraft } from "@/components/formal-sandbox/model-rule-draft-operations";
+import { emptyEditorDraft } from "@/components/formal-sandbox/digital-life-rules-editor";
 import { buildFormalSandboxRunV2 } from "@/lib/formal-sandbox/runtime";
 import { projectFormalSandboxResult } from "@/lib/formal-sandbox/result-projection.server";
 import { buildDigitalLifeModel, digitalLifeGuardSchema, type DigitalLifeRules } from "./model";
@@ -24,6 +26,24 @@ function rules(actions: DigitalLifeRules["actions"]): DigitalLifeRules {
 }
 
 describe("independent guard review reproductions", () => {
+  it("adds a new ordinary action after a legal existing v3 guard without downgrading its protocol", () => {
+    const input = fixture();
+    const context = { graphSnapshotId: ids.graph, agentSnapshotId: ids.snapshot, profileRevision: 2,
+      agents: [{ key: "person-1", label: "本人", role: "user_core" as const }], relationships: [], variables: [],
+      resources: input.realityProfileSnapshot.profile.worldInputs.resources.map((resource, index) => ({ ...resource, key: `resource-${index + 1}` })),
+    };
+    const source = { modelContext: context, horizonDays: 90 as const };
+    const existing: RevisionDraft = { ...rules([action("rule-1", "main", { kind: "resource_balance", resourceKey: "resource-1", operator: "gte", value: 8 })]), actions: [{ ...action("rule-1", "main", { kind: "resource_balance", resourceKey: "resource-1", operator: "gte", value: 8 }), confirmedForSimulation: false }], strategies: [] };
+    expect(validateRevisionDraft(source, existing).ok).toBe(true);
+    const result = addDraftAction(source, existing, { ...emptyEditorDraft, actorKey: "person-1", operation: "update_commitment", text: "再准备一次沟通", evidenceSummary: "本人明确设置的后续计划", tickIndex: 1 });
+    expect(result.ok, !result.ok ? result.message : undefined).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.draft.version).toBe("digital-life-rules-v3");
+    expect(result.draft.actions).toHaveLength(2);
+    expect(result.draft.actions[0].guard).toEqual(existing.actions[0].guard);
+    expect(result.draft.actions[1].confirmedForSimulation).toBe(false);
+  });
+
   it.each(["家庭支持待定", "稳".repeat(240)])("projects a legal environment guard without rejecting safe value %s", async value => {
     const input = fixture(value);
     const guard = { kind: "environment_equals" as const, variableKey: "external-variable-1", value };
@@ -46,7 +66,7 @@ describe("independent guard review reproductions", () => {
     declared.strategies = [{ participantKey: "person-3", label: "保留独立安排", confirmedForSimulation: true, evidenceSummary: "本人选择的独立策略" }];
     const result = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: declared });
     expect(result.ok).toBe(false);
-    if (result.ok || !result.pathDiagnostics) throw new Error("Expected not-saved diagnostics");
+    if (result.ok || !("pathDiagnostics" in result) || !result.pathDiagnostics) throw new Error("Expected not-saved diagnostics");
     expect(result.errorCode).toBe("no_eligible_actions");
     expect(result.pathDiagnostics.paths[1]).toMatchObject({ status: "has_events", samples: [{ selectedEventCount: 1 }, { selectedEventCount: 1 }, { selectedEventCount: 1 }] });
     expect(result.pathDiagnostics.paths[1].guardObservations.samples[0].ticks[0].observations[0]).toMatchObject({ candidate: "selected", stepKey: "step-1" });
