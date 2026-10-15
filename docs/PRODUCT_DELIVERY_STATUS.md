@@ -52,6 +52,40 @@
 
 V2 Core、API 与 SQL 合同无变化。九阶段仍均未获正式完成裁决；本候选不代表完整 Fork，也不推进阶段 PASS。
 
+## Environment-condition rules v2 candidate (2026-10-15)
+
+本地候选为环境条件建模与受控事件链。已有 v1 草稿保持 v1，已有 v2 草稿保持
+v2；新建未保存草稿可按读取到的 source version 初始化，`signature_v2` 可用时
+包括 v2。显式 `GET ...?prepare_version=v2` 另外返回独立、只读的
+`preparedSourceContext`，不静默升级已保存草稿；POST 拒绝 query。v1 签名/上下文
+及既有 draft/receipt/hash 行为不变；新版本使用独立 `signature_v2`。Save 所有
+确认均为 false，Run 需要新确认；未知请求保持原 body/key，真 stale 只允许从
+当前 source 建立空草稿，不搬运旧 ordinal。
+
+每 path 最多一个环境条件，占用原有行动名额：30 天为 3，90 天为 6。Reality
+原值与不同的替代模拟假设分开表达，不做心理推断。只有实际 selected
+condition Event 才触发同 path 的后继 `after_rule` Event。结果按 sample/path
+独立区分 `selected`、`not_selected`、`not_triggered`、`not_reached`；候选提前
+结束可以未到达，不承诺定时触发。V2 Core、Reality、Graph、RNG 均未修改。
+
+本批功能已固定为提交 `b5b9df35a0e77e8190ce641d12995c55f8e02ef8`
+（30 paths，+1173/-65，不含本账本与其他 4 份文档）。四项独立审查发现均已
+按窄范围关闭：SQL 变量 ID helper source parity 6/6；UI 两项边界修复通过独立
+7 tests；backend Event envelope 绑定修复独立 6 PASS、5 filtered。此前的 RED、
+GREEN 与命令证据见[环境条件 TDD 记录](testing/environment-conditions.tdd.md)。
+隔离 clean build `npm.cmd run build -- --webpack` 已在固定功能 SHA 上 exit 0
+（session 22390；compile 29.0s、TS 52s、111/111 pages 6.4s）；production
+preview 在 `127.0.0.1:52340`（session 74224）于 407ms Ready。HTTP：首页 200，
+缓存为 `s-maxage`（不是 `no-store`）；`/app/start?model_draft=current` 与无效
+入口均为 200、`no-store`。未配置 Supabase 时
+`GET /api/sandbox/model-draft?prepare_version=v2` 返回 500、`no-store`，仅证明
+缺配置时 fail-closed，不是 Auth/DB 验收。功能提交已精确 push：exit 0，live
+origin current dev ref 为 `b5b9df35a0e77e8190ce641d12995c55f8e02ef8`，
+upstream `0/0`、index 空。之后的 5-path 文档专用提交不改变该 build 对应的
+功能代码，也不单独重跑 build。pgTAP 56 条未在数据库运行。真实
+Auth/RLS、DB/CAS、全量 suite、生产 CSS 视觉与九阶段验收仍 pending。本候选
+不是阶段 PASS；文档专用提交也不会改变已固定的功能源码。
+
 ## 尚未验证的交付门槛
 
 真实账户端到端链、数据库/RLS 与匿名隔离、跨设备恢复、长期反馈校准、完整 Destiny 作用模型、NPC 长期记忆和 Fork、统计回测、导出/删除、运营/支付、封闭 Beta、Launch 及最终独立总验收均未由本账本确认。局部源码、单元测试、合成视口、静态检查或历史构建成功不替代这些门槛。

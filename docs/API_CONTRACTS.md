@@ -667,7 +667,10 @@ rather than an overview projection.
 ### Explicit digital-life rules and readonly model context
 
 `POST /api/sandbox/runs` accepts an optional strict `digital_life_rules` value
-(`digital-life-rules-v1`) beside its existing fields. It must bind the requested
+(`digital-life-rules-v1` or `digital-life-rules-v2`) beside its existing fields.
+The v2 environment-condition operation is specified in the
+[environment-condition data contract](DATA_CONTRACTS.md#environment-condition-rules-v2-candidate-2026-10-15).
+It must bind the requested
 locked Graph, Agent snapshot and exact Profile revision. Strategies and every
 action require explicit simulation confirmation; action rules are assumptions.
 Unknown fields, unsupported actions, invalid selectors, unconfirmed NPC intent,
@@ -677,6 +680,8 @@ No request supplies or overrides owner identity, and legacy requests remain vali
 `GET /api/sandbox/model-context?graph_id=<opaque selector>` returns authenticated,
 owner-scoped readonly safe selectors: Graph/Agent binding ids, Profile revision,
 ordered `person-N` agents, `relation-N` edges and `resource-N` bounded resources.
+The v2 source may additionally carry optional `variables` selectors; the
+existing six-field v1 source context remains strict and unchanged.
 Opaque binding ids are transport only and must not be rendered. Labels and
 classification/evidence summaries are safe; no raw Profile narrative, source
 refs, canonical resource keys or third-party-intent inference is returned.
@@ -863,8 +868,14 @@ atomic persistence, cross-account access or a real signed-in rerun.
 
 GET /api/sandbox/model-draft reads the authenticated, non-anonymous owner's
 saved revision and current source projection. POST appends a draft revision.
-Both routes reject query parameters, return no-store, and use the existing
-sandbox response envelope. The strict POST body has exactly version,
+Both routes return no-store and use the existing sandbox response envelope.
+GET projects a saved v1 draft as v1 and a saved v2 draft as v2. When there is no
+saved draft, the client initializes rules to the version of the read source,
+including v2 when `signature_v2` is available. The explicit
+`prepare_version=v2` query may additionally return a separate
+`preparedSourceContext`; this read-only preparation does not save or upgrade a
+stored draft. POST rejects every query parameter, including `prepare_version`.
+The strict POST body has exactly version,
 expectedRevision, idempotencyKey, horizonDays, sourceContext, and draftRules;
 the horizon is 30 or 90 days and all action/strategy confirmation flags must be
 false. Unknown request keys fail closed.

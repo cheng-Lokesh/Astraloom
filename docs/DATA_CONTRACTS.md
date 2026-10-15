@@ -1515,3 +1515,36 @@ static parity evidence only; direct-RPC SQL execution is not accepted yet.
 Existing Run validators are unchanged. The migration is authored source only:
 database execution, owner RLS behavior, concurrent compare-and-swap, and
 authenticated persistence have not been verified in a running database.
+
+### Environment-condition rules v2 candidate (2026-10-15)
+
+An environment-condition rule has shape
+`{ actionType: update_external_variable, variableKey, value }`, where
+`variableKey` is `pressure-N` or `external-variable-N` (`N` 1–8) and `value` is
+safe text. It may target only an existing non-unknown Profile variable at its
+current ordinal, on the `self` actor/path; the replacement must differ from the
+baseline, and each path allows at most one such condition. The v2 rules,
+source-context and request envelope must match. Existing saved v1 drafts stay
+v1 and saved v2 drafts stay v2; a new unsaved draft initializes to the
+current source version, including v2 when `signature_v2` is available. An
+explicit `GET ...?prepare_version=v2` additionally returns a separate,
+read-only `preparedSourceContext`; it does not save or upgrade a draft. The old
+six-field v1 source context remains strict. The model-context DTO may include
+optional `variables` selectors for legacy compatibility, but the v2
+draft-source requires a `variables` array, which may be empty. The v1 source
+hash remains independent and is not backfilled from `signature_v2`. A genuinely
+stale source remains inspection-only:
+reconfiguration starts from an empty draft against the current source and
+never carries old ordinal mappings over.
+
+Each path may contain at most one environment condition, occupying one of that
+path's existing action slots (three for a 30-day horizon, six for 90 days).
+The original value remains a Reality fact or assumption; the explicitly
+selected replacement is a distinct simulation assumption. This is not a claim
+about private psychology. Only a selected condition that actually produces its
+controlled Event can enable its same-path `after_rule` successor chain. Results
+are independently scoped to each sample/path and distinguish
+`selected`/`not_selected`/`not_triggered`/`not_reached`; only a matching actual
+Event may expose the changed value and downstream events. An early-ending
+candidate may be `not_reached`; no exact real-world timing is promised. V2 Core,
+Reality snapshots, Graph, and RNG are unchanged.

@@ -600,3 +600,29 @@ candidate. The 375×812 check used the real React component and typed browser
 client in Chrome with mock HTTP. This does not establish real account behavior,
 database/Auth/RLS, cross-device recovery, production CSS/page visual acceptance,
 or nine-stage acceptance.
+
+#### Environment-condition rules v2 candidate (2026-10-15)
+
+An existing saved v1 draft remains v1; a saved v2 draft remains v2. A new
+unsaved draft initializes to the version of the read source, including v2
+when `signature_v2` is available. Explicit source preparation returns a
+separate `preparedSourceContext` and does not silently upgrade a saved draft.
+A stale source stays read-only, and starting again uses a blank draft against
+the newly read source rather than moving old ordinal rules. Each path
+allows one environment condition within its existing action cap. The baseline
+is shown as its Reality fact/assumption and the different replacement as an
+explicit simulation assumption; same-value additions are rejected and edits
+that become equal fail closed at confirmation/save/run.
+
+Save persists all confirmations as false. Run requires fresh confirmation.
+Unknown Save/Run responses lock editing until the exact original body/key is
+replayed; recovery is only established within the mounted editing session.
+Results distinguish `selected`, `not_selected`, `not_triggered`, and
+`not_reached` independently for each sample/path. Only a selected condition
+with its matching actual Event may show a changed value and its actual
+`after_rule` successors; internal identifiers remain hidden.
+
+The focused 375×812 Chrome exercise used the real React component and typed
+client with mock HTTP and a stub router, not production CSS or a real account.
+It supports a functional candidate only, not authenticated, database, or
+full-page visual acceptance.
