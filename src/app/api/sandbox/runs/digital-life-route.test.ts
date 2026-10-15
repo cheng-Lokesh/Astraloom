@@ -21,6 +21,16 @@ describe("digital-life Run HTTP contract", () => {
     expect(state.start.mock.calls[0]?.[1]).toBe(ids.owner);
     expect(state.start.mock.calls[0]?.[2]).toEqual(body());
   });
+  it("admits confirmed v2 conditions unchanged while refusing the same operation inside a v1 envelope", async () => {
+    const rules = { ...digitalLifeRules(), version: "digital-life-rules-v2", actions: [{ key: "rule-1", pathKey: "main", actorKey: "person-1", when: { kind: "at_tick", tickIndex: 1 }, operation: { actionType: "update_external_variable", variableKey: "external-variable-1", value: "家庭支持可用" }, classification: "assumption", confirmedForSimulation: true, evidenceSummary: "本人声明的条件情景，不代表现实控制" }], strategies: [] };
+    const input = { ...body(), digital_life_rules: rules };
+    const response = await POST(request(input));
+    expect(response.status).toBe(201);
+    expect(state.start.mock.calls[0]?.[2]).toEqual(input);
+    state.start.mockClear();
+    expect((await POST(request({ ...input, digital_life_rules: { ...rules, version: "digital-life-rules-v1" } }))).status).toBe(422);
+    expect(state.start).not.toHaveBeenCalled();
+  });
   it("denies anonymous requests before the runtime or writer runs", async () => {
     state.user = null;
     expect((await POST(request(body()))).status).toBe(401);

@@ -8,5 +8,7 @@ export function parseRevisionQuery(query: Record<string, string | string[] | und
   return result.success ? result.data : null;
 }
 export function compatibleRevision(source: SafeDigitalLifeCorrectionContext, current: SafeDigitalLifeContext) {
-  return JSON.stringify(source.modelContext) === JSON.stringify(current);
+  if (source.frozenRules.version === "digital-life-rules-v2") return JSON.stringify(source.modelContext) === JSON.stringify(current);
+  const legacy = (value: SafeDigitalLifeContext) => ({ graphSnapshotId: value.graphSnapshotId, agentSnapshotId: value.agentSnapshotId, profileRevision: value.profileRevision, agents: value.agents, relationships: value.relationships, resources: value.resources });
+  return JSON.stringify(legacy(source.modelContext)) === JSON.stringify(legacy(current));
 }

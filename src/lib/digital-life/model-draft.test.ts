@@ -24,6 +24,67 @@ function caller(data: unknown, receipt: unknown = null, saveData: unknown = null
 }
 beforeEach(() => { state.user = { id: ids.owner, is_anonymous: false }; state.caller = caller(null); });
 describe("current model draft durable boundary", () => {
+  it("keeps a saved v1 source and default GET byte shape unchanged when a v2 signature is available", async () => {
+    const f = fixture();
+    state.caller = caller({ source: { ...f.source, signature_v2: "b".repeat(64) }, current: f.row });
+    const response = await GET(new Request("http://local/api/sandbox/model-draft"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.draft.version).toBe("digital-life-model-draft-v1");
+    expect(body.draft.status).toBe("current");
+    expect(body.draft.sourceContext).toEqual(f.request.sourceContext);
+    expect(body.draft.currentSourceContext).toEqual(f.request.sourceContext);
+    expect(body).not.toHaveProperty("preparedSourceContext");
+  });
+  it("prepares a separate v2 source only on explicit readonly GET without upgrading the saved draft", async () => {
+    const f = fixture();
+    const source = { ...f.source, signature_v2: "b".repeat(64) };
+    source.reality_profiles.external_variables = [
+      { value: "", classification: "unknown", evidenceSummary: "明确未知" },
+      { value: "家庭支持尚未确定", classification: "fact", evidenceSummary: "本人记录的当前安排" },
+    ];
+    const db = caller({ source, current: f.row }); state.caller = db;
+    const response = await GET(new Request("http://local/api/sandbox/model-draft?prepare_version=v2"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.draft.sourceContext).toEqual(f.request.sourceContext);
+    expect(body.draft.currentRevision).toBe(1);
+    expect(body.preparedSourceContext).toMatchObject({ version: "digital-life-model-draft-source-v2", signature: "b".repeat(64), modelContext: { variables: [{ key: "external-variable-2", category: "external_variable", value: "家庭支持尚未确定", classification: "fact" }] } });
+    expect(db.rpc).toHaveBeenCalledTimes(1);
+    expect(db.rpc.mock.calls[0][0]).toBe("read_digital_life_model_draft_v1");
+    expect(db.from).not.toHaveBeenCalled();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+  it.each(["?prepare_version=v3", "?prepare_version=v2&prepare_version=v2", "?prepare_version=v2&owner=someone"])("rejects unsupported or ambiguous preparation selectors %s", async query => {
+    state.caller = caller({ source: fixture().source, current: null });
+    expect((await GET(new Request(`http://local/api/sandbox/model-draft${query}`))).status).toBe(422);
+    expect((state.caller as ReturnType<typeof caller>).rpc).not.toHaveBeenCalled();
+  });
+  it("does not accept a preparation query on a draft write", async () => {
+    const f = fixture(); state.caller = caller({ source: f.source, current: f.row });
+    const response = await POST(new Request("http://local/api/sandbox/model-draft?prepare_version=v2", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(f.request) }));
+    expect(response.status).toBe(422);
+    expect((state.caller as ReturnType<typeof caller>).rpc).not.toHaveBeenCalled();
+  });
+  it("appends an explicitly prepared v2 draft using the same owner-global revision and replays its exact receipt before source reads", async () => {
+    const f = fixture();
+    const source = { ...f.source, signature_v2: "b".repeat(64) };
+    source.reality_profiles.external_variables = [{ value: "家庭支持尚未确定", classification: "fact", evidenceSummary: "本人记录的当前安排" }];
+    const request = saveDigitalLifeModelDraftSchema.parse({
+      ...f.request, version: "digital-life-model-draft-v2", expectedRevision: 1, idempotencyKey: ids.edge,
+      sourceContext: { version: "digital-life-model-draft-source-v2", signature: "b".repeat(64), modelContext: { ...f.request.sourceContext.modelContext, variables: [{ key: "external-variable-1", category: "external_variable", label: "外部变量", value: "家庭支持尚未确定", classification: "fact", evidenceSummary: "本人记录的当前安排" }] } },
+      draftRules: { ...f.request.draftRules, version: "digital-life-rules-v2", actions: [...f.request.draftRules.actions, { key: "rule-4", pathKey: "main", actorKey: "person-1", when: { kind: "at_tick", tickIndex: 2 }, operation: { actionType: "update_external_variable", variableKey: "external-variable-1", value: "家庭支持可用" }, classification: "assumption", confirmedForSimulation: false, evidenceSummary: "本人声明的条件情景" }] },
+    });
+    const row = { user_id: ids.owner, revision: 2, request };
+    const db = caller({ source, current: f.row }, null, { row, idempotent: false });
+    expect(await saveFormalModelDraft(db as never, ids.owner, request)).toMatchObject({ ok: true, idempotent: false, draft: { version: "digital-life-model-draft-v2", currentRevision: 2, status: "current", sourceContext: request.sourceContext } });
+    expect(db.rpc).toHaveBeenLastCalledWith("save_digital_life_model_draft_v1", { p_request: request });
+    const recovery = caller(null, row);
+    expect(await saveFormalModelDraft(recovery as never, ids.owner, JSON.parse(JSON.stringify(request)))).toMatchObject({ ok: true, idempotent: true, draft: { currentRevision: 2, draftRules: request.draftRules } });
+    expect(recovery.rpc).not.toHaveBeenCalled();
+    expect(await saveFormalModelDraft(recovery as never, ids.owner, { ...request, horizonDays: 90 })).toEqual({ ok: false, errorCode: "idempotency_key_content_conflict" });
+    expect(recovery.rpc).not.toHaveBeenCalled();
+  });
   it("uses JavaScript ASCII word boundaries for draft text surrounded by Chinese characters", () => {
     const f = fixture();
     for (const summary of ["前token后", "前example@example.test后", "前investment后"]) {

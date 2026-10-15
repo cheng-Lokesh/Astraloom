@@ -121,7 +121,7 @@ it("upgrades a legacy source explicitly, edits environment rules and replays exa
     await page.getByLabel("假设的新条件", { exact: true }).fill("");
     expect(await page.getByRole("button", { name: "开始 30 天运行", exact: true }).isDisabled()).toBe(true);
     await page.getByLabel("假设的新条件", { exact: true }).fill("岗位开放");
-    await page.getByLabel("我重新确认行动 1 的模拟假设").check();
+    await page.getByLabel("我重新确认行动 1 的模拟假设").click();
     expect(await page.getByLabel("我重新确认行动 1 的模拟假设").isChecked()).toBe(false);
     await page.getByRole("button", { name: "保存当前模型草稿", exact: true }).click();
     expect(await page.evaluate("window.environmentTest.saves.length")).toBe(0);

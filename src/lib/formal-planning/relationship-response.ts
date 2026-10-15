@@ -109,12 +109,12 @@ export function resolveRelationshipTrigger(frame: FrozenRelationshipResponse, wo
     if (event.seedContextId !== world.seedContextId || !world.worldEventIds.includes(event.id) || !world.appliedTransitionCommandIds.includes(event.commandId)
       || event.evidenceClass !== "world_transition_simulation_evidence" || event.engineVersion !== world.engineVersion || event.afterRevision !== event.beforeRevision + 1
       || event.afterRevision > world.revision || !assumption || event.causalAssumptionIds.length !== 1 || event.causalAssumptionIds[0] !== assumption.id
-      || assumption.subjectType !== (sourceActor.role === "npc" || sourceActor.role === "group" ? "third_party" : "self") || assumption.confirmationStatus !== "confirmed"
+      || assumption.subjectType !== (rule.operation.actionType === "update_external_variable" ? "external_variable" : sourceActor.role === "npc" || sourceActor.role === "group" ? "third_party" : "self") || assumption.confirmationStatus !== "confirmed"
       || assumption.epistemicStatus !== "confirmed_for_simulation" || assumption.confirmationRequirement !== "required" || assumption.impactLevel !== "high"
       || assumption.statement !== `用户确认的条件模拟规则：${rule.operation.actionType}。依据：${rule.evidenceSummary}` || assumption.parameterRange !== undefined
       || assumption.contradictingRealEvidenceIds.length !== 0
       || assumption.supportingRealEvidenceIds.some(id => world.realityBoundarySnapshot.evidenceLedger.items.find(item => item.id === id)?.claimKey !== `formal.outcome.correction.${rule.key}`)) return false;
-    let targetEntities = [actorEntity], targetRelations: string[] = [], targetResources: string[] = [];
+    let targetEntities = [actorEntity], targetRelations: string[] = [], targetResources: string[] = [], targetVariables: string[] = [];
     let operation: unknown;
     if (rule.operation.actionType === "request_information") {
       const target = frame.ruleBindings.agents.find(item => item.key === (rule.operation.actionType === "request_information" ? rule.operation.targetPersonKey : ""));
@@ -133,10 +133,17 @@ export function resolveRelationshipTrigger(frame: FrozenRelationshipResponse, wo
       if (!sourceResource) return false;
       const resourceId = ids("world_resource", sourceResource.profileResourceKey);
       targetResources = [resourceId]; operation = { actionType: "allocate_resource", resourceId, amount: rule.operation.amount };
+    } else if (rule.operation.actionType === "update_external_variable") {
+      const variableKey = rule.operation.variableKey;
+      const profileKey = `${variableKey.startsWith("pressure-") ? "pressures" : "externalVariables"}.${variableKey.split("-").at(-1)}`;
+      const variableId = ids("world_variable", profileKey);
+      const variable = world.externalVariables.find(item => item.id === variableId && item.key === variableKey);
+      if (!variable || variable.variableType !== "enum" || !variable.allowedValues.includes(rule.operation.value)) return false;
+      targetVariables = [variableId]; operation = { actionType: "update_external_variable", variableId, value: rule.operation.value };
     } else operation = { actionType: "update_commitment", commitmentId: `digital_life_${rule.actorKey}_${rule.operation.commitmentKey}`, label: rule.operation.label, status: rule.operation.status };
     if (event.eventType !== rule.operation.actionType || canonical(event.operation) !== canonical(operation)
       || canonical(event.targetEntityIds) !== canonical(targetEntities) || canonical(event.targetResourceIds) !== canonical(targetResources)
-      || canonical(event.targetRelationIds) !== canonical(targetRelations) || event.targetVariableIds.length) return false;
+      || canonical(event.targetRelationIds) !== canonical(targetRelations) || canonical(event.targetVariableIds) !== canonical(targetVariables)) return false;
     if (rule.when.kind === "at_tick") {
       if (tick !== rule.when.tickIndex || event.priorWorldEventIds.length) return false;
     } else {

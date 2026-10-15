@@ -6,18 +6,18 @@ import { Button } from "@/components/ui-foundation";
 import { digitalLifeRulesSchema, type DigitalLifeRules } from "@/lib/digital-life/model";
 import type { SafeDigitalLifeContext } from "@/lib/formal-sandbox/model-context";
 
-export type EditorContext = Pick<SafeDigitalLifeContext, "graphSnapshotId" | "agentSnapshotId" | "profileRevision" | "agents" | "relationships"> & { resources: Array<Pick<SafeDigitalLifeContext["resources"][number], "key" | "label" | "available" | "minimum" | "unit">> };
+export type EditorContext = Pick<SafeDigitalLifeContext, "graphSnapshotId" | "agentSnapshotId" | "profileRevision" | "agents" | "relationships" | "variables"> & { resources: Array<Pick<SafeDigitalLifeContext["resources"][number], "key" | "label" | "available" | "minimum" | "unit">> };
 type Action = DigitalLifeRules["actions"][number];
 type Strategy = DigitalLifeRules["strategies"][number];
 export type EditorDraft = {
   pathKey: string; actorKey: string; operation: Action["operation"]["actionType"];
   when: "at_tick" | "after_rule"; tickIndex: number; previousKey: string;
-  targetKey: string; relationKey: string; resourceKey: string; text: string;
+  targetKey: string; relationKey: string; resourceKey: string; variableKey?: string; text: string;
   amount: string; status: "planned" | "active" | "fulfilled" | "cancelled";
   evidenceSummary: string; confirmed: boolean; strategyLabel: string;
 };
 export const emptyEditorDraft: EditorDraft = { pathKey: "main", actorKey: "", operation: "request_information", when: "at_tick", tickIndex: 0, previousKey: "", targetKey: "", relationKey: "", resourceKey: "", text: "", amount: "", status: "planned", evidenceSummary: "", confirmed: false, strategyLabel: "" };
-const actionLabels = { request_information: "询问信息", update_commitment: "更新本人承诺", update_relation_signal: "条件回应假设", allocate_resource: "投入已有资源" };
+const actionLabels = { request_information: "询问信息", update_commitment: "更新本人承诺", update_relation_signal: "条件回应假设", allocate_resource: "投入已有资源", update_external_variable: "环境条件假设" };
 export const actionLabel = (type: Action["operation"]["actionType"]) => actionLabels[type];
 
 export function buildEditorRules(context: EditorContext, horizon: 30 | 90, actions: Action[], strategies: Strategy[], draft: EditorDraft): { ok: true; rules: DigitalLifeRules } | { ok: false; message: string } {
@@ -38,6 +38,11 @@ export function buildEditorRules(context: EditorContext, horizon: 30 | 90, actio
     const core = context.agents.find(item => item.role === "user_core")?.key;
     if (!target || !context.relationships.some(item => [item.fromPersonKey, item.toPersonKey].includes(core ?? "") && [item.fromPersonKey, item.toPersonKey].includes(target.key))) return fail("请选择锁定关系图中与本人相连的关键人物。");
     operation = { actionType: draft.operation, targetPersonKey: draft.targetKey, question: draft.text };
+  } else if (draft.operation === "update_external_variable") {
+    const variable = context.variables?.find(item => item.key === draft.variableKey);
+    if (!variable || thirdParty || actions.some(item => item.pathKey === draft.pathKey && item.operation.actionType === "update_external_variable")) return fail("请选择已登记的压力或外部变量；每条路径最多一条环境条件假设。");
+    if (variable.value === draft.text.trim()) return fail("新环境条件与原值相同，请填写一个不同的模拟条件。");
+    operation = { actionType: draft.operation, variableKey: variable.key, value: draft.text };
   } else if (draft.operation === "update_commitment") operation = { actionType: draft.operation, commitmentKey: `commitment-${nextNumber}`, label: draft.text, status: draft.status };
   else if (draft.operation === "update_relation_signal") {
     const relation = context.relationships.find(item => item.key === draft.relationKey);
@@ -50,7 +55,8 @@ export function buildEditorRules(context: EditorContext, horizon: 30 | 90, actio
     operation = { actionType: draft.operation, resourceKey: resource.key, amount: Number(draft.amount) };
   }
   const nextStrategies = draft.pathKey === "main" || strategies.some(item => item.participantKey === draft.pathKey) ? strategies : [...strategies, { participantKey: draft.pathKey, label: draft.strategyLabel, confirmedForSimulation: true as const, evidenceSummary: draft.evidenceSummary }];
-  const parsed = digitalLifeRulesSchema.safeParse({ version: "digital-life-rules-v1", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, strategies: nextStrategies, actions: [...actions, { key: `rule-${nextNumber}`, pathKey: draft.pathKey, actorKey: draft.actorKey, when: draft.when === "at_tick" ? { kind: "at_tick", tickIndex: draft.tickIndex } : { kind: "after_rule", ruleKey: draft.previousKey }, operation, classification: "assumption", confirmedForSimulation: true, evidenceSummary: draft.evidenceSummary }] });
+  const version = operation.actionType === "update_external_variable" || actions.some(item => item.operation.actionType === "update_external_variable") ? "digital-life-rules-v2" : "digital-life-rules-v1";
+  const parsed = digitalLifeRulesSchema.safeParse({ version, graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, strategies: nextStrategies, actions: [...actions, { key: `rule-${nextNumber}`, pathKey: draft.pathKey, actorKey: draft.actorKey, when: draft.when === "at_tick" ? { kind: "at_tick", tickIndex: draft.tickIndex } : { kind: "after_rule", ruleKey: draft.previousKey }, operation, classification: "assumption", confirmedForSimulation: true, evidenceSummary: draft.evidenceSummary }] });
   return parsed.success ? { ok: true, rules: parsed.data } : fail("请填写简短、安全的行动与来源说明；不能填写链接、私人联系方式或确定性判断。");
 }
 
@@ -91,6 +97,7 @@ export function DigitalLifeRulesEditor({ context, horizonDays, actions, strategi
         {draft.operation === "update_relation_signal" ? <><label htmlFor={`${id}-relation`}>已锁定关系<select id={`${id}-relation`} className={controls} value={draft.relationKey} onChange={event => field("relationKey", event.target.value)}><option value="">请选择只读关系</option>{context.relationships.filter(item => [item.fromPersonKey, item.toPersonKey].includes(draft.actorKey)).map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label><label htmlFor={`${id}-signal`}>假设的回应方向<select id={`${id}-signal`} className={controls} value={draft.status} onChange={event => field("status", event.target.value as EditorDraft["status"])}><option value="planned">中性</option><option value="fulfilled">积极</option><option value="cancelled">消极</option></select></label></> : null}
         {draft.operation === "allocate_resource" ? <><label htmlFor={`${id}-resource`}>已记录资源<select id={`${id}-resource`} className={controls} value={draft.resourceKey} onChange={event => field("resourceKey", event.target.value)}><option value="">{context.resources.length ? "请选择已有资源" : "先到背景资料添加明确资源"}</option>{context.resources.map(item => <option key={item.key} value={item.key}>{item.label} · 可投入 {item.available - item.minimum} {item.unit}</option>)}</select></label><label htmlFor={`${id}-amount`}>投入量<input id={`${id}-amount`} className={controls} type="number" min="0.001" step="any" value={draft.amount} onChange={event => field("amount", event.target.value)} /></label></> : null}
         {draft.operation === "update_commitment" ? <label htmlFor={`${id}-status`}>承诺状态<select id={`${id}-status`} className={controls} value={draft.status} onChange={event => field("status", event.target.value as EditorDraft["status"])}><option value="planned">计划</option><option value="active">进行中</option><option value="fulfilled">已履行</option><option value="cancelled">取消</option></select></label> : null}
+        {draft.operation === "update_external_variable" ? <><label htmlFor={`${id}-variable`}>环境条件<select id={`${id}-variable`} className={controls} value={draft.variableKey ?? ""} onChange={event => field("variableKey", event.target.value)}><option value="">请选择已登记的压力或外部变量</option>{context.variables?.map(variable => <option key={variable.key} value={variable.key}>{variable.label} · {variable.value}</option>)}</select></label><label htmlFor={`${id}-environment-value`}>假设的新条件<input id={`${id}-environment-value`} className={controls} maxLength={240} value={draft.text} onChange={event => field("text", event.target.value)} /></label><p className="text-sm leading-6">每条路径最多一条环境条件假设，占用原有行动额度。这是假设，不代表控制现实；现实档案原值保持原样。模拟可能提前结束，指定周期可能未到达。</p></> : null}
       </div>
       {draft.pathKey !== "main" && !strategies.some(item => item.participantKey === draft.pathKey) ? <label className="block" htmlFor={`${id}-strategy`}>本策略名称<input id={`${id}-strategy`} className={controls} maxLength={240} value={draft.strategyLabel} onChange={event => field("strategyLabel", event.target.value)} /></label> : null}
       {draft.operation === "request_information" || draft.operation === "update_commitment" ? <label className="block" htmlFor={`${id}-text`}>{draft.operation === "request_information" ? "要询问的问题" : "本人承诺内容"}<input id={`${id}-text`} className={controls} maxLength={240} value={draft.text} onChange={event => field("text", event.target.value)} /></label> : null}

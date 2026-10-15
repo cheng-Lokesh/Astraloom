@@ -1,11 +1,12 @@
 import type { DigitalLifeRules } from "@/lib/digital-life/model";
-import type { ActionParametersV2, ActionProposalInputV2, AgentDefinitionIdV2, WorldEntityIdV2, WorldRelationIdV2, WorldResourceIdV2, WorldStateV2 } from "@/lib/v2/agent-world/types";
+import type { ActionParametersV2, ActionProposalInputV2, AgentDefinitionIdV2, WorldEntityIdV2, WorldRelationIdV2, WorldResourceIdV2, WorldVariableIdV2, WorldStateV2 } from "@/lib/v2/agent-world/types";
 import type { AssumptionIdV2, RealEvidenceIdV2 } from "@/lib/v2/reality-boundary/types";
 
 export type DigitalLifeProposalBindings = {
   agents: Map<string, AgentDefinitionIdV2>; entities: Map<string, WorldEntityIdV2>;
   relations: Map<string, WorldRelationIdV2>; resources: Map<string, WorldResourceIdV2>;
   evidence: Map<string, RealEvidenceIdV2>; assumptions: Map<string, AssumptionIdV2>;
+  variables?: Map<string, WorldVariableIdV2>;
 };
 
 /** Returns proposals only; the accepted V2 approval and transition layer owns every mutation. */
@@ -23,7 +24,7 @@ export function proposeDigitalLifeActions(input: {
     const actorEntity = bindings.entities.get(rule.actorKey);
     if (!actor || !actorEntity || !world.agentDefinitions.some(item => item.id === actor)) return [];
     let parameters: ActionParametersV2;
-    const targets = { targetEntityIds: [actorEntity], targetResourceIds: [] as WorldResourceIdV2[], targetRelationIds: [] as WorldRelationIdV2[], targetVariableIds: [] };
+    const targets = { targetEntityIds: [actorEntity], targetResourceIds: [] as WorldResourceIdV2[], targetRelationIds: [] as WorldRelationIdV2[], targetVariableIds: [] as WorldVariableIdV2[] };
     const operation = rule.operation;
     if (operation.actionType === "request_information") {
       const target = bindings.entities.get(operation.targetPersonKey)!;
@@ -38,6 +39,12 @@ export function proposeDigitalLifeActions(input: {
       targets.targetEntityIds = [relation.fromEntityId, relation.toEntityId];
       targets.targetRelationIds.push(relationId);
       parameters = { actionType: "update_relation_signal", relationId, signal: operation.signal };
+    } else if (operation.actionType === "update_external_variable") {
+      const variableId = bindings.variables?.get(operation.variableKey);
+      const variable = world.externalVariables.find(item => item.id === variableId);
+      if (!variableId || !variable || variable.variableType !== "enum" || !variable.allowedValues.includes(operation.value) || variable.value === operation.value) return [];
+      targets.targetVariableIds.push(variableId);
+      parameters = { actionType: "update_external_variable", variableId, value: operation.value };
     } else {
       const resourceId = bindings.resources.get(operation.resourceKey)!;
       const resource = world.resources.find(item => item.id === resourceId);

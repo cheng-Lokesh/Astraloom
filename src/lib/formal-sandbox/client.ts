@@ -2,11 +2,12 @@ import { z } from "zod";
 import { formalOutcomeProjectionSchema,formalCalibrationContextSchema,type FormalOutcomeInput,type OutcomeCalibrationSelection } from "./outcomes/contracts";
 import type { DigitalLifeRules } from "@/lib/digital-life/model";
 import { safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
+import { safeEnvironmentConditionSchema } from "@/lib/digital-life/environment-contracts";
 import { safeRunSymbolicLensSchema } from "./symbolic-lens";
 import { defaultPlanningContextSchema, type DefaultPlanningRequest } from "@/lib/formal-planning/contracts";
 import { safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
 import { safeDigitalLifeCorrectionContextSchema } from "./correction-context";
-import { digitalLifeModelDraftSchema, type SaveDigitalLifeModelDraft } from "@/lib/digital-life/model-draft";
+import { digitalLifeModelDraftSchema, preparedModelDraftSourceSchema, type SaveDigitalLifeModelDraft } from "@/lib/digital-life/model-draft";
 
 const failure = z.object({ ok: z.literal(false), error_code: z.string(), trace_id: z.string() }).passthrough();
 const run = z.object({ id: z.string().uuid(), status: z.string(), graph_snapshot_id: z.string().uuid().nullable().optional(), time_horizon: z.enum(["30_days", "90_days"]).optional(), completed_at: z.string().nullable().optional() }).passthrough();
@@ -53,7 +54,7 @@ const baseFormalSandboxResultProjectionSchema = z.object({
       value: z.string(),
       classification: z.enum(["fact", "assumption"]),
       evidenceSummary: z.string(),
-      state: z.enum(["static_without_explicit_rule", "not_recorded"]),
+      state: z.enum(["static_without_explicit_rule", "not_recorded", "explicit_condition"]),
     }).strict()),
   }).strict(),
   resourceChanges: z.array(z.object({
@@ -73,6 +74,7 @@ const baseFormalSandboxResultProjectionSchema = z.object({
 const relationChange = z.object({ key: z.string().regex(/^relation-change-[1-9]\d*$/), stepKey: z.string().regex(/^step-[1-9]\d*$/), relationshipKey: z.string().regex(/^relation-[1-9]\d*$/), before: z.enum(["negative", "neutral", "positive"]), after: z.enum(["negative", "neutral", "positive"]), boundary: z.literal("simulation_change") }).strict();
 const digitalLifeProjection = baseFormalSandboxResultProjectionSchema.extend({
   digitalLifeModel: safeDigitalLifeModelSchema.optional(), relationshipChanges: z.array(relationChange).max(500).optional(),
+  environmentConditions: z.array(safeEnvironmentConditionSchema).max(1).optional(),
 }).strict();
 export const formalSandboxResultProjectionSchema = digitalLifeProjection.extend({ strategyPaths: z.array(z.object({ key: z.string().regex(/^path-[1-9]\d*$/), label: z.string(), projection: digitalLifeProjection }).strict()).max(2).optional() }).strict();
 export type FormalSandboxResultProjection = z.infer<typeof formalSandboxResultProjectionSchema>;
@@ -91,7 +93,8 @@ type FormalFeedbackInput = OverallFeedbackInput | TargetedFeedbackInput;
 type Fetcher = typeof fetch;
 async function read<T>(response: Response, schema: z.ZodType<T>) { const json = await response.json().catch(() => null); const failed = failure.safeParse(json); if (!response.ok) return { ok: false as const, status: response.status, errorCode: failed.success ? failed.data.error_code : "request_failed" }; const parsed = schema.safeParse(json); return parsed.success ? { ok: true as const, data: parsed.data } : { ok: false as const, status: 500, errorCode: "invalid_response" }; }
 export function createFormalSandboxClient(fetcher: Fetcher = fetch) { return {
-  modelDraft: async () => read(await fetcher("/api/sandbox/model-draft", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema }).passthrough()),
+  modelDraft: async () => read(await fetcher("/api/sandbox/model-draft", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict()),
+  prepareModelDraftV2: async () => read(await fetcher("/api/sandbox/model-draft?prepare_version=v2", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, preparedSourceContext: preparedModelDraftSourceSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict()),
   saveModelDraft: async (input: SaveDigitalLifeModelDraft) => read(await fetcher("/api/sandbox/model-draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }), z.object({ ok: z.literal(true), idempotent: z.boolean(), draft: digitalLifeModelDraftSchema }).passthrough()),
   correctionContext: async (runId: string) => read(await fetcher(`/api/sandbox/runs/${encodeURIComponent(runId)}/correction-context`, { cache: "no-store" }), z.object({ ok: z.literal(true), context: safeDigitalLifeCorrectionContextSchema }).passthrough()),
   start: async (input: { graphSnapshotId: string; idempotencyKey: string; horizonDays: 30 | 90; digitalLifeRules?: DigitalLifeRules;outcomeCalibration?:OutcomeCalibrationSelection;defaultPlanning?:DefaultPlanningRequest }) => read(await fetcher("/api/sandbox/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_snapshot_id: input.graphSnapshotId, idempotency_key: input.idempotencyKey, horizon_days: input.horizonDays, ...(input.digitalLifeRules ? { digital_life_rules: input.digitalLifeRules } : {}),...(input.outcomeCalibration?{outcome_calibration:input.outcomeCalibration}:{}), ...(input.defaultPlanning ? { default_planning: input.defaultPlanning } : {}) }) }), startSuccess),

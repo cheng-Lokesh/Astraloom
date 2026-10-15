@@ -65,6 +65,11 @@ export function validateRevisionDraft(source: DraftSource, draft: RevisionDraft)
     return invalid("请填写安全的行动、策略与来源说明，并检查周期和正数投入量。", [...keys]);
   }
   const context = source.modelContext;
+  const unchangedEnvironment = draft.actions.filter(action => {
+    const operation = action.operation;
+    return operation.actionType === "update_external_variable" && context.variables?.some(variable => variable.key === operation.variableKey && variable.value === operation.value.trim());
+  });
+  if (unchangedEnvironment.length) return invalid("新环境条件与原值相同，请填写一个不同的模拟条件后重新确认。", [...dependentKeys(draft.actions, unchangedEnvironment.map(action => action.key))]);
   const cores = context.agents.filter(agent => agent.role === "user_core");
   if (cores.length !== 1) return invalid("当前本人模型不完整，请重新载入。" );
   const core = cores[0].key;
@@ -94,6 +99,8 @@ export function validateRevisionDraft(source: DraftSource, draft: RevisionDraft)
     } else if (operation.actionType === "allocate_resource") {
       const resource = context.resources.find(item => item.key === operation.resourceKey);
       valid &&= !thirdParty && !!resource && operation.amount <= resource.available - resource.minimum;
+    } else if (operation.actionType === "update_external_variable") {
+      valid &&= !thirdParty && action.actorKey === self && !!context.variables?.some(variable => variable.key === operation.variableKey) && draft.actions.filter(item => item.pathKey === action.pathKey && item.operation.actionType === "update_external_variable").length === 1;
     } else valid &&= !thirdParty;
     if (!valid) invalidKeys.push(action.key);
     seen.set(action.key, action);
@@ -112,7 +119,7 @@ export function addDraftAction(source: DraftSource, draft: RevisionDraft, editor
   const added = built.rules.actions.at(-1)!;
   const operation = added.operation.actionType === "update_commitment" ? { ...added.operation, commitmentKey: `commitment-${nextNumber}` } : added.operation;
   const next: RevisionDraft = { ...draft, actions: [...draft.actions, { ...added, key, operation, confirmedForSimulation: false }], strategies: built.rules.strategies.map(strategy => draft.strategies.find(existing => existing.participantKey === strategy.participantKey) ?? { ...strategy, confirmedForSimulation: false }) };
-  return completed(source, invalidate(next, new Set([key])), true, key);
+  return completed(source, invalidate({ ...next, version: draft.version === "digital-life-rules-v2" ? draft.version : built.rules.version }, new Set([key])), true, key);
 }
 
 export function updateDraftAction(source: DraftSource, draft: RevisionDraft, key: string, patch: Partial<Omit<DraftAction, "key">>): DraftOperationResult {

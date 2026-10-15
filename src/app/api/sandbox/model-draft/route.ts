@@ -11,7 +11,9 @@ async function handle(request: Request, write: boolean) {
     if (!caller) return sandboxFailure(500, "persistence_failed", trace);
     const { data, error } = await caller.auth.getUser();
     if (error || !data.user?.id || data.user.is_anonymous) return sandboxFailure(401, "unauthenticated", trace);
-    if ([...new URL(request.url).searchParams.keys()].length) return sandboxFailure(422, "invalid_request", trace);
+    const params = new URL(request.url).searchParams;
+    const prepareV2 = !write && params.size === 1 && params.getAll("prepare_version").length === 1 && params.get("prepare_version") === "v2";
+    if (params.size && !prepareV2) return sandboxFailure(422, "invalid_request", trace);
     let body: unknown;
     if (write) {
       if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return sandboxFailure(422, "invalid_request", trace);
@@ -20,11 +22,11 @@ async function handle(request: Request, write: boolean) {
       if (!parsed.success) return sandboxFailure(422, "invalid_request", trace);
       body = parsed.data;
     }
-    const result = write ? await saveFormalModelDraft(caller, data.user.id, body) : await readFormalModelDraft(caller, data.user.id);
+    const result = write ? await saveFormalModelDraft(caller, data.user.id, body) : await readFormalModelDraft(caller, data.user.id, prepareV2);
     if (!result.ok) return sandboxFailure(result.errorCode === "invalid_request" ? 422 : result.errorCode === "persistence_failed" ? 500 : result.errorCode === "unauthenticated" ? 401 : 409, result.errorCode, trace);
     const draft = digitalLifeModelDraftSchema.safeParse(result.draft);
     if (!draft.success) return sandboxFailure(500, "persistence_failed", trace);
-    return NextResponse.json({ ok: true, error_code: null, trace_id: trace, draft: draft.data, ...(write ? { idempotent: result.idempotent === true } : {}) }, { status: write && !result.idempotent ? 201 : 200, headers: { "cache-control": "no-store" } });
+    return NextResponse.json({ ok: true, error_code: null, trace_id: trace, draft: draft.data, ...(write ? { idempotent: result.idempotent === true } : {}), ...(prepareV2 && result.preparedSourceContext ? { preparedSourceContext: result.preparedSourceContext } : {}) }, { status: write && !result.idempotent ? 201 : 200, headers: { "cache-control": "no-store" } });
   } catch { return sandboxFailure(500, "persistence_failed", trace); }
 }
 export const GET = (request: Request) => handle(request, false);

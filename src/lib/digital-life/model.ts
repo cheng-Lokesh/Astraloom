@@ -18,13 +18,19 @@ export const digitalLifeOperationSchema = z.discriminatedUnion("actionType", [
   z.object({ actionType: z.literal("update_commitment"), commitmentKey: z.string().regex(/^commitment-[1-9]\d*$/), label: ruleText, status: z.enum(["planned", "active", "fulfilled", "cancelled"]), profileEntryKey: z.string().trim().min(1).max(100).optional() }).strict(),
   z.object({ actionType: z.literal("update_relation_signal"), relationKey: z.string().regex(/^relation-[1-9]\d*$/), signal: z.enum(["negative", "neutral", "positive"]) }).strict(),
   z.object({ actionType: z.literal("allocate_resource"), resourceKey: z.string().regex(/^resource-[1-9]\d*$/), amount: z.number().finite().positive().max(1_000_000) }).strict(),
+  z.object({ actionType: z.literal("update_external_variable"), variableKey: z.string().regex(/^(pressure|external-variable)-[1-8]$/), value: ruleText }).strict(),
 ]);
+export function validateDigitalLifeRuleVersion(rules: { version: string; actions: Array<{ operation: { actionType: string }; pathKey: string }> }, ctx: z.RefinementCtx) {
+  const conditions = rules.actions.filter(action => action.operation.actionType === "update_external_variable");
+  if (rules.version === "digital-life-rules-v1" && conditions.length) ctx.addIssue({ code: "custom", message: "Environment conditions require version two." });
+  if (new Set(conditions.map(action => action.pathKey)).size !== conditions.length) ctx.addIssue({ code: "custom", message: "Only one environment condition per path is supported." });
+}
 export const digitalLifeRulesSchema = z.object({
-  version: z.literal("digital-life-rules-v1"),
+  version: z.enum(["digital-life-rules-v1", "digital-life-rules-v2"]),
   graphSnapshotId: z.string().uuid(), agentSnapshotId: z.string().uuid(), profileRevision: z.number().int().nonnegative(),
   strategies: z.array(z.object({ participantKey: personKey, label: ruleText, confirmedForSimulation: z.literal(true), evidenceSummary: ruleText.max(160) }).strict()).max(2),
   actions: z.array(z.object({ key: ruleKey, pathKey, actorKey: personKey, when: digitalLifeTriggerSchema, operation: digitalLifeOperationSchema, classification: z.literal("assumption"), confirmedForSimulation: z.literal(true), evidenceSummary: ruleText.max(160) }).strict()).max(18),
-}).strict();
+}).strict().superRefine(validateDigitalLifeRuleVersion);
 export type DigitalLifeRules = z.infer<typeof digitalLifeRulesSchema>;
 
 export const digitalLifeAgentInputSchema = z.object({
@@ -46,15 +52,24 @@ const sourceSchema = z.object({
 
 const backgroundItemSchema = realityProfileFieldSchema.safeExtend({ sourceKey: z.string().min(1).max(100), dimension: z.string().min(1).max(100), label: digitalLifeSafeText, usage: z.literal("background_only") });
 export const digitalLifeModelSchema = z.object({
-  version: z.literal("digital-life-model-v1"),
+  version: z.enum(["digital-life-model-v1", "digital-life-model-v2"]),
   ownerId: z.string().uuid(), seedContextId: z.string().uuid(), graphSnapshotId: z.string().uuid(), agentSnapshotId: z.string().uuid(), profileRevision: z.number().int().nonnegative(),
   background: z.array(backgroundItemSchema).min(14).max(91),
   agents: z.array(z.object({ key: personKey, sourceAgentId: z.string().uuid(), label: digitalLifeSafeText, role: sourceRole, evidenceSummary: digitalLifeSafeText, strategyStatus: z.enum(["explicit", "not_defined", "not_applicable"]) }).strict()).min(1).max(50),
   relationships: z.array(z.object({ key: z.string().regex(/^relation-[1-9]\d*$/), sourceEdgeId: z.string().uuid(), fromPersonKey: personKey, toPersonKey: personKey, label: digitalLifeSafeText, evidenceSummary: digitalLifeSafeText }).strict()).min(1).max(200),
   rules: digitalLifeRulesSchema,
   limitations: z.array(digitalLifeSafeText).min(1).max(8),
-}).strict();
+}).strict().superRefine((model, ctx) => {
+  if (model.version !== (model.rules.version === "digital-life-rules-v2" ? "digital-life-model-v2" : "digital-life-model-v1")) ctx.addIssue({ code: "custom", message: "Model and rule versions must match." });
+});
 export type DigitalLifeModel = z.infer<typeof digitalLifeModelSchema>;
+export function listDigitalLifeEnvironmentVariables(profile: z.infer<typeof realityProfileDraftSchema>) {
+  return listRealityProfileEntries(profile).flatMap(({ key, label, field }) => {
+    const pressure = key.startsWith("pressures.");
+    if ((!pressure && !key.startsWith("externalVariables.")) || field.classification === "unknown") return [];
+    return [{ key: `${pressure ? "pressure" : "external-variable"}-${key.split(".")[1]}`, category: pressure ? "pressure" as const : "external_variable" as const, label, value: field.value, classification: field.classification, evidenceSummary: field.evidenceSummary }];
+  });
+}
 export const ordinalPerson = (index: number) => `person-${index + 1}`;
 export function roleForAgent(agent: z.infer<typeof digitalLifeAgentInputSchema>) {
   return agent.sourceRole ?? (agent.actorType === "self" ? "user_core" : agent.actorType === "organization" ? "group" : "npc");
@@ -108,6 +123,10 @@ export function buildDigitalLifeModel(rawSource: unknown, rawRules?: unknown): {
     } else if (action.operation.actionType === "update_relation_signal") {
       const relation = source.edges[Number(action.operation.relationKey.slice("relation-".length)) - 1];
       if (!relation || ![personById.get(relation.fromAgentId), personById.get(relation.toAgentId)].includes(action.actorKey) || ![personById.get(relation.fromAgentId), personById.get(relation.toAgentId)].includes(coreKey) || (role !== "npc" && role !== "group")) return fail();
+    } else if (action.operation.actionType === "update_external_variable") {
+      const variableKey = action.operation.variableKey;
+      const variable = listDigitalLifeEnvironmentVariables(profile.profile).find(item => item.key === variableKey);
+      if (!variable || action.actorKey !== activeSelf || variable.value === action.operation.value) return fail();
     } else {
       const declared = profile.profile.worldInputs.resources[Number(action.operation.resourceKey.slice("resource-".length)) - 1];
       if (!declared || action.operation.amount > declared.available - declared.minimum || action.actorKey !== activeSelf) return fail();
@@ -115,7 +134,7 @@ export function buildDigitalLifeModel(rawSource: unknown, rawRules?: unknown): {
     seen.set(action.key, action);
   }
   const model = digitalLifeModelSchema.safeParse({
-    version: "digital-life-model-v1", ownerId: source.ownerId, seedContextId: source.seedContextId, graphSnapshotId: source.graphSnapshotId, agentSnapshotId: source.agentSnapshotId, profileRevision: profile.revision,
+    version: rules.version === "digital-life-rules-v2" ? "digital-life-model-v2" : "digital-life-model-v1", ownerId: source.ownerId, seedContextId: source.seedContextId, graphSnapshotId: source.graphSnapshotId, agentSnapshotId: source.agentSnapshotId, profileRevision: profile.revision,
     background: profileEntries.map(({ key, label, field }) => ({ sourceKey: key, dimension: key.startsWith("lifeModelDomains.") ? key.split(".").slice(0, 2).join(".") : key.split(".")[0], label, ...field, usage: "background_only" })),
     agents: source.agents.map((agent, index) => ({ key: ordinalPerson(index), sourceAgentId: agent.id, label: agent.displayName, role: roles[index], evidenceSummary: "来自本次冻结的账户人物快照；不推断私密意图", strategyStatus: roles[index] === "user_variant" ? strategyKeys.has(ordinalPerson(index)) ? "explicit" : "not_defined" : "not_applicable" })),
     relationships: source.edges.map((edge, index) => ({ key: `relation-${index + 1}`, sourceEdgeId: edge.id, fromPersonKey: personById.get(edge.fromAgentId), toPersonKey: personById.get(edge.toAgentId), label: edge.relationshipType, evidenceSummary: "来自本次锁定关系图的账户关系记录" })),

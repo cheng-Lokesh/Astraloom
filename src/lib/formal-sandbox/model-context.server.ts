@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { buildDigitalLifeModel } from "@/lib/digital-life/model";
+import { buildDigitalLifeModel, listDigitalLifeEnvironmentVariables } from "@/lib/digital-life/model";
 import { createEmptyRealityProfileDraft, realityProfileDatabaseColumns, realityProfileDraftFromDatabaseRow } from "@/lib/reality-profile/profile";
 import { safeDigitalLifeContextSchema, type SafeDigitalLifeContext } from "./model-context";
 
@@ -63,6 +63,7 @@ export async function readFormalDigitalLifeContext(caller: SupabaseClient, owner
       agents: modeled.model.agents.map(({ key, label, role }) => ({ key, label, role })),
       relationships: modeled.model.relationships.map(({ key, label, fromPersonKey, toPersonKey }) => ({ key, label, fromPersonKey, toPersonKey })),
       resources: profile.worldInputs.resources.map(({ label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary }, index) => ({ key: `resource-${index + 1}`, label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary })),
+      variables: listDigitalLifeEnvironmentVariables(profile),
     });
     return context.success ? { ok: true, context: context.data } : failure("incomplete_object_chain");
   } catch { return failure("persistence_failed"); }

@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { freezeDefaultPlanning } from "@/lib/formal-planning";
 import { digitalLifeModelSchema } from "@/lib/digital-life/model";
 import { projectDigitalLifeModel, safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
+import { projectEnvironmentConditions } from "@/lib/digital-life/environment-projection";
+import { safeEnvironmentConditionSchema } from "@/lib/digital-life/environment-contracts";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
 import { parseFrozenSymbolicLens, projectFrozenSymbolicLens, runSymbolicLensSchema, safeRunSymbolicLensSchema } from "./symbolic-lens";
@@ -109,7 +111,7 @@ const baseSafeResultProjectionSchema = z.object({
       value: safeText,
       classification: z.enum(["fact", "assumption"]),
       evidenceSummary: safeText,
-      state: z.enum(["static_without_explicit_rule", "not_recorded"]),
+      state: z.enum(["static_without_explicit_rule", "not_recorded", "explicit_condition"]),
     }).strict()).max(16),
   }).strict(),
   resourceChanges: z.array(z.object({
@@ -123,6 +125,7 @@ const baseSafeResultProjectionSchema = z.object({
     maximum: z.number().finite().min(0),
     boundary: z.literal("simulation_change"),
   }).strict()).max(500),
+  environmentConditions: z.array(safeEnvironmentConditionSchema).max(1).optional(),
   steps: z.array(z.object({ key: z.string().regex(/^step-[1-9]\d*$/), order: z.number().int().positive(), label: safeText, kind: z.literal("sandbox_simulation"), boundary: z.literal("simulation_step"), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
   claims: z.array(z.object({ key: z.string().regex(/^claim-[1-9]\d*$/), statement: safeText, uncertainty: safeText, boundary: z.literal("conditional_claim"), stepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), supportingStepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
 }).strict();
@@ -157,11 +160,19 @@ function runtimeCanonical(value: unknown): string {
 function projectWorldVariables(
   entries: ReturnType<typeof listRealityProfileEntries>,
   snapshots: z.infer<typeof worldSnapshotSchema>[] | undefined,
+  explicitVariableKeys?: Set<string>,
 ) {
   const profileVariables = entries.filter(({ key, field }) =>
     (key.startsWith("pressures.") || key.startsWith("externalVariables.")) && field.classification !== "unknown",
   );
   const worldVariablesBySnapshot = (snapshots ?? []).map((snapshot) => snapshot.externalVariables ?? []);
+
+  // The v2 event-binding gate separately verifies every dynamic value and its controlled Event.
+  if (explicitVariableKeys) return profileVariables.map(({ key, label, field }, index) => ({
+    key: ordinal("world-variable", index), category: key.startsWith("pressures.") ? "pressure" as const : "external_variable" as const,
+    label, value: field.value, classification: field.classification as "fact" | "assumption", evidenceSummary: field.evidenceSummary,
+    state: explicitVariableKeys.has(key.startsWith("pressures.") ? `pressure-${key.split(".")[1]}` : `external-variable-${key.split(".")[1]}`) ? "explicit_condition" as const : "static_without_explicit_rule" as const,
+  }));
 
   if (profileVariables.length === 0) {
     return worldVariablesBySnapshot.some((variables) => variables.length > 0) ? null : [];
@@ -222,6 +233,8 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   if (!digitalLifeModel) return null;
   const frozenModel = bundle.inputSnapshot.digitalLifeModel;
   if (frozenModel && (!(bundle.worldSnapshots?.length) || bundle.worldSnapshots.some(world => !validateWorldV2(world).ok))) return null;
+  const environmentConditions = frozenModel?.version === "digital-life-model-v2" ? projectEnvironmentConditions(bundle) : undefined;
+  if (environmentConditions === null) return null;
   let defaultPlanning: z.infer<typeof safeDefaultPlanningSchema> | undefined;
   if (bundle.defaultPlanningSnapshot) {
     try {
@@ -283,7 +296,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const realityProfile = profileSnapshot ? (() => {
     const entries = listRealityProfileEntries(profileSnapshot.profile).filter(({ key }) => !key.startsWith(LIFE_MODEL_DOMAIN_ENTRY_PREFIX));
     const worldInputs = profileSnapshot.profile.worldInputs;
-    const worldVariables = projectWorldVariables(entries, bundle.worldSnapshots);
+    const worldVariables = projectWorldVariables(entries, bundle.worldSnapshots, environmentConditions ? new Set(environmentConditions.map(item => item.variableKey)) : undefined);
     if (!worldVariables) return null;
     const resourceLabelByKey = new Map(worldInputs.resources.map((resource) => [resource.key, resource.label]));
     return {
@@ -511,6 +524,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const projection = {
     symbolicLens,
     ...(defaultPlanning ? { defaultPlanning } : {}),
+    ...(environmentConditions ? { environmentConditions } : {}),
     digitalLifeModel,
     strategyPaths,
     relationshipChanges,

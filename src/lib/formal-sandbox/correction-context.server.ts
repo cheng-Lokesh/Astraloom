@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { buildDigitalLifeModel, digitalLifeModelSchema, digitalLifeProfileSnapshotSchema, digitalLifeSafeText } from "@/lib/digital-life/model";
+import { buildDigitalLifeModel, digitalLifeModelSchema, digitalLifeProfileSnapshotSchema, digitalLifeSafeText, listDigitalLifeEnvironmentVariables } from "@/lib/digital-life/model";
 import { createEmptyRealityProfileDraft, realityProfileDatabaseColumns, realityProfileDraftFromDatabaseRow } from "@/lib/reality-profile/profile";
 import { safeDigitalLifeCorrectionContextSchema, type CorrectionContextError, type CorrectionContextResult } from "./correction-context";
 
@@ -82,6 +82,7 @@ export async function readFormalCorrectionContext(caller: SupabaseClient, ownerI
         agents: frozen.agents.map(({ key, label, role }) => ({ key, label, role })),
         relationships: frozen.relationships.map(({ key, label, fromPersonKey, toPersonKey }) => ({ key, label, fromPersonKey, toPersonKey })),
         resources: currentDraft.worldInputs.resources.map(({ label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary }, index) => ({ key: `resource-${index + 1}`, label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary })),
+        ...(frozen.rules.version === "digital-life-rules-v2" ? { variables: listDigitalLifeEnvironmentVariables(currentDraft) } : {}),
       },
       frozenRules: frozen.rules,
       draftRules: { ...frozen.rules, strategies: frozen.rules.strategies.map(strategy => ({ ...strategy, confirmedForSimulation: false })), actions: frozen.rules.actions.map(action => ({ ...action, confirmedForSimulation: false })) },

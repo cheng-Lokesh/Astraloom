@@ -308,7 +308,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       })),
       ...digitalLifeModel.rules.actions.filter(rule => rule.pathKey === activePathKey).map(rule => ({
         statement: `用户确认的条件模拟规则：${rule.operation.actionType}。依据：${rule.evidenceSummary}`,
-        subjectType: (digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "npc" || digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "group" ? "third_party" : "self") as "third_party" | "self",
+        subjectType: (rule.operation.actionType === "update_external_variable" ? "external_variable" : digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "npc" || digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "group" ? "third_party" : "self") as "external_variable" | "third_party" | "self",
         category: `digital_life_rule_${rule.key}`,
         epistemicStatus: "confirmed_for_simulation" as const, impactLevel: "high" as const,
         supportingRealEvidenceIds: input.outcomeCalibration?.corrections.some(c=>c.ruleKey===rule.key) ? [evidenceLedger.items.find(e=>e.claimKey===`formal.outcome.correction.${rule.key}`)!.id] : [], contradictingRealEvidenceIds: [],
@@ -341,7 +341,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       variableType: "enum" as const,
       key: key.startsWith("pressures.") ? `pressure-${key.slice("pressures.".length)}` : `external-variable-${key.slice("externalVariables.".length)}`,
       value: field.value,
-      allowedValues: [field.value],
+      allowedValues: [...new Set([field.value, ...digitalLifeModel.rules.actions.flatMap(rule => rule.pathKey === activePathKey && rule.operation.actionType === "update_external_variable" && rule.operation.variableKey === (key.startsWith("pressures.") ? `pressure-${key.slice("pressures.".length)}` : `external-variable-${key.slice("externalVariables.".length)}`) ? [rule.operation.value] : [])])],
       provisional: field.classification === "assumption",
       provenance: {
         realEvidenceIds: field.classification === "fact" ? [evidenceIdFor(`reality.profile.${key.toLowerCase()}`)] : [],
@@ -491,6 +491,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
               entities: new Map(input.agents.map((item, index) => [ordinalPerson(index), entityIds.get(item.id)!])),
               relations: new Map(input.edges.map((item, index) => [`relation-${index + 1}`, worldIds("world_relation", item.id) as WorldRelationIdV2])),
               resources: new Map(worldInputs.resources.map((item, index) => [`resource-${index + 1}`, resourceIdsByKey.get(item.key)!])),
+              variables: new Map(profileVariableSpecs.map(item => [item.key, item.id])),
               evidence: new Map(input.agents.map((_, index) => [ordinalPerson(index), evidenceIdFor(`formal.agent.${index + 1}`)])),
               assumptions: new Map(activeRules.map(rule => [rule.key, assumptionIdFor(`digital_life_rule_${rule.key}`)])),
             },

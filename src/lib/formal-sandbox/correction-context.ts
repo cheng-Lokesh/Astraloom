@@ -1,14 +1,14 @@
 import { z } from "zod";
-import { digitalLifeRulesSchema } from "@/lib/digital-life/model";
+import { digitalLifeRulesSchema, validateDigitalLifeRuleVersion } from "@/lib/digital-life/model";
 import { safeDigitalLifeContextSchema } from "./model-context";
 
 // A loaded intention is deliberately not a Run POST authorization.
 const unconfirmedAction = digitalLifeRulesSchema.shape.actions.element.omit({ confirmedForSimulation: true }).extend({ confirmedForSimulation: z.literal(false) }).strict();
 const unconfirmedStrategy = digitalLifeRulesSchema.shape.strategies.element.omit({ confirmedForSimulation: true }).extend({ confirmedForSimulation: z.literal(false) }).strict();
-export const digitalLifeRulesDraftSchema = digitalLifeRulesSchema.omit({ actions: true, strategies: true }).extend({
+export const digitalLifeRulesDraftSchema = z.object({ ...digitalLifeRulesSchema.shape,
   actions: z.array(unconfirmedAction).max(18),
   strategies: z.array(unconfirmedStrategy).max(2),
-}).strict();
+}).strict().superRefine(validateDigitalLifeRuleVersion);
 
 export const safeDigitalLifeCorrectionContextSchema = z.object({
   version: z.literal("digital-life-correction-context-v1"),
