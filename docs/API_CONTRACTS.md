@@ -1011,3 +1011,33 @@ have no timeline. A valid old analysis without a typed digital-life model also
 keeps only its existing steps: it is not rerun or backfilled. If
 `trajectoryAnalysis` is present but malformed or inconsistent, projection
 rejects it rather than silently falling back to a partial timeline.
+
+### Reality review loop v2 candidate (2026-10-19)
+
+`GET /api/sandbox/runs/[runId]/outcomes` keeps the existing outcome envelope.
+For a frozen `formal-reality-criteria-v2` main-path target, its safe projection
+may add `criteriaVersion`, progressive `review` groups, and derived
+`correctionRequirements`. Those requirements bind a correctable rule and
+operation condition to the exact request and source/scope-confirmation
+condition keys. They are computed for the API projection; they are not fields
+of `frozenRealityCriteria` and do not enter its fingerprint.
+
+`POST` keeps the strict existing request shape. A partial typed review sends
+unknown or unfilled condition values as `null`; v2 request-false observations
+omit occurrence time. These targets remain `not_observable` as whole Core
+clusters, so a save records `observed:"uncertain"` plus the user's separate
+condition observations; it does not score the whole scenario. An unknown
+response retains the exact original request body and idempotency key for
+replay. A successful save does not alter the Run and may link to
+`/app/start?revise_run=<runId>` to prepare a separate run.
+
+Outcome correction selection remains opt-in: absent `outcome_calibration` is
+the default. If supplied, the existing Run POST field requires version 1, one
+to six distinct correction keys, and `confirmed:true`. Saving an observation
+does not select or apply a correction automatically. The optional main-path
+`usedCorrections` Result receipt is validated against the current frozen input
+and the same owner's completed source Run. Missing source data preserves the
+Result with an empty `source_unavailable` receipt; contradictory or tampered
+source/rule/event data rejects the safe projection. Per-sample `executed` and
+`not_executed` entries refer to actual selected Events. Full endpoint semantics
+and evidence limits are in the [reality review TDD record](testing/reality-review-loop.tdd.md).

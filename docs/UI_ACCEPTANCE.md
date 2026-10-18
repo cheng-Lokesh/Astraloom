@@ -746,3 +746,44 @@ to that strategy. The main path may direct the user to the existing Outcome
 Observations anchor, but must not prefill or write feedback. Legacy results
 without a timeline continue to show their existing steps without rerunning or
 backfilling historical simulation data.
+
+#### Reality review loop v2 candidate (2026-10-19)
+
+For a v2 target, show the pre-run standard as a bounded, independent review of
+the user's own request and an NPC's visible response, optionally followed by
+the user's explicit resource action (or use a resource-only comparison). Keep
+the review on the main path and group the actual ordered conditions. Do not
+imply every valid request/response chain requires a resource transition, and
+do not label the target as an occurrence of the whole simulated scenario or
+as a score of the Core Cluster.
+
+Let the user distinguish known, explicitly unknown, and not-yet-filled
+conditions. Saving may preserve a partial observation; all unknown or unfilled
+values must remain unknown rather than being copied from the simulation. A
+v2 false request has no fabricated occurrence time. Display actor, relationship,
+resource, and visible-source confirmation conditions independently. A rule
+correction is available only when the exact linked request, response, timing,
+and required source/scope confirmations are satisfied.
+
+The user explicitly confirms saving their own observation. Any correction for
+a future run requires a separate confirmation and later selection; selection
+defaults off, and no saved observation silently changes or reruns the source
+Run. If the write result is ambiguous, lock editing and keep the original full
+request and key until exact replay resolves it. After a successful save, retain
+the original result and offer the existing revise-run entry separately.
+
+Show used corrections only as a main-path receipt, with per-sample actual
+`executed` / `not_executed` step references. Each History comparison side uses
+its own receipt. Do not imply real-world improvement, automatic learning, or
+probability calibration. Historical runs without a frozen standard stay
+unbackfilled and continue to show “not recorded.”
+
+The exact-SHA production-CSS browser check passed at 375px and 1280px: the
+checked timeline/review/receipt content was unobscured and had no horizontal
+overflow; the source-link href targeted the expected in-app source. This does
+not claim the older global AppShell transparent-navigation issue is resolved.
+The page produced no writes or errors and used mock read-only Result/Outcomes
+GETs in an isolated browser without cookies, so this is functional UI evidence,
+not real-account/Auth/DB acceptance. See the [reality review TDD
+record](testing/reality-review-loop.tdd.md) for command, fixture, screenshots,
+and delivery boundary.

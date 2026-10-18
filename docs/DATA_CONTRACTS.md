@@ -1733,3 +1733,60 @@ model preserves the old steps only; the system does not rerun or backfill
 history. A present but malformed/inconsistent analysis rejects the result
 projection instead of falling back. This feature changes no SQL, raw bundle
 keys, or V2 Core behavior.
+
+### Outcome / independent reality criteria v2 candidate (2026-10-19)
+
+New runs may freeze `formal-reality-criteria-v2` inside the existing
+`frozenRealityCriteria` Run field. It is derived by deterministic replay of the
+actual frozen bundle; it does not run a new simulation. V2 admits only the
+owner's main path and a representative trajectory actually bound to the
+corresponding Claim. The bounded standard covers either a self-resource-only
+trajectory or a same-trajectory request/response chain: the user asks an NPC
+and the NPC produces a visible relationship response. That chain may extend
+to a later explicit `after_rule` action that changes the user's own resource;
+this resource action is optional, not a requirement for every valid chain.
+Timestamps alone do not establish causality; the recorded Event predecessor
+references and exact rule bindings must agree for each included step.
+
+Each frozen target binds its representative trajectory id and seed, selected
+Event ids, and rule keys. Its safe review contract contains ordered ordinal
+step references, named review groups, and typed conditions for the actual
+operation, observed response, resource before/after values, and the relevant
+actor/relationship/resource/source confirmations. The safe Outcome API adds
+`criteriaVersion`, `review`, and `correctionRequirements`; the last are derived
+from frozen rules and exact condition references and are not copied into
+`frozenRealityCriteria` or its fingerprint.
+
+The existing `formal-reality-criteria-v1` builder, order, and hashes remain
+unchanged. A run without a pre-run standard stays `not_recorded`; neither v1
+nor v2 is retrofitted into old Runs. This independent comparison does not
+score a Core Cluster, create a Brier score, or turn simulation frequency into
+a real-world probability. Individual known differences can be preserved while
+unknown and unfilled items remain unknown; an open observation window keeps
+the aggregate comparison unknown.
+
+`usedCorrections` is an optional typed Result receipt, only for the main path.
+It is derived from the new Run's frozen correction input and a same-owner,
+completed formal source Run with a matching frozen Forecast Lock. Projection
+revalidates the source lock, immutable owner/Seed/Graph/Agent/Profile scope,
+source rule and changed operation, and actual selected Event per sample. The
+receipt distinguishes `executed` from `not_executed`; it is not evidence that
+reality improved and does not imply automatic learning. If source data is
+unavailable, the existing Result remains available with an empty
+`source_unavailable` receipt; contradictions fail closed. Strategy-path
+projections do not receive this receipt. History comparison displays each
+side's own frozen receipt rather than borrowing the other side's.
+
+The compatibility reader restores only explicitly optional `undefined` fields
+omitted by JSON serialization inside the named frozen Reality Boundary
+ledgers. It first checks canonical JSON equality to the stored values, rebuilds
+the Forecast Lock and requires structural JSON equality, then returns only
+through the existing Core persistence parser. It does not change any original
+Core ids, signatures, hash construction, writer, or historical artifact.
+
+Forward migration
+`20261018173334_formal_reality_criteria_review_v2.sql` replaces only the
+completion-trigger function to accept and bind v1/v2 criteria; it does not
+alter tables, RLS, grants, or the append RPC. Source-structure checks are not
+PostgreSQL compilation or migration execution; this migration has not been
+executed against the local database.

@@ -286,3 +286,57 @@ branch update, PR, or deployment is claimed. No database, full-suite/coverage,
 Auth/RLS, real-account, or stage-level PASS is claimed. See the
 [life timeline TDD record](testing/life-timeline.tdd.md) for checkpoint and
 evidence detail.
+
+## Reality review loop v2 candidate (2026-10-19)
+
+现实标准 v2 与回执闭环已形成源码候选，当前功能 GREEN commit 为
+`2387afd7b1968c73b18a8146f5bc80a611bb6fd8`（25 files，`+967/-55`；另有
+4 个此前 RED commit 中内容无差异的测试文件，不计入该提交差异）。独立复核
+的最终结论仅为功能/源码候选 READY，未发现明确未解决的目标范围 P1/P2；这不
+是完整产品或阶段 PASS。
+
+RED 历史保留为历史：backend 初始 checkpoint `b0810ee` 有 5 项失败；receipt
+与 duplicate selection checkpoint `de3ef1e` 的两项分别各有 1 项失败；API
+auth/error/anonymous/source-row-id checkpoint `1d2898b` 有 3 failed / 3
+passed。UI 条件映射与观察窗口文案也分别经历 `9f927f8`、`c595ad6` RED，已由
+后续定向 UI 结果覆盖。独立 3-file 运行曾有 42 pass / 1 fail（唯一失败是
+JSON 保存 round-trip）；之后对应 reality-v2/SQL 与 API/UI/history 定向运行
+通过。上述批次有重叠，不相加作为全量测试。
+
+已报告的局部 GREEN：backend 5 files / 29 tests，exit 0（session 79351）；
+receipt helper 5 files / 90 tests，exit 0，70.06s；TypeScript 最终 session
+92915 与相应 scoped lint 均 exit 0。此前 session 22121 的唯一 TS 问题为
+`flatMap` 推断，后以显式泛型注解修复，未使用 `any` 或放宽 schema。UI 最终
+3 files / 18 tests，exit 0，26.87s，scope lint exit 0。独立 reality-v2/SQL
+2 files / 24 tests，exit 0，25.64s；另有 API/UI/history 4 files / 22 tests，
+exit 0，10.03s；Chrome 375px 最后窗口筛选为 1 pass / 4 filtered，4.31s，不能
+把 filtered 算作已执行用例。独立复核综合结论仍只覆盖选定源码/功能范围。
+
+迁移 `20261018173334_formal_reality_criteria_review_v2.sql` 的 source
+structure 检查 4/4 通过，但不是 PostgreSQL compile。生成器曾因 JS
+`String.replace` replacement 中的 `$'` 注入尾缀而产生损坏 SQL；独立复核指出后，
+`e724bfa` 保存有效 RED，随后通过 apply_patch 修正并获得源码结构检查通过。该迁移
+尚未执行，且 Docker pipe 当前不可用。无 DB/Auth/RLS、全量 suite/coverage、真实
+账户或阶段 PASS 结论。
+
+exact 功能 SHA `2387afd7b1968c73b18a8146f5bc80a611bb6fd8` 的 clean detached
+build 已在 session 94030 通过：`npm.cmd run build -- --webpack` exit 0
+（compile 19.3s、TypeScript 41s、111/111 static pages 4.2s）。同一 SHA 的生产
+预览在 session 37824 启动，`127.0.0.1:52340` Ready 274ms；`/` 与
+`/app/simulation/result?run_id=60000000-0000-4000-8000-000000000002` 返回
+200 / `s-maxage=31536000`，`/app/start?revise_run=60000000-0000-4000-8000-000000000001`
+与 `/app/archive` 返回 200 / `no-store`。真实 Result API 返回 500 / `no-store`，
+因为该 clean preview 没有 Supabase 配置；这只验证 fail-closed，不是 Auth 或 DB
+验收。生产 CSS 浏览器 QA 已通过：命令
+`node output/playwright/reality-review/production-qa.mjs http://127.0.0.1:52340`
+exit 0，9.52s；实际 fixture chain 覆盖 3 executed samples / 9 steps / 3 targets。375px 与
+1280px 均通过四份实际 CSS 加载及 timeline/review/receipt 检查；所查新内容无覆盖、
+无横溢、UUID 文本、写入或页面错误，source-link href 指向预期站内来源；隔离浏览器
+仅调用两次 mock、只读 Result/Outcomes GET 且无 cookies。Root 检视了本地截图，确认
+所查 feature 区域清晰；不代表全局 AppShell 透明导航/overlay 问题已解决。该 QA 不是
+Auth、真实账户或数据库验收。Git worker 已对 exact 功能 SHA 执行普通非强制
+push，exit 0；live `origin=HEAD=upstream=2387afd7b1968c73b18a8146f5bc80a611bb6fd8`，
+push 验证时 divergence 0/0、index 为空。功能已上传到开发分支，不代表 main、PR
+或部署。后续 docs-only 更新不改变该功能代码，也不据此声称单独重新 build。
+完整证据与边界见
+[reality review loop TDD record](testing/reality-review-loop.tdd.md)。
