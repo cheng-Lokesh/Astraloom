@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { buildDigitalLifeModel, digitalLifeModelSchema, digitalLifeSafeText, digitalLifeTriggerSchema, digitalLifeOperationSchema } from "./model";
+import { buildDigitalLifeModel, digitalLifeModelSchema, digitalLifeSafeText, digitalLifeSafeDescription, digitalLifeTriggerSchema, digitalLifeOperationSchema, digitalLifeGuardSchema, digitalLifeProfileSnapshotSchema, listDigitalLifeEnvironmentVariables } from "./model";
+import { describeWorldGuard } from "./world-guards";
 
 export const safeDigitalLifeModelSchema = z.object({
-  status: z.enum(["frozen", "not_recorded"]), version: z.enum(["digital-life-model-v1", "digital-life-model-v2"]).nullable(), profileRevision: z.number().int().nonnegative().nullable(),
+  status: z.enum(["frozen", "not_recorded"]), version: z.enum(["digital-life-model-v1", "digital-life-model-v2", "digital-life-model-v3"]).nullable(), profileRevision: z.number().int().nonnegative().nullable(),
   background: z.array(z.object({ key: z.string().regex(/^background-[1-9]\d*$/), label: digitalLifeSafeText, value: z.string().max(240), classification: z.enum(["fact", "assumption", "unknown"]), evidenceSummary: digitalLifeSafeText, usage: z.literal("background_only") }).strict()).max(91),
   agents: z.array(z.object({ key: z.string().regex(/^person-[1-9]\d*$/), label: digitalLifeSafeText, role: z.enum(["user_core", "user_variant", "npc", "group"]), strategyStatus: z.enum(["explicit", "not_defined", "not_applicable"]), evidenceSummary: digitalLifeSafeText }).strict()).max(50),
-  rules: z.array(z.object({ key: z.string().regex(/^rule-[1-9]\d*$/), actorKey: z.string().regex(/^person-[1-9]\d*$/), pathKey: z.union([z.literal("main"), z.string().regex(/^person-[1-9]\d*$/)]), when: digitalLifeTriggerSchema, operation: digitalLifeOperationSchema, actionType: z.enum(["request_information", "update_commitment", "update_relation_signal", "allocate_resource", "update_external_variable"]), evidenceSummary: digitalLifeSafeText, boundary: z.literal("confirmed_simulation_assumption") }).strict()).max(18),
+  rules: z.array(z.object({ key: z.string().regex(/^rule-[1-9]\d*$/), actorKey: z.string().regex(/^person-[1-9]\d*$/), pathKey: z.union([z.literal("main"), z.string().regex(/^person-[1-9]\d*$/)]), when: digitalLifeTriggerSchema, operation: digitalLifeOperationSchema, guard: digitalLifeGuardSchema.optional(), guardDescription: digitalLifeSafeDescription.optional(), actionType: z.enum(["request_information", "update_commitment", "update_relation_signal", "allocate_resource", "update_external_variable"]), evidenceSummary: digitalLifeSafeText, boundary: z.literal("confirmed_simulation_assumption") }).strict()).max(18),
   limitations: z.array(digitalLifeSafeText).max(8),
 }).strict();
 
@@ -16,11 +17,14 @@ export function projectDigitalLifeModel(rawModel: unknown, source: unknown) {
   const rebuilt = buildDigitalLifeModel(source, parsed.data.rules);
   if (!rebuilt.ok || JSON.stringify(rebuilt.model) !== JSON.stringify(parsed.data)) return null;
   const model = parsed.data;
+  const profile = digitalLifeProfileSnapshotSchema.safeParse((source as { realityProfileSnapshot?: unknown } | null)?.realityProfileSnapshot);
+  const guardContext = profile.success ? { resources: profile.data.profile.worldInputs.resources.map((item, index) => ({ ...item, key: `resource-${index + 1}` })), variables: listDigitalLifeEnvironmentVariables(profile.data.profile) } : null;
+  if (model.rules.actions.some(rule => rule.guard) && !guardContext) return null;
   return safeDigitalLifeModelSchema.parse({
     status: "frozen", version: model.version, profileRevision: model.profileRevision,
     background: model.background.map(({ label, value, classification, evidenceSummary, usage }, index) => ({ key: `background-${index + 1}`, label, value, classification, evidenceSummary, usage })),
     agents: model.agents.map(({ key, label, role, strategyStatus, evidenceSummary }) => ({ key, label, role, strategyStatus, evidenceSummary })),
-    rules: model.rules.actions.map(({ key, actorKey, pathKey, when, operation, evidenceSummary }) => ({ key, actorKey, pathKey, when, operation, actionType: operation.actionType, evidenceSummary, boundary: "confirmed_simulation_assumption" })),
+    rules: model.rules.actions.map(({ key, actorKey, pathKey, when, operation, evidenceSummary, guard }) => ({ key, actorKey, pathKey, when, operation, ...(guard ? { guard, guardDescription: describeWorldGuard(guard, guardContext!) } : {}), actionType: operation.actionType, evidenceSummary, boundary: "confirmed_simulation_assumption" })),
     limitations: model.limitations,
   });
 }

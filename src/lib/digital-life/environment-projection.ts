@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { digitalLifeModelSchema, digitalLifeProfileSnapshotSchema, listDigitalLifeEnvironmentVariables } from "./model";
 import { safeEnvironmentConditionSchema } from "./environment-contracts";
+import { ruleAssumptionStatement } from "./world-guards";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
 import type { ActionParametersV2, WorldEntityIdV2, WorldRelationIdV2, WorldEventV2, WorldStateV2 } from "@/lib/v2/agent-world/types";
@@ -24,7 +25,7 @@ export function projectEnvironmentConditions(raw: unknown) {
   if (!parsed.success) return null;
   const bundle = parsed.data;
   const source = bundle.inputSnapshot;
-  if (source.digitalLifeModel.version !== "digital-life-model-v2") return null;
+  if (source.digitalLifeModel.version !== "digital-life-model-v2" && source.digitalLifeModel.version !== "digital-life-model-v3") return null;
   const worlds = bundle.worldSnapshots as WorldStateV2[];
   if (worlds.some(world => !validateWorldV2(world).ok)) return null;
   const trajectories = bundle.trajectoryAnalysis.trajectories;
@@ -76,7 +77,7 @@ export function projectEnvironmentConditions(raw: unknown) {
         if (!event.priorWorldEventIds.includes(previous.id) || Date.parse(event.createdAt) <= Date.parse(previous.createdAt)) return null;
       }
       const assumption = world.realityBoundarySnapshot.assumptionLedger.assumptions.find(item => item.category === `digital_life_rule_${rule.key}`);
-      if (!assumption || assumption.confirmationStatus !== "confirmed" || assumption.epistemicStatus !== "confirmed_for_simulation" || assumption.statement !== `用户确认的条件模拟规则：${rule.operation.actionType}。依据：${rule.evidenceSummary}` || !event.causalAssumptionIds.includes(assumption.id)) return null;
+      if (!assumption || assumption.confirmationStatus !== "confirmed" || assumption.epistemicStatus !== "confirmed_for_simulation" || assumption.statement !== ruleAssumptionStatement(rule, { resources: source.realityProfileSnapshot.profile.worldInputs.resources.map((item, index) => ({ ...item, key: `resource-${index + 1}` })), variables }) || !event.causalAssumptionIds.includes(assumption.id)) return null;
       const operation = rule.operation;
       let expected: ActionParametersV2;
       if (operation.actionType === "update_external_variable") {
@@ -90,12 +91,13 @@ export function projectEnvironmentConditions(raw: unknown) {
           && Date.parse(item.capturedAt) === Date.parse(world.realityBoundarySnapshot.updatedAt))) return null;
         // Mirror the explicit-rule producer exactly. Baseline variable sources remain
         // in variable.provenance; the proposal itself names only actor evidence and this rule.
-        const prior = rule.when.kind === "at_tick" ? [] : [matches.get(rule.when.ruleKey)!.id];
+        const guardTarget = rule.guard?.kind === "resource_balance" ? world.resources[Number(rule.guard.resourceKey.slice(9)) - 1] : rule.guard?.kind === "environment_equals" ? world.externalVariables.find(item => item.key === (rule.guard?.kind === "environment_equals" ? rule.guard.variableKey : "")) : undefined;
+        const prior = [...new Set([...(rule.when.kind === "at_tick" ? [] : [matches.get(rule.when.ruleKey)!.id]), ...(guardTarget ? world.worldEvents.slice(0, world.worldEvents.indexOf(event)).filter(item => item.deltas.some(delta => delta.path === (rule.guard?.kind === "resource_balance" ? `resources.${guardTarget.id}.available` : `externalVariables.${guardTarget.id}.value`))).slice(-1).map(item => item.id) : [])])];
         if (canonical(event.targetEntityIds) !== canonical([idFactory("world_entity", agent.sourceAgentId)])
           || canonical(event.targetResourceIds) !== canonical([]) || canonical(event.targetRelationIds) !== canonical([])
           || canonical(event.targetVariableIds) !== canonical([variable.id])
-          || canonical(event.causalRealEvidenceIds) !== canonical([actorEvidence.id])
-          || canonical(event.causalAssumptionIds) !== canonical([assumption.id])
+          || canonical(event.causalRealEvidenceIds) !== canonical([...new Set([actorEvidence.id, ...(guardTarget?.provenance.realEvidenceIds ?? [])])])
+          || canonical(event.causalAssumptionIds) !== canonical([...new Set([assumption.id, ...(guardTarget?.provenance.assumptionIds ?? [])])])
           || canonical(event.priorWorldEventIds) !== canonical(prior)
           || event.eventType !== operation.actionType || event.commandCreatedAt !== event.createdAt) return null;
         expected = { actionType: "update_external_variable", variableId: variable.id, value: operation.value };

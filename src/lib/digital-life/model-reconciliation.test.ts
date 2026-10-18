@@ -44,7 +44,7 @@ function fixture() {
 }
 
 function caller(f = fixture(), savedSeed: unknown = f.persistedSeedId) {
-  const rpc = vi.fn(async () => ({ data: { source: f.source, current: f.row }, error: null }));
+  const rpc = vi.fn(async (name?: string) => { void name; return { data: { source: f.source, current: f.row }, error: null }; });
   const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn(async () => ({ data: savedSeed === null ? null : { seed_context_id: savedSeed }, error: null })) };
   return { rpc, query, from: vi.fn(() => query) };
 }

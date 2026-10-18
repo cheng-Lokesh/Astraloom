@@ -68,7 +68,7 @@ export function addDraftAction(source: DraftSource, draft: RevisionDraft, editor
   const added = built.rules.actions.at(-1)!;
   const operation = added.operation.actionType === "update_commitment" ? { ...added.operation, commitmentKey: `commitment-${nextNumber}` } : added.operation;
   const next: RevisionDraft = { ...draft, actions: [...draft.actions, { ...added, key, operation, confirmedForSimulation: false }], strategies: built.rules.strategies.map(strategy => draft.strategies.find(existing => existing.participantKey === strategy.participantKey) ?? { ...strategy, confirmedForSimulation: false }) };
-  return completed(source, invalidate({ ...next, version: draft.version === "digital-life-rules-v2" ? draft.version : built.rules.version }, new Set([key])), true, key);
+  return completed(source, invalidate({ ...next, version: draft.version === "digital-life-rules-v2" || draft.version === "digital-life-rules-v3" ? draft.version : built.rules.version }, new Set([key])), true, key);
 }
 
 export function updateDraftAction(source: DraftSource, draft: RevisionDraft, key: string, patch: Partial<Omit<DraftAction, "key">>): DraftOperationResult {
@@ -76,6 +76,7 @@ export function updateDraftAction(source: DraftSource, draft: RevisionDraft, key
   if (!original || !sourceMatches(source, draft)) return fail("未找到当前行动或来源已变化，请重新载入。" );
   if (Object.keys(patch).every(field => field === "confirmedForSimulation")) return setDraftActionConfirmation(source, draft, key, patch.confirmedForSimulation ?? original.confirmedForSimulation);
   const replacement = { ...original, ...patch, key, confirmedForSimulation: false };
+  if ("guard" in patch && patch.guard === undefined) delete replacement.guard;
   const ordered = orderedActions(draft.actions.map(action => action.key === key ? replacement : action));
   if (!ordered.ok) return fail(ordered.message);
   const affected = dependentKeys([...draft.actions, ...ordered.actions], [key]);

@@ -82,7 +82,7 @@ describe("environment model UI", () => {
     const html = renderToStaticMarkup(createElement(FrozenEnvironmentConditions, { projection }));
     expect(html).toContain("已触发值"); expect(html).toContain("后继模拟步骤：2"); expect(html).toContain("指定模拟周期未到达"); expect(html).toContain("条件候选未被选中");
     expect(html).not.toContain("不应显示的候选实际值"); expect(html).not.toContain("rule-1"); expect(html).not.toContain("external-variable-1");
-    const isolated = renderToStaticMarkup(createElement(FrozenEnvironmentConditions, { projection: { ...projection, environmentConditions: [{ ...projection.environmentConditions![0], samples: projection.environmentConditions![0].samples.map(sample => ({ ...sample, state: "not_triggered", actualValue: null, stepKey: null })) }] } }));
+    const isolated = renderToStaticMarkup(createElement(FrozenEnvironmentConditions, { projection: { ...projection, environmentConditions: [{ ...projection.environmentConditions![0], samples: projection.environmentConditions![0].samples.map(sample => ({ ...sample, state: "not_triggered" as const, actualValue: null, stepKey: null })) }] } }));
     expect(isolated).not.toContain("已触发值"); expect(isolated).toContain("前置条件未触发");
   });
 });

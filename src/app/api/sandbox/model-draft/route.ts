@@ -13,9 +13,10 @@ async function handle(request: Request, write: boolean) {
     if (error || !data.user?.id || data.user.is_anonymous) return sandboxFailure(401, "unauthenticated", trace);
     const params = new URL(request.url).searchParams;
     const prepareV2 = !write && params.size === 1 && params.getAll("prepare_version").length === 1 && params.get("prepare_version") === "v2";
+    const prepareV3 = !write && params.size === 1 && params.getAll("prepare_version").length === 1 && params.get("prepare_version") === "v3";
     const revisionText = params.get("reconcile_revision");
     const reconcile = !write && params.size === 2 && params.getAll("prepare_version").length === 1 && params.get("prepare_version") === "v2" && params.getAll("reconcile_revision").length === 1 && /^[1-9]\d*$/.test(revisionText ?? "") && Number.isSafeInteger(Number(revisionText));
-    if (params.size && !prepareV2 && !reconcile) return sandboxFailure(422, "invalid_request", trace);
+    if (params.size && !prepareV2 && !prepareV3 && !reconcile) return sandboxFailure(422, "invalid_request", trace);
     let body: unknown;
     if (write) {
       if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return sandboxFailure(422, "invalid_request", trace);
@@ -24,11 +25,11 @@ async function handle(request: Request, write: boolean) {
       if (!parsed.success) return sandboxFailure(422, "invalid_request", trace);
       body = parsed.data;
     }
-    const result = write ? await saveFormalModelDraft(caller, data.user.id, body) : await readFormalModelDraft(caller, data.user.id, prepareV2 || reconcile, reconcile ? Number(revisionText) : undefined);
+    const result = write ? await saveFormalModelDraft(caller, data.user.id, body) : await readFormalModelDraft(caller, data.user.id, prepareV3 ? "v3" : prepareV2 || reconcile, reconcile ? Number(revisionText) : undefined);
     if (!result.ok) return sandboxFailure(result.errorCode === "invalid_request" ? 422 : result.errorCode === "persistence_failed" ? 500 : result.errorCode === "unauthenticated" ? 401 : 409, result.errorCode, trace);
     const draft = digitalLifeModelDraftSchema.safeParse(result.draft);
     if (!draft.success) return sandboxFailure(500, "persistence_failed", trace);
-    return NextResponse.json({ ok: true, error_code: null, trace_id: trace, draft: draft.data, ...(write ? { idempotent: result.idempotent === true } : {}), ...((prepareV2 || reconcile) && result.preparedSourceContext ? { preparedSourceContext: result.preparedSourceContext } : {}), ...(reconcile && result.reconciliation ? { reconciliation: result.reconciliation } : {}) }, { status: write && !result.idempotent ? 201 : 200, headers: { "cache-control": "no-store" } });
+    return NextResponse.json({ ok: true, error_code: null, trace_id: trace, draft: draft.data, ...(write ? { idempotent: result.idempotent === true } : {}), ...((prepareV2 || prepareV3 || reconcile) && result.preparedSourceContext ? { preparedSourceContext: result.preparedSourceContext } : {}), ...(prepareV3 && result.preparedProtocol ? { preparedProtocol: result.preparedProtocol } : {}), ...(reconcile && result.reconciliation ? { reconciliation: result.reconciliation } : {}) }, { status: write && !result.idempotent ? 201 : 200, headers: { "cache-control": "no-store" } });
   } catch { return sandboxFailure(500, "persistence_failed", trace); }
 }
 export const GET = (request: Request) => handle(request, false);

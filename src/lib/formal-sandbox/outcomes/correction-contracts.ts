@@ -1,0 +1,6 @@
+import { z } from "zod";
+import { digitalLifeSafeText } from "@/lib/digital-life/model";
+
+export const frozenCorrectionSchema=z.object({key:z.string().regex(/^correction-v1-[a-f0-9]{64}$/),version:z.literal("formal-outcome-rule-correction-v1"),rowVersion:z.literal(1).optional(),ownerId:z.string().uuid(),seedContextId:z.string().uuid(),graphSnapshotId:z.string().uuid(),agentSnapshotId:z.string().uuid(),profileRevision:z.number().int().nonnegative(),sourceRunId:z.string().uuid(),observationSignature:z.string().regex(/^[a-f0-9]{64}$/),ruleKey:z.string().regex(/^rule-[1-9]\d*$/),ruleFingerprint:z.string().regex(/^[a-f0-9]{64}$/),kind:z.enum(["allocate_resource","update_relation_signal"]),previousValue:z.union([z.number().finite(),z.enum(["negative","neutral","positive"])]),nextValue:z.union([z.number().finite().positive().max(1_000_000),z.enum(["negative","neutral","positive"])]),evidenceSummary:digitalLifeSafeText.max(160),recordedAt:z.string().datetime({offset:true})}).strict();
+export const frozenOutcomeCalibrationSchema=z.object({version:z.literal("formal-outcome-run-v1"),corrections:z.array(frozenCorrectionSchema).min(1).max(6)}).strict();
+export type FrozenOutcomeCalibration=z.infer<typeof frozenOutcomeCalibrationSchema>;

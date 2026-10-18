@@ -5,6 +5,7 @@ import { digitalLifeModelSchema } from "@/lib/digital-life/model";
 import { projectDigitalLifeModel, safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
 import { projectEnvironmentConditions } from "@/lib/digital-life/environment-projection";
 import { safeEnvironmentConditionSchema } from "@/lib/digital-life/environment-contracts";
+import { guardObservationsSchema, projectGuardObservations } from "@/lib/digital-life/guard-observations";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
 import { parseFrozenSymbolicLens, projectFrozenSymbolicLens, runSymbolicLensSchema, safeRunSymbolicLensSchema } from "./symbolic-lens";
@@ -126,6 +127,7 @@ const baseSafeResultProjectionSchema = z.object({
     boundary: z.literal("simulation_change"),
   }).strict()).max(500),
   environmentConditions: z.array(safeEnvironmentConditionSchema).max(1).optional(),
+  guardObservations: guardObservationsSchema.optional(),
   steps: z.array(z.object({ key: z.string().regex(/^step-[1-9]\d*$/), order: z.number().int().positive(), label: safeText, kind: z.literal("sandbox_simulation"), boundary: z.literal("simulation_step"), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
   claims: z.array(z.object({ key: z.string().regex(/^claim-[1-9]\d*$/), statement: safeText, uncertainty: safeText, boundary: z.literal("conditional_claim"), stepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), supportingStepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
 }).strict();
@@ -232,8 +234,10 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
   const digitalLifeModel = projectDigitalLifeModel(bundle.inputSnapshot.digitalLifeModel, bundle.inputSnapshot);
   if (!digitalLifeModel) return null;
   const frozenModel = bundle.inputSnapshot.digitalLifeModel;
+  const guardObservations = frozenModel?.version === "digital-life-model-v3" ? projectGuardObservations(bundle) : undefined;
+  if (guardObservations === null) return null;
   if (frozenModel && (!(bundle.worldSnapshots?.length) || bundle.worldSnapshots.some(world => !validateWorldV2(world).ok))) return null;
-  const environmentConditions = frozenModel?.version === "digital-life-model-v2" ? projectEnvironmentConditions(bundle) : undefined;
+  const environmentConditions = frozenModel && frozenModel.version !== "digital-life-model-v1" ? projectEnvironmentConditions(bundle) : undefined;
   if (environmentConditions === null) return null;
   let defaultPlanning: z.infer<typeof safeDefaultPlanningSchema> | undefined;
   if (bundle.defaultPlanningSnapshot) {
@@ -525,6 +529,7 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
     symbolicLens,
     ...(defaultPlanning ? { defaultPlanning } : {}),
     ...(environmentConditions ? { environmentConditions } : {}),
+    ...(guardObservations ? { guardObservations } : {}),
     digitalLifeModel,
     strategyPaths,
     relationshipChanges,

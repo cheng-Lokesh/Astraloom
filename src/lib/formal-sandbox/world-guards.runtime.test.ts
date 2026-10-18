@@ -4,6 +4,10 @@ import { buildDigitalLifeModel } from "@/lib/digital-life/model";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
 import { buildFormalSandboxRunV2 } from "./runtime";
 import { projectFormalSandboxResult } from "./result-projection.server";
+import { projectGuardObservations } from "@/lib/digital-life/guard-observations";
+import { executeTrajectoryV2 } from "@/lib/v2/trajectory/trajectory-runner";
+import { buildChildTrajectoryRunSpecV2 } from "@/lib/v2/trajectory-analysis/child-run-spec";
+import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 
 type Guard = { kind: "resource_balance"; resourceKey: string; operator: "lte" | "gte"; value: number } | { kind: "environment_equals"; variableKey: string; value: string };
 type Action = { key: string; pathKey: string; actorKey: string; when: { kind: "at_tick"; tickIndex: number } | { kind: "after_rule"; ruleKey: string }; operation: Record<string, unknown>; guard?: Guard; classification: "assumption"; confirmedForSimulation: boolean; evidenceSummary: string };
@@ -28,6 +32,54 @@ function rules(pathKey = "main", amount = 4, offset = 0) {
 }
 
 describe("World guards through the existing public formal runtime", () => {
+  it.each(["wrong_rate", "false_no_actions"])("rejects an internally Core-valid %s fallback that was never offered by the frozen policy", async attack => {
+    const input = fixture(); input.realityProfileSnapshot.profile.worldInputs.resources[0].usePerTick = 1;
+    const declared = rules(); declared.actions = [declared.actions[0]];
+    declared.actions[0].guard = { kind: "resource_balance", resourceKey: "resource-1", operator: "gte", value: 1 };
+    const built = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: declared });
+    expect(built.ok).toBe(true); if (!built.ok) throw new Error(built.errorCode);
+    const forged = structuredClone(built.bundle), original = forged.trajectoryAnalysis.trajectories[0];
+    const child = buildChildTrajectoryRunSpecV2(forged.trajectoryAnalysis.spec, original.trajectorySeed);
+    const malicious = executeTrajectoryV2(child, { policyId: child.policyId, policyVersion: child.policyVersion, proposeCandidates: ({ tickIndex, occurredAt }) => {
+      if (attack === "false_no_actions" && tickIndex > 0) return [];
+      const event = original.finalWorld.worldEvents[tickIndex];
+      return [{ id: event.proposalId, seedContextId: event.seedContextId, actorAgentId: event.actorId, actionType: event.operation.actionType, parameters: tickIndex > 0 && event.operation.actionType === "allocate_resource" ? { ...event.operation, amount: 2 } : event.operation, targetEntityIds: event.targetEntityIds, targetResourceIds: event.targetResourceIds, targetRelationIds: event.targetRelationIds, targetVariableIds: event.targetVariableIds, realEvidenceIds: event.causalRealEvidenceIds, assumptionIds: event.causalAssumptionIds, priorWorldEventIds: event.priorWorldEventIds.map(id => tickIndex === 2 ? original.finalWorld.worldEvents[0].id === id ? id : "" : id).filter(Boolean), rationaleSummary: "A structurally legal but unauthorized fallback quantity.", createdAt: occurredAt }];
+    } }, { agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`formal-${forged.causalFingerprint}-${original.trajectorySeed}`) });
+    expect(malicious.ok).toBe(true); if (!malicious.ok) throw new Error(malicious.errorCode);
+    expect(validateWorldV2(malicious.trajectory.finalWorld).ok).toBe(true);
+    forged.trajectoryAnalysis.trajectories[0] = malicious.trajectory;
+    forged.worldSnapshots[0] = malicious.trajectory.finalWorld;
+    forged.events = forged.trajectoryAnalysis.trajectories.flatMap(trajectory => trajectory.finalWorld.worldEvents.map((event, tickIndex) => ({ ...event, branchId: trajectory.trajectoryId, tickIndex })));
+    expect(projectGuardObservations(forged)).toBeNull();
+  });
+  it.each([1, 2])("composes guarded explicit actions with the existing declared rate %s without losing source provenance", async rate => {
+    const input = fixture(); input.realityProfileSnapshot.profile.worldInputs.resources[0].usePerTick = rate;
+    const declared = rules(); declared.actions = [declared.actions[0]];
+    declared.actions[0].guard = { kind: "resource_balance", resourceKey: "resource-1", operator: "gte", value: 1 };
+    const built = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: declared });
+    expect(built.ok, !built.ok ? built.errorCode : undefined).toBe(true);
+    if (!built.ok) throw new Error(built.errorCode);
+    for (const world of built.bundle.worldSnapshots) { expect(world.resources[0].available).toBe(8 - rate * 2); expect(validateWorldV2(world).ok).toBe(true); }
+    expect(projectFormalSandboxResult(built.bundle)).not.toBeNull();
+  });
+  it.each([false, true])("returns a known not-saved diagnostic when main has no eligible first action (variant has actions: %s)", async withVariant => {
+    const input = fixture(); const declared = rules();
+    declared.actions = [action("rule-1", "main", { kind: "at_tick", tickIndex: 0 }, { actionType: "update_commitment", commitmentKey: "commitment-1", label: "保留共同安排", status: "planned" }, { kind: "resource_balance", resourceKey: "resource-1", operator: "lte", value: 4 })];
+    if (withVariant) {
+      declared.strategies = [{ participantKey: "person-3", label: "先主动确认安排", confirmedForSimulation: true, evidenceSummary: "本人明确选择的独立策略" }];
+      declared.actions.push(action("rule-2", "person-3", { kind: "at_tick", tickIndex: 0 }, { actionType: "update_commitment", commitmentKey: "commitment-1", label: "先确认安排", status: "active" }));
+    }
+    const built = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: declared });
+    expect(built).toMatchObject({ ok: false, errorCode: "no_eligible_actions", pathDiagnostics: { version: "formal-path-diagnostics-v1", status: "not_saved" } });
+    expect(built).not.toHaveProperty("bundle");
+    const diagnostic = (built as unknown as { pathDiagnostics: { paths: Array<{ status: string; samples: Array<{ terminalStatus: string; executedTickCount: number; selectedEventCount: number }>; guardObservations: GuardObservations }> } }).pathDiagnostics;
+    expect(diagnostic.paths).toHaveLength(withVariant ? 2 : 1);
+    expect(diagnostic.paths[0].status).toBe("no_actions");
+    expect(diagnostic.paths[0].samples).toEqual(Array.from({ length: 3 }, (_, index) => ({ key: `sample-${index + 1}`, terminalStatus: "no_actions", executedTickCount: 1, selectedEventCount: 0 })));
+    for (const sample of diagnostic.paths[0].guardObservations.samples) expect(sample.ticks[0].observations).toContainEqual(expect.objectContaining({ ruleKey: "rule-1", guard: false, candidate: null, before: 8, after: 8 }));
+    if (withVariant) { expect(diagnostic.paths[1].status).toBe("has_events"); expect(diagnostic.paths[1].samples.every(sample => sample.selectedEventCount === 1)).toBe(true); }
+  });
+
   it("turns the true 30-day balance into a controlled commitment Event while the independent variant remains guard-false", async () => {
     const input = fixture(); const declared = rules();
     declared.strategies = [{ participantKey: "person-3", label: "保留更多本人时间", confirmedForSimulation: true, evidenceSummary: "本人明确选择的独立策略" }];
@@ -36,7 +88,8 @@ describe("World guards through the existing public formal runtime", () => {
     const built = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: declared });
     expect(built.ok, !built.ok ? built.errorCode : undefined).toBe(true);
     if (!built.ok) throw new Error(`guard runtime failed: ${built.errorCode}`);
-    expect(built.bundle.versions).toMatchObject({ runtime: "formal-account-sandbox-m1-v2", schema: "formal-run-bundle-m1-v2" });
+    // Only the model/rules/policy semantics changed; the raw bundle structure and writer lane remain v1.
+    expect(built.bundle.versions).toMatchObject({ runtime: "formal-account-sandbox-m1-v1", schema: "formal-run-bundle-m1-v1" });
     expect(built.bundle.trajectoryAnalysis.spec.policyVersion).toBe("digital-life-adapter-v3");
     for (const world of built.bundle.worldSnapshots) {
       expect(validateWorldV2(world).ok).toBe(true);
@@ -53,6 +106,7 @@ describe("World guards through the existing public formal runtime", () => {
     for (const world of child.worldSnapshots) { expect(world.resources[0].available).toBe(6); expect(world.worldEvents).toHaveLength(2); }
     const projected = projectFormalSandboxResult(JSON.parse(JSON.stringify(built.bundle)));
     expect(projected).not.toBeNull();
+    expect(projectFormalSandboxResult(built.bundle)).toEqual(projected);
     const observations = (projected as unknown as { guardObservations: GuardObservations }).guardObservations;
     expect(observations.version).toBe("digital-life-guard-observations-v1"); expect(observations.samples).toHaveLength(3);
     for (const sample of observations.samples) expect(sample.ticks[2].observations).toContainEqual(expect.objectContaining({ ruleKey: "rule-3", tickIndex: 2, schedule: "due", guard: true, candidate: "selected", before: 4, after: 4 }));

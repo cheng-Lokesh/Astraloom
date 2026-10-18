@@ -3,11 +3,12 @@ import { formalOutcomeProjectionSchema,formalCalibrationContextSchema,type Forma
 import type { DigitalLifeRules } from "@/lib/digital-life/model";
 import { safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
 import { safeEnvironmentConditionSchema } from "@/lib/digital-life/environment-contracts";
+import { guardObservationsSchema, pathDiagnosticsSchema, type PathDiagnostics } from "@/lib/digital-life/guard-observations";
 import { safeRunSymbolicLensSchema } from "./symbolic-lens";
 import { defaultPlanningContextSchema, type DefaultPlanningRequest } from "@/lib/formal-planning/contracts";
 import { safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
 import { safeDigitalLifeCorrectionContextSchema } from "./correction-context";
-import { digitalLifeModelDraftSchema, preparedModelDraftSourceSchema, modelReconciliationSchema, type SaveDigitalLifeModelDraft } from "@/lib/digital-life/model-draft";
+import { digitalLifeModelDraftSchema, preparedModelDraftSourceSchema, preparedModelDraftProtocolSchema, modelReconciliationSchema, type SaveDigitalLifeModelDraft } from "@/lib/digital-life/model-draft";
 
 const failure = z.object({ ok: z.literal(false), error_code: z.string(), trace_id: z.string() }).passthrough();
 const run = z.object({ id: z.string().uuid(), status: z.string(), graph_snapshot_id: z.string().uuid().nullable().optional(), time_horizon: z.enum(["30_days", "90_days"]).optional(), completed_at: z.string().nullable().optional() }).passthrough();
@@ -75,6 +76,7 @@ const relationChange = z.object({ key: z.string().regex(/^relation-change-[1-9]\
 const digitalLifeProjection = baseFormalSandboxResultProjectionSchema.extend({
   digitalLifeModel: safeDigitalLifeModelSchema.optional(), relationshipChanges: z.array(relationChange).max(500).optional(),
   environmentConditions: z.array(safeEnvironmentConditionSchema).max(1).optional(),
+  guardObservations: guardObservationsSchema.optional(),
 }).strict();
 export const formalSandboxResultProjectionSchema = digitalLifeProjection.extend({ strategyPaths: z.array(z.object({ key: z.string().regex(/^path-[1-9]\d*$/), label: z.string(), projection: digitalLifeProjection }).strict()).max(2).optional() }).strict();
 export type FormalSandboxResultProjection = z.infer<typeof formalSandboxResultProjectionSchema>;
@@ -91,10 +93,21 @@ type TargetedFeedbackInput = {
 };
 type FormalFeedbackInput = OverallFeedbackInput | TargetedFeedbackInput;
 type Fetcher = typeof fetch;
-async function read<T>(response: Response, schema: z.ZodType<T>) { const json = await response.json().catch(() => null); const failed = failure.safeParse(json); if (!response.ok) return { ok: false as const, status: response.status, errorCode: failed.success ? failed.data.error_code : "request_failed" }; const parsed = schema.safeParse(json); return parsed.success ? { ok: true as const, data: parsed.data } : { ok: false as const, status: 500, errorCode: "invalid_response" }; }
+async function read<T>(response: Response, schema: z.ZodType<T>): Promise<{ ok: true; data: T } | { ok: false; status: number; errorCode: string; pathDiagnostics?: PathDiagnostics }> {
+  const json = await response.json().catch(() => null); const failed = failure.safeParse(json);
+  if (!response.ok) {
+    if (failed.success && failed.data.error_code === "no_eligible_actions") {
+      const diagnostic = pathDiagnosticsSchema.safeParse(failed.data.pathDiagnostics);
+      return response.status === 409 && diagnostic.success ? { ok: false, status: 409, errorCode: "no_eligible_actions", pathDiagnostics: diagnostic.data } : { ok: false, status: 500, errorCode: "invalid_response" };
+    }
+    return { ok: false, status: response.status, errorCode: failed.success ? failed.data.error_code : "request_failed" };
+  }
+  const parsed = schema.safeParse(json); return parsed.success ? { ok: true, data: parsed.data } : { ok: false, status: 500, errorCode: "invalid_response" };
+}
 export function createFormalSandboxClient(fetcher: Fetcher = fetch) { return {
   modelDraft: async () => read(await fetcher("/api/sandbox/model-draft", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict()),
   prepareModelDraftV2: async () => read(await fetcher("/api/sandbox/model-draft?prepare_version=v2", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, preparedSourceContext: preparedModelDraftSourceSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict()),
+  prepareModelDraftV3: async () => read(await fetcher("/api/sandbox/model-draft?prepare_version=v3", { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, preparedSourceContext: preparedModelDraftSourceSchema, preparedProtocol: preparedModelDraftProtocolSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict()),
   prepareModelReconciliation: async (revision: number) => {
     if (!Number.isSafeInteger(revision) || revision < 1) return { ok: false as const, status: 422, errorCode: "invalid_request" };
     return read(await fetcher(`/api/sandbox/model-draft?prepare_version=v2&reconcile_revision=${revision}`, { cache: "no-store" }), z.object({ ok: z.literal(true), draft: digitalLifeModelDraftSchema, preparedSourceContext: preparedModelDraftSourceSchema, reconciliation: modelReconciliationSchema, error_code: z.null().optional(), trace_id: z.string().optional() }).strict());

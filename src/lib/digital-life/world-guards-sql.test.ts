@@ -1,6 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createSeededRngV2, selectSeededIndexV2 } from "@/lib/v2/trajectory/seeded-rng";
+import { createHash } from "node:crypto";
+import { buildFormalSandboxInitialWorld, initialWorldSourceSchema } from "@/lib/formal-sandbox/initial-world";
+import { digitalLifeModelSchema } from "./model";
+import { createStableRealityBoundaryIdFactoryV2 } from "@/lib/v2/reality-boundary/ids";
 
 // Source constraints only: these checks do not execute SQL or establish DB/RLS acceptance.
 const migrations = readdirSync("supabase/migrations").filter(name => name.endsWith(".sql")).sort();
@@ -15,6 +19,49 @@ function latestBody(name: string): string {
 }
 
 describe("observable world guards SQL forward source constraints", () => {
+  it("retains a genuine public-runtime initial World specimen for the independently rebound pgTAP source fixture", () => {
+    const fixture = readFileSync("supabase/tests/world_guards_test.sql", "utf8");
+    const input = JSON.parse(fixture.match(/\$input\$([^]*?)\$input\$/)![1]);
+    const world = JSON.parse(fixture.match(/\$world\$([^]*?)\$world\$/)![1]);
+    const canonical = (value: unknown): string => value === null || typeof value !== "object" ? JSON.stringify(value) : Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : `{${Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
+    const fingerprint = createHash("sha256").update(canonical(input)).digest("hex").slice(0, 24);
+    const { worldResult: rebuilt } = buildFormalSandboxInitialWorld(initialWorldSourceSchema.parse(input), digitalLifeModelSchema.parse(input.digitalLifeModel), "main", fingerprint, world.realityBoundarySnapshot.updatedAt);
+    expect(rebuilt.ok).toBe(true);
+    if (!rebuilt.ok) throw new Error("Public runtime rejected the pgTAP specimen");
+    expect(JSON.parse(JSON.stringify(rebuilt.world))).toEqual(world);
+    expect(fixture).not.toContain("content:=replace(content");
+    expect(fixture).toContain("for actor,source_ordinal");
+    expect(fixture).toContain("'agentDefinitions',definitions,'agentStates',states,'entities',entities,'relations',relations");
+  });
+
+  it("implements the actual Core UTF-16 stable boundary identity protocol in the SQL helper", () => {
+    const body = latestBody("formal_world_guard_core_id_v3");
+    const compact = body.replace(/\s/g, "");
+    const initial = compact.match(/firstbigint:=(\d+);secondbigint:=(\d+);/)!;
+    const products = compact.match(/first:=mod\(\(first#unit::bigint\)::numeric\*(\d+),(\d+)\)::bigint;second:=mod\(\(second#unit::bigint\)::numeric\*(\d+),(\d+)\)::bigint;/)!;
+    expect(initial).not.toBeNull(); expect(products).not.toBeNull();
+    expect(compact).toContain("units:=casewhencode>65535thenarray[55296+(code-65536)/1024,56320+mod(code-65536,1024)]elsearray[code]end");
+    const namespace = "formal-580844c6d53ad5d2313fa0df";
+    const factory = createStableRealityBoundaryIdFactoryV2(namespace);
+    for (const fingerprint of ["plain-source", "来源包含中文", "来源包含𠮷和🌟"]) {
+      let first = BigInt(initial[1]), second = BigInt(initial[2]);
+      const value = `${namespace}:evidence:${fingerprint}`;
+      for (let index = 0; index < value.length; index++) {
+        const unit = BigInt(value.charCodeAt(index));
+        first = ((first ^ unit) * BigInt(products[1])) % BigInt(products[2]);
+        second = ((second ^ unit) * BigInt(products[3])) % BigInt(products[4]);
+      }
+      expect(`real_evidence_v2_${first.toString(36)}${second.toString(36)}`).toBe(factory("evidence", fingerprint));
+    }
+  });
+
+  it("tests gate-off UPDATE as zero rows and unchanged state without weakening RLS", () => {
+    const fixture = readFileSync("supabase/tests/world_guards_test.sql", "utf8");
+    expect(fixture).toContain("gate-off authenticated UPDATE sees zero reservation rows under RLS");
+    expect(fixture).toContain("gate-off UPDATE leaves the stored receipt unchanged");
+    expect(fixture).toContain("with changed as (update public.generation_jobs");
+  });
+
   it("rebuilds the complete initial boundary and model from frozen sources before trajectory admission", () => {
     const authority = latestBody("formal_world_guard_initial_authority_v3");
     expect(authority).toContain("formal_world_guard_boundary_valid_v3");

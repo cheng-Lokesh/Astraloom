@@ -11,13 +11,15 @@ export const digitalLifeRulesDraftSchema = z.object({ ...digitalLifeRulesSchema.
 }).strict().superRefine(validateDigitalLifeRuleVersion);
 
 export const safeDigitalLifeCorrectionContextSchema = z.object({
-  version: z.literal("digital-life-correction-context-v1"),
+  version: z.enum(["digital-life-correction-context-v1", "digital-life-correction-context-v2"]),
   horizonDays: z.union([z.literal(30), z.literal(90)]),
   modelContext: safeDigitalLifeContextSchema,
   frozenRules: digitalLifeRulesSchema,
   draftRules: digitalLifeRulesDraftSchema,
   permissionsReset: z.object({ planning: z.literal(true), symbolic: z.literal(true), outcomeCalibration: z.literal(true), requestIdentity: z.literal(true) }).strict(),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if ((value.version === "digital-life-correction-context-v2") !== (value.frozenRules.version === "digital-life-rules-v3") || value.frozenRules.version !== value.draftRules.version) ctx.addIssue({ code: "custom", message: "Correction/rule protocols must match." });
+});
 export type SafeDigitalLifeCorrectionContext = z.infer<typeof safeDigitalLifeCorrectionContextSchema>;
 export type DigitalLifeRulesDraft = z.infer<typeof digitalLifeRulesDraftSchema>;
 export type CorrectionContextError = "invalid_request" | "run_not_found" | "run_not_completed" | "correction_rules_not_recorded" | "correction_source_stale" | "correction_source_invalid" | "persistence_failed";

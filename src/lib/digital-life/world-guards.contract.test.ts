@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { digitalLifeInput, ids } from "./test-fixtures";
 import { saveDigitalLifeModelDraftSchema } from "./model-draft";
+import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
 
 const state = vi.hoisted(() => ({ caller: undefined as unknown }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ ...(state.caller as object), auth: { getUser: async () => ({ data: { user: { id: "11111111-1111-4111-8111-111111111111", is_anonymous: false } }, error: null }) } }) }));
@@ -42,6 +43,10 @@ function caller(f = fixture()) {
 beforeEach(() => { state.caller = caller(); });
 
 describe("explicit guard protocol preparation and source compatibility", () => {
+  it.each([undefined, {}, { version: "formal-path-diagnostics-v1", status: "not_saved", paths: [] }])("treats missing or malformed no-actions diagnostics as unknown rather than unlocking a new request: %s", async pathDiagnostics => {
+    const client = createFormalSandboxClient(async () => new Response(JSON.stringify({ ok: false, error_code: "no_eligible_actions", trace_id: "sandbox_start", ...(pathDiagnostics ? { pathDiagnostics } : {}) }), { status: 409 }));
+    expect(await client.start({ graphSnapshotId: ids.graph, idempotencyKey: ids.edge, horizonDays: 30 })).toEqual({ ok: false, status: 500, errorCode: "invalid_response" });
+  });
   it("prepares draft3/rules3 with the identical source2 signature without upgrading a saved v2 draft or writing", async () => {
     const f = fixture(); const before = JSON.stringify(f); const db = caller(f); state.caller = db;
     const response = await GET(new Request("http://local/api/sandbox/model-draft?prepare_version=v3"));
@@ -61,8 +66,9 @@ describe("explicit guard protocol preparation and source compatibility", () => {
   it.each(["v1", "v2"])("leaves the existing saved %s DTO and source hash byte-stable on default and prepare-v2 reads", async version => {
     const f = fixture();
     if (version === "v1") {
-      const { variables: ignoredVariables, ...legacyContext } = f.request.sourceContext.modelContext;
-      expect(ignoredVariables).toBeDefined();
+      const legacyContext = { ...f.request.sourceContext.modelContext };
+      expect("variables" in legacyContext).toBe(true);
+      delete (legacyContext as { variables?: unknown }).variables;
       f.request = saveDigitalLifeModelDraftSchema.parse({ ...f.request, version: "digital-life-model-draft-v1", sourceContext: { signature: f.source.signature, modelContext: legacyContext }, draftRules: { ...f.request.draftRules, version: "digital-life-rules-v1" } });
       f.row.request = f.request;
     }

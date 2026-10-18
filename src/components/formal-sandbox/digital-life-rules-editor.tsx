@@ -55,7 +55,7 @@ export function buildEditorRules(context: EditorContext, horizon: 30 | 90, actio
     operation = { actionType: draft.operation, resourceKey: resource.key, amount: Number(draft.amount) };
   }
   const nextStrategies = draft.pathKey === "main" || strategies.some(item => item.participantKey === draft.pathKey) ? strategies : [...strategies, { participantKey: draft.pathKey, label: draft.strategyLabel, confirmedForSimulation: true as const, evidenceSummary: draft.evidenceSummary }];
-  const version = operation.actionType === "update_external_variable" || actions.some(item => item.operation.actionType === "update_external_variable") ? "digital-life-rules-v2" : "digital-life-rules-v1";
+  const version = actions.some(item => item.guard !== undefined) ? "digital-life-rules-v3" : operation.actionType === "update_external_variable" || actions.some(item => item.operation.actionType === "update_external_variable") ? "digital-life-rules-v2" : "digital-life-rules-v1";
   const parsed = digitalLifeRulesSchema.safeParse({ version, graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, strategies: nextStrategies, actions: [...actions, { key: `rule-${nextNumber}`, pathKey: draft.pathKey, actorKey: draft.actorKey, when: draft.when === "at_tick" ? { kind: "at_tick", tickIndex: draft.tickIndex } : { kind: "after_rule", ruleKey: draft.previousKey }, operation, classification: "assumption", confirmedForSimulation: true, evidenceSummary: draft.evidenceSummary }] });
   return parsed.success ? { ok: true, rules: parsed.data } : fail("请填写简短、安全的行动与来源说明；不能填写链接、私人联系方式或确定性判断。");
 }

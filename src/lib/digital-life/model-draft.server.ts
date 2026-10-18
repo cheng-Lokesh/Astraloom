@@ -37,7 +37,7 @@ function currentSource(raw: unknown, ownerId: string, horizonDays: 30 | 90 = 30,
   const input = { ownerId, seedContextId: seed.id, graphSnapshotId: graph.id, agentSnapshotId: graph.agent_snapshot_id, horizonDays, realityProfileSnapshot: { ownerId, seedContextId: seed.id, profileId, revision: profile.revision, profile }, agents: source.agent_profiles.map(agent => ({ id: agent.id, displayName: agent.display_name, sourceRole: agent.agent_type, actorType: agent.agent_type === "user_core" || agent.agent_type === "user_variant" ? "self" : agent.agent_type === "group" ? "organization" : "third_party", evidenceRefs: agent.evidence_refs })), edges: source.relation_edges.map(edge => ({ id: edge.id, fromAgentId: edge.from_agent_id, toAgentId: edge.to_agent_id, relationshipType: edge.relationship_type, evidenceRefs: edge.evidence_refs })) };
   const built = buildDigitalLifeModel(input);
   if (!built.ok) return null;
-  const v2 = requestedVersion === "digital-life-model-draft-v2" || requestedVersion === undefined && source.signature_v2 !== undefined;
+  const v2 = requestedVersion === "digital-life-model-draft-v2" || requestedVersion === "digital-life-model-draft-v3" || requestedVersion === undefined && source.signature_v2 !== undefined;
   if (v2 && !source.signature_v2) return null;
   const binding = digitalLifeModelDraftSourceSchema.safeParse({ ...(v2 ? { version: "digital-life-model-draft-source-v2" } : {}), signature: v2 ? source.signature_v2 : source.signature, modelContext: { graphSnapshotId: graph.id, agentSnapshotId: graph.agent_snapshot_id, profileRevision: profile.revision, agents: built.model.agents.map(({ key, label, role }) => ({ key, label, role })), relationships: built.model.relationships.map(({ key, label, fromPersonKey, toPersonKey }) => ({ key, label, fromPersonKey, toPersonKey })), resources: profile.worldInputs.resources.map(({ label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary }, index) => ({ key: `resource-${index + 1}`, label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary })), ...(v2 ? { variables: listDigitalLifeEnvironmentVariables(profile) } : {}) } });
   return binding.success ? { input, binding: binding.data } : null;
@@ -51,7 +51,7 @@ function projected(rawRow: unknown, ownerId: string, current: DigitalLifeModelDr
   return result.success ? { ok: true, draft: result.data, ...(idempotent === undefined ? {} : { idempotent }) } : failure("persistence_failed");
 }
 
-export async function readFormalModelDraft(caller: SupabaseClient, ownerId: string, prepareV2 = false, reconcileRevision?: number): Promise<ModelDraftResult> {
+export async function readFormalModelDraft(caller: SupabaseClient, ownerId: string, prepareV2: boolean | "v3" = false, reconcileRevision?: number): Promise<ModelDraftResult> {
   if (!uuid.safeParse(ownerId).success) return failure("invalid_request");
   if (reconcileRevision !== undefined && (!prepareV2 || !Number.isSafeInteger(reconcileRevision) || reconcileRevision < 1)) return failure("invalid_request");
   try {
@@ -69,7 +69,7 @@ export async function readFormalModelDraft(caller: SupabaseClient, ownerId: stri
     const prepared = currentSource(read.data.source, ownerId, 30, "digital-life-model-draft-v2");
     const context = preparedModelDraftSourceSchema.safeParse(prepared?.binding);
     if (!context.success) return failure("model_source_stale");
-    if (reconcileRevision === undefined) return { ...projection, preparedSourceContext: context.data };
+    if (reconcileRevision === undefined) return { ...projection, preparedSourceContext: context.data, ...(prepareV2 === "v3" ? { preparedProtocol: { version: "digital-life-model-draft-protocol-v3", draftVersion: "digital-life-model-draft-v3", rulesVersion: "digital-life-rules-v3" } as const } : {}) };
     // Owner/RLS-scoped original Seed binding, only for this explicit read branch. This is not an atomic snapshot.
     const original = await caller.from("digital_life_model_drafts").select("seed_context_id").eq("user_id", ownerId).eq("revision", reconcileRevision).maybeSingle();
     const originalSeed = z.object({ seed_context_id: uuid }).strict().safeParse(original.data);

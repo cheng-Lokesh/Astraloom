@@ -2,39 +2,31 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 import { buildDigitalLifeModel, digitalLifeAgentInputSchema, digitalLifeEdgeInputSchema, digitalLifeRulesSchema, ordinalPerson, roleForAgent, type DigitalLifeModel } from "@/lib/digital-life/model";
-import { proposeDigitalLifeActions } from "./digital-life-proposals";
+import { proposeSandboxCandidates } from "./candidate-pipeline";
+import { buildFormalSandboxInitialWorld } from "./initial-world";
+import { projectGuardObservations, pathDiagnosticsSchema } from "@/lib/digital-life/guard-observations";
 import { parseFrozenSymbolicLens, runSymbolicLensSchema } from "./symbolic-lens";
 import { applyFrozenCorrections, frozenOutcomeCalibrationSchema } from "./outcomes/rule-corrections";
 import { buildFrozenRealityCriteria } from "./outcomes/core-adapter";
-import { freezeDefaultPlanning, createPlanningAssumptions } from "@/lib/formal-planning";
+import { freezeDefaultPlanning } from "@/lib/formal-planning";
 import { defaultPlanningRequestSchema, planningConsentContextSchema, type FrozenDefaultPlanning } from "@/lib/formal-planning/contracts";
 import { bindPlanningWorld } from "@/lib/formal-planning/world-binding";
-import { proposeDefaultPlanning, type PlanningProposalTrace } from "@/lib/formal-planning/proposals";
+import type { PlanningProposalTrace } from "@/lib/formal-planning/proposals";
 import { relationshipPolicyAuthorization } from "@/lib/formal-planning/relationship-contracts";
 
-import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
+import { listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import {
   AGENT_WORLD_ENGINE_VERSION_V2,
   type ActionProposalInputV2,
-  type AgentDefinitionIdV2,
-  type WorldConstraintIdV2,
-  type WorldEntityIdV2,
-  type WorldResourceIdV2,
-  type WorldVariableIdV2,
   type WorldRelationIdV2,
 } from "@/lib/v2/agent-world/types";
-import { initializeWorldV2 } from "@/lib/v2/agent-world/world-initializer";
 import { buildClaimsV2, buildClaimsReportV2 } from "@/lib/v2/claims-reports";
 import {
   createControlledAsyncSimulationExecutorV2,
   createInMemoryAsyncSimulationJobRepositoryV2,
 } from "@/lib/v2/migration-async-execution";
 import { buildForecastLockV2, createInMemoryOutcomeCalibrationRepositoryV2 } from "@/lib/v2/outcome-calibration";
-import { createStableRealityBoundaryIdFactoryV2 } from "@/lib/v2/reality-boundary/ids";
-import { buildAssumptionLedgerV2 } from "@/lib/v2/reality-boundary/assumption-ledger";
-import { buildEvidenceLedgerV2 } from "@/lib/v2/reality-boundary/evidence-ledger";
-import { REALITY_BOUNDARY_SCHEMA_VERSION_V2 } from "@/lib/v2/reality-boundary/types";
 import { createLocalTrajectoryPolicyV2 } from "@/lib/v2/trajectory/local-adapter";
 import { TRAJECTORY_ENGINE_VERSION_V2 } from "@/lib/v2/trajectory/types";
 import { analyzeTrajectoryBatchV2 } from "@/lib/v2/trajectory-analysis/batch-runner";
@@ -130,13 +122,28 @@ export async function buildFormalSandboxRunV2(rawInput: unknown) {
     return { ok: false as const, errorCode: "world_model_required" as const };
   }
   const baseline = await buildFormalSandboxPathV2(input, modeled.model, "main", planning);
-  if (!baseline.ok) return baseline;
-  const paths: Array<{ key: string; label: string; bundle: typeof baseline.bundle }> = [];
+  if (!baseline.ok && baseline.errorCode !== "no_eligible_actions") return baseline;
+  type PathBundle = Extract<Awaited<ReturnType<typeof buildFormalSandboxPathV2>>, { ok: true }>["bundle"];
+  const paths: Array<{ key: string; label: string; bundle: PathBundle }> = [];
+  const outcomes = [{ pathKey: "main", label: "当前路径", result: baseline }];
   for (const strategy of modeled.model.rules.strategies) {
     const path = await buildFormalSandboxPathV2(input, modeled.model, strategy.participantKey, planning);
-    if (!path.ok) return path;
-    paths.push({ key: strategy.participantKey, label: strategy.label, bundle: path.bundle });
+    if (!path.ok && path.errorCode !== "no_eligible_actions") return path;
+    outcomes.push({ pathKey: strategy.participantKey, label: strategy.label, result: path });
+    if (path.ok) paths.push({ key: strategy.participantKey, label: strategy.label, bundle: path.bundle });
   }
+  if (outcomes.some(item => !item.result.ok && item.result.errorCode === "no_eligible_actions")) {
+    const frames = outcomes.map(item => ({ ...item, frame: item.result.ok ? item.result.bundle : "emptyFrame" in item.result ? item.result.emptyFrame : undefined }));
+    if (frames.some(item => !item.frame)) return { ok: false as const, errorCode: "runtime_failed" as const };
+    const pathDiagnostics = pathDiagnosticsSchema.safeParse({ version: "formal-path-diagnostics-v1", status: "not_saved", paths: frames.map((item, index) => ({ key: `path-${index + 1}`, label: item.label, status: item.frame!.events.length ? "has_events" : "no_actions", samples: item.frame!.trajectoryAnalysis.trajectories.map((trajectory, sample) => ({ key: `sample-${sample + 1}`, terminalStatus: trajectory.status, executedTickCount: trajectory.steps.length, selectedEventCount: trajectory.finalWorld.worldEvents.length })), guardObservations: projectGuardObservations(item.frame) })) });
+    if (!pathDiagnostics.success) return { ok: false as const, errorCode: "runtime_failed" as const };
+    const attempt = { version: "formal-guard-attempt-v1" as const, paths: frames.map(item => ({ pathKey: item.pathKey, causalFingerprint: item.frame!.causalFingerprint, ...(item.frame!.policyFingerprint ? { policyFingerprint: item.frame!.policyFingerprint } : {}), inputSnapshot: item.frame!.inputSnapshot, sourceBoundary: item.frame!.sourceBoundary, initialWorld: item.frame!.trajectoryAnalysis.spec.trajectoryTemplate.initialWorld, trajectories: item.frame!.trajectoryAnalysis.trajectories,
+      ...(planning ? { defaultPlanningSnapshot: item.frame!.defaultPlanningSnapshot, defaultPlanningTraces: item.frame!.defaultPlanningTraces } : {}),
+      ...(input.acceptedAt ? { forecastTiming: { acceptedAt: input.acceptedAt, boundaryAt: item.frame!.sourceBoundary.updatedAt, simulationStartAt: input.startedAt } } : {}),
+    })) };
+    return { ok: false as const, errorCode: "no_eligible_actions" as const, pathDiagnostics: pathDiagnostics.data, attempt };
+  }
+  if (!baseline.ok) return baseline;
   return { ok: true as const, bundle: { ...baseline.bundle, strategyPaths: { version: "digital-life-paths-v1" as const, paths } } };
 }
 
@@ -170,279 +177,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       ...(planning?.version === "formal-default-planner-v2" ? { relationshipResponseHypothesis: planning.relationshipResponse } : {}) };
     const causalFingerprint = fingerprint(causalInput);
     const boundaryAt = input.acceptedAt ? new Date().toISOString() : new Date(Date.parse(input.startedAt) - 2).toISOString();
-    const realityRuntime = {
-      clock: () => boundaryAt,
-      idFactory: createStableRealityBoundaryIdFactoryV2(`formal-${policyFingerprint}`),
-    };
-    const profileEntries = listRealityProfileEntries(input.realityProfileSnapshot.profile).filter(({ key }) => !key.startsWith(LIFE_MODEL_DOMAIN_ENTRY_PREFIX));
-    const worldInputs = input.realityProfileSnapshot.profile.worldInputs;
-    const evidenceLedger = buildEvidenceLedgerV2({
-      seedContextId: input.seedContextId,
-      runtime: realityRuntime,
-      items: [
-        {
-          statement: input.seedSummary,
-          claimKey: "formal.seed.summary",
-          sourceKind: "user_statement",
-          sourceTier: "tier_1_user_confirmed",
-          verificationStatus: "user_confirmed",
-          provenance: [{ sourceRef: `seed_context:${input.seedContextId}`, capturedAt: boundaryAt }],
-          limitations: ["User-confirmed input can still be incomplete."],
-        },
-        ...input.edges.map((item, index) => ({
-          statement: `Confirmed relationship ${index + 1}: ${item.relationshipType}.`,
-          claimKey: `formal.relation.${index + 1}`,
-          sourceKind: "user_statement" as const,
-          sourceTier: "tier_1_user_confirmed" as const,
-          verificationStatus: "user_confirmed" as const,
-          provenance: [{ sourceRef: `relation_edge:${item.id}`, capturedAt: boundaryAt }],
-          limitations: ["Relationship structure is confirmed; private intent is not inferred."],
-        })),
-        ...input.agents.map((item, index) => ({
-          statement: `${item.displayName}：${roleForAgent(item) === "user_core" ? "本人" : roleForAgent(item) === "user_variant" ? "本人在独立条件下的平行策略" : "账户确认的人物角色"}`,
-          claimKey: `formal.agent.${index + 1}`,
-          sourceKind: "user_statement" as const, sourceTier: "tier_1_user_confirmed" as const, verificationStatus: "user_confirmed" as const,
-          provenance: [{ sourceRef: `agent_snapshot:${input.agentSnapshotId}:${item.id}`, capturedAt: boundaryAt }],
-          limitations: ["Snapshot identity is supported; behavior and private intent are not inferred."],
-        })),
-        ...(input.outcomeCalibration?.corrections ?? []).map(correction=>({
-          statement:correction.evidenceSummary,claimKey:`formal.outcome.correction.${correction.ruleKey}`,
-          sourceKind:"user_statement" as const,sourceTier:"tier_1_user_confirmed" as const,verificationStatus:"user_confirmed" as const,
-          provenance:[{sourceRef:`formal_user_observation:${correction.observationSignature}`,capturedAt:correction.recordedAt}],
-          limitations:["本人观察记录，未独立核实；仅支持下次条件假设，不证明未来会重复。"],
-        })),
-        ...profileEntries.filter(({ field }) => field.classification === "fact").map(({ key, label, field }) => ({
-          statement: `${label}：${field.value}`,
-          claimKey: `reality.profile.${key}`,
-          sourceKind: "user_statement" as const,
-          sourceTier: "tier_1_user_confirmed" as const,
-          verificationStatus: "user_confirmed" as const,
-          provenance: [{ sourceRef: `reality_profile:${input.realityProfileSnapshot.profileId ?? "absent"}:revision:${input.realityProfileSnapshot.revision}:${key}`, capturedAt: boundaryAt }],
-          limitations: [`User-supplied basis: ${field.evidenceSummary}`, "A user-recorded fact can still be incomplete."],
-        })),
-        ...worldInputs.resources.filter((resource) => resource.classification === "fact").map((resource) => ({
-          statement: `${resource.label}：${resource.available} ${resource.unit}（范围 ${resource.minimum}–${resource.maximum} ${resource.unit}）`,
-          claimKey: `reality.profile.world_resource.${resource.key}`,
-          sourceKind: "user_statement" as const,
-          sourceTier: "tier_1_user_confirmed" as const,
-          verificationStatus: "user_confirmed" as const,
-          provenance: [{ sourceRef: `reality_profile:${input.realityProfileSnapshot.profileId ?? "absent"}:revision:${input.realityProfileSnapshot.revision}:world_resource:${resource.key}`, capturedAt: boundaryAt }],
-          limitations: [`User-supplied basis: ${resource.evidenceSummary}`, "A user-recorded resource can still be incomplete."],
-        })),
-        ...worldInputs.constraints.filter((constraint) => constraint.classification === "fact").map((constraint) => ({
-          statement: `${constraint.label}：${constraint.rule.value} 之前`,
-          claimKey: `reality.profile.world_constraint.${constraint.key}`,
-          sourceKind: "user_statement" as const,
-          sourceTier: "tier_1_user_confirmed" as const,
-          verificationStatus: "user_confirmed" as const,
-          provenance: [{ sourceRef: `reality_profile:${input.realityProfileSnapshot.profileId ?? "absent"}:revision:${input.realityProfileSnapshot.revision}:world_constraint:${constraint.key}`, capturedAt: boundaryAt }],
-          limitations: [`User-supplied basis: ${constraint.evidenceSummary}`, "A user-recorded constraint can still be incomplete."],
-        })),
-      ],
-    });
-    const primaryEvidenceId = evidenceLedger.items[0]!.id;
-    const assumptionLedger = buildAssumptionLedgerV2({
-      seedContextId: input.seedContextId,
-      evidenceLedger,
-      runtime: realityRuntime,
-      assumptions: [{
-        statement: "Observed relationship conditions may remain stable during the selected horizon.",
-        subjectType: "external_variable",
-        category: "relationship_stability",
-        epistemicStatus: "inferred",
-        impactLevel: "medium",
-        supportingRealEvidenceIds: [primaryEvidenceId],
-        contradictingRealEvidenceIds: [],
-        limitations: ["Visible simulation assumption, not a real-world fact."],
-        confirmationRequirement: "not_required",
-        confirmationStatus: "not_required",
-      }, ...profileEntries.filter(({ field }) => field.classification === "assumption").map(({ key, field }) => ({
-        statement: field.value,
-        subjectType: "unknown" as const,
-        category: `reality_profile_${key}`,
-        epistemicStatus: "confirmed_for_simulation" as const,
-        impactLevel: "low" as const,
-        supportingRealEvidenceIds: [],
-        contradictingRealEvidenceIds: [],
-        limitations: [`User designated this as an assumption: ${field.evidenceSummary}`, "Not a verified real-world fact."],
-        confirmationRequirement: "not_required" as const,
-        confirmationStatus: "confirmed" as const,
-      })),
-      ...worldInputs.resources.flatMap((resource) => [
-        ...(resource.classification === "assumption" ? [{
-          statement: `模拟假设：${resource.label} 从 ${resource.available} ${resource.unit} 开始。`,
-          subjectType: "self" as const,
-          category: `reality_profile_world_resource_${resource.key}`,
-          epistemicStatus: "confirmed_for_simulation" as const,
-          impactLevel: "low" as const,
-          supportingRealEvidenceIds: [],
-          contradictingRealEvidenceIds: [],
-          limitations: [`User designated this resource value as a simulation assumption: ${resource.evidenceSummary}`, "Not a verified real-world fact."],
-          confirmationRequirement: "not_required" as const,
-          confirmationStatus: "confirmed" as const,
-        }] : []),
-        ...(resource.usePerTick === null ? [] : [{
-          statement: `模拟规则：当行动被选中时，从“${resource.label}”分配 ${resource.usePerTick} ${resource.unit}。`,
-          subjectType: "self" as const,
-          category: `reality_profile_world_rate_${resource.key}`,
-          epistemicStatus: "confirmed_for_simulation" as const,
-          impactLevel: "low" as const,
-          supportingRealEvidenceIds: [],
-          contradictingRealEvidenceIds: [],
-          limitations: ["This is an explicit user-entered simulation rule, not a prediction or measured future change."],
-          confirmationRequirement: "not_required" as const,
-          confirmationStatus: "confirmed" as const,
-        }]),
-      ]),
-      ...worldInputs.constraints.filter((constraint) => constraint.classification === "assumption").map((constraint) => ({
-        statement: `模拟假设：${constraint.label} 适用于 ${constraint.rule.value} 之前。`,
-        subjectType: "external_variable" as const,
-        category: `reality_profile_world_constraint_${constraint.key}`,
-        epistemicStatus: "confirmed_for_simulation" as const,
-        impactLevel: "low" as const,
-        supportingRealEvidenceIds: [],
-        contradictingRealEvidenceIds: [],
-        limitations: [`User designated this constraint as a simulation assumption: ${constraint.evidenceSummary}`, "Not a verified real-world fact."],
-        confirmationRequirement: "not_required" as const,
-        confirmationStatus: "confirmed" as const,
-      })),
-      ...digitalLifeModel.rules.actions.filter(rule => rule.pathKey === activePathKey).map(rule => ({
-        statement: `用户确认的条件模拟规则：${rule.operation.actionType}。依据：${rule.evidenceSummary}`,
-        subjectType: (rule.operation.actionType === "update_external_variable" ? "external_variable" : digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "npc" || digitalLifeModel.agents.find(agent => agent.key === rule.actorKey)?.role === "group" ? "third_party" : "self") as "external_variable" | "third_party" | "self",
-        category: `digital_life_rule_${rule.key}`,
-        epistemicStatus: "confirmed_for_simulation" as const, impactLevel: "high" as const,
-        supportingRealEvidenceIds: input.outcomeCalibration?.corrections.some(c=>c.ruleKey===rule.key) ? [evidenceLedger.items.find(e=>e.claimKey===`formal.outcome.correction.${rule.key}`)!.id] : [], contradictingRealEvidenceIds: [],
-        limitations: ["Explicit user-authored conditional simulation rule, not observed behavior or private intent."],
-        confirmationRequirement: "required" as const, confirmationStatus: "confirmed" as const,
-      })),
-      ...(planning ? createPlanningAssumptions(planning) : []),
-      ],
-    });
-    const assumptionId = assumptionLedger.assumptions[0]!.id;
-    const evidenceIdFor = (claimKey: string) => evidenceLedger.items.find((item) => item.claimKey === claimKey)!.id;
-    const assumptionIdFor = (category: string) => assumptionLedger.assumptions.find((item) => item.category === category)!.id;
-    const worldIds = createStableAgentWorldIdFactoryV2(`formal-${policyFingerprint}`);
-    const resourceIdsByKey = new Map<string, WorldResourceIdV2>(worldInputs.resources.map((resource) => [
-      resource.key,
-      worldIds("world_resource", resource.key) as WorldResourceIdV2,
-    ]));
-    const resourceAssumptionsByKey = new Map(worldInputs.resources.map((resource) => [
-      resource.key,
-      [
-        ...(resource.classification === "assumption" ? [assumptionIdFor(`reality_profile_world_resource_${resource.key}`)] : []),
-        ...(resource.usePerTick === null ? [] : [assumptionIdFor(`reality_profile_world_rate_${resource.key}`)]),
-      ],
-    ]));
-    const modeledProfileVariables = profileEntries.filter(({ key, field }) =>
-      (key.startsWith("pressures.") || key.startsWith("externalVariables.")) && field.classification !== "unknown",
-    );
-    const profileVariableSpecs = modeledProfileVariables.map(({ key, field }) => ({
-      id: worldIds("world_variable", key) as WorldVariableIdV2,
-      variableType: "enum" as const,
-      key: key.startsWith("pressures.") ? `pressure-${key.slice("pressures.".length)}` : `external-variable-${key.slice("externalVariables.".length)}`,
-      value: field.value,
-      allowedValues: [...new Set([field.value, ...digitalLifeModel.rules.actions.flatMap(rule => rule.pathKey === activePathKey && rule.operation.actionType === "update_external_variable" && rule.operation.variableKey === (key.startsWith("pressures.") ? `pressure-${key.slice("pressures.".length)}` : `external-variable-${key.slice("externalVariables.".length)}`) ? [rule.operation.value] : [])])],
-      provisional: field.classification === "assumption",
-      provenance: {
-        realEvidenceIds: field.classification === "fact" ? [evidenceIdFor(`reality.profile.${key.toLowerCase()}`)] : [],
-        assumptionIds: field.classification === "assumption" ? [assumptionIdFor(`reality_profile_${key}`)] : [],
-        provisional: field.classification === "assumption",
-        visible: true as const,
-      },
-    }));
-    const boundary = {
-      seedContextId: input.seedContextId,
-      schemaVersion: REALITY_BOUNDARY_SCHEMA_VERSION_V2,
-      revision: 1,
-      evidenceLedger: { ...evidenceLedger, revision: 1 },
-      assumptionLedger: { ...assumptionLedger, revision: 1 },
-      warnings: input.safetyLevel === "caution" ? ["Caution mode keeps conclusions conservative."] : [],
-      createdAt: boundaryAt,
-      updatedAt: boundaryAt,
-    };
-
-    const agentIds = new Map(input.agents.map((item) => [item.id, worldIds("agent_definition", item.id) as AgentDefinitionIdV2]));
-    const entityIds = new Map(input.agents.map((item) => [item.id, worldIds("world_entity", item.id) as WorldEntityIdV2]));
-    const coreSelf = input.agents.find((item) => roleForAgent(item) === "user_core")!;
-    const self = activePathKey === "main" ? coreSelf : input.agents[Number(activePathKey.slice("person-".length)) - 1]!;
-    const activeAgents = input.agents.filter(item => item.id === self.id || (roleForAgent(item) !== "user_core" && roleForAgent(item) !== "user_variant"));
-    // A strategy substitutes for the main self in its own World, never coexists as a second real person.
-    const activeEdges = input.edges.filter(item =>
-      [item.fromAgentId, item.toAgentId].every(id => roleForAgent(input.agents.find(agent => agent.id === id)!) !== "user_variant"),
-    ).map(item => ({ ...item, fromAgentId: item.fromAgentId === coreSelf.id ? self.id : item.fromAgentId, toAgentId: item.toAgentId === coreSelf.id ? self.id : item.toAgentId }));
-    const activeRules = digitalLifeModel.rules.actions.filter(rule => rule.pathKey === activePathKey);
-    const activeRuleIdsFor = (personKey: string) => activeRules.filter(rule => rule.actorKey === personKey).map(rule => assumptionIdFor(`digital_life_rule_${rule.key}`));
-    const resourceProvenance = (realEvidenceIds: typeof primaryEvidenceId[], assumptionIds: typeof assumptionId[]) => ({
-      realEvidenceIds,
-      assumptionIds,
-      provisional: assumptionIds.length > 0,
-      visible: true as const,
-    });
-    const worldResult = initializeWorldV2(boundary, {
-      seedContextId: input.seedContextId,
-      engineVersion: AGENT_WORLD_ENGINE_VERSION_V2,
-      agentDefinitions: activeAgents.map((item) => ({
-        id: agentIds.get(item.id)!,
-        actorType: item.actorType,
-        displayName: item.displayName,
-        role: item.id === self.id ? activePathKey === "main" ? "本人数字分身；目标与价值观作为有来源背景" : `本人平行策略：${digitalLifeModel.rules.strategies.find(strategy => strategy.participantKey === activePathKey)!.label}` : `账户确认的关键人物：${input.edges.find(edge => edge.fromAgentId === item.id || edge.toAgentId === item.id)?.relationshipType ?? "角色记录"}`,
-        realEvidenceIds: [evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)],
-        assumptionIds: activeRuleIdsFor(ordinalPerson(input.agents.indexOf(item))),
-        fieldProvenance: { displayName: resourceProvenance([evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)], []), role: resourceProvenance([evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)], activeRuleIdsFor(ordinalPerson(input.agents.indexOf(item)))) },
-        constraints: ["Private thoughts and deterministic outcomes are not inferred."],
-      })),
-      agentStates: activeAgents.map((item) => ({
-        agentDefinitionId: agentIds.get(item.id)!,
-        observableStatus: "available" as const,
-        commitments: [...new Map(activeRules.filter(rule => rule.actorKey === ordinalPerson(input.agents.indexOf(item)) && rule.operation.actionType === "update_commitment").map(rule => { const operation = rule.operation; const id = operation.actionType === "update_commitment" ? `digital_life_${rule.actorKey}_${operation.commitmentKey}` : ""; return [id, { id, label: operation.actionType === "update_commitment" ? operation.label : "", status: "planned" as const }] as const; })).values()],
-        resourceAccessIds: item.id === self.id ? [...resourceIdsByKey.values()] : [],
-        observations: [],
-        memory: [],
-        activeAssumptionIds: activeRuleIdsFor(ordinalPerson(input.agents.indexOf(item))),
-        lastActionReference: null,
-      })),
-      entities: activeAgents.map((item) => ({
-        id: entityIds.get(item.id)!,
-        entityType: item.actorType === "organization" ? "organization" as const : "person" as const,
-        label: item.displayName,
-        agentDefinitionId: agentIds.get(item.id)!,
-        provenance: resourceProvenance([evidenceIdFor(`formal.agent.${input.agents.indexOf(item) + 1}`)], []),
-      })),
-      relations: activeEdges.map((item) => ({
-        id: worldIds("world_relation", item.id),
-        relationType: "collaborates_with" as const,
-        fromEntityId: entityIds.get(item.fromAgentId)!,
-        toEntityId: entityIds.get(item.toAgentId)!,
-        signal: "neutral" as const,
-        provenance: resourceProvenance([evidenceIdFor(`formal.relation.${input.edges.findIndex(edge => edge.id === item.id) + 1}`)], [assumptionId]),
-      })),
-      resources: worldInputs.resources.map((resource) => ({
-        id: resourceIdsByKey.get(resource.key)!,
-        resourceType: resource.resourceType,
-        label: resource.label,
-        ownerEntityId: entityIds.get(self.id)!,
-        controllerAgentId: agentIds.get(self.id)!,
-        available: resource.available,
-        unit: resource.unit,
-        min: resource.minimum,
-        max: resource.maximum,
-        provenance: resourceProvenance(
-          resource.classification === "fact" ? [evidenceIdFor(`reality.profile.world_resource.${resource.key}`)] : [],
-          resourceAssumptionsByKey.get(resource.key)!,
-        ),
-      })),
-      constraints: worldInputs.constraints.map((constraint) => ({
-        id: worldIds("world_constraint", constraint.key) as WorldConstraintIdV2,
-        constraintType: "deadline" as const,
-        target: { type: "resource" as const, id: resourceIdsByKey.get(constraint.resourceKey)! },
-        rule: constraint.rule,
-        provenance: resourceProvenance(
-          constraint.classification === "fact" ? [evidenceIdFor(`reality.profile.world_constraint.${constraint.key}`)] : [],
-          constraint.classification === "assumption" ? [assumptionIdFor(`reality_profile_world_constraint_${constraint.key}`)] : [],
-        ),
-      })),
-      externalVariables: profileVariableSpecs,
-    }, { clock: () => input.startedAt, idFactory: worldIds });
+    const { worldResult, boundary, worldInputs, assumptionLedger, primaryEvidenceId, agentIds, entityIds, resourceIdsByKey, activeRules, profileVariableSpecs, assumptionIdFor, evidenceIdFor, worldIds, self } = buildFormalSandboxInitialWorld(input, digitalLifeModel, activePathKey, policyFingerprint, boundaryAt, planning);
     if (!worldResult.ok) return { ok: false as const, errorCode: "world_initialization_failed" as const };
     const planningWorldBinding = planning ? bindPlanningWorld(planning, worldResult.world, `formal-${policyFingerprint}`, activePathKey, input.startedAt) : undefined;
     const planningTracesBySeed = new Map<number, PlanningProposalTrace[]>();
@@ -460,7 +195,7 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
       tickIntervalDays: input.horizonDays === 30 ? 10 : 15,
       maxTicks,
       policyId: "formal_account_sandbox_policy",
-      policyVersion: "digital-life-adapter-v1",
+      policyVersion: digitalLifeModel.version === "digital-life-model-v3" ? "digital-life-adapter-v3" : "digital-life-adapter-v1",
       trajectoryEngineVersion: TRAJECTORY_ENGINE_VERSION_V2,
     };
     const seeds = [input.deterministicSeed, input.deterministicSeed + 1, input.deterministicSeed + 2];
@@ -484,8 +219,11 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
         policyId: spec.policyId,
         policyVersion: spec.policyVersion,
         candidatesForTick: ({ world, tickIndex, occurredAt }): ActionProposalInputV2[] => {
-          const explicit = proposeDigitalLifeActions({
-            rules: activeRules, world, tickIndex, occurredAt, namespace: `formal_${policyFingerprint}_${seed}`,
+          const proposed = proposeSandboxCandidates({
+            rules: activeRules, declaredResources: worldInputs.resources,
+            actorAgentId: agentIds.get(self.id)!, actorEntityId: entityIds.get(self.id)!, primaryEvidenceId,
+            assumptionByCategory: new Map(assumptionLedger.assumptions.map(item => [item.category, item.id])),
+            planning, planningWorldBinding, pathKey: activePathKey,
             bindings: {
               agents: new Map(input.agents.map((item, index) => [ordinalPerson(index), agentIds.get(item.id)!])),
               entities: new Map(input.agents.map((item, index) => [ordinalPerson(index), entityIds.get(item.id)!])),
@@ -495,49 +233,9 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
               evidence: new Map(input.agents.map((_, index) => [ordinalPerson(index), evidenceIdFor(`formal.agent.${index + 1}`)])),
               assumptions: new Map(activeRules.map(rule => [rule.key, assumptionIdFor(`digital_life_rule_${rule.key}`)])),
             },
-          });
-          if (explicit.length > 0) return explicit;
-          const declared: ActionProposalInputV2[] = worldInputs.resources.flatMap((resource) => {
-          const resourceId = resourceIdsByKey.get(resource.key)!;
-          const currentResource = world.resources.find((item) => item.id === resourceId);
-          if (!currentResource || resource.usePerTick === null || currentResource.available - resource.usePerTick < currentResource.min) return [];
-          if (world.constraints.some((constraint) =>
-            constraint.constraintType === "deadline" &&
-            constraint.target.type === "resource" &&
-            constraint.target.id === resourceId &&
-            constraint.rule.kind === "before_time" &&
-            Date.parse(occurredAt) >= Date.parse(constraint.rule.value)
-          )) return [];
-          return [{
-            id: `action_proposal_v2_formal_${policyFingerprint}_${seed}_${tickIndex}_${resource.key}`,
-            seedContextId: world.seedContextId,
-            actorAgentId: agentIds.get(self.id)!,
-            actionType: "allocate_resource",
-            targetEntityIds: [entityIds.get(self.id)!],
-            targetResourceIds: [resourceId],
-            targetRelationIds: [],
-            targetVariableIds: [],
-            parameters: { actionType: "allocate_resource", resourceId, amount: resource.usePerTick },
-            realEvidenceIds: [...new Set([...currentResource.provenance.realEvidenceIds, primaryEvidenceId])],
-            assumptionIds: [...new Set([
-              ...currentResource.provenance.assumptionIds,
-              assumptionIdFor(`reality_profile_world_rate_${resource.key}`),
-            ])],
-            priorWorldEventIds: [...world.worldEventIds],
-            rationaleSummary: `User-declared resource rule at tick ${tickIndex + 1}.`,
-            createdAt: occurredAt,
-          }];
-          });
-          if (!planning || !planningWorldBinding) return declared;
-          const proposed = proposeDefaultPlanning({ planning, world, tickIndex, occurredAt, namespace: `formal_${policyFingerprint}_${seed}`, pathKey: activePathKey,
-            bindings: { actorAgentId: agentIds.get(self.id)!, actorEntityId: entityIds.get(self.id)!, worldBinding: planningWorldBinding,
-              resources: new Map(worldInputs.resources.map((item, index) => [`resource-${index + 1}`, resourceIdsByKey.get(item.key)!])),
-              assumptions: new Map(assumptionLedger.assumptions.map(item => [item.category, item.id])),
-            } });
-          const previous = planningTracesBySeed.get(seed) ?? [];
-          previous.push(...proposed.trace);
-          planningTracesBySeed.set(seed, previous);
-          return [...declared, ...proposed.candidates];
+          }, { world, tickIndex, occurredAt, namespace: `formal_${policyFingerprint}_${seed}` });
+          if (planning) planningTracesBySeed.set(seed, [...(planningTracesBySeed.get(seed) ?? []), ...proposed.trace]);
+          return proposed.candidates;
         },
       }),
       trajectoryRuntimeFactory: ({ seed }) => ({ agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`formal-${policyFingerprint}-${seed}`) }),
@@ -545,6 +243,10 @@ async function buildFormalSandboxPathV2(input: FormalSandboxRuntimeInput, digita
     });
     const analyzed = analyzeTrajectoryBatchV2(spec, adapter);
     if (!analyzed.ok) return { ok: false as const, errorCode: "trajectory_execution_failed" as const };
+    if (digitalLifeModel.version === "digital-life-model-v3" && analyzed.analysis.trajectories.every(trajectory => trajectory.finalWorld.worldEvents.length === 0)) {
+      const emptyFrame = { causalFingerprint, ...(planning ? { policyFingerprint, defaultPlanningSnapshot: planning, defaultPlanningTraces: analyzed.analysis.trajectories.map((trajectory, index) => ({ trajectoryId: trajectory.trajectoryId, trace: planningTracesBySeed.get(seeds[index]) ?? [] })) } : {}), inputSnapshot: causalInput, sourceBoundary: { seedContextId: boundary.seedContextId, schemaVersion: boundary.schemaVersion, revision: boundary.revision, evidenceLedger: boundary.evidenceLedger, assumptionLedger: boundary.assumptionLedger, createdAt: boundary.createdAt, updatedAt: boundary.updatedAt }, worldSnapshots: analyzed.analysis.trajectories.map(trajectory => trajectory.finalWorld), trajectoryAnalysis: analyzed.analysis, events: [] };
+      return { ok: false as const, errorCode: "no_eligible_actions" as const, emptyFrame };
+    }
     const claimSet = { kind: "batch" as const, payload: analyzed.analysis, realityBoundary: { seedContextId: boundary.seedContextId, schemaVersion: boundary.schemaVersion, revision: boundary.revision, evidenceLedger: boundary.evidenceLedger, assumptionLedger: boundary.assumptionLedger, createdAt: boundary.createdAt, updatedAt: boundary.updatedAt } };
     const claimsResult = buildClaimsV2(claimSet);
     if (!claimsResult.ok) return { ok: false as const, errorCode: "claim_build_failed" as const };

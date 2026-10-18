@@ -1,4 +1,5 @@
 import { digitalLifeRulesDraftSchema, type DigitalLifeRulesDraft, type SafeDigitalLifeCorrectionContext } from "@/lib/formal-sandbox/correction-context";
+import { validateGuardDefinition } from "./world-guards";
 
 export type DraftAction = Omit<DigitalLifeRulesDraft["actions"][number], "confirmedForSimulation"> & { confirmedForSimulation: boolean };
 export type DraftStrategy = Omit<DigitalLifeRulesDraft["strategies"][number], "confirmedForSimulation"> & { confirmedForSimulation: boolean };
@@ -73,6 +74,7 @@ export function validateRevisionDraft(source: DraftSource, draft: RevisionDraft)
     const prior = action.when.kind === "after_rule" ? seen.get(action.when.ruleKey) : undefined;
     const thirdParty = actor?.role === "npc" || actor?.role === "group";
     let valid = !!actor && (action.pathKey === "main" || strategies.has(action.pathKey)) && (thirdParty || action.actorKey === self) && draft.actions.filter(item => item.pathKey === action.pathKey).length <= cap;
+    valid &&= validateGuardDefinition(action, context, draft.actions, self);
     if (action.when.kind === "at_tick") valid &&= action.when.tickIndex < cap;
     else valid &&= !!prior && prior.pathKey === action.pathKey;
     if (thirdParty) valid &&= action.operation.actionType === "update_relation_signal" && prior?.operation.actionType === "request_information" && prior.operation.targetPersonKey === action.actorKey;

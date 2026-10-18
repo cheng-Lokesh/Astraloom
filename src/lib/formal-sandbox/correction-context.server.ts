@@ -77,12 +77,12 @@ export async function readFormalCorrectionContext(caller: SupabaseClient, ownerI
     if (profileId !== profile.profileId || canonical(currentDraft) !== canonical(profile.profile)) return failure("correction_source_stale");
 
     const context = safeDigitalLifeCorrectionContextSchema.safeParse({
-      version: "digital-life-correction-context-v1", horizonDays,
+      version: frozen.rules.version === "digital-life-rules-v3" ? "digital-life-correction-context-v2" : "digital-life-correction-context-v1", horizonDays,
       modelContext: { graphSnapshotId: frozen.graphSnapshotId, agentSnapshotId: frozen.agentSnapshotId, profileRevision: frozen.profileRevision,
         agents: frozen.agents.map(({ key, label, role }) => ({ key, label, role })),
         relationships: frozen.relationships.map(({ key, label, fromPersonKey, toPersonKey }) => ({ key, label, fromPersonKey, toPersonKey })),
         resources: currentDraft.worldInputs.resources.map(({ label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary }, index) => ({ key: `resource-${index + 1}`, label, available, minimum, maximum, unit, usePerTick, classification, evidenceSummary })),
-        ...(frozen.rules.version === "digital-life-rules-v2" ? { variables: listDigitalLifeEnvironmentVariables(currentDraft) } : {}),
+        ...(frozen.rules.version !== "digital-life-rules-v1" ? { variables: listDigitalLifeEnvironmentVariables(currentDraft) } : {}),
       },
       frozenRules: frozen.rules,
       draftRules: { ...frozen.rules, strategies: frozen.rules.strategies.map(strategy => ({ ...strategy, confirmedForSimulation: false })), actions: frozen.rules.actions.map(action => ({ ...action, confirmedForSimulation: false })) },

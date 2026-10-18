@@ -1,6 +1,7 @@
 import type { DigitalLifeRules } from "@/lib/digital-life/model";
 import type { ActionParametersV2, ActionProposalInputV2, AgentDefinitionIdV2, WorldEntityIdV2, WorldRelationIdV2, WorldResourceIdV2, WorldVariableIdV2, WorldStateV2 } from "@/lib/v2/agent-world/types";
 import type { AssumptionIdV2, RealEvidenceIdV2 } from "@/lib/v2/reality-boundary/types";
+import { observeWorldGuard } from "@/lib/digital-life/world-guards";
 
 export type DigitalLifeProposalBindings = {
   agents: Map<string, AgentDefinitionIdV2>; entities: Map<string, WorldEntityIdV2>;
@@ -23,6 +24,8 @@ export function proposeDigitalLifeActions(input: {
     const actor = bindings.agents.get(rule.actorKey);
     const actorEntity = bindings.entities.get(rule.actorKey);
     if (!actor || !actorEntity || !world.agentDefinitions.some(item => item.id === actor)) return [];
+    const guardObservation = rule.guard ? observeWorldGuard(rule.guard, world, actor, bindings.resources, bindings.variables) : null;
+    if (rule.guard && !guardObservation?.satisfied) return [];
     let parameters: ActionParametersV2;
     const targets = { targetEntityIds: [actorEntity], targetResourceIds: [] as WorldResourceIdV2[], targetRelationIds: [] as WorldRelationIdV2[], targetVariableIds: [] as WorldVariableIdV2[] };
     const operation = rule.operation;
@@ -56,8 +59,8 @@ export function proposeDigitalLifeActions(input: {
     return [{
       id: `action_proposal_v2_${namespace}_${tickIndex}${marker}`,
       seedContextId: world.seedContextId, actorAgentId: actor, actionType: parameters.actionType, ...targets, parameters,
-      realEvidenceIds: [bindings.evidence.get(rule.actorKey)!], assumptionIds: [bindings.assumptions.get(rule.key)!],
-      priorWorldEventIds: trigger ? [trigger.id] : [],
+      realEvidenceIds: [...new Set([bindings.evidence.get(rule.actorKey)!, ...(guardObservation?.provenance.realEvidenceIds ?? [])])], assumptionIds: [...new Set([bindings.assumptions.get(rule.key)!, ...(guardObservation?.provenance.assumptionIds ?? [])])],
+      priorWorldEventIds: [...new Set([...(trigger ? [trigger.id] : []), ...(guardObservation ? world.worldEvents.filter(event => event.deltas.some(delta => delta.path === (rule.guard?.kind === "resource_balance" ? `resources.${guardObservation.targetId}.available` : `externalVariables.${guardObservation.targetId}.value`))).slice(-1).map(event => event.id) : [])])],
       rationaleSummary: `Explicit conditional simulation rule ${rule.key}; not observed real-world behavior.`, createdAt: occurredAt,
     }];
   });

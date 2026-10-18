@@ -14,6 +14,7 @@ import { executeTrajectoryV2 } from "@/lib/v2/trajectory/trajectory-runner";
 import { buildChildTrajectoryRunSpecV2 } from "@/lib/v2/trajectory-analysis/child-run-spec";
 import { createStableAgentWorldIdFactoryV2 } from "@/lib/v2/agent-world/ids";
 import { validateWorldV2 } from "@/lib/v2/agent-world/validation";
+import type { WorldStateV2 } from "@/lib/v2/agent-world/types";
 
 function fixture(value = "家庭支持待定") {
   const input = digitalLifeInput();
@@ -31,6 +32,49 @@ function rules(actions: DigitalLifeRules["actions"]): DigitalLifeRules {
 }
 
 describe("independent guard review reproductions", () => {
+  it.each([
+    ["resource owner", (world: WorldStateV2) => { world.resources[0].ownerEntityId = world.entities.find(entity => entity.agentDefinitionId === world.agentDefinitions.find(agent => agent.actorType === "third_party")!.id)!.id; }],
+    ["resource type", (world: WorldStateV2) => { world.resources[0].resourceType = "budget"; }],
+    ["resource provenance", (world: WorldStateV2) => { world.resources[0].provenance.assumptionIds = []; world.resources[0].provenance.realEvidenceIds = [world.realityBoundarySnapshot.evidenceLedger.items[0].id]; world.resources[0].provenance.provisional = false; }],
+    ["self resource access", (world: WorldStateV2) => { world.agentStates.find(state => state.agentDefinitionId === world.resources[0].controllerAgentId)!.resourceAccessIds = []; }],
+    ["removed relationship", (world: WorldStateV2) => { world.relations = []; }],
+    ["removed deadline", (world: WorldStateV2) => { world.constraints = []; }],
+    ["environment allowed values", (world: WorldStateV2) => { const variable = world.externalVariables[0]; if (variable.variableType === "enum") variable.allowedValues.push("另一种安排"); }],
+    ["initial state", (world: WorldStateV2) => { world.agentStates[0].observableStatus = "unavailable"; }],
+    ["initial clock", (world: WorldStateV2) => { world.createdAt = "2026-10-06T03:59:59.000Z"; }],
+    ["source statement", (world: WorldStateV2) => { world.realityBoundarySnapshot.evidenceLedger.items[0].statement = "Another coherent but unauthorized source statement."; }],
+  ] as const)("rejects coherent no-action copies with changed %s", async (_label, mutate) => {
+    const input = fixture();
+    input.realityProfileSnapshot.profile.worldInputs.constraints = [{ key: "time-limit", label: "安排期限", resourceKey: "focus-time", rule: { kind: "before_time", value: "2026-10-20T04:00:00.000Z" }, classification: "assumption", evidenceSummary: "本人明确设置的安排期限" }];
+    const declared = rules([action("rule-1", "main", { kind: "resource_balance", resourceKey: "resource-1", operator: "lte", value: 4 })]);
+    const built = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: declared });
+    if (built.ok || !("emptyFrame" in built) && !("attempt" in built)) throw new Error("Expected no-action diagnostics");
+    if (!("attempt" in built) || !built.attempt) throw new Error("Expected frozen attempt");
+    const path = built.attempt.paths[0];
+    const original = await buildFormalSandboxRunV2({ ...input, digitalLifeRules: rules([action("rule-1", "main", { kind: "resource_balance", resourceKey: "resource-1", operator: "gte", value: 8 })]) });
+    if (!original.ok) throw new Error(original.errorCode);
+    const forged = structuredClone(original.bundle);
+    // Start from real no-action trajectories; no transition failure can mask source authority.
+    forged.inputSnapshot = path.inputSnapshot;
+    forged.causalFingerprint = path.causalFingerprint;
+    forged.sourceBoundary = path.sourceBoundary;
+    forged.trajectoryAnalysis.spec.trajectoryTemplate.initialWorld = structuredClone(path.initialWorld);
+    const initial = forged.trajectoryAnalysis.spec.trajectoryTemplate.initialWorld;
+    mutate(initial);
+    expect(validateWorldV2(initial).ok).toBe(true);
+    forged.sourceBoundary = structuredClone(initial.realityBoundarySnapshot);
+    forged.trajectoryAnalysis.trajectories = forged.trajectoryAnalysis.spec.trajectorySeeds.map(seed => {
+      const child = buildChildTrajectoryRunSpecV2(forged.trajectoryAnalysis.spec, seed);
+      const replay = executeTrajectoryV2(child, { policyId: child.policyId, policyVersion: child.policyVersion, proposeCandidates: () => [] }, { agentWorldIdFactory: createStableAgentWorldIdFactoryV2(`formal-${forged.causalFingerprint}-${seed}`) });
+      if (!replay.ok) throw new Error(replay.errorCode);
+      return replay.trajectory;
+    });
+    forged.worldSnapshots = forged.trajectoryAnalysis.trajectories.map(trajectory => trajectory.finalWorld);
+    forged.events = [];
+    expect(projectGuardObservations(forged)).toBeNull();
+    expect(projectGuardObservations(JSON.parse(JSON.stringify(forged)))).toBeNull();
+  });
+
   it("rejects an initially reassigned resource authority even when all no-action copies agree", async () => {
     const input = fixture();
     const declared = rules([action("rule-1", "main", { kind: "resource_balance", resourceKey: "resource-1", operator: "gte", value: 8 })]);
@@ -71,6 +115,7 @@ describe("independent guard review reproductions", () => {
       expect(built.ok, !built.ok ? built.errorCode : undefined).toBe(true);
       if (!built.ok) throw new Error(built.errorCode);
       expect(projectGuardObservations(built.bundle)).not.toBeNull();
+      expect(projectGuardObservations(JSON.parse(JSON.stringify(built.bundle)))).toEqual(projectGuardObservations(built.bundle));
       expect(projectFormalSandboxResult(built.bundle)).not.toBeNull();
       const forged = structuredClone(built.bundle);
       const original = forged.trajectoryAnalysis.trajectories[0];

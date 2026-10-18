@@ -10,6 +10,7 @@ import { actionLabel } from "@/components/formal-sandbox/digital-life-rules-edit
 import { FrozenSymbolicResult } from "./frozen-symbolic-result";
 import { FrozenDefaultPlanningResult } from "./frozen-default-planning";
 import { FrozenEnvironmentConditions } from "./frozen-environment-conditions";
+import { FrozenWorldGuards } from "./frozen-world-guards";
 import { OutcomeObservations } from "@/components/formal-sandbox/outcome-observations";
 
 type Rating = "useful" | "mixed" | "off";
@@ -185,6 +186,7 @@ export function StrategyPathsCard({ paths = [] }: { paths?: FormalSandboxResultP
       <section className="mt-5"><h4 className="font-semibold">本策略独立资源变化</h4>{path.projection.resourceChanges.length ? path.projection.resourceChanges.map(change => <p key={change.key} className="mt-3 text-sm leading-6">{change.label} · {change.before} → {change.after} {change.unit}<br /><span className="text-[var(--text-secondary)]">模拟变化 · 最低保留 {change.minimum} · 上限 {change.maximum}</span></p>) : <p className="mt-3 text-sm">没有已保存的结构化资源变化。</p>}</section>
       <RelationshipChangeLedger projection={path.projection} />
       <FrozenEnvironmentConditions projection={path.projection} />
+      <FrozenWorldGuards observations={path.projection.guardObservations} steps={path.projection.steps} ruleLabels={Object.fromEntries(path.projection.digitalLifeModel?.rules.map((rule, index) => [rule.key, `行动 ${index + 1} · ${actionLabel(rule.actionType)}`]) ?? [])} />
       <FrozenDefaultPlanningResult planning={path.projection.defaultPlanning} />
       <p className="mt-5 text-sm text-[var(--text-secondary)]">此策略的独立结论暂不支持条目反馈，主路径反馈不会用于替代它。</p>
     </SurfaceCard>) : <p className="mt-4 text-sm text-[var(--text-secondary)]">本次运行未设置独立策略。不会从人物名称自动生成策略。</p>}
@@ -227,6 +229,7 @@ export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseCl
     <ResourceChangeCard changes={projection.resourceChanges} />
     <RelationshipChangeLedger projection={projection} />
     <FrozenEnvironmentConditions projection={projection} />
+    <FrozenWorldGuards observations={projection.guardObservations} steps={projection.steps} ruleLabels={Object.fromEntries(projection.digitalLifeModel?.rules.map((rule, index) => [rule.key, `行动 ${index + 1} · ${actionLabel(rule.actionType)}`]) ?? [])} />
     <StrategyPathsCard paths={projection.strategyPaths} />
     <div className="mt-8 grid gap-6 md:grid-cols-2">
       <SurfaceCard className="p-4"><h2>User-provided facts</h2><p className="text-sm">Reality evidence used by this Run, excluding the private Seed narrative.</p>{projection.facts.map((item) => <p key={item.key} className="mt-2">{item.statement}</p>)}</SurfaceCard>

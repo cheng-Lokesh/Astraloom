@@ -25,6 +25,10 @@ const ids = {
 };
 
 type Row = Record<string, unknown>;
+function terminalDiagnostics() {
+  return { version: "formal-path-diagnostics-v1", status: "not_saved", paths: [{ key: "path-1", label: "当前路径", status: "no_actions", samples: [1, 2, 3].map(index => ({ key: `sample-${index}`, terminalStatus: "no_actions", executedTickCount: 1, selectedEventCount: 0 })), guardObservations: { version: "digital-life-guard-observations-v1", samples: [1, 2, 3].map(index => ({ key: `sample-${index}`, ticks: [0, 1, 2].map(tickIndex => ({ tickIndex, occurredAt: tickIndex === 0 ? new Date().toISOString() : null, observations: [] })) })) } }] };
+}
+const guardRequest = () => ({ graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30, digital_life_rules: { version: "digital-life-rules-v3", graphSnapshotId: ids.graph, agentSnapshotId: ids.agentSnapshot, profileRevision: 9, strategies: [], actions: [] } });
 
 function profileRow(ownerId = ids.owner, seedId = ids.seed) {
   const profile = createEmptyRealityProfileDraft(9);
@@ -103,6 +107,35 @@ beforeEach(() => {
 });
 
 describe("formal Run freezes the Reality Profile on its locked owner Seed", () => {
+  it.each([null, { idempotent: false, pathDiagnostics: {} }])("does not release a known no-actions result without a valid durable terminal receipt: %s", async receipt => {
+    const service = createService(profileRow()); const reserved = await service.rpc("reserve_account_sandbox_run", {});
+    vi.mocked(buildFormalSandboxRunV2).mockResolvedValueOnce({ ok: false, errorCode: "no_eligible_actions", pathDiagnostics: terminalDiagnostics(), attempt: { version: "formal-guard-attempt-v1", paths: [] } } as never);
+    const rpc = vi.fn(async (name: string) => ({ data: name === "reserve_account_sandbox_run" ? reserved.data : receipt, error: null })); Object.assign(service, { rpc });
+    expect(await startFormalSandboxRun(service, ids.owner, guardRequest())).toEqual({ ok: false, errorCode: "persistence_failed" });
+    expect(persistFormalSandboxRun).not.toHaveBeenCalled();
+  });
+  it("replays a persisted terminal receipt before expiry without re-executing or creating a completed Run", async () => {
+    const service = createService(profileRow()); const pathDiagnostics = terminalDiagnostics();
+    Object.assign(service, { rpc: vi.fn(async () => ({ data: [{ accepted_at: "2026-01-01T00:00:00Z", simulation_start_at: "2026-01-01T00:05:00Z", frozen_source_input: null, run: { status: "no_eligible_actions", pathDiagnostics } }], error: null })) });
+    vi.mocked(buildFormalSandboxRunV2).mockClear();
+    expect(await startFormalSandboxRun(service, ids.owner, guardRequest())).toEqual({ ok: false, errorCode: "no_eligible_actions", pathDiagnostics });
+    expect(buildFormalSandboxRunV2).not.toHaveBeenCalled(); expect(persistFormalSandboxRun).not.toHaveBeenCalled();
+  });
+  it("returns a known no-actions result only after a controlled terminal receipt, never exposing the internal attempt", async () => {
+    const service = createService(profileRow());
+    const reserved = await service.rpc("reserve_account_sandbox_run", {});
+    const pathDiagnostics = { version: "formal-path-diagnostics-v1", status: "not_saved", paths: [{ key: "path-1", label: "当前路径", status: "no_actions", samples: [1, 2, 3].map(index => ({ key: `sample-${index}`, terminalStatus: "no_actions", executedTickCount: 1, selectedEventCount: 0 })), guardObservations: { version: "digital-life-guard-observations-v1", samples: [1, 2, 3].map(index => ({ key: `sample-${index}`, ticks: [0, 1, 2].map(tickIndex => ({ tickIndex, occurredAt: tickIndex === 0 ? new Date().toISOString() : null, observations: [] })) })) } }] };
+    const attempt = { version: "formal-guard-attempt-v1", paths: [{ privateInternalArtifact: "must never reach HTTP" }] };
+    vi.mocked(buildFormalSandboxRunV2).mockResolvedValueOnce({ ok: false, errorCode: "no_eligible_actions", pathDiagnostics, attempt } as never);
+    const rpc = vi.fn(async (name: string) => ({ data: name === "reserve_account_sandbox_run" ? reserved.data : { idempotent: false, pathDiagnostics }, error: null }));
+    Object.assign(service, { rpc });
+    const request = { graph_snapshot_id: ids.graph, idempotency_key: ids.request, horizon_days: 30, digital_life_rules: { version: "digital-life-rules-v3", graphSnapshotId: ids.graph, agentSnapshotId: ids.agentSnapshot, profileRevision: 9, strategies: [], actions: [] } };
+    const result = await startFormalSandboxRun(service, ids.owner, request);
+    expect(rpc).toHaveBeenCalledWith("finalize_account_sandbox_no_eligible_actions_v3", { p_idempotency_key: ids.request, p_request: request, p_attempt: attempt });
+    expect(result).toEqual({ ok: false, errorCode: "no_eligible_actions", pathDiagnostics });
+    expect(result).not.toHaveProperty("attempt");
+    expect(persistFormalSandboxRun).not.toHaveBeenCalled();
+  });
   it("a new request accepted weeks after Graph lock starts a future simulation instead of backdating current feedback", async () => {
     const acceptedBefore = Date.now();
     const service = createService(profileRow(), [], [{ rating: "off", target_type: "claim", created_at: "2026-09-28T01:00:00.000Z" }]);

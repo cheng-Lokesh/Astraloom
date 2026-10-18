@@ -21,7 +21,9 @@ import { compatibleRevision } from "./model-rule-revision-query";
 import type { SafeDigitalLifeCorrectionContext } from "@/lib/formal-sandbox/correction-context";
 import { normalizeDraftForSave } from "./model-rule-draft-operations";
 import { ModelReconciliationPanel, type ReconciliationPlan } from "./model-reconciliation-panel";
+import { ModelGuardReconciliationPanel } from "./model-guard-reconciliation-panel";
 import type { ModelReconciliationApplication } from "@/lib/digital-life/model-reconciliation";
+import { NoEligibleActions, type PathDiagnostics } from "./no-eligible-actions";
 
 type StartInput = Parameters<ReturnType<typeof createFormalSandboxClient>["start"]>[0];
 function matchesModelSource(source: DigitalLifeModelDraftSource, current: SafeDigitalLifeContext) {
@@ -114,6 +116,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
   const [preparingSource, setPreparingSource] = useState(false);
   const [reconciliation, setReconciliation] = useState<ReconciliationPlan | null>(null);
   const [reconciledUnsaved, setReconciledUnsaved] = useState(false);
+  const [pathDiagnostics, setPathDiagnostics] = useState<PathDiagnostics | null>(null);
 
   useEffect(() => {
     if (saveReplay.current) return;
@@ -130,7 +133,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
     let active = true;
     const abort = new AbortController();
     async function recover() {
-      setLoading(true); setContext(null); setError(null); setRules({ actions: [], strategies: [] });
+      setLoading(true); setContext(null); setError(null); setPathDiagnostics(null); setRules({ actions: [], strategies: [] });
       setRevisionSource(null); setRevisionConfirmed(false);
       setSavedDraft(null); setPreparedSource(null); setReconciliation(null); setReconciledUnsaved(false); setEditableDraft(null); setInitialDraft(null); setDraftConfirmed(false); setDraftError(null);
       setCalibration(null); setCalibrationError(false); setCorrectionKeys([]); setCalibrationConfirmed(false);
@@ -212,7 +215,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
     } else {
       if (!context || reconciledUnsaved || saveFlight.current || unknownSave || (editableDraft && !draftConfirmed) || (revisionRunId && !revisionConfirmed)) return;
       if (correctionKeys.length && !calibrationConfirmed) { setNotice("请先明确确认所选观察修正的条件假设，再开始运行。"); return; }
-      const parsed = digitalLifeRulesSchema.safeParse({ version: editableDraft?.version ?? (rules.actions.some(action => action.operation.actionType === "update_external_variable") ? "digital-life-rules-v2" : "digital-life-rules-v1"), graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules });
+      const parsed = digitalLifeRulesSchema.safeParse({ version: editableDraft?.version ?? revisionSource?.draftRules.version ?? (rules.actions.some(action => action.operation.actionType === "update_external_variable") ? "digital-life-rules-v2" : "digital-life-rules-v1"), graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, ...rules });
       if (!parsed.success) { setError("invalid_digital_life_rules"); return; }
       const relationshipResponse = planning ? buildRelationshipResponseRequest(context, parsed.data, planning, planningDraft, relationshipDraft) : undefined;
       if (relationshipResponse === null) { setNotice("请重新选择已确认的询问与模拟回应，单独确认资源预算、回应调整与可选象征假设；也可以关闭回应调整。"); return; }
@@ -227,11 +230,24 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
     inFlight.current = true;
     setPending(true);
     setError(null);
+    setPathDiagnostics(null);
     const currentGeneration = generation.current;
     try {
       const response = await createFormalSandboxClient().start(input);
       if (currentGeneration !== generation.current) return;
       if (!response.ok) {
+        if (response.errorCode === "no_eligible_actions" && response.pathDiagnostics) {
+          setPathDiagnostics(response.pathDiagnostics); setError(null); replay.current = null;
+          unknownStartRef.current = false; setUnknownStart(false);
+          if (editableDraft) { const next = { ...editableDraft, actions: editableDraft.actions.map(action => ({ ...action, confirmedForSimulation: false as const })), strategies: editableDraft.strategies.map(strategy => ({ ...strategy, confirmedForSimulation: false as const })) }; setEditableDraft(next); setInitialDraft(next); setDraftConfirmed(false); setEditorRevision(value => value + 1); }
+          if (revisionSource && input.digitalLifeRules) {
+            const submitted = input.digitalLifeRules;
+            const draftRules: DigitalLifeRulesDraft = { ...submitted, actions: submitted.actions.map(action => ({ ...action, confirmedForSimulation: false as const })), strategies: submitted.strategies.map(strategy => ({ ...strategy, confirmedForSimulation: false as const })) };
+            setRevisionSource({ ...revisionSource, draftRules }); setRevisionConfirmed(false); setEditorRevision(value => value + 1);
+          }
+          setRules({ actions: [], strategies: [] }); setPlanningDraft(emptyPlanningDraft()); setRelationshipDraft(emptyRelationshipResponseDraft()); setCorrectionKeys([]); setCalibrationConfirmed(false);
+          return;
+        }
         if (response.status >= 500 || response.errorCode === "request_failed" || response.errorCode === "invalid_response") { unknownStartRef.current = true; setUnknownStart(true); setError("request_outcome_unknown"); }
         else {
           unknownStartRef.current = false; setUnknownStart(false); setError(response.errorCode);
@@ -308,19 +324,19 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
     finally { setPreparingSource(false); }
   }
 
-  async function prepareEnvironment() {
+  async function prepareEnvironment(guards = false) {
     if (locked || inFlight.current || saveFlight.current || !context) return;
     const prepareGeneration = generation.current;
     setPreparingSource(true);
     try {
-      const response = await createFormalSandboxClient().prepareModelDraftV2();
+      const response = guards ? await createFormalSandboxClient().prepareModelDraftV3() : await createFormalSandboxClient().prepareModelDraftV2();
       if (prepareGeneration !== generation.current) return;
       if (!response.ok || !response.data.preparedSourceContext || !matchesModelSource(response.data.preparedSourceContext, context)) { setDraftError("model_source_stale"); return; }
       const binding = response.data.preparedSourceContext;
       const previous = editableDraft;
-      const next: DigitalLifeRulesDraft = { version: "digital-life-rules-v2", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, actions: previous?.actions.map(action => ({ ...action, confirmedForSimulation: false as const })) ?? [], strategies: previous?.strategies.map(strategy => ({ ...strategy, confirmedForSimulation: false as const })) ?? [] };
+      const next: DigitalLifeRulesDraft = { version: guards ? "digital-life-rules-v3" : "digital-life-rules-v2", graphSnapshotId: context.graphSnapshotId, agentSnapshotId: context.agentSnapshotId, profileRevision: context.profileRevision, actions: previous?.actions.map(action => ({ ...action, confirmedForSimulation: false as const })) ?? [], strategies: previous?.strategies.map(strategy => ({ ...strategy, confirmedForSimulation: false as const })) ?? [] };
       setSavedDraft(response.data.draft); setPreparedSource(binding); setInitialDraft(next); setEditableDraft(next); setDraftConfirmed(!next.actions.length && !next.strategies.length); setEditorRevision(value => value + 1);
-      changeRules({ actions: [], strategies: [] }); setNotice("已在当前资料上准备环境条件草稿，原有规则授权已清空。请配置、保存并逐项重新确认。");
+      changeRules({ actions: [], strategies: [] }); setNotice(guards ? "已开启条件规则。原有运行授权已清空，请主动选择条件项目、保存并逐项重新确认。" : "已在当前资料上准备环境条件草稿，原有规则授权已清空。请配置、保存并逐项重新确认。");
     } catch { setDraftError("draft_reload_failed"); }
     finally { setPreparingSource(false); }
   }
@@ -335,7 +351,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
       const normalized = normalizeDraftForSave({ modelContext: context, horizonDays: horizon }, raw);
       const parsed = digitalLifeRulesDraftSchema.safeParse(normalized);
       if (!parsed.success) { setDraftError("invalid_model_draft"); return; }
-      input = { version: parsed.data.version === "digital-life-rules-v2" ? "digital-life-model-draft-v2" : "digital-life-model-draft-v1", expectedRevision: savedDraft!.currentRevision, idempotencyKey: crypto.randomUUID(), horizonDays: horizon, sourceContext: binding, draftRules: parsed.data };
+      input = { version: parsed.data.version === "digital-life-rules-v3" ? "digital-life-model-draft-v3" : parsed.data.version === "digital-life-rules-v2" ? "digital-life-model-draft-v2" : "digital-life-model-draft-v1", expectedRevision: savedDraft!.currentRevision, idempotencyKey: crypto.randomUUID(), horizonDays: horizon, sourceContext: binding, draftRules: parsed.data };
       saveReplay.current = input;
     }
     if (!input) return;
@@ -373,17 +389,18 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
       <h2 className="text-xl font-semibold">{currentDraftMode ? "配置当前模型草稿与本次运行" : "配置本次数字生命运行"}</h2>
       <p className="max-w-prose text-sm leading-6 text-[var(--text-secondary)]">30 天包含 3 个模拟周期，90 天包含 6 个周期。周期表达条件变化，不是现实中的精确发生日期。</p>
       <p className="max-w-prose text-sm leading-6 text-[var(--text-secondary)]">环境条件只用于模拟，不代表控制现实，也不改写现实档案。模拟可能提前结束，指定周期可能未到达；只有已触发的模拟事件才形成变化节点。</p>
-      {currentDraftMode && context && editableDraft?.version === "digital-life-rules-v1" ? <Button variant="ghostOnDark" disabled={locked} onClick={prepareEnvironment} className="!w-auto px-4 py-3">在当前资料上配置环境条件</Button> : null}
+      {currentDraftMode && context && editableDraft?.version === "digital-life-rules-v1" ? <Button variant="ghostOnDark" disabled={locked} onClick={() => void prepareEnvironment()} className="!w-auto px-4 py-3">在当前资料上配置环境条件</Button> : null}
+      {currentDraftMode && context && editableDraft && editableDraft.version !== "digital-life-rules-v3" ? <Button variant="ghostOnDark" disabled={locked} onClick={() => void prepareEnvironment(true)} className="!w-auto px-4 py-3">开启条件规则</Button> : null}
       {loading ? <p role="status" className="animate-pulse motion-reduce:animate-none">正在读取已锁定模型与可选人物…</p> : null}
       {!loading && !context ? <div><p className="text-sm leading-6">当前模型暂不可读取。请完成当前情境的人物与关系图，再重新读取。</p><Button disabled={locked} variant="ghostOnDark" onClick={() => setReload(value => value + 1)} className="!w-auto px-4 py-3">重新读取模型</Button><Link href="/app/new/intake" className="ml-3 inline-flex min-h-11 items-center underline">返回情境准备</Link></div> : null}
       {!loading && currentDraftMode && !context && savedDraft?.draftRules && savedDraft.sourceContext && savedDraft.horizonDays ? <section className="space-y-4"><p role="alert">已保存版本 {savedDraft.currentRevision} 暂不能用于当前运行。下方保留原模型，只可查看；请重新读取并核对当前来源。</p><ModelRulesDraftEditor key={`stale-${savedDraft.currentRevision}`} source={{ draftRules: savedDraft.draftRules, modelContext: savedDraft.sourceContext.modelContext, horizonDays: savedDraft.horizonDays }} currentModel disabled onChange={() => {}} />{savedDraft.status === "stale" && savedDraft.currentSourceContext ? <Button disabled={locked} variant="ghostOnDark" onClick={() => { freshCurrent.current = true; setReload(value => value + 1); }} className="!w-auto px-4 py-3">为当前模型重新配置空草稿</Button> : null}</section> : null}
       {!context && canReconcileModel(savedDraft) && !reconciliation ? <Button disabled={locked} variant="ghostOnDark" onClick={() => void prepareReconciliation()} className="!w-auto px-4 py-3">按当前资料继续调整</Button> : null}
-      {reconciliation ? <ModelReconciliationPanel plan={reconciliation} disabled={locked} onApply={result => void applyReconciliation(result)} onCancel={() => { if (!locked) setReconciliation(null); }} /> : null}
+      {reconciliation ? reconciliation.reconciliation.version === "digital-life-model-reconciliation-v2" ? <ModelGuardReconciliationPanel plan={{ ...reconciliation, reconciliation: reconciliation.reconciliation }} disabled={locked} onApply={result => void applyReconciliation(result)} onCancel={() => { if (!locked) setReconciliation(null); }} /> : <ModelReconciliationPanel plan={reconciliation} disabled={locked} onApply={result => void applyReconciliation(result)} onCancel={() => { if (!locked) setReconciliation(null); }} /> : null}
       {draftError === "reconciliation_source_changed" ? <p role="alert" className="text-sm leading-6">核对期间资料再次变化，未应用这次核对。原模型保留只读，请重新读取后再核对。</p> : draftError === "model_reconciliation_scope_changed" ? <p role="alert" className="text-sm leading-6">当前人物、关系或模型范围已变化，不能延续原规则。原模型保留只读，请为当前模型重新配置空草稿。</p> : null}
       {context ? <fieldset disabled={locked} className="min-w-0 space-y-5"><legend className="sr-only">配置当前模型与本次运行</legend>
         <label htmlFor={`${id}-horizon`} className="block max-w-xs">运行时间窗口<select id={`${id}-horizon`} value={horizon} disabled={locked || Boolean(revisionRunId)} onChange={event => changeHorizon(Number(event.target.value) as 30 | 90)} className="mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)]"><option value="30">30 天 · 3 个模拟周期</option><option value="90">90 天 · 6 个模拟周期</option></select></label>
         <p role="status" className="text-sm">{notice}</p>
-        <div id="formal-action-rules">{revisionSource ? <ModelRuleRevision key={`${revisionRunId}-${reload}`} source={revisionSource} disabled={locked} onChange={value => { setRevisionConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }); }} /> : editableDraft && initialDraft ? <ModelRulesDraftEditor key={`current-${reload}-${editorRevision}`} source={{ draftRules: initialDraft, modelContext: context, horizonDays: horizon }} originalRules={initialDraft} currentModel disabled={locked} onDraftChange={(draft, resetPermissions) => { setEditableDraft(draft); if (resetPermissions) changeRules({ actions: [], strategies: [] }); }} onChange={value => { setDraftConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }, false); }} /> : <DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={changeRules} disabled={locked} />}</div>
+        <div id="formal-action-rules">{revisionSource ? <ModelRuleRevision key={`${revisionRunId}-${reload}-${editorRevision}`} source={revisionSource} disabled={locked} onChange={value => { setRevisionConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }); }} /> : editableDraft && initialDraft ? <ModelRulesDraftEditor key={`current-${reload}-${editorRevision}`} source={{ draftRules: initialDraft, modelContext: context, horizonDays: horizon }} originalRules={initialDraft} currentModel disabled={locked} onDraftChange={(draft, resetPermissions) => { setEditableDraft(draft); if (resetPermissions) changeRules({ actions: [], strategies: [] }); }} onChange={value => { setDraftConfirmed(Boolean(value)); changeRules(value ? { actions: value.actions, strategies: value.strategies } : { actions: [], strategies: [] }, false); }} /> : <DigitalLifeRulesEditor key={`${context.graphSnapshotId}-${context.profileRevision}-${horizon}`} context={context} horizonDays={horizon} actions={rules.actions} strategies={rules.strategies} onChange={changeRules} disabled={locked} />}</div>
         {planning ? <DefaultPlanningEditor context={planning} draft={planningDraft} onChange={draft => { setPlanningDraft(draft); setRelationshipDraft(value => ({ ...value, confirmed: false, symbolicConfirmed: false })); }} disabled={pending || unknownStart} explicitRuleResourceKeys={rules.actions.flatMap(action => action.operation.actionType === "allocate_resource" ? [action.operation.resourceKey] : [])} /> : null}
         {planning ? <RelationshipResponseEditor context={context} rules={rules} planning={planning} budgets={planningDraft} draft={relationshipDraft} onChange={setRelationshipDraft} disabled={pending || unknownStart} /> : null}
         {planningError ? <p role="status" className="text-sm leading-6">默认规划来源暂不可读取，旧授权已清空。本次不会应用默认规划；仍可使用明确行动规则。</p> : null}
@@ -403,6 +420,7 @@ export function FormalRunStarter({ graphId, revisionRunId, currentDraftMode = fa
         开始 {horizon} 天运行
       </Button>
       {error ? <FormalRunStartError errorCode={error} /> : null}
+      {pathDiagnostics ? <NoEligibleActions diagnostics={pathDiagnostics} /> : null}
       {unknownStart ? <div><p role="alert" className="text-sm leading-6">运行提交结果暂时未知。原请求与选择已保留；请恢复原运行请求，期间不能修改配置或自动发起新运行。</p><Button variant="ghostOnDark" disabled={pending} onClick={() => void start()} className="!w-auto px-4 py-3">恢复原运行请求</Button></div> : null}
       {context && error === "reservation_expired" ? <Button variant="ghostOnDark" disabled={locked} onClick={prepareExpiredReservationRetry} className="!w-auto px-4 py-3">保留规则，重新发起</Button> : null}
       {context && (error === "profile_revision_conflict" || error === "planning_context_stale") && !unknownStart ? <Button variant="ghostOnDark" disabled={locked} onClick={() => { setNotice("重新读取将更新模型并清空旧规则与规划授权。"); setReload(value => value + 1); }} className="!w-auto px-4 py-3">重新读取模型并检查规则</Button> : null}

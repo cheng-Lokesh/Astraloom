@@ -9,6 +9,7 @@ import { formalSandboxStartRequestSchema } from "./start-request";
 import { parseFrozenSymbolicLens } from "./symbolic-lens";
 import { defaultPlanningRequestSchema, planningConsentContextSchema } from "@/lib/formal-planning/contracts";
 import { canonicalRelationshipValue } from "@/lib/formal-planning/relationship-contracts";
+import { pathDiagnosticsSchema } from "@/lib/digital-life/guard-observations";
 
 const requestSchema = formalSandboxStartRequestSchema;
 const graphSchema = z.object({ id:z.string().uuid(), user_id:z.string().uuid(), seed_context_id:z.string().uuid(), agent_snapshot_id:z.string().uuid(), graph_locked:z.literal(true), locked_at:z.string(), safety_level:z.enum(["safe","caution"]) }).passthrough();
@@ -20,7 +21,7 @@ const reservationSchema = z.object({
   accepted_at: z.string().refine(value => Number.isFinite(Date.parse(value))),
   simulation_start_at: z.string().refine(value => Number.isFinite(Date.parse(value))),
   frozen_source_input: z.record(z.string(), z.unknown()).nullable(),
-  run: z.object({ id:z.string().uuid(), status:z.literal("completed"), graph_snapshot_id:z.string().uuid(), time_horizon:z.enum(["30_days", "90_days"]) }).passthrough().nullable(),
+  run: z.union([z.object({ id:z.string().uuid(), status:z.literal("completed"), graph_snapshot_id:z.string().uuid(), time_horizon:z.enum(["30_days", "90_days"]) }).passthrough(), z.object({ status: z.literal("no_eligible_actions"), pathDiagnostics: pathDiagnosticsSchema }).strict()]).nullable(),
 }).strict();
 const reservationErrors = new Set(["unauthenticated", "invalid_request", "graph_not_found", "seed_not_found", "safety_blocked", "incomplete_object_chain", "idempotency_key_content_conflict", "reservation_expired", "invalid_correction", "current_graph_required", "planning_context_stale", "invalid_planning_request"]);
 
@@ -49,6 +50,7 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
     if (!result.success) return { ok:false as const,errorCode:"persistence_failed" as const };
     const reservation = result.data[0];
     if (reservation.run) {
+      if (reservation.run.status === "no_eligible_actions") return request.data.digital_life_rules?.version === "digital-life-rules-v3" ? { ok: false as const, errorCode: "no_eligible_actions" as const, pathDiagnostics: reservation.run.pathDiagnostics } : { ok: false as const, errorCode: "persistence_failed" as const };
       if (reservation.run.graph_snapshot_id !== request.data.graph_snapshot_id || reservation.run.time_horizon !== `${request.data.horizon_days}_days`) return { ok:false as const,errorCode:"persistence_failed" as const };
       return { ok:true as const,idempotent:true,run:reservation.run };
     }
@@ -99,7 +101,14 @@ export async function startFormalSandboxRun(caller: SupabaseClient, userId: stri
       ...(defaultPlanning ?? {}),
       ...(source.digital_life_rules ? { digitalLifeRules: source.digital_life_rules } : request.data.digital_life_rules ? { digitalLifeRules: request.data.digital_life_rules } : {}),
     });
-    if (!built.ok) return built;
+    if (!built.ok) {
+      if (built.errorCode !== "no_eligible_actions") return built;
+      if (request.data.digital_life_rules?.version !== "digital-life-rules-v3" || !("attempt" in built)) return { ok: false as const, errorCode: "persistence_failed" as const };
+      const terminal = await caller.rpc("finalize_account_sandbox_no_eligible_actions_v3", { p_idempotency_key: request.data.idempotency_key, p_request: request.data, p_attempt: built.attempt });
+      const receipt = z.object({ idempotent: z.boolean(), pathDiagnostics: pathDiagnosticsSchema }).strict().safeParse(terminal.data);
+      if (terminal.error || !receipt.success) return { ok: false as const, errorCode: "persistence_failed" as const };
+      return { ok: false as const, errorCode: "no_eligible_actions" as const, pathDiagnostics: receipt.data.pathDiagnostics };
+    }
     return persistFormalSandboxRun(caller,{userId,graphSnapshotId:graph.data.id,idempotencyKey:request.data.idempotency_key,horizonDays:request.data.horizon_days,bundle:built.bundle});
   } catch {
     return { ok:false as const,errorCode:"persistence_failed" as const };
