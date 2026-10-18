@@ -675,3 +675,54 @@ digital-life sandbox direction. They do not make Career the product's final
 domain or change the frozen V2 Core. Mock-HTTP and viewport checks do not prove
 authenticated account, database/RLS, production-style visual, or full-product
 acceptance.
+
+#### World guard v3 candidate (2026-10-19)
+
+The owner explicitly opts into the v3 rule protocol from current source
+preparation. Existing saved v1/v2 drafts remain in their original protocol
+until a separate Save; preparation never silently upgrades them. The editor
+shows the existing schedule/preceding-rule trigger separately from one optional
+guard. A resource guard requires an explicit resource, comparison, and
+in-range threshold. An environment guard requires an explicit declared
+environment item and an initial or same-path declared replacement value.
+Guarded actions are restricted to the main self or the matching variant's own
+strategy path. Any guard edit invalidates the affected rule and dependent
+confirmations; Save stores all rules unconfirmed and Run requires fresh
+confirmation.
+
+Successful, saved v3 Results show guard observations independently by path,
+sample, and executed tick. Labels and values are safe projections; internal
+rule, sample, step, World, Event, and source identifiers are not rendered. The
+UI may show a textual step reference only for the matching selected Core Event;
+it is not a clickable link, and temporary diagnostics have no formal step link.
+It distinguishes an offered candidate that lost selection from an unreachable
+tick. An unreachable tick has no fabricated state values and must not be
+described as waiting for a future trigger. Guard output is conditional
+simulation evidence, not a real-world probability or promised timing.
+
+Show no-eligible diagnostics only when a whole path has zero selected Core
+Events across all three samples. A sample or path with one or more selected
+Events may end before later ticks and still form part of a saved Run;
+unreached later ticks alone are not a failure. When a whole path has zero
+events, show the safe diagnostics with the status “not saved,” including which
+other path may have had simulated events. Explain that no complete Run or
+Report was created. After this known response,
+unlock editing, clear rule confirmations and separate planning,
+relationship-response, and outcome-correction authorizations, and require
+fresh confirmations with a new request key before another attempt. If the
+response is unknown, keep the editor locked and retain the complete original
+body/key until exact replay resolves it.
+
+The initial-World authority helper has a producer-reported 19/19
+review-target run, including controller-rebinding and initial-World
+structure/source tamper cases. Independent readonly review found no unresolved
+targeted P1/P2; the independent review/runtime command passed 2 files / 30
+tests, exit 0, in 60.11 seconds. Root reports the UI and revision-recovery
+command passed 2 files / 7 tests, exit 0, in 20.80 seconds (session 63034).
+Test freeze is complete; the functional/source candidate is READY, not a phase
+PASS. The SQL source fixture was rebuilt from frozen source, but its pgTAP
+checks have not run against PostgreSQL. An earlier pre-fix seven-file runtime
+run had one JSON-compatibility failure after 63 passes; it later passed a
+targeted check, but the full seven-file runtime set is not thereby confirmed
+green. Synthetic UI and source tests cannot stand in for migration execution,
+authenticated account behavior, or database/RLS acceptance.

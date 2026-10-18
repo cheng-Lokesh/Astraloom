@@ -1,6 +1,6 @@
 # 产品交付状态账本
 
-更新日期：2026-10-16
+更新日期：2026-10-19
 仓库：`C:\Users\clf04\Documents\AI推演\Astraloom-stage2`
 
 产品交付权威是用户确认的固定九阶段路线与当前总控交付目标：持续存在的个人数字生命沙盘，并保留独立、有限且明确授权的 Hypothesis。旧[未来模拟器 V2](FUTURE_SIMULATOR_V2.md)文档在此账本中仅作为已验收 V2 Core 不可变边界的依据；与最新用户计划冲突时，以用户计划为准，但不因此改写 V2 Core。[产品宪章](PRODUCT_CONSTITUTION.md)可作实现约束参考，不覆盖最新用户目标。阶段完成度不以猜测百分比表示；目前九阶段均没有足以证明全阶段完成的独立验收证据，也没有阶段级 PASS 裁决。
@@ -143,6 +143,91 @@ GET preparation 为两次只读检查，不是原子 snapshot。当前 Docker/DB
 没有本批 DB/Auth/RLS/pgTAP/CAS 并发或跨设备证据；不得将代码测试、build、preview
 或 push 记为数据库、账户或阶段 PASS。详细合同、RED/GREEN 边界和后续门禁见
 [模型核对 TDD 记录](testing/model-reconciliation.tdd.md)。
+
+## World guard v3 条件规则候选（2026-10-19）
+
+本批合同新增资源余额和声明环境值条件。行动必须同时满足既有模拟周期/
+前置行动与单个可选 guard；guard 仅限本人 main 或本人 variant 自身策略路径。
+共享候选管线的顺序为 explicit → declared rate → 已授权 planner。实际 Core
+选择与事件回放为唯一观察依据；分 path/sample/tick 显示条件和事件，没有
+虚构等待、未发生的事件、概率或预报。V3 规则/模型/草稿版本为
+`digital-life-rules-v3` / `digital-life-model-v3` /
+`digital-life-model-draft-v3`；旧 V1/V2 留在原协议。源上下文仍为 V2、
+使用 `signature_v2`；Run bundle/runtime/writer 使用旧版号，未新增 raw
+bundle key；策略 adapter 标为 `digital-life-adapter-v3`。
+
+当前只记录候选与 RED，不是功能交付。RED 历史节点：`48fe8ff` 是四个目标
+文件的初始业务 RED checkpoint；`fc29af3` 覆盖 V3 修订运行的无行动恢复；
+`b32a0f5` 覆盖 guard 描述溢出与瞬态 Event 矛盾；`ec1cd7b` 覆盖已有受
+guard 草稿追加行动；`23f2da9` 覆盖回放时初始资源控制权被重绑定。已提交 SQL
+owner RED checkpoint 为 `dc4865c0f24c9684448bdcbfc5d97710a0f5d002`，
+定向 SQL 文件结果为 2 failed / 11 passed。另有 backend
+review-authority 重现为 1 failed / 8 skipped，归属已有 checkpoint
+`23f2da9`。这些都是失败/待修复证据；不能当成功能测试通过。没有从
+checkpoint 名称推算缺失的测试数或命令结果。
+
+另一次修改前的 11-parameter exploratory RED 运行 exit 1，报告 10 failed /
+1 passed / 9 skipped；其中 9 项对应业务缺口，1 项前提错误（Core 会拒绝
+initial revision）后已删除。provenance 在这之前已能正确拒绝该篡改并通过。
+该 RED 没有独立 checkpoint，不绑定额外 SHA。最终保留的 10 项防回归 case
+属于 Root 报告的 19/19 GREEN review-target 结果。
+
+之后 Root 报告 initial-World authority helper 的 producer review-target
+结果为 19/19 GREEN，其中包括原 controller RED 及 10 项 initial-World
+结构/来源防篡改 case；shared initial-World builder 与纯
+`correction-contracts` schema 抽取已完成，抽取后的 schema 与旧 schema
+字面等价。SQL producer 另报告完整 source-boundary helper 与 planner-v1
+精确 Event envelope 已实现，sourcechecks 13/13 GREEN。独立只读复核未发现
+targeted repair 遗留 P1/P2；独立命令
+`npx vitest run src/lib/digital-life/world-guards-review.test.ts src/lib/formal-sandbox/world-guards.runtime.test.ts --reporter=verbose`
+为 2 files / 30 tests PASS，exit 0，60.11 秒。SQL 源测试命令
+`npx vitest run src/lib/digital-life/world-guards-sql.test.ts src/lib/digital-life/environment-sql.test.ts --reporter=verbose`
+为 2 files / 22 tests PASS，exit 0；Root UI 命令
+`npx.cmd vitest run src/components/formal-sandbox/world-guards-ui.test.ts src/components/formal-sandbox/world-guards-revision-recovery.test.ts`
+为 2 files / 7 tests PASS，exit 0，20.80 秒（session 63034）。SQL test
+scoped ESLint `npx eslint src/lib/digital-life/world-guards-sql.test.ts`
+exit 0。最终 `npx tsc --noEmit --incremental false` 与七个改动
+TypeScript 文件的 scoped ESLint 均 exit 0；测试 freeze 已完成。旧 runtime
+增强证据还包括 15 PASS / 4 skipped 和 main/variant JSON 1 PASS / 10
+skipped。修复前七文件 runtime 曾有 63 PASS / 1 JSON 兼容失败，该项后来
+定向 GREEN，但不能宣称七文件整体最终全绿。SQL specimen 由实际 TS helper
+重建且 deep-equal；pgTAP source fixture 按 frozen source 重建，8 类负向与
+gate-off 0-row 检查仅有源码证据，未在 PostgreSQL 执行。Root 报告 Core 无
+tracked changes。功能/source 测试证据为 READY，但不是阶段 PASS。`wholeTSC52500
+exit 0` 早于 authority 修复，不代表当前候选。其后 feature commit
+`436feec5a68fb958183f82f8cd1bf523ecc2a9d1`（43 files，`+3195/-418`，未推送）
+的 exact clean build `npm.cmd run build -- --webpack` 在 session 81560 exit 1。
+trace 为 browser `client.ts` value-import `guard-observations`，继而到
+`trajectory-result-validation`、Core IDs 与 browser 不支持的 Node
+`crypto`。实际 `client-import-boundary.test.ts` 的 RED checkpoint
+`41dab6e919cb224c943c8d47f0270359c648fff4` 为 1 failed、exit 1。最小修复抽出
+pure `guard-observation-contracts` schema/type；server 原
+`guard-observations` 保持 re-export，client 改用 pure import，不改 DTO、replay
+body、Core 或 Webpack。修复后同一测试 1 PASS、exit 0，且独立复跑 1 PASS、exit
+0；schema/types 与 replay body 机械字面相同，四文件 lint exit 0。GREEN fix
+commit `8954226836b53bb59074efe89324e6bf0e8e4add` 仅含 3 个生产路径
+（`+15/-10`）。Root 在 exact `895422` clean checkout 执行
+`npm.cmd run build -- --webpack`（session 56471）exit 0：compile 25.7 秒、TS
+43 秒、111/111 pages 用时 4.2 秒。精确功能 SHA 以
+`npm.cmd run start` 在 `127.0.0.1:52340` 启动（session 56679），253ms Ready。
+HTTP smoke：`/` 200 `s-maxage`；`/app/start?model_draft=current`
+与 invalid model-draft 路径均 200 `no-store`；
+`/app/simulation/result?run_id=60000000-0000-4000-8000-000000000001` 200
+`s-maxage`。`GET /api/sandbox/model-draft?prepare_version=v3` 为 500
+`no-store`，原因是环境未配置 Supabase；这是 fail-closed 配置行为，不是
+Auth 或 DB 验收。Git worker 对 current dev ref 非强制 push exact `895422`，
+exit 0；live origin=HEAD=upstream=`895422`，divergence 0/0，index 空。未推至
+main、无 PR、未部署。功能代码已交付开发分支，但不等同上线、真实账户验收或
+阶段 PASS。随后 docs-only commit 不改变已 build 的 feature source，不另做
+功能 build。`436feec` 的首次构建失败仍保留为历史；不可将它与修复后结果混为一谈。迁移
+`20261015164144_observable_world_guards_v3.sql` 已存在于源码，但数据库当前
+不可用，未执行数据库 compile/migration/pgTAP。当前没有本批完整
+suite/coverage、advisors/Auth/RLS、真实账户或 Stage PASS；409 no-eligible
+仅指某条路径三个样本的选中 Core Event 总数均为
+零；已产生 Event 后的合法提前结束仍可保存，不作为该错误条件。
+本记录为文档状态，不构成自我审查或独立验收结论。
+
+TDD checkpoint 与剩余 gate 见[World guard v3 TDD 记录](testing/world-guards.tdd.md)。
 
 ## 尚未验证的交付门槛
 

@@ -1600,3 +1600,97 @@ Reconciliation never modifies a prior draft, Run, World, Event, Claim, or
 Report. This candidate follows the current user-directed persistent personal
 digital-life sandbox direction; it does not make Career the product's final
 domain or alter the frozen V2 Core.
+
+### World guard rules v3 candidate (2026-10-19)
+
+V3 extends the existing typed digital-life rule, model, draft, and formal-run
+contracts: `digital-life-rules-v3`, `digital-life-model-v3`, and
+`digital-life-model-draft-v3`. V1 and v2 rule/model/draft records remain
+readable and retain their existing behavior. V3 actions may carry one optional
+strict `guard` alongside the existing schedule trigger (`at_tick` or
+`after_rule`) and typed operation. This is schedule AND one guard; it is not a
+list of guards and does not replace the existing trigger.
+
+Supported guard shapes are:
+
+- `resource_balance` selects a declared `resource-N`, operator `lte` or
+  `gte`, and a finite non-negative threshold within the frozen resource
+  minimum and maximum.
+- `environment_equals` selects a declared `pressure-N` or
+  `external-variable-N` and a safe value equal to its frozen initial enum value
+  or a value explicitly produced by a same-path rule. No new Reality fact or
+  undeclared variable is accepted.
+
+A guarded rule is limited to the self actor of its own path: `main` binds to
+the frozen `user_core`; a strategy path binds to that exact `user_variant`.
+An NPC/group actor, another path's self, or a variant without its own declared
+strategy is not a valid guarded path. Each strategy still requires an action
+on that same path. Existing horizon action limits remain in force.
+
+The shared runtime and replay candidate producer uses this precedence:
+explicit user-authored rules, then declared per-tick resource rates, then the
+separately authorized default planner. The accepted V2 World/Core approval,
+selection, and transition code remains the mutation authority. A guard never
+changes Reality, Graph weights, RNG identity, or a third party's presumed
+intent. For v3, the trajectory policy is `digital-life-adapter-v3`; the
+existing Run bundle schema/runtime and reservation writer remain
+`formal-run-bundle-m1-v1`, `formal-account-sandbox-m1-v1`, and
+`formal-run-reservation-v1`. The migration adds no v3-only raw bundle keys.
+The prepared model source remains `digital-life-model-draft-source-v2` with
+`signature_v2`; only the explicit prepared protocol and saved
+draft/rules/model versions advance.
+
+The derived safe observation projection is `digital-life-guard-observations-v1`.
+It is replayed from the existing frozen Run bundle and Core steps; it adds no
+persisted raw trace or Run-bundle key. It has three independent samples, each
+with its own executed ticks and observations.
+Each observation includes its rule key, safe label/unit/description,
+`schedule` (`due`, `not_due`, `already_selected`, or `not_reached`),
+nullable guard result, candidate result (`selected`, `not_selected`,
+`ineligible`, or null), safe before/after values, and an optional step key.
+`stepKey` is present only when the matching actual Core Event is selected.
+An unreachable tick has null time and state values; there is no synthetic
+“waiting” state or inferred future transition.
+
+The no-eligible response uses `formal-path-diagnostics-v1` with
+`status:"not_saved"`. A path is `no_actions` only when all three sample
+trajectories have zero selected Events; its diagnostics include per-sample
+terminal/tick/event counts and that path's guard observations. An early
+termination after one or more selected Events does not itself make that
+sample/path ineligible. If any whole path is `no_actions`, the diagnostic is a
+safe temporary explanation only; events observed on another path do not
+become a partial Run, Simulation, Claim, or Report.
+
+An exact v3 no-eligible submission is verified and recorded as an idempotent
+terminal receipt on the existing queued reservation, with request and attempt
+hashes plus the safe diagnostics. Replay of the same owner/key/body returns
+that receipt before mutable source or expiry checks. The reservation is marked
+terminal with no Simulation id; changed request content must use a new key.
+The UI requires a new explicit confirmation after edits and clears independent
+planning, relationship-response, and outcome-correction permissions after a
+known no-eligible result. Unknown transport results keep the original full
+request body/key locked for replay.
+
+The shared initial-World builder and pure `correction-contracts` schema
+extraction are complete; the extracted schema is literally equivalent to the
+old schema. The producer reported a 19/19 GREEN review-target run, including
+the prior controller-rebinding RED and ten initial-World structure/source
+tamper cases, plus complete source-boundary and planner-v1 Event-envelope
+implementation with sourcechecks 13/13 GREEN. Independent readonly review
+found no unresolved targeted P1/P2; the independent two-file review/runtime
+command passed 30/30, exit 0, in 60.11 seconds. The separate SQL-source command
+passed 2 files / 22 tests, exit 0. Root's UI command passed 2 files / 7 tests,
+exit 0, in 20.80 seconds (session 63034). Producer SQL-test ESLint exited 0;
+Root reports final TypeScript and seven-file scoped ESLint exits 0. Test freeze
+is complete. These results make the functional/source candidate READY, not a
+phase PASS.
+
+The SQL specimen is reconstructed through the actual TypeScript helper and
+deep-equality checked. The pgTAP source fixture has been rebuilt from frozen
+source; its eight negative classes and gate-off zero-row checks are source
+checks only. No PostgreSQL/pgTAP execution is claimed. An earlier pre-fix
+seven-file runtime run had 63 PASS and one JSON-compatibility failure; that
+failure later passed a targeted check, but the entire seven-file runtime set
+has no final all-green result. Database compile/migration/pgTAP, Auth, RLS,
+owner isolation, transactional receipt behavior, full-suite/coverage,
+real-account acceptance, and phase-level acceptance remain unverified.

@@ -667,7 +667,10 @@ rather than an overview projection.
 ### Explicit digital-life rules and readonly model context
 
 `POST /api/sandbox/runs` accepts an optional strict `digital_life_rules` value
-(`digital-life-rules-v1` or `digital-life-rules-v2`) beside its existing fields.
+(`digital-life-rules-v1`, `digital-life-rules-v2`, or `digital-life-rules-v3`)
+beside its existing fields. V3 alone permits one optional strict world guard on
+an action; its source and observation boundary is described in the
+[World guard v3 contract](DATA_CONTRACTS.md#world-guard-rules-v3-candidate-2026-10-19).
 The v2 environment-condition operation is specified in the
 [environment-condition data contract](DATA_CONTRACTS.md#environment-condition-rules-v2-candidate-2026-10-15).
 It must bind the requested
@@ -936,3 +939,60 @@ all query parameters. The reconciliation read adds no write, migration, table,
 source version, or Run permission. Invalid or duplicate query parameters return
 422; authentication and persistence failures retain the existing 401/500
 envelope.
+
+### World guard v3 draft and Run diagnostics candidate (2026-10-19)
+
+`GET /api/sandbox/model-draft?prepare_version=v3` accepts exactly that one
+query parameter and requires the authenticated, non-anonymous owner. It returns
+the ordinary saved-draft projection, the separate read-only
+`preparedSourceContext`, and this strict `preparedProtocol`:
+`{version:"digital-life-model-draft-protocol-v3",draftVersion:"digital-life-model-draft-v3",rulesVersion:"digital-life-rules-v3"}`.
+Preparation writes nothing and does not upgrade a saved v1 or v2 draft. A v3
+save is a separate append through the existing POST body shape, with
+`version:"digital-life-model-draft-v3"` and v3 rules. Its source remains the
+existing `digital-life-model-draft-source-v2` context and `signature_v2`
+binding; no third source-signature protocol is introduced. POST accepts no
+query parameters, requires every draft action and strategy to remain
+unconfirmed, and keeps receipt-first replay, owner-global revision, strict
+source checks, and same-key/different-body conflict behavior. Existing v1/v2
+saved drafts and their replay contracts remain unchanged.
+
+Run POST keeps the existing typed request envelope and accepts v3 only as
+`digital_life_rules`. Guards are part of each action rule; they do not add a
+new request or top-level bundle field. Run preparation and execution continue
+to bind the locked Graph, Agent snapshot, and exact Reality Profile revision.
+For v3, HTTP 409 with `error_code:"no_eligible_actions"` and the strict safe
+`pathDiagnostics` projection applies only when an entire path has zero
+selected Core Events across all three samples. A sample or path that has at
+least one selected Event may legally end before later ticks; those
+`not_reached` ticks do not by themselves make the Run ineligible. The 409
+diagnostic has status `not_saved`: no Simulation, Run result, Claim, or Report
+is created from that attempt.
+
+The diagnostic is split by path, sample, and executed tick. A selected
+candidate may carry a textual step reference only when the Core selected its
+corresponding proposal and produced that actual Event; this is display text,
+not a clickable link. Temporary diagnostics do not expose a formal step link.
+`not_selected` means an offered
+candidate lost Core selection. `not_reached` means the simulation did not
+execute that tick; it carries no made-up state value, selection, or promise of
+later waiting. A due but unsatisfied guard or otherwise ineligible operation
+does not appear as a selected Event. The exact safe fields and enums are in the
+[World guard data contract](DATA_CONTRACTS.md#world-guard-rules-v3-candidate-2026-10-19).
+
+For an unknown Run response, the client retains the exact original body and
+idempotency key, locks edits and source refresh, and only replays that request.
+The v3 no-eligible RPC stores a validated terminal receipt on the existing
+reservation and returns the same diagnostics for an exact-key replay before
+checking mutable sources or expiry. This terminal receipt is not a saved Run.
+After a known no-eligible response the UI unlocks editing, clears rule and
+separate planning/relationship/outcome confirmations, and requires fresh
+confirmation and a new key for a changed attempt. Reusing an old key with
+changed content conflicts. The forward migration is authored source; database
+execution and owner/RLS acceptance remain unverified.
+
+Focused functional/source verification is recorded in the
+[World guard v3 TDD log](testing/world-guards.tdd.md): independent review/runtime
+30/30, SQL-source 22/22, and UI 7/7 pass. This is functional/source-candidate
+readiness only; it does not assert PostgreSQL/pgTAP, Auth/RLS, full-suite, or
+phase acceptance.
