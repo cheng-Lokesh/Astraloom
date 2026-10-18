@@ -12,6 +12,7 @@ import { FrozenDefaultPlanningResult } from "./frozen-default-planning";
 import { FrozenEnvironmentConditions } from "./frozen-environment-conditions";
 import { FrozenWorldGuards } from "./frozen-world-guards";
 import { OutcomeObservations } from "@/components/formal-sandbox/outcome-observations";
+import { LifeTimeline } from "./life-timeline";
 
 type Rating = "useful" | "mixed" | "off";
 export type FeedbackState = { rating: Rating | null; comment: string; message: string; saved: boolean };
@@ -222,6 +223,7 @@ export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseCl
       <h1>A conditional map, backed by frozen inputs and simulated steps.</h1>
       <p>User-provided facts, explicit assumptions, unknowns, sandbox simulation, and conditional conclusions remain separate.</p>
     </header>
+    <LifeTimeline projection={projection} />
     <FrozenRealityProfileCard profile={projection.realityProfile} />
     <DigitalLifeModelCard model={projection.digitalLifeModel} />
     <FrozenSymbolicResult lens={projection.symbolicLens} planningHypothesisActive={projection.defaultPlanning?.frozenHypothesis?.status === "active"} />
@@ -333,7 +335,7 @@ export function ResultWorkbench({ projection, runId }: { projection: FormalSandb
     onTargetRatingChange={(rating) => dispatchTargetFeedback({ type: "rating_changed", rating })}
     onTargetCommentChange={(comment) => dispatchTargetFeedback({ type: "comment_changed", comment })}
     onSaveTargetFeedback={() => void saveTargetFeedback()}
-  /><div className="mx-auto my-6 max-w-6xl"><Link href={`/app/start?revise_run=${encodeURIComponent(runId)}`} className="inline-flex min-h-11 items-center underline underline-offset-4">修订这些假设并另跑</Link><p className="mt-2 max-w-prose text-sm">从本次冻结规则开始，重新确认后另开运行。历史结果与证据保留。</p></div><OutcomeObservations key={runId} runId={runId} /></>;
+  /><div className="mx-auto my-6 max-w-6xl"><Link href={`/app/start?revise_run=${encodeURIComponent(runId)}`} className="inline-flex min-h-11 items-center underline underline-offset-4">修订这些假设并另跑</Link><p className="mt-2 max-w-prose text-sm">从本次冻结规则开始，重新确认后另开运行。历史结果与证据保留。</p></div><div id="run-outcome-observations" className="scroll-mt-6"><OutcomeObservations key={runId} runId={runId} /></div></>;
 }
 
 export function ResultLoading() { return <section className="mx-auto max-w-4xl py-12"><p role="status">Reading saved evidence</p></section>; }

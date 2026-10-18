@@ -13,6 +13,8 @@ import { frozenDefaultPlanningEnvelopeSchema } from "@/lib/formal-planning/contr
 import { planningProposalTraceSchema } from "@/lib/formal-planning/proposals";
 import { projectDefaultPlanning, safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
 import type { WorldStateV2 } from "@/lib/v2/agent-world/types";
+import { safeSimulationTimelineSchema } from "./timeline-contracts";
+import { projectFormalSandboxTimeline, validateRecordedTimelineAnalysis } from "./timeline-projection.server";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 
@@ -75,7 +77,7 @@ const pathBundleSchema = z.object({
 const strategyBundleSchema = pathBundleSchema.extend({
   runtimePath: z.array(reference).length(7), causalFingerprint: z.string().regex(/^[a-f0-9]{24}$/),
   symbolicLensSnapshot: runSymbolicLensSchema,
-  trajectoryAnalysis: z.record(z.string(), z.unknown()),
+  trajectoryAnalysis: z.record(z.string(), z.unknown()).optional(),
   forecastLockReference: z.object({ streamId: reference, version: z.number().int().positive() }).strict(),
   forecastPersistenceHistory: z.array(z.record(z.string(), z.unknown())).length(1).optional(),
   frozenRealityCriteria:z.record(z.string(),z.unknown()).optional(),
@@ -128,6 +130,7 @@ const baseSafeResultProjectionSchema = z.object({
   }).strict()).max(500),
   environmentConditions: z.array(safeEnvironmentConditionSchema).max(1).optional(),
   guardObservations: guardObservationsSchema.optional(),
+  timeline: safeSimulationTimelineSchema.optional(),
   steps: z.array(z.object({ key: z.string().regex(/^step-[1-9]\d*$/), order: z.number().int().positive(), label: safeText, kind: z.literal("sandbox_simulation"), boundary: z.literal("simulation_step"), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
   claims: z.array(z.object({ key: z.string().regex(/^claim-[1-9]\d*$/), statement: safeText, uncertainty: safeText, boundary: z.literal("conditional_claim"), stepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), supportingStepKeys: z.array(z.string().regex(/^step-[1-9]\d*$/)).min(1), participantKeys: z.array(z.string().regex(/^person-[1-9]\d*$/)), relationshipKeys: z.array(z.string().regex(/^relation-[1-9]\d*$/)) }).strict()),
 }).strict();
@@ -551,5 +554,22 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
       return { key: ordinal("claim", index), statement: claim.statement, uncertainty: claim.uncertaintyStatement, boundary: "conditional_claim" as const, stepKeys, supportingStepKeys: stepKeys, participantKeys: [...new Set([...links.flatMap((item) => item.participantKeys), ...evidenceLinks.flatMap((item) => item.participantKeys)])], relationshipKeys: [...new Set([...links.flatMap((item) => item.relationshipKeys), ...evidenceLinks.map((item) => item.relationshipKey)])] };
     }),
   };
+  if (Object.hasOwn(bundle, "trajectoryAnalysis")) {
+    if (!validateRecordedTimelineAnalysis(bundle)) return null;
+    if (frozenModel) {
+      const timeline = projectFormalSandboxTimeline(bundle, {
+        eventKeys: eventKeyById, eventLinks,
+        claimKeys: new Map(bundle.events.map(event => [event.id, bundle.claims.flatMap((claim, index) => claim.simulationEventIds.includes(event.id) ? [ordinal("claim", index)] : [])])),
+        factKeys: new Map(visibleEvidenceItems.map((item, index) => [item.id, ordinal("fact", index)])),
+        assumptionKeys: new Map(visibleRunAssumptions.flatMap((item, index) => typeof item.id === "string" ? [[item.id, ordinal("assumption", index)] as const] : [])),
+        relationLabels: new Map([...mappedWorldRelations.entries()].flatMap(([id, relation]) => {
+          const label = projection.relationships.find(item => item.key === relation.relationshipKey)?.label;
+          return label ? [[id, label] as const] : [];
+        })),
+      });
+      if (!timeline) return null;
+      return safeResultProjectionSchema.safeParse({ ...projection, timeline }).data ?? null;
+    }
+  }
   return safeResultProjectionSchema.safeParse(projection).data ?? null;
 }
