@@ -3,7 +3,7 @@ import { formalOutcomeProjectionSchema,formalCalibrationContextSchema,type Forma
 import type { DigitalLifeRules } from "@/lib/digital-life/model";
 import { safeDigitalLifeModelSchema } from "@/lib/digital-life/projection";
 import { safeEnvironmentConditionSchema } from "@/lib/digital-life/environment-contracts";
-import { guardObservationsSchema, pathDiagnosticsSchema, type PathDiagnostics } from "@/lib/digital-life/guard-observations";
+import { guardObservationsSchema, pathDiagnosticsSchema, type PathDiagnostics } from "@/lib/digital-life/guard-observation-contracts";
 import { safeRunSymbolicLensSchema } from "./symbolic-lens";
 import { defaultPlanningContextSchema, type DefaultPlanningRequest } from "@/lib/formal-planning/contracts";
 import { safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
