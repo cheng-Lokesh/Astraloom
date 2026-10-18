@@ -234,3 +234,55 @@ TDD checkpoint 与剩余 gate 见[World guard v3 TDD 记录](testing/world-guard
 真实账户端到端链、数据库/RLS 与匿名隔离、跨设备恢复、长期反馈校准、完整 Destiny 作用模型、NPC 长期记忆和 Fork、统计回测、导出/删除、运营/支付、封闭 Beta、Launch 及最终独立总验收均未由本账本确认。局部源码、单元测试、合成视口、静态检查或历史构建成功不替代这些门槛。
 
 目前无需用户执行命令行或数据库操作。
+
+## Track A life timeline candidate (2026-10-19)
+
+The timeline projection and UI are now present in feature GREEN commit
+`d04f15e088500bb22f089e85f89404ec13277a1e` (8 paths, +508/-12), pushed to
+the development branch. Historical RED checkpoints remain evidence of earlier
+failures, not current status: backend checkpoint
+`fcfdf07fcfa72b95ac8d7b42866df7333c551e03` had 9 failed / 1 passed, and the
+UI RED at `032ec859dca65be56450fa7c55e497feed548c42` was one SSR assertion
+failure for the missing timeline. The exact UI invocation was not recorded.
+
+Producer evidence: the earlier three-file focused run had 63 PASS, exit 0, in
+38.72 seconds, before optional `ruleKeys` were added; it is not a final rerun
+of the expanded matrix. The rule-key case first had 1 failed / 20 skipped,
+then 1 PASS / 20 skipped, exit 0, in 7.62 seconds. Final TypeScript check
+session 61073 and owned five-file ESLint both exited 0. The final UI run was
+3/3 PASS, exit 0, 7.89 seconds (job 78053), exercising runtime projection,
+JSON, typed client, and React through mock HTTP. Independent review passed two
+filtered subsets: 10 PASS / 12 filtered backend/boundary cases and 2 PASS /
+22 filtered timeline/UI cases. These are 12 selected checks, not full-matrix
+or full-suite evidence; no unresolved targeted P1/P2 was reported.
+
+The exact `d04` clean isolated build passed:
+`npm.cmd run build -- --webpack`, session 10835, exit 0 (compile 17.5s,
+TypeScript 25.9s, 111 pages in 3.7s). The resulting Next server started on
+`127.0.0.1:52340` (session 71254, Ready in 224ms). HTTP checks returned 200
+with `s-maxage` for `/` and the Result page. `/app/start?model_draft=current`
+and `/app/archive` each returned 200 `no-store`.
+The read-only Result API returned 500
+`no-store` because Supabase configuration was absent; this confirms only
+fail-closed behavior, not Auth or database access.
+
+Final Playwright production-page QA passed 1/1, exit 0, in 6.30s using the
+actual production Next page, four production CSS files, and a mock read-only
+Result API. At 375px and 1280px there was no horizontal overflow; the path and
+sample controls reset details correctly and the rule explanation rendered.
+The check observed a 44px select control, zero writes, zero browser errors, and
+zero cookies. Screenshots are
+[`production-css-mobile.png`](../output/playwright/life-timeline/production-css-mobile.png)
+and
+[`production-css-desktop.png`](../output/playwright/life-timeline/production-css-desktop.png).
+The earlier synthetic CSS/globals inspection that found no production asset
+is retained as historical context and is superseded by this production-CSS
+check; this remains mock-page UI evidence, not real-account acceptance.
+
+Git worker confirmed a normal push of exact `d04` exited 0; live
+`origin=HEAD=upstream=d04f15e088500bb22f089e85f89404ec13277a1e`, divergence
+0/0, and the index is empty. This is the development branch only: no main
+branch update, PR, or deployment is claimed. No database, full-suite/coverage,
+Auth/RLS, real-account, or stage-level PASS is claimed. See the
+[life timeline TDD record](testing/life-timeline.tdd.md) for checkpoint and
+evidence detail.

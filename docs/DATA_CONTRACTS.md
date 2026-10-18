@@ -1694,3 +1694,42 @@ failure later passed a targeted check, but the entire seven-file runtime set
 has no final all-green result. Database compile/migration/pgTAP, Auth, RLS,
 owner isolation, transactional receipt behavior, full-suite/coverage,
 real-account acceptance, and phase-level acceptance remain unverified.
+
+### Track A life timeline result projection candidate (2026-10-19)
+
+The browser-safe `timeline-contracts.ts` defines the optional
+`formal-simulation-timeline-v1` projection. It can appear on the main
+digital-life projection and on each strategy projection. It is a derived safe
+projection from the existing frozen Run bundle's
+`trajectoryAnalysis.trajectories[].steps`, actual World Events, and current
+safe projection maps; it is not stored as a new raw trace or bundle field.
+There are exactly three repeated simulation samples. A 30-day horizon has
+three timeline ticks per sample and a 90-day horizon has six. Timeline
+`tickIndex` and `occurredAt` come from the trajectory steps and actual
+recorded events, not from a flattened `bundle.events` list whose tick index is
+an event ordinal. No dates, waits, or future states are invented.
+
+Each sample is `completed` or `no_actions`; each tick is `event`, `no_actions`,
+or `not_reached`, with a consistent nullable Event reference. `not_reached`
+has no time or state value and does not mean “waiting.” The typed action kinds
+are `commitment`, `resource`, `relationship_response`, `environment`, and
+`information_request`; change kinds are `resource`, `relationship`,
+`environment`, `commitment`, and `information_request`. Safe labels and
+before/after values describe only recorded changes. A sample is not an
+independent policy or a real-world probability.
+
+`priorStepKeys` may reference only actual earlier Events from the same World,
+sample, path, and trajectory; cross-path/sample and future references are
+invalid. `ruleKeys` are projected from recorded `causalAssumptionIds` through
+the assumption ledger to the current path's active rules. The UI labels these
+as hypotheses and may show only safe `evidenceSummary` and guard descriptions.
+Unresolved causal links remain unrecorded; the projection does not invent
+claims, probabilities, or rule associations and does not alter the global
+assumption filter.
+
+Compatibility is intentional: absent `trajectoryAnalysis` preserves legacy
+steps with no timeline. A valid old analysis without a typed digital-life
+model preserves the old steps only; the system does not rerun or backfill
+history. A present but malformed/inconsistent analysis rejects the result
+projection instead of falling back. This feature changes no SQL, raw bundle
+keys, or V2 Core behavior.

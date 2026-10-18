@@ -996,3 +996,18 @@ Focused functional/source verification is recorded in the
 30/30, SQL-source 22/22, and UI 7/7 pass. This is functional/source-candidate
 readiness only; it does not assert PostgreSQL/pgTAP, Auth/RLS, full-suite, or
 phase acceptance.
+
+### Track A life timeline result projection candidate (2026-10-19)
+
+The existing read-only `GET /api/sandbox/runs/[runId]/result` projection may
+include an optional safe `timeline` for the main path and each strategy path.
+The server derives it from the existing frozen Run bundle and recorded Core
+steps/events; this adds no route, request field, write operation, persisted raw
+trace, or bundle/runtime/writer version. Contract details and compatibility
+rules are in the [life timeline data contract](DATA_CONTRACTS.md#track-a-life-timeline-result-projection-candidate-2026-10-19).
+
+Legacy results without `trajectoryAnalysis` retain their existing steps and
+have no timeline. A valid old analysis without a typed digital-life model also
+keeps only its existing steps: it is not rerun or backfilled. If
+`trajectoryAnalysis` is present but malformed or inconsistent, projection
+rejects it rather than silently falling back to a partial timeline.

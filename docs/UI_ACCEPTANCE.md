@@ -726,3 +726,23 @@ run had one JSON-compatibility failure after 63 passes; it later passed a
 targeted check, but the full seven-file runtime set is not thereby confirmed
 green. Synthetic UI and source tests cannot stand in for migration execution,
 authenticated account behavior, or database/RLS acceptance.
+
+#### Track A life timeline candidate (2026-10-19)
+
+The Result timeline is a safe rendering of the existing persisted simulation
+projection, not a newly generated forecast. It presents the main and strategy
+paths separately, with three repeated samples and the actual three or six
+executed horizon ticks. Displayed time comes from recorded simulation steps;
+`event`, `no_actions`, and `not_reached` remain distinct. `not_reached` has no
+fabricated time/state and must not be described as waiting. Timeline samples
+are not probability estimates.
+
+Changing path or sample resets the associated detail selection. Causal
+predecessors may point only to earlier Event steps in the same path/sample.
+The UI may label a supported rule as a hypothesis and show its safe evidence
+summary and guard description; it must not invent claims, probabilities, or
+cross-path evidence. Conditional strategy results and feedback remain scoped
+to that strategy. The main path may direct the user to the existing Outcome
+Observations anchor, but must not prefill or write feedback. Legacy results
+without a timeline continue to show their existing steps without rerunning or
+backfilling historical simulation data.
