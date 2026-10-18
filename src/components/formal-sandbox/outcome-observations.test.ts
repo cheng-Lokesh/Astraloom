@@ -7,6 +7,18 @@ const target = { key: "target-1", label: "本人主路径的资源投入条件",
 const projection = { lockStatus: "available" as const, assessedAt: "2026-10-06T00:00:00Z", targets: [target], history: [], calibration: { status: "insufficient_data" as const, sampleCount: 0, minimumSampleSize: 5 as const } };
 const handlers = { onTargetChange: () => {}, onDraftChange: () => {}, onSave: () => {}, onRetry: () => {}, onRecover: () => {} };
 describe("personal outcome capture", () => {
+  it.each([{ requestA: true, requestB: false, available: true }, { requestA: false, requestB: true, available: false }])("binds response A correction to its exact frozen request A when A=$requestA and B=$requestB", ({ requestA, requestB, available }) => {
+    const condition = target.conditions[0];
+    const chain = { ...target, status: "not_observable" as const, criteriaVersion: "formal-reality-criteria-v2" as const, conditions: [
+      { ...condition, key: "condition-1", label: "本人询问甲", kind: "request_information" as const, expectedValue: true, ruleKey: null, correctable: false, sequence: 1 },
+      { ...condition, key: "condition-2", label: "本人询问乙", kind: "request_information" as const, expectedValue: true, ruleKey: null, correctable: false, sequence: 2 },
+      { ...condition, key: "condition-3", label: "甲对此次询问的可见回应", kind: "update_relation_signal" as const, expectedValue: "positive" as const, ruleKey: "rule-3", sequence: 3 },
+      ...([ ["condition-4", "actor_scope", 1], ["condition-5", "relationship_scope", 1], ["condition-6", "relationship_scope", 3], ["condition-7", "response_source", 3], ["condition-8", "actor_scope", 2], ["condition-9", "relationship_scope", 2] ] as const).map(([key, measurement, sequence]) => ({ ...condition, key, label: `本人确认范围 ${key.slice(-1)}`, kind: "scope_confirmation" as const, expectedValue: true, ruleKey: null, correctable: false, requiresTime: false, measurement, sequence })),
+    ], correctionRequirements: [{ ruleKey: "rule-3", conditionKey: "condition-3", requiredTrueConditionKeys: ["condition-4", "condition-5", "condition-6", "condition-7"], requestConditionKey: "condition-1" }] };
+    const draft = { ...initialOutcomeDraft, values: { "condition-1": requestA, "condition-2": requestB, "condition-3": "negative" as const, "condition-4": true, "condition-5": true, "condition-6": true, "condition-7": true, "condition-8": true, "condition-9": true }, conditionTimes: { "condition-1": "2026-10-02T08:00", "condition-2": "2026-10-02T09:00", "condition-3": "2026-10-02T10:00" } };
+    const html = renderToStaticMarkup(createElement(OutcomeObservationsView, { projection: { ...projection, targets: [chain] }, draft, targetKey: "target-1", phase: "ready", ...handlers }));
+    expect(html.includes('<option value="rule-3">')).toBe(available);
+  });
   it("shows complete conditions, an unchecked confirmation and an honest small-sample boundary", () => {
     const html = renderToStaticMarkup(createElement(OutcomeObservationsView, { projection, draft: initialOutcomeDraft, targetKey: "target-1", phase: "ready", ...handlers }));
     expect(html).toContain("本人投入的时间");
