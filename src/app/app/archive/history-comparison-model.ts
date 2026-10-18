@@ -1,6 +1,7 @@
 import type { FormalSandboxResultProjection as Projection } from "@/lib/formal-sandbox/client";
+import { safeUsedCorrectionsSchema } from "@/lib/formal-sandbox/outcomes/used-corrections-contracts";
 
-export type ComparisonEntry = { title: string; lines: string[] };
+export type ComparisonEntry = { title: string; lines: string[]; sourceHref?: string };
 export type ComparisonSide = { recorded: boolean; entries: ComparisonEntry[]; note: string };
 export type ComparisonStatus = "same" | "different" | "order_only" | "not_recorded";
 export type ComparisonCategory = { id: string; label: string; status: ComparisonStatus; left: ComparisonSide; right: ComparisonSide; boundary: string };
@@ -85,7 +86,15 @@ function symbolic(p: Projection): ComparisonSide {
 }
 function allSections(p: Projection) {
   const strategies = (p.strategyPaths ?? []).map(path => entry(path.label, "独立策略世界；不与其他策略合并", "完整冻结条件；本策略实际执行依下方模拟步骤。这里未按策略序号推断专属规则。", ...frozenSections(path.projection).flatMap(section => [section.label, ...(section.value.recorded ? section.value.entries.flatMap(item => [item.title, ...item.lines]) : [section.value.note])]), ...(path.projection.digitalLifeModel?.limitations ?? [])));
-  return [...frozenSections(p), { id: "strategies", label: "各自独立策略", value: side(p.strategyPaths !== undefined, strategies), boundary: "每个策略独立读取人物、条件、资源、关系、步骤与结论；相同结论序号不会跨策略查证据。" }, { id: "symbolic", label: "冻结象征五维与限制", value: symbolic(p), boundary: "五维仅供固定维度对照，始终非因果；未记录不会重新计算。" }];
+  return [...frozenSections(p), { id: "strategies", label: "各自独立策略", value: side(p.strategyPaths !== undefined, strategies), boundary: "每个策略独立读取人物、条件、资源、关系、步骤与结论；相同结论序号不会跨策略查证据。" }, { id: "symbolic", label: "冻结象征五维与限制", value: symbolic(p), boundary: "五维仅供固定维度对照，始终非因果；未记录不会重新计算。" }, { id: "used-corrections", label: "各自已采用的观察修正", value: usedCorrections(p), boundary: "只读各自开始时冻结的采用回执，不查询当前观察；差异不表示现实结果改善或概率变化。" }];
+}
+function usedCorrections(p: Projection): ComparisonSide {
+  const parsed = safeUsedCorrectionsSchema.safeParse(p.usedCorrections);
+  if (!parsed.success) return side(false, [], "此 Run 未记录可核对的采用回执；不从当前观察补写。");
+  const receipt = parsed.data;
+  if (receipt.status === "source_unavailable") return side(false, [], "本次选择的来源暂不可核对；不能视为未采用。");
+  if (receipt.status === "none_recorded") return side(true, [entry("未采用观察修正", "本 Run 冻结记录未采用修正")]);
+  return side(true, receipt.items.map(item => ({ ...entry(item.label, `原条件：${typeof item.previousValue === "number" ? item.previousValue : signal(item.previousValue)}；本次条件：${typeof item.nextValue === "number" ? item.nextValue : signal(item.nextValue)}`, `本人观察依据：${text(item.evidenceSummary)}`, `观察记录时间：${item.recordedAt}`, ...item.samples.map((sample, index) => `重复样本 ${index + 1}：${sample.status === "executed" ? sample.stepKeys.every(key => p.steps.some(step => step.key === key)) ? `已执行；${support(p, sample.stepKeys)}` : "执行依据未完整记录" : "未执行该条件行动"}`)), sourceHref: `/app/simulation/result?run_id=${encodeURIComponent(item.sourceRunId)}#run-outcome-observations` })));
 }
 /** Compares complete safe content collections, never cross-Run entity identifiers. */
 export function buildHistoryComparisonModel(left: Projection, right: Projection): ComparisonCategory[] {

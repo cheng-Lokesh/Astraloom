@@ -24,7 +24,7 @@ describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(exe
       await page.setContent('<html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div></body></html>');
       await page.addScriptTag({ content: bundle.output.find(item => item.type === "chunk")!.code! });
       await page.getByRole("heading", { name: "分类差异摘要", exact: true }).waitFor();
-      expect(await page.locator("details").count()).toBe(15);
+      expect(await page.locator("details").count()).toBe(16);
       const filter = page.getByRole("checkbox", { name: "仅查看差异与未记录项", exact: true });
       await filter.click();
       expect(await page.locator("details").count()).toBe(4);
@@ -36,7 +36,7 @@ describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(exe
       const text = await page.evaluate(() => document.body.textContent ?? "");
       expect(text).toContain("资源量：12 小时"); expect(text).toContain("资源量：9 小时");
       expect(text).not.toContain("resource-1");
-      await filter.click(); expect(await page.locator("details").count()).toBe(15);
+      await filter.click(); expect(await page.locator("details").count()).toBe(16);
     } finally { await page.close(); await browser.close(); }
   }, 30_000);
 });

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useId, useReducer, useRef, useState } from "react";
+import Link from "next/link";
 import { Button, SurfaceCard } from "@/components/ui-foundation";
 import { createFormalSandboxClient } from "@/lib/formal-sandbox/client";
 import type { FormalOutcomeInput, FormalOutcomeProjection, FormalOutcomeTarget } from "@/lib/formal-sandbox/outcomes/contracts";
+import { observationNeedsTime } from "@/lib/formal-sandbox/outcomes/observation-time";
 
 type Observed = FormalOutcomeInput["observed"];
 type Value = FormalOutcomeInput["observations"][number]["value"];
@@ -16,7 +18,7 @@ export function outcomeDraftReducer(state: OutcomeDraft, action: DraftAction): O
   if (action.type === "recover") return state;
   if (state.unknown) return state;
   if (action.type === "target") return initialOutcomeDraft;
-  if (action.type === "edit") return { ...state, [action.field]: action.value, ...(["observed", "values"].includes(action.field) ? { correctionRuleKey: "" } : {}), ...(["observed", "values", "conditionTimes", "correctionRuleKey"].includes(action.field) ? { correctionConfirmed: false } : {}) };
+  if (action.type === "edit") return { ...state, [action.field]: action.value, ...(["observed", "values", "conditionTimes"].includes(action.field) ? { correctionRuleKey: "" } : {}), ...(["observed", "values", "conditionTimes", "correctionRuleKey"].includes(action.field) ? { correctionConfirmed: false } : {}) };
   return state;
 }
 const control = "mt-2 block min-h-11 w-full rounded-md border border-white/20 bg-[var(--bg-base)] px-3 py-2 text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--evidence-gold)] disabled:opacity-60";
@@ -30,11 +32,20 @@ function validTime(target: FormalOutcomeTarget, value: string) {
   return Number.isFinite(date) && date >= Date.parse(target.observationWindow.startAt) && date <= Date.parse(target.observationWindow.horizonEnd) && date <= Date.now();
 }
 function correctionConditions(target: FormalOutcomeTarget, draft: OutcomeDraft) {
-  return target.correctionAllowed ? target.conditions.filter(condition => condition.correctable && condition.ruleKey && draft.values[condition.key] != null && draft.values[condition.key] !== condition.expectedValue && (condition.kind !== "allocate_resource" || typeof draft.values[condition.key] === "number" && Number(draft.values[condition.key]) > 0)) : [];
+  return target.correctionAllowed ? target.conditions.filter(condition => {
+    if (!condition.correctable || !condition.ruleKey || draft.values[condition.key] == null || draft.values[condition.key] === condition.expectedValue) return false;
+    if (condition.kind === "allocate_resource" && !(typeof draft.values[condition.key] === "number" && Number(draft.values[condition.key]) > 0)) return false;
+    if (target.criteriaVersion !== "formal-reality-criteria-v2") return true;
+    const requirement = target.correctionRequirements?.find(item => item.ruleKey === condition.ruleKey && item.conditionKey === condition.key);
+    if (!requirement || !requirement.requiredTrueConditionKeys.length || !requirement.requiredTrueConditionKeys.every(key => target.conditions.some(item => item.key === key && item.kind === "scope_confirmation") && draft.values[key] === true)) return false;
+    if (condition.kind === "allocate_resource") return requirement.requestConditionKey === null;
+    const request = target.conditions.find(item => item.key === requirement.requestConditionKey && item.kind === "request_information" && item.measurement === "operation");
+    return Boolean(request && draft.values[request.key] === true && validTime(target, draft.conditionTimes[request.key] ?? "") && validTime(target, draft.conditionTimes[condition.key] ?? "") && Date.parse(draft.conditionTimes[request.key]) <= Date.parse(draft.conditionTimes[condition.key]));
+  }) : [];
 }
 function validDraft(target: FormalOutcomeTarget | undefined, draft: OutcomeDraft) {
   if (!target || !draft.confirmed || !draft.evidenceSummary.trim()) return false;
-  if (target.canRecordTypedObservation && target.conditions.some(condition => draft.values[condition.key] != null && (typeof draft.values[condition.key] === "number" && (!Number.isFinite(draft.values[condition.key]) || condition.measurement === "event_count" && !Number.isInteger(draft.values[condition.key]) || Number(draft.values[condition.key]) < 0 || Number(draft.values[condition.key]) > 1_000_000) || condition.requiresTime && !validTime(target, draft.conditionTimes[condition.key] ?? "")))) return false;
+  if (target.canRecordTypedObservation && target.conditions.some(condition => draft.values[condition.key] != null && (typeof draft.values[condition.key] === "number" && (!Number.isFinite(draft.values[condition.key]) || condition.measurement === "event_count" && !Number.isInteger(draft.values[condition.key]) || Number(draft.values[condition.key]) < 0 || Number(draft.values[condition.key]) > 1_000_000) || observationNeedsTime(condition, draft.values[condition.key], target.criteriaVersion) && !validTime(target, draft.conditionTimes[condition.key] ?? "")))) return false;
   if (draft.correctionRuleKey && (!draft.correctionConfirmed || !correctionConditions(target, draft).some(condition => condition.ruleKey === draft.correctionRuleKey))) return false;
   if (target.status === "not_observable") return true;
   if (!draft.observed || (draft.observed === "did_not_occur" && !target.canRecordDidNotOccur)) return false;
@@ -48,13 +59,26 @@ function validDraft(target: FormalOutcomeTarget | undefined, draft: OutcomeDraft
   return true;
 }
 type Phase = "loading" | "error" | "ready" | "saving" | "unknown";
-export function OutcomeObservationsView({ projection, draft, targetKey, phase, message = "", onTargetChange, onDraftChange, onSave, onRetry, onRecover }: { projection: FormalOutcomeProjection | null; draft: OutcomeDraft; targetKey: string; phase: Phase; message?: string; onTargetChange: (key: string) => void; onDraftChange: (action: DraftAction) => void; onSave: () => void; onRetry: () => void; onRecover: () => void }) {
+export function OutcomeObservationsView({ projection, draft, targetKey, phase, message = "", nextRunHref, onTargetChange, onDraftChange, onSave, onRetry, onRecover }: { projection: FormalOutcomeProjection | null; draft: OutcomeDraft; targetKey: string; phase: Phase; message?: string; nextRunHref?: string; onTargetChange: (key: string) => void; onDraftChange: (action: DraftAction) => void; onSave: () => void; onRetry: () => void; onRecover: () => void }) {
   const id = useId();
   const target = projection?.targets.find(item => item.key === targetKey);
   const locked = phase === "saving" || draft.unknown;
+  const [navigation, setNavigation] = useState({ targetKey, index: 0, reviewing: false });
+  const groups = target?.review?.groups ?? [];
+  const index = navigation.targetKey === targetKey ? Math.min(navigation.index, Math.max(0, groups.length - 1)) : 0;
+  const reviewing = navigation.targetKey === targetKey && navigation.reviewing;
+  const navigate = (next: number, review = false) => { if (!locked) setNavigation({ targetKey, index: next, reviewing: review }); };
+  const progressive = groups.length > 0;
+  const known = target?.conditions.filter(condition => draft.values[condition.key] != null) ?? [];
+  const unknownCount = target?.conditions.filter(condition => draft.values[condition.key] === null).length ?? 0;
+  const pendingCount = (target?.conditions.length ?? 0) - known.length - unknownCount;
+  const differences = known.filter(condition => draft.values[condition.key] !== condition.expectedValue);
+  const assessedTime = Date.parse(projection?.assessedAt ?? "");
+  const horizonEnd = Date.parse(target?.observationWindow.horizonEnd ?? "");
+  const windowState = Number.isFinite(assessedTime) && Number.isFinite(horizonEnd) ? assessedTime < horizonEnd ? "open" : "closed" : "unknown";
   const edit = (field: keyof OutcomeDraft, value: OutcomeDraft[keyof OutcomeDraft]) => onDraftChange({ type: "edit", field, value });
   return <SurfaceCard className="mt-8 min-w-0 p-5">
-    <h2 className="text-xl font-semibold">回填本人观察的真实结果</h2>
+    <h2 className="text-xl font-semibold">现实复盘 · 本人观察</h2>
     <p className="mt-2 max-w-prose text-sm leading-6 text-[var(--text-secondary)]">这里记录你在现实中观察到的情况与不确定性。本人观察仍有局限；原模拟结果保留，新的观察只供后续运行参考。</p>
     {phase === "loading" ? <p role="status" className="mt-4 animate-pulse motion-reduce:animate-none">正在读取事前锁定条件与观察记录…</p> : null}
     {phase === "error" ? <p role="alert" className="mt-4">暂时无法读取观察条件。请重新读取，本次模拟结果仍可查看。</p> : null}
@@ -67,13 +91,16 @@ export function OutcomeObservationsView({ projection, draft, targetKey, phase, m
           {target.criteriaStatus === "available" ? <p className="text-sm leading-6">具体事实条件对照：以下条件来自本次运行前保存的现实观察标准。保存后会逐项对照本人记录，已知与未知分别保留；不表示整组模拟情景发生，对照结论仅适用于上述现实标准。</p> : <p className="text-sm leading-6">未记录事前现实条件，仅保留本人观察。不会用今天的条件补写过去的标准。</p>}
           {target.status === "not_observable" ? <p className="text-sm leading-6">不可评分：{target.reason ?? "此目标没有可核对的事前锁定条件"}。{target.canRecordTypedObservation ? "仅保留本人观察，不对整组条件评分。具体条件已知不表示整组情景已在现实发生。" : "仅保存观察说明，不补写事前预测。"}</p> : null}
           {target.canRecordTypedObservation ? <>
+            {progressive ? <section aria-label="逐项复盘进度" className="border-y border-white/15 py-4"><h3 className="font-semibold">{target.review?.title}</h3><p role="status" className="mt-2 text-sm">已填 {known.length} 项 · 未知 {unknownCount} 项 · 待观察 {pendingCount} 项</p><p className="mt-1 text-sm text-[var(--text-secondary)]">可以只记录已知部分。未填写的项目会以未知保存，不会从模拟结果补全。</p><div className="mt-3 flex flex-wrap gap-2">{groups.map((group, position) => <button key={group.key} type="button" disabled={locked} aria-pressed={!reviewing && index === position} onClick={() => navigate(position)} className="min-h-11 rounded-md border border-white/20 px-3 text-sm focus-visible:outline focus-visible:outline-2 disabled:opacity-60">{group.label}</button>)}</div></section> : null}
             <h3 className="font-semibold">{target.status === "observable" ? "完整条件列表" : "可记录的本人观察条件"}</h3>
             {target.status === "observable" ? <p className="text-sm leading-6">“已发生”表示这组条件全部吻合实际观察。至少一个条件不同且完整窗口结束后，才可选择“未发生”；尚未看清或窗口未结束时请选择“不确定”。</p> : null}
-            <div className="space-y-4">{target.conditions.map((condition, index) => <label key={condition.key} className="block text-sm leading-6">条件 {index + 1} · {condition.label}<span className="block text-[var(--text-secondary)]">事前现实条件：{outcomeValueLabel(condition.expectedValue)}</span>
+            <div className="space-y-4">{target.conditions.filter(condition => !progressive || !reviewing && groups[index]?.conditionKeys.includes(condition.key)).map((condition) => <label key={condition.key} className="block text-sm leading-6">条件 {target.conditions.indexOf(condition) + 1} · {condition.label}<span className="block text-[var(--text-secondary)]">事前现实条件：{outcomeValueLabel(condition.expectedValue)}</span>
               {condition.actorLabel || condition.resourceLabel ? <span className="block text-[var(--text-secondary)]">{condition.actorLabel ? `对应行动者：${condition.actorLabel}` : ""}{condition.resourceLabel ? ` · 对应资源：${condition.resourceLabel}` : ""} · 条件顺序 {condition.sequence}</span> : null}
               {typeof condition.expectedValue === "number" ? <><input type="number" min={0} max={1000000} step={condition.measurement === "event_count" ? 1 : "any"} aria-label={`实际观察 · ${condition.label}`} value={typeof draft.values[condition.key] === "number" ? String(draft.values[condition.key]) : ""} disabled={locked} className={control} onChange={event => edit("values", { ...draft.values, [condition.key]: event.target.value === "" ? null : Number(event.target.value) })} /><span className="block mt-1">不确定时可以留空，表示实际数量未知。</span></> : <select aria-label={`实际观察 · ${condition.label}`} value={draft.values[condition.key] === undefined ? "" : draft.values[condition.key] === null ? "unknown" : String(draft.values[condition.key])} disabled={locked} className={control} onChange={event => edit("values", { ...draft.values, [condition.key]: event.target.value === "unknown" || !event.target.value ? null : typeof condition.expectedValue === "boolean" ? event.target.value === "true" : event.target.value as Value })}><option value="">请选择实际观察</option><option value="unknown">未知</option>{(typeof condition.expectedValue === "boolean" ? [true, false] : condition.kind === "update_relation_signal" ? ["positive", "neutral", "negative"] : ["planned", "active", "fulfilled", "cancelled"]).map(value => <option key={String(value)} value={String(value)}>{outcomeValueLabel(value as Value)}</option>)}</select>}
-              {condition.requiresTime ? <span className="mt-2 block">条件发生时间 · {condition.label}<input aria-label={`条件发生时间 · ${condition.label}`} type="datetime-local" value={draft.conditionTimes[condition.key] ?? ""} disabled={locked || draft.values[condition.key] == null} onChange={event => edit("conditionTimes", { ...draft.conditionTimes, [condition.key]: event.target.value })} className={control} /><span className="mt-1 block">已知的实际观察需填写窗口内时间；未知项可以留空。</span></span> : null}
+              {observationNeedsTime(condition, draft.values[condition.key] ?? null, target.criteriaVersion) || condition.requiresTime && draft.values[condition.key] == null ? <span className="mt-2 block">条件发生时间 · {condition.label}<input aria-label={`条件发生时间 · ${condition.label}`} type="datetime-local" value={draft.conditionTimes[condition.key] ?? ""} disabled={locked || draft.values[condition.key] == null} onChange={event => edit("conditionTimes", { ...draft.conditionTimes, [condition.key]: event.target.value })} className={control} /><span className="mt-1 block">已知的实际观察需填写窗口内时间；未知项可以留空。</span></span> : null}
             </label>)}</div>
+            {progressive && !reviewing ? <div className="flex flex-wrap gap-3"><Button variant="ghostOnDark" disabled={locked || index === 0} onClick={() => navigate(index - 1)} className="!w-auto px-4 py-3">上一项</Button><Button variant="ghostOnDark" disabled={locked} onClick={() => index < groups.length - 1 ? navigate(index + 1) : navigate(index, true)} className="!w-auto px-4 py-3">{index < groups.length - 1 ? "下一项（可保留未知）" : "核对本次复盘"}</Button></div> : null}
+            {progressive && reviewing ? <section aria-label="核对本次复盘" className="border-y border-white/15 py-4"><h3 className="font-semibold">核对本次复盘</h3><p className="mt-2 text-sm">已知差异 {differences.length} 项 · 未知或待观察 {unknownCount + pendingCount} 项</p><p className="mt-2 text-sm">{windowState === "open" ? "观察窗口尚未结束，整体对照仍为未知。已知差异值得复核，但不能据此判断现实关系逆转或他人意图。" : windowState === "closed" ? "观察窗口已结束。以下仅核对具体观察条件，不证明整组模拟情景在现实发生。已知差异可复核，未知项仍保留。" : "暂时无法核对观察窗口是否结束；以下仅保留本人观察与未知，不判断整组模拟情景。"}</p><ul className="mt-3 divide-y divide-white/10">{target.conditions.map(condition => <li key={condition.key} className="py-3 text-sm leading-6"><strong>{condition.label}</strong><p>事前条件：{outcomeValueLabel(condition.expectedValue)} · 本人观察：{outcomeValueLabel(draft.values[condition.key] ?? null)}</p>{draft.values[condition.key] != null && observationNeedsTime(condition, draft.values[condition.key], target.criteriaVersion) ? <p>实际时间：{draft.conditionTimes[condition.key] || "待填写，可返回该项补充"}</p> : null}</li>)}</ul><Button variant="ghostOnDark" disabled={locked} onClick={() => navigate(index)} className="!w-auto px-4 py-3">返回逐项填写</Button></section> : null}
           </> : null}
           {target.status === "observable" ? <>
             <fieldset disabled={locked}><legend className="font-semibold">这组条件是否在现实中发生？</legend><div className="mt-2 flex flex-wrap gap-2">{(["occurred", "did_not_occur", "uncertain"] as const).map(value => <label key={value} className="flex min-h-11 items-center gap-2 px-2 focus-within:outline focus-within:outline-2"><input type="radio" name={`${id}-observed`} value={value} checked={draft.observed === value} disabled={value === "did_not_occur" && !target.canRecordDidNotOccur} onChange={() => edit("observed", value)} />{observations[value]}</label>)}</div></fieldset>
@@ -86,7 +113,7 @@ export function OutcomeObservationsView({ projection, draft, targetKey, phase, m
           {correctionConditions(target, draft).length ? <label className="block">供下一次运行参考的条件修正（可不选）<select disabled={locked} value={draft.correctionRuleKey} onChange={event => edit("correctionRuleKey", event.target.value)} className={control}><option value="">不建立修正</option>{correctionConditions(target, draft).map(item => <option key={item.key} value={item.ruleKey!}>{item.label} · 根据上述实际观察建立条件假设</option>)}</select><span className="mt-1 block text-sm">它是未来运行的条件假设，不表示整组预测已在现实发生。保存后仍需在下一次运行中单独选择并确认，不会自动应用。</span></label> : null}
           {draft.correctionRuleKey ? <label className="flex min-h-11 items-start gap-3 py-2 focus-within:outline focus-within:outline-2"><input type="checkbox" checked={draft.correctionConfirmed} disabled={locked} onChange={event => edit("correctionConfirmed", event.target.checked)} className="mt-1" /><span>我单独确认建立所选条件修正，仅供下一次运行参考</span></label> : null}
           <label className="flex min-h-11 items-start gap-3 py-2 focus-within:outline focus-within:outline-2"><input type="checkbox" checked={draft.confirmed} disabled={locked} onChange={event => edit("confirmed", event.target.checked)} className="mt-1" /><span>我确认以上是本人观察，仍可能有记录和理解上的局限</span></label>
-          <Button variant="onDark" disabled={locked || !validDraft(target, draft)} loading={phase === "saving"} loadingLabel="正在保存观察" onClick={onSave} className="!w-auto px-4 py-3">保存本人观察</Button>
+          <Button variant="onDark" disabled={locked || progressive && !reviewing || !validDraft(target, draft)} loading={phase === "saving"} loadingLabel="正在保存观察" onClick={onSave} className="!w-auto px-4 py-3">保存本人观察</Button>
         </div> : null}
       </>}
       <section className="mt-6 border-t border-white/15 pt-5"><h3 className="font-semibold">已保存的本人观察</h3><p className="mt-2 text-sm">每次记录独立保留；不会改写原条件结论或旧观察。</p>{projection.history.length ? <ol className="mt-3 space-y-4">{projection.history.map(item => {
@@ -104,17 +131,22 @@ export function OutcomeObservationsView({ projection, draft, targetKey, phase, m
       })}</ol> : <p className="mt-3 text-sm">还没有保存本人观察。你可以在情况明朗后回来补充。</p>}</section>
     </> : null}
     {message ? <p role={phase === "unknown" ? "alert" : "status"} className="mt-4 text-sm leading-6">{message}</p> : null}
+    {nextRunHref && !locked ? <div className="mt-4 border-t border-white/15 pt-4"><Link href={nextRunHref} className="inline-flex min-h-11 items-center underline underline-offset-4">准备下一次运行，核对并选择观察修正</Link><p className="mt-1 text-sm">下一页只准备新运行；还需选择修正、确认行动并明确开始。</p></div> : null}
     {draft.unknown ? <Button variant="ghostOnDark" disabled={phase === "saving"} onClick={onRecover} className="!w-auto mt-3 px-4 py-3">重试原观察保存</Button> : <Button variant="ghostOnDark" disabled={phase === "saving" || phase === "loading"} onClick={onRetry} className="!w-auto mt-4 px-4 py-3">重新读取观察记录</Button>}
   </SurfaceCard>;
 }
 
 export function OutcomeObservations({ runId }: { runId: string }) {
+  return <OutcomeObservationsForRun key={runId} runId={runId} />;
+}
+function OutcomeObservationsForRun({ runId }: { runId: string }) {
   const [projection, setProjection] = useState<FormalOutcomeProjection | null>(null);
   const [targetKey, setTargetKey] = useState("");
   const [draft, dispatch] = useReducer(outcomeDraftReducer, initialOutcomeDraft);
   const [phase, setPhase] = useState<Phase>("loading");
   const [message, setMessage] = useState("");
   const [reload, setReload] = useState(0);
+  const [savedVersion, setSavedVersion] = useState(0);
   const sequence = useRef(0);
   const inFlight = useRef(false);
   const pending = useRef<FormalOutcomeInput | null>(null);
@@ -133,7 +165,7 @@ export function OutcomeObservations({ runId }: { runId: string }) {
     const target = projection?.targets.find(item => item.key === targetKey);
     if (inFlight.current || (!pending.current && !validDraft(target, draft))) return;
     if (!pending.current && target) {
-      pending.current = { target_key: target.key, observed: target.status === "not_observable" ? "uncertain" : draft.observed!, ...(draft.observed === "occurred" && target.status === "observable" ? { occurred_at: new Date(draft.occurredAt).toISOString() } : {}), evidence_summary: draft.evidenceSummary.trim(), uncertainty: draft.uncertainty, confirmed_user_observation: true, observations: target.canRecordTypedObservation ? target.conditions.map(item => ({ key: item.key, value: draft.values[item.key] ?? null, ...(item.requiresTime && draft.values[item.key] != null ? { occurred_at: new Date(draft.conditionTimes[item.key]).toISOString() } : {}) })) : [], ...(draft.correctionRuleKey && draft.correctionConfirmed ? { correction: { rule_key: draft.correctionRuleKey, confirmed_for_next_run: true as const } } : {}), idempotency_key: crypto.randomUUID() };
+      pending.current = { target_key: target.key, observed: target.status === "not_observable" ? "uncertain" : draft.observed!, ...(draft.observed === "occurred" && target.status === "observable" ? { occurred_at: new Date(draft.occurredAt).toISOString() } : {}), evidence_summary: draft.evidenceSummary.trim(), uncertainty: draft.uncertainty, confirmed_user_observation: true, observations: target.canRecordTypedObservation ? target.conditions.map(item => ({ key: item.key, value: draft.values[item.key] ?? null, ...(observationNeedsTime(item, draft.values[item.key] ?? null, target.criteriaVersion) ? { occurred_at: new Date(draft.conditionTimes[item.key]).toISOString() } : {}) })) : [], ...(draft.correctionRuleKey && draft.correctionConfirmed ? { correction: { rule_key: draft.correctionRuleKey, confirmed_for_next_run: true as const } } : {}), idempotency_key: crypto.randomUUID() };
     }
     if (!pending.current) return;
     const request = ++sequence.current;
@@ -151,11 +183,12 @@ export function OutcomeObservations({ runId }: { runId: string }) {
       // A successful same-key replay is authoritative even after an ambiguous response.
       setProjection(response.data.outcomes);
       dispatch({ type: "saved" });
+      setSavedVersion(value => value + 1);
       setMessage("本人观察已保存；原模拟结果不变。下一次运行仍需另行选择条件修正。");
       setPhase("ready");
     } catch {
       if (request === sequence.current) { dispatch({ type: "unknown" }); setPhase("unknown"); setMessage("保存结果暂时未知。你的原内容与请求已保留；请重试原观察保存以恢复结果，期间不能修改或新增记录。"); }
     } finally { inFlight.current = false; }
   }
-  return <OutcomeObservationsView projection={projection} targetKey={targetKey} draft={draft} phase={phase} message={message} onTargetChange={key => { if (inFlight.current || draft.unknown) return; setTargetKey(key); dispatch({ type: "target" }); setMessage(""); }} onDraftChange={dispatch} onSave={() => void save()} onRecover={() => void save()} onRetry={() => { setPhase("loading"); setReload(value => value + 1); }} />;
+  return <OutcomeObservationsView key={`${targetKey}-${savedVersion}`} projection={projection} targetKey={targetKey} draft={draft} phase={phase} message={message} nextRunHref={savedVersion > 0 && /^[0-9a-f-]{36}$/i.test(runId) ? `/app/start?revise_run=${encodeURIComponent(runId)}` : undefined} onTargetChange={key => { if (inFlight.current || draft.unknown) return; setTargetKey(key); dispatch({ type: "target" }); setMessage(""); }} onDraftChange={dispatch} onSave={() => void save()} onRecover={() => void save()} onRetry={() => { setPhase("loading"); setReload(value => value + 1); }} />;
 }

@@ -13,6 +13,7 @@ import { FrozenEnvironmentConditions } from "./frozen-environment-conditions";
 import { FrozenWorldGuards } from "./frozen-world-guards";
 import { OutcomeObservations } from "@/components/formal-sandbox/outcome-observations";
 import { LifeTimeline } from "./life-timeline";
+import { FrozenUsedCorrections } from "./frozen-used-corrections";
 
 type Rating = "useful" | "mixed" | "off";
 export type FeedbackState = { rating: Rating | null; comment: string; message: string; saved: boolean };
@@ -224,6 +225,7 @@ export function EvidenceWorkbenchView({ projection, selectedClaimKey, onChooseCl
       <p>User-provided facts, explicit assumptions, unknowns, sandbox simulation, and conditional conclusions remain separate.</p>
     </header>
     <LifeTimeline projection={projection} />
+    <FrozenUsedCorrections receipt={projection.usedCorrections} steps={projection.steps} />
     <FrozenRealityProfileCard profile={projection.realityProfile} />
     <DigitalLifeModelCard model={projection.digitalLifeModel} />
     <FrozenSymbolicResult lens={projection.symbolicLens} planningHypothesisActive={projection.defaultPlanning?.frozenHypothesis?.status === "active"} />

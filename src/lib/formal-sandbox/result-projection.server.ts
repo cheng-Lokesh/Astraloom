@@ -15,6 +15,8 @@ import { projectDefaultPlanning, safeDefaultPlanningSchema } from "@/lib/formal-
 import type { WorldStateV2 } from "@/lib/v2/agent-world/types";
 import { safeSimulationTimelineSchema } from "./timeline-contracts";
 import { projectFormalSandboxTimeline, validateRecordedTimelineAnalysis } from "./timeline-projection.server";
+import { safeUsedCorrectionsSchema } from "./outcomes/used-corrections-contracts";
+import { projectUsedCorrections, usedCorrectionSourceRunId, type UsedCorrectionProjectionOptions } from "./outcomes/used-corrections.server";
 
 import { LIFE_MODEL_DOMAIN_ENTRY_PREFIX, listRealityProfileEntries, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 
@@ -137,7 +139,7 @@ const baseSafeResultProjectionSchema = z.object({
 
 const relationshipChangeSchema = z.object({ key: z.string().regex(/^relation-change-[1-9]\d*$/), stepKey: z.string().regex(/^step-[1-9]\d*$/), relationshipKey: z.string().regex(/^relation-[1-9]\d*$/), before: z.enum(["negative", "neutral", "positive"]), after: z.enum(["negative", "neutral", "positive"]), boundary: z.literal("simulation_change") }).strict();
 const safePathProjectionSchema = baseSafeResultProjectionSchema.extend({ digitalLifeModel: safeDigitalLifeModelSchema, relationshipChanges: z.array(relationshipChangeSchema).max(500) }).strict();
-export const safeResultProjectionSchema = safePathProjectionSchema.extend({ strategyPaths: z.array(z.object({ key: z.string().regex(/^path-[1-9]\d*$/), label: safeText, projection: safePathProjectionSchema }).strict()).max(2).default([]) }).strict();
+export const safeResultProjectionSchema = safePathProjectionSchema.extend({ usedCorrections: safeUsedCorrectionsSchema.optional(), strategyPaths: z.array(z.object({ key: z.string().regex(/^path-[1-9]\d*$/), label: safeText, projection: safePathProjectionSchema }).strict()).max(2).default([]) }).strict();
 
 export type SafeResultProjection = z.infer<typeof safeResultProjectionSchema>;
 
@@ -220,7 +222,7 @@ function projectWorldVariables(
   }));
 }
 
-export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjection | null {
+export function projectFormalSandboxResult(rawBundle: unknown, options: UsedCorrectionProjectionOptions = {}): SafeResultProjection | null {
   const parsed = bundleSchema.safeParse(rawBundle);
   if (!parsed.success) return null;
   const bundle = parsed.data;
@@ -568,8 +570,18 @@ export function projectFormalSandboxResult(rawBundle: unknown): SafeResultProjec
         })),
       });
       if (!timeline) return null;
-      return safeResultProjectionSchema.safeParse({ ...projection, timeline }).data ?? null;
+      return finish({ ...projection, timeline });
     }
   }
-  return safeResultProjectionSchema.safeParse(projection).data ?? null;
+  return finish(projection);
+
+  function finish(candidate: typeof projection & { timeline?: z.infer<typeof safeSimulationTimelineSchema> }): SafeResultProjection | null {
+    try {
+      const sourceId = usedCorrectionSourceRunId(bundle);
+      if (sourceId && options.correctionSources?.has(sourceId) && !projectFormalSandboxResult(options.correctionSources.get(sourceId))) return null;
+      const usedCorrections = projectUsedCorrections(bundle, candidate.timeline, options);
+      if (usedCorrections === null) return null;
+      return safeResultProjectionSchema.safeParse({ ...candidate, ...(usedCorrections ? { usedCorrections } : {}) }).data ?? null;
+    } catch { return null; }
+  }
 }

@@ -4,7 +4,8 @@ import { buildFormalSandboxRunV2 } from "../runtime";
 import { buildObservedOutcome, outcomeTargets } from "./core-adapter";
 
 it("keeps mixed NPC observations and independently confirmed next-run corrections without scoring the cluster", async () => {
- const result=await buildFormalSandboxRunV2({...digitalLifeInput(),digitalLifeRules:digitalLifeRules()});
+ const rules=digitalLifeRules();
+ const result=await buildFormalSandboxRunV2({...digitalLifeInput(),digitalLifeRules:{...rules,actions:[...rules.actions,{...rules.actions[0],key:"rule-4",when:{kind:"after_rule",ruleKey:"rule-2"},operation:{actionType:"allocate_resource",resourceKey:"resource-1",amount:2}}]}});
  expect(result.ok).toBe(true);if(!result.ok)return;
  const target=outcomeTargets(result.bundle,"2026-11-10T04:00:00.000Z",true)[0];
  expect(target.status).toBe("not_observable");

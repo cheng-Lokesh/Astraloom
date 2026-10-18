@@ -2,15 +2,19 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { digitalLifeModelSchema } from "@/lib/digital-life/model";
 import { buildClaimsV2 } from "@/lib/v2/claims-reports";
-import { createInMemoryOutcomeCalibrationRepositoryV2, parseValidatedForecastLockPersistenceVersionV2, type OutcomeCalibrationPersistenceVersionV2 } from "@/lib/v2/outcome-calibration";
+import { createInMemoryOutcomeCalibrationRepositoryV2, type OutcomeCalibrationPersistenceVersionV2 } from "@/lib/v2/outcome-calibration";
 import { canonicalStage7JsonV2 } from "@/lib/v2/outcome-calibration/ids";
 import { addTrajectoryDaysV2, parseTrajectoryInstantV2 } from "@/lib/v2/trajectory/time";
 import type { BatchAnalysisV2 } from "@/lib/v2/trajectory-analysis/types";
 import { formalOutcomeConditionSchema, formalOutcomeInputSchema, type FormalOutcomeInput, type FormalOutcomeTarget } from "./contracts";
+import { buildRealityCriteriaV2, realityCriteriaV2Schema } from "./reality-criteria-v2";
+import { observationNeedsTime } from "./observation-time";
+import { parseCompatibleForecastLockPersistenceVersion, restoreCompatibleFormalBundle } from "./forecast-lock-compat.server";
 
 export const digest = (input: unknown) => createHash("sha256").update(canonicalStage7JsonV2(input)).digest("hex");
 const bundleSchema = z.object({ inputSnapshot:z.object({ownerId:z.string().uuid(),seedContextId:z.string().uuid(),graphSnapshotId:z.string().uuid(),agentSnapshotId:z.string().uuid(),startedAt:z.string(),horizonDays:z.union([z.literal(30),z.literal(90)]),realityProfileSnapshot:z.object({revision:z.number().int()}).passthrough(),digitalLifeModel:digitalLifeModelSchema.optional()}).passthrough(), sourceBoundary:z.unknown(),trajectoryAnalysis:z.unknown(),claims:z.array(z.unknown()),report:z.unknown(),forecastPersistenceHistory:z.array(z.unknown()).optional() }).passthrough();
-const realityCriteriaSchema=z.object({version:z.literal("formal-reality-criteria-v1"),ownerId:z.string().uuid(),seedContextId:z.string().uuid(),pathKey:z.string(),forecastLockReference:z.object({streamId:z.string(),version:z.number().int().positive()}).strict(),frozenAt:z.string().datetime({offset:true}),sourceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),targets:z.array(z.object({targetKey:z.string(),observationWindow:z.object({startAt:z.string(),horizonEnd:z.string()}).strict(),conditions:z.array(formalOutcomeConditionSchema).max(32)}).strict()),criteriaFingerprint:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
+const realityCriteriaV1Schema=z.object({version:z.literal("formal-reality-criteria-v1"),ownerId:z.string().uuid(),seedContextId:z.string().uuid(),pathKey:z.string(),forecastLockReference:z.object({streamId:z.string(),version:z.number().int().positive()}).strict(),frozenAt:z.string().datetime({offset:true}),sourceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),targets:z.array(z.object({targetKey:z.string(),observationWindow:z.object({startAt:z.string(),horizonEnd:z.string()}).strict(),conditions:z.array(formalOutcomeConditionSchema).max(32)}).strict()),criteriaFingerprint:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
+const realityCriteriaSchema=z.discriminatedUnion("version",[realityCriteriaV1Schema,realityCriteriaV2Schema]);
 export function parseOutcomeBundle(raw:unknown) { return bundleSchema.parse(raw); }
 
 /** Reconstruct only repository-persisted versions; never fabricate a late pre-lock. */
@@ -18,22 +22,25 @@ export async function loadDurableForecast(raw:unknown, storedAt:string) {
   const bundle=parseOutcomeBundle(raw);
   const records=bundle.forecastPersistenceHistory;
   if (!records || records.length!==1) throw new Error("historical_lock_not_recorded");
-  const first=parseValidatedForecastLockPersistenceVersionV2(records[0]);
+  const first=parseCompatibleForecastLockPersistenceVersion(records[0]);
   if (!first.ok) throw new Error("invalid_forecast_lock");
   const record=first.persistenceVersion;
   if (record.artifact.kind!=="forecast_lock") throw new Error("invalid_forecast_lock");
   const lock=record.artifact.value;
   const snapshots=lock.sourceSnapshots;
-  if (canonicalStage7JsonV2(snapshots.claimSet.realityBoundary)!==canonicalStage7JsonV2(bundle.sourceBoundary)
-    || canonicalStage7JsonV2(snapshots.run.payload)!==canonicalStage7JsonV2(bundle.trajectoryAnalysis)
-    || canonicalStage7JsonV2(snapshots.report)!==canonicalStage7JsonV2(bundle.report)
-    || canonicalStage7JsonV2([...snapshots.claims].sort((a,b)=>a.id.localeCompare(b.id)))!==canonicalStage7JsonV2(bundle.claims)) throw new Error("invalid_forecast_lock");
+  // Core has already validated every original ID and signature. JSON storage omits
+  // optional undefined keys, so source equality here follows complete JSON semantics.
+  const canonicalStoredJson=(value:unknown)=>canonicalStage7JsonV2(JSON.parse(JSON.stringify(value)));
+  if (canonicalStoredJson(snapshots.claimSet.realityBoundary)!==canonicalStoredJson(bundle.sourceBoundary)
+    || canonicalStoredJson(snapshots.run.payload)!==canonicalStoredJson(bundle.trajectoryAnalysis)
+    || canonicalStoredJson(snapshots.report)!==canonicalStoredJson(bundle.report)
+    || canonicalStoredJson([...snapshots.claims].sort((a,b)=>a.id.localeCompare(b.id)))!==canonicalStoredJson(bundle.claims)) throw new Error("invalid_forecast_lock");
   if (!Number.isFinite(Date.parse(storedAt)) || Date.parse(record.persistedAt)>Date.parse(storedAt)
     || lock.forecastUnits.some(unit=>Date.parse(storedAt)>=Date.parse(unit.semantics.evaluationWindow.startAt))) throw new Error("invalid_forecast_lock");
   const repository=createInMemoryOutcomeCalibrationRepositoryV2();
   const appended=await repository.append({streamId:record.streamId,expectedVersion:0,idempotencyKey:record.idempotencyKey,persistedAt:record.persistedAt,artifact:record.artifact});
   if (!appended.ok || canonicalStage7JsonV2(appended.data)!==canonicalStage7JsonV2(record)) throw new Error("invalid_forecast_lock");
-  if(bundle.frozenRealityCriteria!=null&&digest(realityCriteriaSchema.parse(bundle.frozenRealityCriteria))!==digest(buildFrozenRealityCriteria(bundle)))throw new Error("invalid_forecast_lock");
+  if(bundle.frozenRealityCriteria!=null){const saved=realityCriteriaSchema.parse(bundle.frozenRealityCriteria);if(digest(saved)!==digest(rebuildFrozenRealityCriteria(bundle,saved.version)))throw new Error("invalid_forecast_lock");}
   return {bundle,lock,record,repository};
 }
 
@@ -92,19 +99,38 @@ function deriveOutcomeTargets(raw:unknown, now:string, available:boolean, buildi
     const retained=available&&conditions.length<=32?conditions:[];
     const criteria=bundle.frozenRealityCriteria?realityCriteriaSchema.parse(bundle.frozenRealityCriteria):null;
     const frozen=criteria?.targets.find(t=>t.targetKey===`target-${index+1}`);
-    return {key:`target-${index+1}`,label:`结果条件 ${index+1}`,status:"not_observable" as const,reason:available?"完整模拟情景还含内部状态与来源绑定，尚不能用本人观察为整个情景评分；具体资源条件可以独立对照":"此历史运行未保存结果发生前的完整锁定记录",observationWindow:{startAt:bundle.inputSnapshot.startedAt,horizonEnd:end.value.isoTimestamp},canRecordDidNotOccur:false,canRecordTypedObservation:retained.length>0,correctionAllowed:retained.some(c=>c.correctable),conditions:frozen&&available?frozen.conditions:retained,criteriaStatus:frozen&&available?"available":"not_recorded"};
+    const effective=frozen&&available?frozen.conditions:retained;
+    const frozenV2=criteria?.version==="formal-reality-criteria-v2"?criteria.targets.find(t=>t.targetKey===`target-${index+1}`):undefined;
+    const review=frozenV2?.review;
+    const correctionRequirements:NonNullable<FormalOutcomeTarget["correctionRequirements"]>=frozenV2?frozenV2.conditions.flatMap<NonNullable<FormalOutcomeTarget["correctionRequirements"]>[number]>(condition=>{
+      if(!condition.correctable||!condition.ruleKey||condition.measurement!=="operation")return [];
+      const rule=model?.rules.actions.find(r=>r.key===condition.ruleKey&&r.pathKey==="main");
+      if(!rule)return [];
+      if(condition.kind==="allocate_resource")return [{ruleKey:rule.key,conditionKey:condition.key,requestConditionKey:null,requiredTrueConditionKeys:frozenV2.conditions.filter(c=>c.sequence===condition.sequence&&(c.measurement==="actor_scope"||c.measurement==="resource_scope")).map(c=>c.key)}];
+      if(condition.kind!=="update_relation_signal"||rule.when.kind!=="after_rule")return [];
+      const sequence=frozenV2.binding.ruleKeys.indexOf(rule.when.ruleKey)+1,request=frozenV2.conditions.find(c=>c.sequence===sequence&&c.kind==="request_information"&&c.measurement==="operation");
+      if(!request)return [];
+      return [{ruleKey:rule.key,conditionKey:condition.key,requestConditionKey:request.key,requiredTrueConditionKeys:frozenV2.conditions.filter(c=>(c.sequence===sequence&&(c.measurement==="actor_scope"||c.measurement==="relationship_scope"))||(c.sequence===condition.sequence&&(c.measurement==="relationship_scope"||c.measurement==="response_source"))).map(c=>c.key)}];
+    }):[];
+    return {key:`target-${index+1}`,label:`结果条件 ${index+1}`,status:"not_observable" as const,reason:available?"完整模拟情景还含内部状态与来源绑定，尚不能用本人观察为整个情景评分；具体条件可以独立对照":"此历史运行未保存结果发生前的完整锁定记录",observationWindow:{startAt:bundle.inputSnapshot.startedAt,horizonEnd:end.value.isoTimestamp},canRecordDidNotOccur:false,canRecordTypedObservation:effective.length>0,correctionAllowed:(criteria?.version!=="formal-reality-criteria-v2"||!!frozen)&&effective.some(c=>c.correctable),conditions:effective,criteriaStatus:frozen&&available?"available":"not_recorded",...(frozen&&available&&criteria?.version==="formal-reality-criteria-v2"?{criteriaVersion:criteria.version,correctionRequirements,...(review?{review}:{})}:{})};
   });
 }
 export function outcomeTargets(raw:unknown,now:string,available:boolean){return deriveOutcomeTargets(raw,now,available);}
 
 /** An independent reality comparison; never a Core Cluster occurrence or Brier score. */
-export function buildFrozenRealityCriteria(raw:unknown){
+export function buildFrozenRealityCriteriaV1(raw:unknown){
  const parsed=parseOutcomeBundle(raw),base:Record<string,unknown>={...parsed};delete base.frozenRealityCriteria;
  const record=parsed.forecastPersistenceHistory?.[0] as {artifact?:{value?:{lockedAt?:string}};persistedAt?:string;streamId?:string;version?:number}|undefined;
  if(!record?.artifact?.value?.lockedAt||!record.streamId||!record.version)throw new Error("invalid_forecast_lock");
  const targets=deriveOutcomeTargets(base,record.persistedAt!,true,true).filter(t=>t.conditions.some(c=>c.measurement==="event_count")&&t.conditions.every(c=>c.kind==="allocate_resource"||c.kind==="scope_confirmation")).map(t=>({targetKey:t.key,observationWindow:t.observationWindow,conditions:t.conditions}));
  const unsigned={version:"formal-reality-criteria-v1" as const,ownerId:parsed.inputSnapshot.ownerId,seedContextId:parsed.inputSnapshot.seedContextId,pathKey:typeof parsed.inputSnapshot.activePathKey==="string"?parsed.inputSnapshot.activePathKey:"main",forecastLockReference:{streamId:record.streamId,version:record.version},frozenAt:record.artifact.value.lockedAt,sourceFingerprint:digest({input:parsed.inputSnapshot,boundary:parsed.sourceBoundary,analysis:parsed.trajectoryAnalysis}),targets};
- return realityCriteriaSchema.parse({...unsigned,criteriaFingerprint:digest(unsigned)});
+ return realityCriteriaV1Schema.parse({...unsigned,criteriaFingerprint:digest(unsigned)});
+}
+
+export const buildFrozenRealityCriteria=buildRealityCriteriaV2;
+function rebuildFrozenRealityCriteria(raw:unknown,version:"formal-reality-criteria-v1"|"formal-reality-criteria-v2"){
+  const compatible=restoreCompatibleFormalBundle(raw);
+  return version==="formal-reality-criteria-v1"?buildFrozenRealityCriteriaV1(compatible):buildRealityCriteriaV2(compatible);
 }
 
 export async function buildObservedOutcome(rawBundle:unknown, storedAt:string|null, input:FormalOutcomeInput, recordedAt:string) {
@@ -118,8 +144,9 @@ export async function buildObservedOutcome(rawBundle:unknown, storedAt:string|nu
   for(const condition of target.conditions){
     const actual=input.observations.find(o=>o.key===condition.key)!;
     if(condition.measurement==="event_count"&&actual.value!==null&&(typeof actual.value!=="number"||!Number.isInteger(actual.value)))throw new Error("invalid_observation");
-    if(actual.value!==null && condition.requiresTime && (!actual.occurred_at || Date.parse(actual.occurred_at)<Date.parse(target.observationWindow.startAt)||Date.parse(actual.occurred_at)>Math.min(Date.parse(recordedAt),Date.parse(target.observationWindow.horizonEnd))))throw new Error("invalid_observation_time");
+    if(observationNeedsTime(condition,actual.value,target.criteriaVersion) && (!actual.occurred_at || Date.parse(actual.occurred_at)<Date.parse(target.observationWindow.startAt)||Date.parse(actual.occurred_at)>Math.min(Date.parse(recordedAt),Date.parse(target.observationWindow.horizonEnd))))throw new Error("invalid_observation_time");
     if(actual.value===null && actual.occurred_at)throw new Error("invalid_observation_time");
+    if(target.criteriaVersion==="formal-reality-criteria-v2"&&condition.kind==="request_information"&&actual.value===false&&actual.occurred_at)throw new Error("invalid_observation_time");
   }
   const allMatch=target.conditions.every(c=>input.observations.find(o=>o.key===c.key)?.value===c.expectedValue);
   if(input.observed==="occurred" && (!allMatch || !input.occurred_at || Date.parse(input.occurred_at)>Date.parse(recordedAt))) throw new Error("invalid_observation");
@@ -132,6 +159,11 @@ export async function buildObservedOutcome(rawBundle:unknown, storedAt:string|nu
     if(!condition || !rule || actual===null || actual===undefined || actual===condition.expectedValue || !target.correctionAllowed) throw new Error("invalid_correction");
     if(rule.operation.actionType==="allocate_resource" ? typeof actual!=="number" || actual<=0 : rule.operation.actionType!=="update_relation_signal" || typeof actual!=="string") throw new Error("invalid_correction");
     if(rule.operation.actionType==="allocate_resource"&&target.conditions.some(c=>c.sequence===condition.sequence&&(c.measurement==="actor_scope"||c.measurement==="resource_scope")&&input.observations.find(o=>o.key===c.key)?.value!==true))throw new Error("invalid_correction");
+    if(rule.operation.actionType==="update_relation_signal"&&target.criteriaVersion==="formal-reality-criteria-v2"){
+      const requirement=target.correctionRequirements?.find(r=>r.ruleKey===rule.key&&r.conditionKey===condition.key);
+      const asked=input.observations.find(o=>o.key===requirement?.requestConditionKey),response=input.observations.find(o=>o.key===condition.key);
+      if(!requirement?.requestConditionKey||asked?.value!==true||!asked.occurred_at||!response?.occurred_at||Date.parse(asked.occurred_at)>Date.parse(response.occurred_at)||requirement.requiredTrueConditionKeys.length!==4||requirement.requiredTrueConditionKeys.some(key=>input.observations.find(o=>o.key===key)?.value!==true))throw new Error("invalid_correction");
+    }
     correction={version:"formal-outcome-rule-correction-v1",ownerId:bundle.inputSnapshot.ownerId,seedContextId:bundle.inputSnapshot.seedContextId,graphSnapshotId:bundle.inputSnapshot.graphSnapshotId,agentSnapshotId:bundle.inputSnapshot.agentSnapshotId,profileRevision:bundle.inputSnapshot.realityProfileSnapshot.revision,ruleKey:rule.key,ruleFingerprint:digest(rule),kind:rule.operation.actionType,previousValue:condition.expectedValue,nextValue:actual,evidenceSummary:input.evidence_summary,recordedAt};
   }
   const observationSignature=digest({run:bundle.inputSnapshot,target:input.target_key,observations:input.observations,evidence:input.evidence_summary,observed:input.observed});
@@ -141,16 +173,17 @@ export async function buildObservedOutcome(rawBundle:unknown, storedAt:string|nu
     if(!storedAt)throw new Error("invalid_forecast_lock");
     await loadDurableForecast(rawBundle,storedAt);
     const frozen=realityCriteriaSchema.parse(bundle.frozenRealityCriteria);
-    if(digest(frozen)!==digest(buildFrozenRealityCriteria(bundle)))throw new Error("invalid_forecast_lock");
+    if(digest(frozen)!==digest(rebuildFrozenRealityCriteria(bundle,frozen.version)))throw new Error("invalid_forecast_lock");
     const differences:string[]=[];let unknown=false;let priorTime=-Infinity;
     for(const condition of target.conditions){
       const actual=input.observations.find(o=>o.key===condition.key)!;
       if(actual.value===null){unknown=true;continue;}
       if(actual.value!==condition.expectedValue)differences.push(condition.key);
-      if(condition.measurement==="operation"){
+      if(condition.measurement==="operation"&&observationNeedsTime(condition,actual.value,target.criteriaVersion)){
         const time=Date.parse(actual.occurred_at!);
         if(time<priorTime)differences.push(condition.key);
         priorTime=time;
+        if(condition.kind!=="allocate_resource")continue;
         const before=target.conditions.find(c=>c.sequence===condition.sequence&&c.measurement==="resource_before");
         const after=target.conditions.find(c=>c.sequence===condition.sequence&&c.measurement==="resource_after");
         const b=input.observations.find(o=>o.key===before?.key),a=input.observations.find(o=>o.key===after?.key);

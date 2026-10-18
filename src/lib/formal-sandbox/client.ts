@@ -10,6 +10,7 @@ import { safeDefaultPlanningSchema } from "@/lib/formal-planning/projection";
 import { safeDigitalLifeCorrectionContextSchema } from "./correction-context";
 import { digitalLifeModelDraftSchema, preparedModelDraftSourceSchema, preparedModelDraftProtocolSchema, modelReconciliationSchema, type SaveDigitalLifeModelDraft } from "@/lib/digital-life/model-draft";
 import { safeSimulationTimelineSchema } from "./timeline-contracts";
+import { safeUsedCorrectionsSchema } from "./outcomes/used-corrections-contracts";
 
 const failure = z.object({ ok: z.literal(false), error_code: z.string(), trace_id: z.string() }).passthrough();
 const run = z.object({ id: z.string().uuid(), status: z.string(), graph_snapshot_id: z.string().uuid().nullable().optional(), time_horizon: z.enum(["30_days", "90_days"]).optional(), completed_at: z.string().nullable().optional() }).passthrough();
@@ -80,7 +81,7 @@ const digitalLifeProjection = baseFormalSandboxResultProjectionSchema.extend({
   guardObservations: guardObservationsSchema.optional(),
   timeline: safeSimulationTimelineSchema.optional(),
 }).strict();
-export const formalSandboxResultProjectionSchema = digitalLifeProjection.extend({ strategyPaths: z.array(z.object({ key: z.string().regex(/^path-[1-9]\d*$/), label: z.string(), projection: digitalLifeProjection }).strict()).max(2).optional() }).strict();
+export const formalSandboxResultProjectionSchema = digitalLifeProjection.extend({ usedCorrections: safeUsedCorrectionsSchema.optional(), strategyPaths: z.array(z.object({ key: z.string().regex(/^path-[1-9]\d*$/), label: z.string(), projection: digitalLifeProjection }).strict()).max(2).optional() }).strict();
 export type FormalSandboxResultProjection = z.infer<typeof formalSandboxResultProjectionSchema>;
 const resultSuccess = z.object({ ok: z.literal(true), completed_at: z.string().nullable(), projection: formalSandboxResultProjectionSchema }).passthrough();
 const historySuccess = z.object({ ok: z.literal(true), items: z.array(run), next_cursor: z.string().nullable() }).passthrough();

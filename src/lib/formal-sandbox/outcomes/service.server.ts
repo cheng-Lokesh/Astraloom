@@ -35,7 +35,7 @@ export async function saveFormalOutcome(service:SupabaseClient,owner:string,runI
  const built=await buildObservedOutcome(run.result_bundle,locks.data?.stored_at??null,input,recordedAt);
  let correction=null;
  if(built.correction){const draft={...built.correction,rowVersion:1,sourceRunId:runId};correction=frozenCorrectionSchema.parse({...draft,key:`correction-v1-${digest(draft)}`});}
- const status=input.observed==="uncertain"?(locks.data?"not_observable":"historical_lock_not_recorded"):"scored";
+ const status=locks.data?"not_observable":"historical_lock_not_recorded";
  const result=await service.rpc("append_formal_outcome_v1",{p_owner:owner,p_run:runId,p_request:input,p_request_hash:requestHash,p_recorded_at:recordedAt,p_observation_signature:built.observationSignature,p_artifacts:built.artifacts,p_calibration:built.calibration??null,p_correction:correction,p_status:status,p_criteria_comparison:built.criteriaComparison});
  if(result.error)throw new Error(result.error.message);
  if(!Array.isArray(result.data)||result.data.length!==1||typeof result.data[0].idempotent!=="boolean")throw new Error("persistence_failed");
@@ -49,5 +49,5 @@ export async function readFormalCalibrationContext(caller:SupabaseClient,service
  const corrections=(rows.data??[]).map(r=>frozenCorrectionSchema.parse(r.correction));
  const compatible=corrections.filter(c=>c.graphSnapshotId===current.context.graphSnapshotId&&c.agentSnapshotId===current.context.agentSnapshotId&&c.profileRevision===current.context.profileRevision);
  const newestSource=compatible[0]?.sourceRunId;
- return formalCalibrationContextSchema.parse({status:"available",profileRevision:current.context.profileRevision,corrections:corrections.map(c=>({key:c.key,label:c.kind==="allocate_resource"?"依据实际投入修正下次资源条件":"依据实际可见回应修正下次回应假设",evidenceSummary:c.evidenceSummary,ruleKey:c.ruleKey,kind:c.kind,previousValue:c.previousValue,nextValue:c.nextValue,version:1,status:compatible.includes(c)&&c.sourceRunId===newestSource?"eligible":"incompatible",reason:compatible.includes(c)&&c.sourceRunId===newestSource?null:"适用处境、规则来源或现实档案版本已不同，请重新确认条件"}))});
+ return formalCalibrationContextSchema.parse({status:"available",profileRevision:current.context.profileRevision,corrections:corrections.map(c=>({key:c.key,label:c.kind==="allocate_resource"?"依据实际投入修正下次资源条件":"依据实际可见回应修正下次回应假设",evidenceSummary:c.evidenceSummary,ruleKey:c.ruleKey,kind:c.kind,previousValue:c.previousValue,nextValue:c.nextValue,version:1,status:compatible.includes(c)&&c.sourceRunId===newestSource?"eligible":"incompatible",reason:compatible.includes(c)&&c.sourceRunId===newestSource?null:"适用处境、规则来源或现实档案版本已不同，请重新确认条件",sourceRunId:c.sourceRunId,recordedAt:c.recordedAt}))});
 }

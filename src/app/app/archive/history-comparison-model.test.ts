@@ -45,6 +45,18 @@ function compare(left: Projection, right: Projection): Category[] {
   return (fn as (a: Projection, b: Projection) => Category[])(left, right);
 }
 describe("Complete frozen History comparison", () => {
+  it("compares each frozen correction receipt without filling missing history from the other Run", () => {
+    const a = richProjection(), b = richProjection();
+    a.usedCorrections = { version: "formal-used-corrections-v1", status: "recorded", items: [{ key: "correction-1", sourceRunId: "60000000-0000-4000-8000-000000000001", ruleKey: "rule-1", label: "本人投入修正", previousValue: 2, nextValue: 3, evidenceSummary: "本人实际观察", recordedAt: "2026-10-18T00:00:00Z", samples: [{ sampleKey: "sample-1", status: "executed", stepKeys: ["step-1"] }, { sampleKey: "sample-2", status: "not_executed", stepKeys: [] }, { sampleKey: "sample-3", status: "not_executed", stepKeys: [] }] }] };
+    b.usedCorrections = structuredClone(a.usedCorrections); b.usedCorrections.items[0].nextValue = 4; b.steps[0].label = "右侧自己的投入步骤";
+    const receipt = compare(a, b).find(row => row.id === "used-corrections");
+    expect(receipt?.status).toBe("different");
+    expect(JSON.stringify(receipt?.left)).toContain("本次条件：3");
+    expect(JSON.stringify(receipt?.left)).not.toContain("右侧自己的投入步骤");
+    expect(JSON.stringify(receipt?.right)).toContain("右侧自己的投入步骤");
+    delete b.usedCorrections;
+    expect(compare(a, b).find(row => row.id === "used-corrections")?.status).toBe("not_recorded");
+  });
   it("compares environment conditions as explicit assumptions without treating them as resource allocations", () => {
     const a = richProjection(); a.digitalLifeModel!.version = "digital-life-model-v2";
     a.digitalLifeModel!.rules = [{ ...a.digitalLifeModel!.rules[0], actionType: "update_external_variable", operation: { actionType: "update_external_variable", variableKey: "pressure-1", value: "协作压力减轻" } }];
@@ -68,8 +80,9 @@ describe("Complete frozen History comparison", () => {
     b.steps[0].label = "另一模拟"; b.claims[0].statement = "另一结论";
     b.symbolicLens!.frame!.dimensions[0].value = "另一象征主题";
     const rows = compare(a, b);
-    expect(rows.map(row => row.id)).toEqual(["background", "people", "rules", "facts", "assumptions", "unknowns", "resources", "constraints", "world", "resource-changes", "relationship-changes", "steps", "claims", "strategies", "symbolic"]);
-    expect(rows.filter(row => row.id !== "strategies").every(row => row.status === "different")).toBe(true);
+    expect(rows.map(row => row.id)).toEqual(["background", "people", "rules", "facts", "assumptions", "unknowns", "resources", "constraints", "world", "resource-changes", "relationship-changes", "steps", "claims", "strategies", "symbolic", "used-corrections"]);
+    expect(rows.filter(row => row.id !== "strategies" && row.id !== "used-corrections").every(row => row.status === "different")).toBe(true);
+    expect(rows.find(row => row.id === "used-corrections")?.status).toBe("not_recorded");
   });
   it("separates reorder-only content from different contents and preserves duplicates", () => {
     const a = richProjection(); a.participants.push({ key: "person-3", label: "协作伙伴", role: "frozen participant" });

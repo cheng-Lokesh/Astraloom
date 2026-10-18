@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import Link from "next/link";
 import { buildHistoryComparisonModel, type ComparisonCategory, type ComparisonSide } from "./history-comparison-model";
 import type { FormalSandboxResultProjection as Projection } from "@/lib/formal-sandbox/client";
 
@@ -12,7 +13,7 @@ function OriginalValues({ side, name, category }: { side: ComparisonSide; name: 
   return <section aria-label={`${category} · ${name}原值`} className="min-w-0">
     <h4 className="text-base font-semibold text-[var(--text-primary)]">{name}</h4>
     {!side.recorded ? <p className="mt-3 leading-7">{side.note}</p> : side.entries.length === 0 ? <p className="mt-3 leading-7">已记录此类快照，没有单独条目。</p> : null}
-    {side.entries.length > 0 ? <ol className="mt-3 divide-y divide-white/10">{side.entries.map((item, index) => <li key={index} className="py-3"><p className="font-semibold text-[var(--text-primary)]">{item.title}</p>{item.lines.map((line, lineIndex) => <p key={lineIndex} className="mt-1 whitespace-pre-wrap break-words leading-7">{line}</p>)}</li>)}</ol> : null}
+    {side.entries.length > 0 ? <ol className="mt-3 divide-y divide-white/10">{side.entries.map((item, index) => <li key={index} className="py-3"><p className="font-semibold text-[var(--text-primary)]">{item.title}</p>{item.lines.map((line, lineIndex) => <p key={lineIndex} className="mt-1 whitespace-pre-wrap break-words leading-7">{line}</p>)}{item.sourceHref ? <Link href={item.sourceHref} className="inline-flex min-h-11 items-center underline underline-offset-4">回看此侧来源运行的本人观察</Link> : null}</li>)}</ol> : null}
   </section>;
 }
 export function HistoryComparisonDetails({ left, right }: { left: Projection; right: Projection }) {
