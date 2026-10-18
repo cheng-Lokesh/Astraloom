@@ -18,6 +18,8 @@ const stableKey = `correction-v1-${"a".repeat(64)}`;
 const calibration = { status: "available", profileRevision: 3, corrections: [{ key: stableKey, label: "本人投入修正", evidenceSummary: "本人观察后补充", ruleKey: "rule-1", kind: "allocate_resource", previousValue: 2, nextValue: 3, version: 1, status: "eligible", reason: null }, { key: `correction-v1-${"b".repeat(64)}`, label: "过期回应修正", evidenceSummary: "此前观察", ruleKey: "rule-2", kind: "update_relation_signal", previousValue: "positive", nextValue: "neutral", version: 1, status: "incompatible", reason: "绑定条件已过期或不适用于当前模型" }] };
 
 async function bundleFixture() {
+  const repeated = { ...calibration.corrections[0], key: `correction-v1-${"c".repeat(64)}`, label: "较新的本人投入修正", nextValue: 4 };
+  calibration.corrections = [...calibration.corrections.filter(item => item.key !== repeated.key), repeated];
   const fixture = `import React from 'react';import {createRoot} from 'react-dom/client';import {OutcomeObservations} from '@/components/formal-sandbox/outcome-observations';import {FormalRunStarter} from '@/components/formal-sandbox/run-starter';globalThis.React=React;
   const base=${JSON.stringify(projection)},model=${JSON.stringify(model)},calibration=${JSON.stringify(calibration)};let uuid=9,mount=0;Object.defineProperty(crypto,'randomUUID',{value:()=> '00000000-0000-4000-8000-'+String(uuid++).padStart(12,'0')});const f=window.outcomeFixture={mode:'normal',failRead:false,failWrite:true,holdRead:true,readStarted:0,requests:[],navigation:'',mount:()=>{}};const root=createRoot(document.getElementById('root'));let history=[];
   function projected(mode){if(mode==='legacy')return {...base,lockStatus:'historical_lock_not_recorded',targets:[{...base.targets[0],status:'not_observable',canRecordTypedObservation:false,correctionAllowed:false,criteriaStatus:'not_recorded',conditions:[],reason:'历史运行未记录事前锁定条件'}],history:[]};if(mode==='empty')return {...base,targets:[],history:[]};return {...base,history}}
@@ -27,6 +29,21 @@ async function bundleFixture() {
 }
 
 describe.skipIf(!existsSync(path.join(runtime, "playwright")) || !existsSync(executablePath))("personal outcome and explicit calibration actual Chrome controls", () => {
+  it("replaces an older observation for the same rule and revokes overall confirmation", async () => {
+    const { chromium } = createRequire(import.meta.url)(path.join(runtime, "playwright")) as { chromium: { launch(input: unknown): Promise<Browser> } };
+    const browser = await chromium.launch({ executablePath, headless: true });
+    const page = await browser.newPage({ viewport: { width: 375, height: 812 } }); page.setDefaultTimeout(4000);
+    try {
+      await page.setContent('<html lang="zh"><body><div id="root"></div></body></html>'); await page.addScriptTag({ content: await bundleFixture() });
+      await page.evaluate(() => { window.outcomeFixture.holdRead = false; window.outcomeFixture.mount("starter"); });
+      await page.getByLabel(/^本人投入修正/).check();
+      await page.getByLabel("我确认将所选本人观察修正作为本次运行的条件假设").check();
+      await page.getByLabel(/^较新的本人投入修正/).check();
+      expect(await page.getByLabel(/^本人投入修正/).isChecked()).toBe(false);
+      expect(await page.getByLabel(/^较新的本人投入修正/).isChecked()).toBe(true);
+      expect(await page.getByLabel("我确认将所选本人观察修正作为本次运行的条件假设").isChecked()).toBe(false);
+    } finally { await page.close(); await browser.close(); }
+  }, 35_000);
   it("handles loading/errors, complete conditions, same-request recovery, history, legacy and stale reads", async () => {
     const { chromium } = createRequire(import.meta.url)(path.join(runtime, "playwright")) as { chromium: { launch(input: unknown): Promise<Browser> } };
     const browser = await chromium.launch({ executablePath, headless: true });
