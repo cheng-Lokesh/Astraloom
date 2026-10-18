@@ -26,7 +26,9 @@ window.fetch=async(url,init)=>{
  if(state.failure==='network')throw new Error('synthetic lost response after write');
  if(state.failure==='server')return new Response(JSON.stringify({errorCode:'seed_context_write_failed'}),{status:500});
  if(state.failure==='invalid-success')return new Response(JSON.stringify({seedContext:{}}),{status:201});
- return new Response(JSON.stringify({seedContext:{id:'60000000-0000-4000-8000-000000000001',version:'submitted-seed-context-v1',submittedAt:'2026-10-19T00:00:00.000Z',frozenAt:'2026-10-19T00:00:00.000Z'},idempotent:true}),{status:200});
+ if(state.failure==='unauthorized')return new Response(JSON.stringify({errorCode:'authentication_required'}),{status:401});
+ if(state.failure==='forbidden')return new Response(JSON.stringify({errorCode:'access_denied'}),{status:403});
+ return new Response(JSON.stringify({seedContext:{id:'60000000-0000-4000-8000-000000000001',version:state.failure==='wrong-version'?'unsupported-seed-v99':'phase2-submitted-v1',submittedAt:'2026-10-19T00:00:00.000Z',frozenAt:'2026-10-19T00:00:00.000Z'},idempotent:true}),{status:200});
 };
 state.open('intake');
 `;
@@ -101,6 +103,33 @@ describe("new-situation continuation mounted React business boundaries", () => {
       expect(JSON.parse(requests[0]).draft.createdAt).toBeTruthy();
       expect(requests[1]).toBe(requests[0]);
       await page.getByRole("link", { name: "进入 People", exact: true }).waitFor();
+    });
+  }, 30_000);
+
+  for (const authFailure of ["unauthorized", "forbidden"]) it(`retains unknown identity when an exact replay encounters ${authFailure} before receipt recovery`, async () => {
+    await withMountedIntake(async page => {
+      await fillNewSituation(page); await submitOrRetry(page);
+      await page.waitForFunction(() => window.profileContinuation.requests.length === 1 && Boolean(document.querySelector('[role="status"]')?.textContent));
+      if (authFailure === "unauthorized") await page.evaluate(() => { window.profileContinuation.failure = "unauthorized"; });
+      else await page.evaluate(() => { window.profileContinuation.failure = "forbidden"; });
+      await submitOrRetry(page);
+      await page.waitForFunction(() => window.profileContinuation.requests.length === 2 && !Array.from(document.querySelectorAll('button')).some(button => button.textContent === '正在确认新处境'));
+      expect(await page.getByRole("textbox", { name: /^Situation summary/ }).isDisabled()).toBe(true);
+      await page.evaluate(() => { window.profileContinuation.failure = ""; }); await submitOrRetry(page);
+      await page.waitForFunction(() => window.profileContinuation.requests.length === 3);
+      const requests = await page.evaluate(() => window.profileContinuation.requests);
+      expect(requests[2]).toBe(requests[0]);
+    });
+  }, 30_000);
+
+  it("keeps an unsupported successful Seed receipt in unknown recovery", async () => {
+    await withMountedIntake(async page => {
+      await fillNewSituation(page);
+      await page.evaluate(() => { window.profileContinuation.failure = "wrong-version"; });
+      await submitOrRetry(page);
+      await page.waitForFunction(() => window.profileContinuation.requests.length === 1 && Boolean(document.querySelector('[role="status"]')?.textContent));
+      expect(await page.getByRole("link", { name: "进入 People", exact: true }).count()).toBe(0);
+      expect(await page.getByRole("button", { name: "重试原处境提交", exact: true }).count()).toBe(1);
     });
   }, 30_000);
 });
