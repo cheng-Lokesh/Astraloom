@@ -10,6 +10,8 @@ const copy = {
     title: "Begin one personal digital-life sandbox.",
     intro: "Start with the situation you want to understand. Astraloom supports the formal Track A path and a bounded 1-, 3-, or 5-year Track B comparison. A result appears in history only after the account flow has saved it.",
     primary: "Start Track A intake",
+    continueReality: "Use my saved reality profile",
+    continueNote: "Review each saved item for a new situation. People, relationships and previous simulation permissions are set up separately.",
     trackB: "Explore long-horizon life climate",
     trackBNote: "Track B compares user-stated changes within one theme across coarse relative stages. It is conditional, not a forecast.",
     capabilityTitle: "What is available now",
@@ -23,6 +25,8 @@ const copy = {
     title: "开始一个属于你的个人数字生命沙盘。",
     intro: "从你想理解的一段现实处境开始。Astraloom 提供正式路径 A，以及范围受限的一年、三年或五年路径 B 对照。只有账户路径真正保存了结果后，它才会出现在历史记录中。",
     primary: "开始路径 A Intake",
+    continueReality: "沿用我的现实资料",
+    continueNote: "逐项复核已保存资料，再填写全新的处境。人物、关系与过去的推演授权需要另行建立。",
     trackB: "查看长期人生气候",
     trackBNote: "路径 B 在同一个人生领域内，对照你自己设定的变化；这是条件式沙盘，不是预测。",
     capabilityTitle: "当前可用能力",
@@ -45,9 +49,11 @@ export default function ScenePage() {
           <h1 className="mt-5 max-w-3xl font-[var(--font-display)] text-4xl leading-[1.08] text-[var(--text-primary)] sm:text-6xl">{t.title}</h1>
           <p className="mt-5 max-w-3xl text-base leading-8 text-[var(--text-secondary)]">{t.intro}</p>
           <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <ButtonLink href="/app/new/intake?reality=continue" className="!w-auto px-5 py-3">{t.continueReality}</ButtonLink>
             <ButtonLink href="/app/new/intake" className="!w-auto px-5 py-3">{t.primary}</ButtonLink>
             <ButtonLink href="/app/new/life-climate" variant="secondary" className="!w-auto px-5 py-3">{t.trackB}</ButtonLink>
           </div>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">{t.continueNote}</p>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{t.trackBNote}</p>
           <p className="mt-5 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{t.boundary}</p>
         </SurfaceCard>

@@ -39,8 +39,8 @@ function post(body: unknown) {
   return POST(new Request("http://localhost/api/seed-context", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
 }
 
-function receipt(idempotent = false) {
-  return { seed_context_id: newSeedId, version: "phase2-submitted-v1", submitted_at: "2026-10-19T10:00:00.000Z", frozen_at: "2026-10-19T10:00:00.000Z", idempotent };
+function receipt(idempotent = false, withContinuation = true) {
+  return { seed_context_id: newSeedId, version: "phase2-submitted-v1", submitted_at: "2026-10-19T10:00:00.000Z", frozen_at: "2026-10-19T10:00:00.000Z", idempotent, ...(withContinuation ? { continuation_version: version, profile_revision: 1 } : {}) };
 }
 
 function dbRow(draft: RealityProfileDraft) {
@@ -97,7 +97,7 @@ describe("new-situation Reality Profile continuation HTTP boundary", () => {
     expect(from).not.toHaveBeenCalled();
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenCalledWith("submit_seed_context_phase2", { p_submission_key: submissionKey, p_payload: expect.objectContaining({ privacyAck: true, privacySafetyAck: true }), p_reality_continuation: { ...input, reviewedProfile: dbRow(reviewed) } });
-    expect(await response.json()).toEqual({ seedContext: { id: newSeedId, version: "phase2-submitted-v1", submittedAt: "2026-10-19T10:00:00.000Z", frozenAt: "2026-10-19T10:00:00.000Z" }, idempotent: false });
+    expect(await response.json()).toEqual({ seedContext: { id: newSeedId, version: "phase2-submitted-v1", submittedAt: "2026-10-19T10:00:00.000Z", frozenAt: "2026-10-19T10:00:00.000Z" }, idempotent: false, realityContinuation: { version, profileRevision: 1 } });
   });
 
   it("replays an original unknown request after its deadline has passed without a mutable-source pre-read", async () => {
@@ -144,8 +144,42 @@ describe("new-situation Reality Profile continuation HTTP boundary", () => {
   });
 
   it("keeps the existing blank-new-situation two-argument RPC path", async () => {
+    rpc.mockResolvedValue({ data: [receipt(false, false)], error: null });
     const response = await post({ draft: seedDraft(), submissionKey });
     expect(response.status).toBe(201);
     expect(Object.keys(rpc.mock.calls[0]![1])).toEqual(["p_submission_key", "p_payload"]);
+  });
+
+  it.each([{}, { ...receipt(), profile_revision: 2 }, { ...receipt(), seed_context_id: "wrong" }, { ...receipt(), idempotent: "false" }, { ...receipt(), continuation_version: "wrong" }])("does not claim success for malformed continuation receipts %#", async data => {
+    rpc.mockResolvedValue({ data: [data], error: null });
+    const response = await post({ draft: seedDraft(), submissionKey, realityContinuation: continuation() });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ errorCode: "seed_context_write_failed" });
+  });
+
+  it.each([
+    { data: { user: { id: ownerId, is_anonymous: true } } },
+    { data: { user: { id: ownerId } }, error: { message: "expired token" } },
+    { data: { user: null }, error: null },
+  ])("rejects anonymous or failed verified Auth before any owner data access %#", async auth => {
+    createSupabaseServerClient.mockResolvedValue({ auth: { getUser: vi.fn().mockResolvedValue(auth) }, rpc, from });
+    expect((await post({ draft: seedDraft(), submissionKey, realityContinuation: continuation() })).status).toBe(401);
+    expect((await GET(new Request("http://localhost/api/seed-context?prepare_continuation=1"))).status).toBe(401);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it.each(["?prepare_continuation=1&prepare_continuation=1", "?prepare_continuation=1&user_id=foreign", "?prepare_continuation=0"])("rejects invalid prepare selectors %s", async params => {
+    const response = await GET(new Request(`http://localhost/api/seed-context${params}`));
+    expect(response.status).toBe(400);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("offers a truthful blank-create fallback when no profile has been saved", async () => {
+    from.mockImplementation((table: string) => query(table === "seed_contexts" ? { id: sourceSeedId } : null));
+    const response = await GET(new Request("http://localhost/api/seed-context?prepare_continuation=1"));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ errorCode: "reality_profile_required" });
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

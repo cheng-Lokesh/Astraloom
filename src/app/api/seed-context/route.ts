@@ -1,9 +1,32 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { REALITY_PROFILE_CONTINUATION_VERSION, listExpiredRealityContinuationConstraintKeys, prepareRealityProfileContinuation, preparedRealityProfileContinuationSchema, realityProfileContinuationReceiptSchema, realityProfileContinuationSchema } from "@/lib/reality-profile/continuation";
+import { toRealityProfileDatabaseFields } from "@/lib/reality-profile/database-fields";
+import { realityProfileDatabaseColumns, realityProfileDraftFromDatabaseRow } from "@/lib/reality-profile/profile";
 import { parseSubmittedSeedContext } from "@/lib/seed-context/submitted";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const requestSchema = z.object({ draft: z.unknown(), submissionKey: z.string().uuid() }).strict();
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const requestSchema = z.object({ draft: z.unknown(), submissionKey: z.string().uuid(), realityContinuation: z.unknown().optional() }).strict();
+const submissionSchema = z.object({
+  seed_context_id: z.string().uuid(),
+  version: z.literal("phase2-submitted-v1"),
+  submitted_at: z.iso.datetime({ offset: true }),
+  frozen_at: z.iso.datetime({ offset: true }),
+  idempotent: z.boolean(),
+}).strict();
+const continuationSubmissionSchema = submissionSchema.extend({
+  continuation_version: z.literal(REALITY_PROFILE_CONTINUATION_VERSION),
+  profile_revision: z.literal(1),
+});
+
+function json(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+function failure(errorCode: string, status: number) { return json({ errorCode }, status); }
 
 function toSubmissionPayload(draft: ReturnType<typeof parseSubmittedSeedContext> & { ok: true }) {
   return {
@@ -24,26 +47,34 @@ function toSubmissionPayload(draft: ReturnType<typeof parseSubmittedSeedContext>
 }
 
 export async function POST(request: Request) {
+  try {
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ errorCode: "supabase_not_configured" }, { status: 503 });
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return NextResponse.json({ errorCode: "authentication_required" }, { status: 401 });
+  if (!supabase) return failure("supabase_not_configured", 503);
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError || !auth.user?.id || auth.user.is_anonymous === true) return failure("authentication_required", 401);
   const input = requestSchema.safeParse(await request.json().catch(() => null));
   const draft = input.success ? parseSubmittedSeedContext(input.data.draft) : { ok: false as const };
-  if (!input.success || !draft.ok) return NextResponse.json({ errorCode: "invalid_submitted_seed_context" }, { status: 400 });
+  if (!input.success || !draft.ok) return failure("invalid_submitted_seed_context", 400);
+  const hasContinuation = input.data.realityContinuation !== undefined;
+  const continuation = hasContinuation ? realityProfileContinuationSchema.safeParse(input.data.realityContinuation) : null;
+  if (hasContinuation && !continuation?.success) return failure("invalid_reality_continuation", 400);
+  // No mutable source or current-time checks here: the database must recover an
+  // existing receipt before consulting a source that is no longer current.
   const { data, error } = await supabase.rpc("submit_seed_context_phase2", {
     p_submission_key: input.data.submissionKey,
     p_payload: toSubmissionPayload(draft),
+    ...(continuation?.success ? { p_reality_continuation: { ...continuation.data, reviewedProfile: { ...toRealityProfileDatabaseFields(continuation.data.reviewedProfile), revision: 0 } } } : {}),
   });
   if (error) {
-    if (error.message === "idempotency_key_content_conflict") {
-      return NextResponse.json({ errorCode: "idempotency_key_content_conflict" }, { status: 409 });
-    }
-    return NextResponse.json({ errorCode: "seed_context_write_failed" }, { status: 500 });
+    if (error.message === "authentication_required") return failure("authentication_required", 401);
+    if (["idempotency_key_content_conflict", "reality_continuation_source_stale", "reality_continuation_revision_conflict", "reality_continuation_deadline_expired", "reality_profile_required"].includes(error.message)) return failure(error.message, 409);
+    if (["invalid_submitted_seed_context", "invalid_reality_continuation"].includes(error.message)) return failure(error.message, 400);
+    return failure("seed_context_write_failed", 500);
   }
 
-  const submission = Array.isArray(data) ? data[0] : data;
-  if (!submission) return NextResponse.json({ errorCode: "seed_context_write_failed" }, { status: 500 });
+  const parsed = (hasContinuation ? continuationSubmissionSchema : submissionSchema).safeParse(Array.isArray(data) && data.length === 1 ? data[0] : data);
+  if (!parsed.success) return failure("seed_context_write_failed", 500);
+  const submission = parsed.data;
 
   const seedContext = {
     id: submission.seed_context_id,
@@ -51,17 +82,35 @@ export async function POST(request: Request) {
     submittedAt: submission.submitted_at,
     frozenAt: submission.frozen_at,
   };
-  return NextResponse.json(
-    { seedContext, idempotent: submission.idempotent },
-    { status: submission.idempotent ? 200 : 201 },
+  return json(
+    { seedContext, idempotent: submission.idempotent, ...(hasContinuation ? { realityContinuation: realityProfileContinuationReceiptSchema.parse({ version: REALITY_PROFILE_CONTINUATION_VERSION, profileRevision: 1 }) } : {}) },
+    submission.idempotent ? 200 : 201,
   );
+  } catch { return failure("seed_context_write_failed", 500); }
 }
 
-export async function GET() {
+export async function GET(request?: Request) {
+  try {
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ errorCode: "supabase_not_configured" }, { status: 503 });
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return NextResponse.json({ errorCode: "authentication_required" }, { status: 401 });
+  if (!supabase) return failure("supabase_not_configured", 503);
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError || !auth.user?.id || auth.user.is_anonymous === true) return failure("authentication_required", 401);
+  const params = new URL(request?.url ?? "http://localhost/api/seed-context").searchParams;
+  const preparing = params.get("prepare_continuation") === "1";
+  if (params.size && (!preparing || params.size !== 1)) return failure("invalid_reality_continuation", 400);
+  if (preparing) {
+    const { data: source, error: seedError } = await supabase.from("seed_contexts").select("id").eq("user_id", auth.user.id).eq("status", "submitted").not("submitted_at", "is", null).not("frozen_at", "is", null).order("submitted_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+    if (seedError) return failure("seed_context_recovery_failed", 500);
+    if (!source) return failure("current_seed_required", 409);
+    const { data: row, error: profileError } = await supabase.from("reality_profiles").select(realityProfileDatabaseColumns).eq("user_id", auth.user.id).eq("seed_context_id", source.id).maybeSingle();
+    if (profileError) return failure("seed_context_recovery_failed", 500);
+    if (!row) return failure("reality_profile_required", 409);
+    const sourceProfile = realityProfileDraftFromDatabaseRow(row);
+    const preparedAt = new Date().toISOString();
+    const profile = prepareRealityProfileContinuation(sourceProfile);
+    const continuation = preparedRealityProfileContinuationSchema.parse({ version: REALITY_PROFILE_CONTINUATION_VERSION, sourceSeedContextId: source.id, sourceRevision: sourceProfile.revision, preparedAt, profile, expiredConstraintKeys: listExpiredRealityContinuationConstraintKeys(profile, preparedAt) });
+    return json({ continuation });
+  }
   const { data, error } = await supabase
     .from("seed_contexts")
     .select("id, version, submitted_at, frozen_at")
@@ -69,8 +118,8 @@ export async function GET() {
     .not("frozen_at", "is", null)
     .not("consent_event_id", "is", null)
     .order("submitted_at", { ascending: false });
-  if (error) return NextResponse.json({ errorCode: "seed_context_recovery_failed" }, { status: 500 });
-  return NextResponse.json({
+  if (error) return failure("seed_context_recovery_failed", 500);
+  return json({
     seedContexts: (data ?? []).map((seedContext) => ({
       id: seedContext.id,
       version: seedContext.version,
@@ -78,4 +127,5 @@ export async function GET() {
       frozenAt: seedContext.frozen_at,
     })),
   });
+  } catch { return failure("seed_context_recovery_failed", 500); }
 }

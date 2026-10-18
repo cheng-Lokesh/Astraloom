@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { toRealityProfileDatabaseFields } from "@/lib/reality-profile/database-fields";
 import { realityProfileDatabaseColumns, realityProfileDraftFromDatabaseRow, realityProfileDraftSchema } from "@/lib/reality-profile/profile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -32,27 +32,6 @@ function profileFromRow(row: unknown) {
   return realityProfileDraftFromDatabaseRow(row);
 }
 
-function databaseFields(profile: z.infer<typeof realityProfileDraftSchema>) {
-  return {
-    life_climate_value: profile.lifeClimate.classification === "unknown" ? null : profile.lifeClimate.value,
-    life_climate_classification: profile.lifeClimate.classification,
-    life_climate_evidence_summary: profile.lifeClimate.evidenceSummary,
-    resources_value: profile.resources.classification === "unknown" ? null : profile.resources.value,
-    resources_classification: profile.resources.classification,
-    resources_evidence_summary: profile.resources.evidenceSummary,
-    constraints_value: profile.constraints.classification === "unknown" ? null : profile.constraints.value,
-    constraints_classification: profile.constraints.classification,
-    constraints_evidence_summary: profile.constraints.evidenceSummary,
-    life_goals: profile.goals,
-    core_values: profile.values,
-    life_themes: profile.lifeThemes,
-    pressures: profile.pressures,
-    external_variables: profile.externalVariables,
-    life_model_domains: profile.lifeModelDomains,
-    world_model_inputs: profile.worldInputs,
-  };
-}
-
 export async function GET() {
   const traceId = `reality_profile_${crypto.randomUUID()}`;
   try {
@@ -75,7 +54,7 @@ export async function PUT(request: Request) {
     try { input = await request.json(); } catch { return failure(400, "invalid_reality_profile", traceId); }
     const body = realityProfileDraftSchema.safeParse(input);
     if (!body.success) return failure(400, "invalid_reality_profile", traceId);
-    const fields = databaseFields(body.data);
+    const fields = toRealityProfileDatabaseFields(body.data);
     const { data: updated, error } = await context.supabase.from("reality_profiles").update({ ...fields, revision: body.data.revision + 1 }).eq("user_id", context.ownerId).eq("seed_context_id", context.seedId).eq("revision", body.data.revision).select(profileColumns).maybeSingle();
     if (error) throw error;
     if (updated) return NextResponse.json({ ok: true, error_code: null, trace_id: traceId, profile: profileFromRow(updated) }, { headers: { "Cache-Control": "no-store" } });

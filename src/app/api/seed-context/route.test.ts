@@ -59,7 +59,7 @@ describe("/api/seed-context", () => {
   it("submits only the normalized draft through the atomic database entrypoint", async () => {
     rpc.mockResolvedValue({
       data: [{
-        seed_context_id: "seed-a",
+        seed_context_id: "22222222-2222-4222-8222-222222222222",
         version: "phase2-submitted-v1",
         submitted_at: "2026-07-27T00:00:00.000Z",
         frozen_at: "2026-07-27T00:00:00.000Z",
@@ -82,7 +82,7 @@ describe("/api/seed-context", () => {
     expect(rpc.mock.calls[0]?.[1].p_payload).not.toHaveProperty("user_id");
     expect(await response.json()).toEqual({
       seedContext: {
-        id: "seed-a",
+        id: "22222222-2222-4222-8222-222222222222",
         version: "phase2-submitted-v1",
         submittedAt: "2026-07-27T00:00:00.000Z",
         frozenAt: "2026-07-27T00:00:00.000Z",
