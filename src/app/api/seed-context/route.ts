@@ -89,13 +89,13 @@ export async function POST(request: Request) {
   } catch { return failure("seed_context_write_failed", 500); }
 }
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   try {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return failure("supabase_not_configured", 503);
   const { data: auth, error: authError } = await supabase.auth.getUser();
   if (authError || !auth.user?.id || auth.user.is_anonymous === true) return failure("authentication_required", 401);
-  const params = new URL(request?.url ?? "http://localhost/api/seed-context").searchParams;
+  const params = new URL(request.url).searchParams;
   const preparing = params.get("prepare_continuation") === "1";
   if (params.size && (!preparing || params.size !== 1)) return failure("invalid_reality_continuation", 400);
   if (preparing) {

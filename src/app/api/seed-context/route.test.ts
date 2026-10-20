@@ -122,7 +122,7 @@ describe("/api/seed-context", () => {
     const eq = vi.fn(() => ({ not }));
     select.mockReturnValue({ eq });
 
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/seed-context"));
     expect(response.status).toBe(200);
     expect(select).toHaveBeenCalledWith("id, version, submitted_at, frozen_at");
     expect(eq).toHaveBeenCalledWith("status", "submitted");
@@ -142,12 +142,12 @@ describe("/api/seed-context", () => {
     createSupabaseServerClient.mockResolvedValueOnce({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
     });
-    expect((await GET()).status).toBe(401);
+    expect((await GET(new Request("http://localhost/api/seed-context"))).status).toBe(401);
 
     const order = vi.fn().mockResolvedValue({ data: null, error: { message: "database detail" } });
     const not = vi.fn(() => ({ not, order }));
     select.mockReturnValue({ eq: vi.fn(() => ({ not })) });
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/seed-context"));
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ errorCode: "seed_context_recovery_failed" });
   });
