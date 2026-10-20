@@ -695,8 +695,9 @@ const commonZh: Record<string, string> = {
     "证据非常有限。此事件几乎完全由策略生成，只应视为弱信号。",
 };
 
-const originalText = new WeakMap<Text, string>();
-const originalAttribute = new WeakMap<Element, Record<string, string>>();
+type LocalizedValue = { original: string; translated: string };
+const originalText = new WeakMap<Text, LocalizedValue>();
+const originalAttribute = new WeakMap<Element, Record<string, LocalizedValue>>();
 const ignoredTags = new Set([
   "CODE",
   "KBD",
@@ -1828,12 +1829,7 @@ export function translateLocalizedAppText(
       continue;
     }
 
-    const original = originalText.get(node) ?? node.nodeValue ?? "";
-    originalText.set(node, original);
-    const translated = translateString(original, locale);
-    if (node.nodeValue !== translated) {
-      node.nodeValue = translated;
-    }
+    translateTextNode(node, locale);
   }
 
   translateAttributes(root, locale);
@@ -1860,14 +1856,27 @@ function translateElementOwnText(root: ParentNode, locale: AppLocale) {
     if (!textChildren.length || hasElementChild) continue;
 
     for (const node of textChildren) {
-      const original = originalText.get(node) ?? node.nodeValue ?? "";
-      originalText.set(node, original);
-      const translated = translateString(original, locale);
-      if (node.nodeValue !== translated) {
-        node.nodeValue = translated;
-      }
+      translateTextNode(node, locale);
     }
   }
+}
+
+function localizeCurrentValue(
+  current: string,
+  previous: LocalizedValue | undefined,
+  locale: AppLocale,
+): LocalizedValue {
+  // Only our last output belongs to the cached source. React can reuse the
+  // same node or element for a different loading/error/success state.
+  const original = previous?.translated === current ? previous.original : current;
+  return { original, translated: translateString(original, locale) };
+}
+
+function translateTextNode(node: Text, locale: AppLocale) {
+  const current = node.nodeValue ?? "";
+  const value = localizeCurrentValue(current, originalText.get(node), locale);
+  originalText.set(node, value);
+  if (current !== value.translated) node.nodeValue = value.translated;
 }
 
 function translateAttributes(root: ParentNode, locale: AppLocale) {
@@ -1882,12 +1891,14 @@ function translateAttributes(root: ParentNode, locale: AppLocale) {
     const originals = originalAttribute.get(element) ?? {};
     for (const attribute of ["placeholder", "aria-label", "title"]) {
       const current = element.getAttribute(attribute);
-      if (!current) continue;
-      const original = originals[attribute] ?? current;
-      originals[attribute] = original;
-      const translated = translateString(original, locale);
-      if (current !== translated) {
-        element.setAttribute(attribute, translated);
+      if (current === null) {
+        delete originals[attribute];
+        continue;
+      }
+      const value = localizeCurrentValue(current, originals[attribute], locale);
+      originals[attribute] = value;
+      if (current !== value.translated) {
+        element.setAttribute(attribute, value.translated);
       }
     }
     originalAttribute.set(element, originals);
