@@ -380,6 +380,7 @@ export function LifeClimateClient() {
     <div id="main-content" className="mx-auto max-w-6xl space-y-6 py-8 sm:py-12">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[11px] uppercase tracking-[.16em] text-[var(--evidence-gold)]">{t.eyebrow}</p>
+        <ButtonLink href="/app/new/life-climate/b3" variant="secondary" className="my-4">多领域人生结构对照</ButtonLink>
         <ButtonLink href="/app/new/scene" variant="ghost" className="min-h-11 !w-auto active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--evidence-gold)]">{t.back}</ButtonLink>
       </div>
 

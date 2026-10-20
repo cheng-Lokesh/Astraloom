@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => state.client }));
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/service-role.server", () => ({ getServiceRoleSupabaseClient: () => state.serviceFactory() }));
 
 import { GET, POST } from "./route";

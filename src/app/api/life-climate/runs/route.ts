@@ -19,6 +19,7 @@ import {
 import { verifySafety } from "@/lib/safety/safety-verifier";
 import { getServiceRoleSupabaseClient } from "@/lib/supabase/service-role.server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { submitLifeClimateB3 } from "@/lib/life-climate/b3-server/http.server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -156,12 +157,14 @@ export async function POST(request: Request) {
   try {
     const userClient = await createSupabaseServerClient();
     if (!userClient) return failure(503, "persistence_unavailable", trace);
-    const { data: auth } = await userClient.auth.getUser();
+    const { data: auth, error: authError } = await userClient.auth.getUser();
     if (!auth.user?.id) return failure(401, "unauthenticated", trace);
     if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
       return failure(422, "invalid_request", trace);
     }
-    const parsedBody = postSchema.safeParse(await request.json().catch(() => null));
+    const rawBody: unknown = await request.json().catch(() => null);
+    if (rawBody && typeof rawBody === "object" && "request" in rawBody) return submitLifeClimateB3(auth.user, authError, rawBody, trace);
+    const parsedBody = postSchema.safeParse(rawBody);
     if (!parsedBody.success) return failure(422, "invalid_request", trace);
     const pathRequest = "changes" in parsedBody.data
       ? lifeClimatePathRunRequestSchema.safeParse({

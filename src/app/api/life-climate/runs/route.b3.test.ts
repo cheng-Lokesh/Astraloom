@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => state.client }));
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/service-role.server", () => ({ getServiceRoleSupabaseClient: () => state.service }));
 
 import { POST } from "./route";
@@ -47,6 +48,7 @@ function b3Body() {
       resources: [],
       assumptions: [],
       commonRules: [],
+      constraintBindings: [],
       alternatives: [
         { id: "alternative-a", label: "保留当前结构", rules: [] },
         { id: "alternative-b", label: "再评估当前结构", rules: [] },
@@ -99,5 +101,32 @@ describe("Track B B3 protocol admission", () => {
     }));
     expect((state.client as { from: ReturnType<typeof vi.fn> }).from).not.toHaveBeenCalled();
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("maps the real PostgREST P0001 envelope using its allowlisted message", async () => {
+    state.rpc.mockResolvedValue({ data: null, error: { code: "P0001", message: "b3_source_stale", details: "private SQL details", hint: "private hint" } });
+    const response = await POST(new Request("http://local/api/life-climate/runs", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b3Body()),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, error_code: "b3_source_stale", outcome: "not_registered", idempotency_key: submissionKey, request_digest: digest(b3Body().request) });
+  });
+
+  it("sanitizes unknown PostgREST messages, codes, hints and SQL details", async () => {
+    state.rpc.mockResolvedValue({ data: null, error: { code: "23505", message: "private table data", details: "private SQL details", hint: "private hint" } });
+    const response = await POST(new Request("http://local/api/life-climate/runs", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b3Body()),
+    }));
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body).toMatchObject({ ok: false, error_code: "persistence_failed" });
+    expect(JSON.stringify(body)).not.toMatch(/private|23505|details|hint/);
+    expect(state.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["idempotency_conflict", "unauthenticated", "persistence_failed"])("never labels conflict/auth/unknown as not registered: %s", async (code) => {
+    state.rpc.mockResolvedValue({ data: null, error: { code: "P0001", message: code } });
+    const response = await POST(new Request("http://local/api/life-climate/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b3Body()) }));
+    expect(await response.json()).not.toHaveProperty("outcome");
   });
 });
