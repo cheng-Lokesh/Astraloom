@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { buildV1Seed } from "@/test/v1-fixtures";
 
@@ -25,6 +25,11 @@ function request(body: unknown) {
 describe("/api/seed-context", () => {
   const rpc = vi.fn();
   const select = vi.fn();
+
+  it("keeps the GET request required for Next's generated route type checks", () => {
+    // Vitest transpiles types; `tsc --noEmit` executes this regression guard.
+    expectTypeOf<Parameters<typeof GET>>().toEqualTypeOf<[request: Request]>();
+  });
 
   beforeEach(() => {
     rpc.mockReset();
