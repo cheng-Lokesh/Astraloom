@@ -868,3 +868,85 @@ Git delivery is confirmed: the exact d1 feature SHA was normally pushed
 remote/HEAD/upstream all resolved to that SHA with 0/0 divergence. This is not
 main, PR, deployment, Auth/DB/RLS, or nine-stage acceptance. Later docs-only
 changes do not alter d1 feature source or imply a new build.
+
+## Track B B3 multi-domain life-climate journey candidate (2026-10-20)
+
+The separate `/app/new/life-climate/b3` journey is a Stage 6 functional
+candidate. Keep the existing one-theme B1/B2 entry and history intact; B3 does
+not finish Track B or alter the fixed nine-stage product objective.
+
+Before a new comparison, the signed-in owner must read the current server
+source and explicitly review every saved Profile item, resource, and
+constraint. Show the complete fourteen-dimension Profile, all six long-horizon
+domains, current context, safe evidence summaries, classifications, declared
+resource bounds, and original deadlines. Unknown stays visibly unknown and is
+never displayed or consumed as zero. A stale source/profile revision must
+require rereading and fresh review; old rules must not be rebound by label or
+ordinal.
+
+The comparison contains the baseline plus at least two separately named
+alternatives. Show one year as four quarters, three years as three annual
+stages, and five years as five annual stages. Every modeled quantity must show
+its explicit amount, unit, and one-time/quarter/year period; do not silently
+convert a quarterly amount into a yearly flow. Keep source facts, user-authored
+assumptions, explicit unknowns, declared constraints, and model obligations
+separate. Required recurring costs must show requested, paid, shortfall, and
+fulfilled/unfunded/unknown state. A rule with unmet or unknown conditions must
+not partially apply its planned resource and structure effects. Preserve the
+declared stage order and explain a deadline inside a coarse stage as unknown
+for that stage, not as a fabricated date or automatically extended deadline.
+
+Require independent confirmation for the baseline, every alternative path,
+every assumption/resource declaration, every rule, and the complete reviewed
+source before submission. Any edit to a rule, path, horizon, resource, or
+source clears affected confirmations. Symbolic reference stays off by default
+and needs a separate current-source consent for this run; if shown, it is a
+separate non-causal per-stage series that cannot influence amounts, rules,
+Events, Claims, or evidence. Never present it as a precise event prediction.
+
+Results and History show safe per-stage states, resource comparison, actual
+simulated Events, and Claims linked to their supporting Events. Causal links
+stay within the same path and point only to earlier Events. Label all outcomes
+as conditional simulation evidence, not real occurrence, probability,
+deterministic forecast, or professional advice. Hide row ids, trace ids,
+internal source keys, Seed text, binding identifiers, raw birth inputs, and
+private safety details. B3 history remains separate from the B1/B2 list; two
+opened historical results must keep their own event links and selection state.
+
+For recovery, restore only intents proven registered by the server. Pending or
+unknown outcomes keep the full original body and key locked for exact retry.
+HTTP 401/403 alone, malformed/mismatched responses, and lookup errors do not
+release the request or authorize changed input. Only a matching first-response
+`not_registered` proof or a confirmed terminal receipt for that exact intent
+can settle the flow. State that a local draft that never registered with the
+server is not guaranteed to survive refresh or a device change.
+
+Current UI evidence closes the two independently reproduced P2 defects within
+the reviewed scope. The independent review task reran `b3-ui-dom.test.ts`:
+13/13 passed, exit 0 (62.49s), and both original read-only Chrome-equivalent
+probes exited 0. Root checked and accepted that report; Root did not personally
+rerun all 13 cases. The UI author separately reported 3 files / 16 tests PASS,
+scoped lint 0, and TypeScript 0. The defect cases covered duplicate rule order
+after deleting/inserting and stale edit state after rereading source. This
+closes those two reported P2s, not every UI combination.
+
+Bounded exact-feature production-preview QA also loaded four B3 CSS files and
+checked the actual B3 route, legacy entry, and archive at widths 375px and
+1280px (six documents returned 200 with no horizontal overflow). The mounted
+React component identities were only `B3Client` and `B3Result` (two; not four).
+The detailed mock-HTTP journey used the real React components, pure engine, and
+production CSS; it exercised source review, all 14 Profile dimensions, paths,
+confirmation resets, history isolation, and locked retry recovery without real
+writes. Root reviewed four focused screenshots and found no clipping in those
+areas; this is not a global-shell visual acceptance or real-account UI check.
+
+The editor still permits selecting a prerequisite order the engine correctly
+rejects, with insufficient explanation before submit. Keep this as a known,
+non-blocking UX guidance gap for follow-up; do not loosen the production schema
+or imply every possible rule combination is valid. API responses provide the
+authoritative rejection; the mock harness's bare 422 behavior is not evidence
+of a production deadlock. Actual source/intents/runs APIs returned 503 and the
+legacy Profile API returned 500 in the unconfigured preview; those are
+configuration/Auth gates, not passes. Database/RLS, authenticated account,
+real cross-device recovery, and global visual acceptance remain unverified.
+Broader evidence and delivery gates are in the [B3 TDD record](testing/life-climate-b3.tdd.md).

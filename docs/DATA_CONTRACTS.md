@@ -1829,3 +1829,107 @@ completion-trigger function to accept and bind v1/v2 criteria; it does not
 alter tables, RLS, grants, or the append RPC. Source-structure checks are not
 PostgreSQL compilation or migration execution; this migration has not been
 executed against the local database.
+
+## Track B B3 multi-domain life-climate candidate (2026-10-20)
+
+`life-climate-b3-v1` is a separate Stage 6 functional candidate for a
+conditional, coarse-grained comparison across several life domains. It does
+not replace or rewrite the B1/B2 `life_climate_runs` ledger, its request
+hashes, historical records, or writers, and it does not alter Track A's
+canonical simulation/Event/Claim/Report chain or V2 Core. It is one candidate
+inside the fixed nine-stage product route; it neither narrows the total goal
+nor establishes complete Track B acceptance.
+
+### Frozen source, paths, and stage model
+
+Each new intent freezes the authenticated owner's newest submitted/frozen
+Seed and the matching Reality Profile revision in a source snapshot with a
+canonical SHA-256 context. The complete Profile input contains three scalar
+Reality fields, five bounded lists, and all six life-model domains
+(`identity`, `career`, `wealth`, `relationships`, `environment`, and
+`lifeStage`), plus declared `worldInputs` resources and constraints. Every
+Profile entry preserves its `fact` / `assumption` / `unknown` classification
+and safe evidence summary. Unknown values stay null/empty and explicitly
+unknown; they are never substituted with numeric zero or inferred from other
+domains. The source snapshot also binds its Profile revision and server
+assessment time. A changed source or revision cannot silently rebind an
+existing intent.
+
+A comparison contains one `baseline` plus at least two confirmed alternatives
+(up to three). One year uses four quarters; three and five years use three and
+five coarse annual stages. Quantities are explicit decimal strings with their
+own unit and `once` / `quarter` / `year` period. A quarterly amount is not
+converted into an annual rate, and absence or unknown remains unknown rather
+than zero. The model carries separately confirmed assumptions, source
+references, stage rules, up to eight resource declarations and the source
+constraint bindings. Each stage retains the six domains, the broader context,
+deadline status, resource balances, investments, transitions, and required
+obligations.
+
+Typed rules cover scenario changes, one-time resource changes, recurring
+flows, investment cycles, relocation, guarded structural transitions, and
+transition readiness. An investment records only explicitly declared time
+and cost inputs; it does not imply ability growth, hiring, income, or success.
+Existing deadlines remain bound to their declared resource and date. A
+deadline inside a coarse stage is unknown for that stage; a deadline already
+passed is constrained and never extended. Stage evaluation validates all
+guards, explicit amounts, and resource bounds before applying a rule's planned
+resource and structure effects together. A constrained or unknown operation
+does not partially apply its planned deltas. Execution order is fixed by rule
+phase, then the user's order within that phase: scenario changes, relocation
+and one-time changes, recurring flows, investment, then guarded/transition
+rules. Required recurring flows are obligations assessed for each applicable
+stage; optional flows do not become obligations. An unfunded required outflow
+is recorded as unfunded/constrained rather than silently paid.
+
+### Event, Claim, and independent Symbolic boundaries
+
+Generated B3 Events preserve their path, stage, sequence, rule, source
+references, confirmed assumption references, before/after values, and causal
+predecessor Event digests. Causal references must point to earlier Events in
+the same path. Every B3 Claim has one or more `evidenceEventIds` that resolve
+to Events from the same path and matching source/assumption references; the
+Report references the exact resulting Claim set. These are B3's own
+conditional simulation artifacts, not Track A `event_logs`, real-world
+evidence, or proof that an event occurred. No exact event dates, probability,
+or deterministic forecast is provided.
+
+An optional future Symbolic series is a separate, default-off attachment that
+requires the existing current eligible source and explicit consent for this
+comparison. It is derived per coarse stage and remains non-causal: it cannot
+change resources, rules, guards, Events, Claims, or their evidence. Raw birth
+input and Seed safety material stay in private intent columns and are omitted
+from owner-readable columns and public result projections. The public Run
+projection strips the source binding (Seed/Profile identifiers); it still
+revalidates the persisted source snapshot, exact original request, deterministic
+result, Event-to-Claim links, and Report references before returning history.
+
+### Intent/receipt storage and current evidence boundary
+
+The forward candidate migration adds only `life_climate_b3_intents` and
+`life_climate_b3_receipts`. Both are owner-bound; authenticated browser roles
+have RLS-scoped read-only access to an allowlist of safe columns. They cannot
+insert, update, or delete. Server-only `SECURITY INVOKER` RPCs have the narrow
+`service_role` execution grant and append intents/receipts after validating
+owner, source, request digest, confirmation sets, and result evidence. Same
+owner/key/same-body recovery checks the saved intent and receipt before mutable
+Seed/Profile/source/consent/time checks; same key with changed content is a
+conflict. A receipt is either a completed bundle, an explicit terminal
+rejection, or absent while the registered intent is still pending after a
+transient failure. Exact replay must return the original frozen source and
+body, not rebuild them from today's profile.
+
+Both tables have immutable update/delete triggers. Although the proposed
+foreign keys name `ON DELETE CASCADE`, the row-level immutability triggers
+reject deletion of B3 history, so physical account deletion cannot complete
+through this candidate schema alone. The account deletion workflow and an
+audited B3 erasure path are not implemented; this restriction must be resolved
+before claiming complete account deletion. The B3 feature source is committed
+and pushed to the development branch at
+`611460724ed075f44139258e2b3a977d50bb4eca`, and an exact-SHA clean build
+passed. The migration and pgTAP file remain authored candidates only: neither
+has been executed against PostgreSQL, so table grants, RLS, invoker gates,
+trigger behavior, and transactional replay are not database acceptance
+evidence. Docker Engine was unavailable for the local database gate. See the
+[B3 TDD record](testing/life-climate-b3.tdd.md) for bounded test/preview
+evidence and remaining gates.

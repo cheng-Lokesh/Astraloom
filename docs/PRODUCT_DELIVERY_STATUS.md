@@ -441,3 +441,74 @@ index 为空。本次文档内容另行 docs-only 收尾，不改变已 build �
 本候选也不是完整产品 PASS 或上线声明。当前优先完成
 本功能；后续 B3 仅做契约设计，不写代码。
 完整命令、范围和边界见[新处境延续 TDD 记录](testing/profile-continuation.tdd.md)。
+
+## Track B B3 多领域人生气候候选（2026-10-20）
+
+前文“后续 B3 仅做契约设计，不写代码”保留为该记录时的计划；本节记录之后
+形成的独立 B3 候选状态。功能候选已提交并推送到开发分支；本次文档更新不改变
+功能源码，也不代表对文档提交另行构建。
+
+B3 是固定九阶段路线中第 6 阶段的一个功能候选：以当前提交 Seed 和完整
+Reality Profile 为冻结起点，显式比较 baseline 与至少两个备选路径，按一年四
+季度或三/五年年度粗阶段，保留明确数量、单位、周期、约束和 Event→Claim 证据链。
+它不缩减长期产品总目标，不等于完整 Track B、阶段 PASS、上线或最终验收；B1/B2
+合同、请求哈希和历史保持原样，V2 Core 不变。
+
+本批历史 RED checkpoint 为 `9f3fa9b`（API）与 `8c1c25a`（UI）。B3 功能候选
+提交为 `611460724ed075f44139258e2b3a977d50bb4eca`，34 files、`+3101/-3`；
+普通非强制推送 exit 0，Root 随后核对 live `ls-remote` 与该 SHA 一致，
+push 核验时 HEAD/upstream divergence 为 0/0、Git index 空。它已上传开发分支，
+不是 main、PR、部署或发布。以下测试数按作者报告、独立评审任务和 Root 自己的选定复跑分别记录，
+不相加：
+
+- Engine 作者完成两项 P2 返修后，报告 6 files / 50 tests PASS、scoped ESLint
+  0。独立评审任务复跑同一 6 files / 50 PASS，exit 0（8.28 秒），scoped
+  ESLint 0；此前两项 targeted 复现均不可再现，也未发现该 engine 范围内新的
+  P1/P2。Root 核查并接受这份纯 engine 候选复核报告；Root 自己另只运行了
+  contracts+admission 17 cases 与 boundaries+source 10 selected cases，不是亲跑
+  engine 全部 50 项。此结论不代表整批 B3 或第 6 阶段 PASS。
+- Backend 作者报告 4 files / 40 tests PASS；coverage 为 statements 91.34%、
+  branches 85.28%、functions 100%、lines 96.12%，TypeScript 与 scoped lint
+  均 exit 0。这是作者报告，不代表整个仓库构建或数据库验收。
+- 两项 UI P2 已由原独立评审任务关闭：独立任务复跑 `b3-ui-dom.test.ts`
+  13/13 PASS，exit 0（62.49 秒），两项原只读 Chrome 等价探针也 exit 0。Root
+  核查并接受报告；Root 未亲自复跑全部 13 项。UI 作者修复后报告 3 files / 16
+  tests PASS、scoped lint 0、TypeScript 0。此范围关闭重复 rule order 和 stale
+  edit index 两缺陷，不声称所有规则组合均可提交。
+- Root 独立选定的 contracts+admission 为 17 PASS，另一次 boundaries+source
+  为 10 PASS；两组存在重叠，不可合并为总测试数，也不能替代全模块验收。
+- 首次 API/UI 独立评审任务报告 5 files / 44 PASS，范围有重叠，不能与其他计数
+  相加。以上不是整仓完整测试套件。
+
+Root 在精确 feature SHA 的干净 detached checkout
+`C:/Users/clf04/Documents/AI推演/.astraloom-build-3d446a2` 执行
+`npm run build -- --webpack`，session `57797` exit 0（compile 33.3s、TypeScript
+60s、110 static pages 5.6s）。Root 先停止自己的旧 preview `30838` 并核实
+listener 0；新 production preview session `6893` Ready（348ms），地址
+`127.0.0.1:52340`，Build ID `-ypTxip0IQL53S30VLw-o`。有界 QA 的 JSON/summary
+见[`production-qa-result.json`](../output/playwright/life-climate-b3/production-qa-result.json)
+与[`production-qa-summary.md`](../output/playwright/life-climate-b3/production-qa-summary.md)。
+
+最终 QA 脚本 exit 0，并核对了 SHA、HEAD、磁盘 BUILD_ID 与 served CSS 字节。
+实际 B3 页面、旧入口及 signed-out archive 在 375/1280 宽度共 6 docs HTTP 200、
+无横溢；加载 4 个 CSS 文件，但挂载的 React 类型只有 `B3Client`、`B3Result` 两个。
+mock HTTP + 实际 React/pure engine/production CSS 覆盖完整 14 维、2 个备选、
+六位数量输入及单位/周期、六域、上下文、义务、claim 锚、迁居/学习/readiness、
+三条路径、窄屏未知网络下注册 intent 刷新恢复、401 仍锁、3 次 POST body/key
+完全一致、来源/horizon 确认重置及同 digest 历史隔离。pageerrors 0；console 10
+（真实 API 503×6、旧 Profile 500×2、mock 网络
+错误 1、401 1）；27 个 `ERR_ABORTED` 和 1 个 deliberate `ERR_FAILED` 保留；真实写入
+0。Root 查看 375/1280 的四张聚焦截图，检查区域未见裁剪，不是全局 shell 视觉验收。
+
+QA attempt 01/02 失败被保留：其 fixture 选择同季度 phase-2 recurring flow 作为
+phase-1 relocation 前提，engine 按阶段顺序合法拒绝 `invalid_b3_request`。将 fixture
+guard 调为 `cash >= 1000` 后主旅程通过，没有放宽生产 schema。尚知一个非阻断 UX
+缺口：UI 可选择不合法前提顺序，提交前解释不足；API 有权威拒绝回执。mock 裸 422
+不是 production 锁死证据。source/intents/runs 实际 API 503、旧 Profile API 500 是
+预览配置/Auth 不可用，记 BLOCKED 而非 PASS。
+
+Docker `info` 最近复查 exit 1，Linux Engine pipe 不存在；迁移、pgTAP、PostgreSQL、
+Auth/RLS、真实账户和跨设备真实恢复均未验收。不可据此裁定整个 Astraloom BLOCKED；
+九阶段总目标仍 active。B3 仅是第 6 阶段功能候选，不是完整 Track B、Stage PASS、
+部署或上线。完整合同、范围和证据边界见[B3 TDD 记录](testing/life-climate-b3.tdd.md)。
+本次只更新五份文档，不更改功能实现或历史 B1/B2。

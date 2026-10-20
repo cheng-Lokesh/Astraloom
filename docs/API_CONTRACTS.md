@@ -1094,3 +1094,68 @@ Result with an empty `source_unavailable` receipt; contradictory or tampered
 source/rule/event data rejects the safe projection. Per-sample `executed` and
 `not_executed` entries refer to actual selected Events. Full endpoint semantics
 and evidence limits are in the [reality review TDD record](testing/reality-review-loop.tdd.md).
+
+### Track B B3 multi-domain life-climate API candidate (2026-10-20)
+
+B3 adds a separate read/recovery surface and an opt-in request envelope while
+preserving the existing B1/B2 request and response paths:
+
+- `GET /api/life-climate/b3/source?horizon=1_year|3_years|5_years` requires a
+  signed-in, non-anonymous user. The server derives the owner, reads that
+  owner's current submitted/frozen Seed and matching Reality Profile, and
+  returns the safe frozen Profile view, source-context digest, and an optional
+  independently authorized Symbolic series. It accepts no owner/Seed selector,
+  uses `no-store`, and does not return raw Seed text or birth values.
+- B3 submission uses the existing `POST /api/life-climate/runs` outer route
+  with the strict body `{ idempotency_key, request }`. The route dispatches this
+  envelope to the server-only B3 writer while keeping existing B1/B2 bodies
+  readable. The B3 request binds `life-climate-b3-v1`, horizon/period unit,
+  exact Profile revision and source digest, complete assumptions/resources/
+  constraints, common rules, baseline confirmation, at least two alternative
+  paths, and explicit confirmation sets. The server revalidates them against
+  the frozen source before reserving or completing a run. A new completion
+  returns `201`; exact completed replay returns `200` with the original
+  result. A terminal rejection replays its stable error envelope; the saved
+  rejection receipt remains readable through the owner-scoped intents GET.
+- `GET /api/life-climate/b3/intents?limit=...` lists up to 20 registered
+  intents, and `?key=<idempotency_key>` reads one exact intent. It returns the
+  original body and `pending`, `completed`, or `rejected` status so a user can
+  resume a request on another device. It does not infer successful
+  registration from a later missing-intent response.
+- `GET /api/life-climate/b3/runs?limit=...` lists completed B3 runs;
+  `?run_id=...` reads one completed B3 run. B3 history remains separate from
+  the legacy B1/B2 history selector. The server revalidates the exact frozen
+  request/source and engine result before projecting it, and strips internal
+  Seed/Profile binding identifiers from the public result.
+
+Every route requires the cookie-authenticated current owner, rejects anonymous
+users, returns the standard `{ ok, error_code, trace_id }` shape, uses safe
+stable errors, and never returns service credentials. Intent/receipt reads are
+owner-scoped and RLS-backed; raw `seed_safety` and `symbolic_input` fields are
+not granted to authenticated readers. The server-only service role is used
+only by the B3 writer/source RPCs, not by the browser.
+
+Recovery rules are strict. The first POST may return
+`outcome:"not_registered"` only for a known pre-registration RPC rejection,
+with the original idempotency key and the canonical digest of the exact
+submitted request. The client releases the pending body only when this proof
+arrives on the first dispatch with an allowed status/error and both values
+match. An ambiguous/network/unknown result, HTTP `401` or `403` by itself, a
+malformed response, a mismatched digest/key, or a later missing-intent `404`
+does not unlock editing or authorize a different body/key. A saved terminal
+receipt for the exact registered intent can settle it; otherwise the complete
+original request remains locked for exact replay. Only registered server
+intents are recoverable across refresh/device changes; an unregistered local
+draft is not guaranteed to survive them.
+
+Terminal validation/safety rejection is stored as a `rejected` receipt with no
+result bundle. A transport, service, or other transient persistence failure
+after reservation leaves a `pending` intent without a terminal receipt. These
+states must not be conflated. The feature source is committed and pushed to
+the development branch at `611460724ed075f44139258e2b3a977d50bb4eca`;
+focused HTTP/source tests and bounded production-preview probes are recorded in
+the [B3 TDD record](testing/life-climate-b3.tdd.md). The API source contract is
+still not proof that the migration, PostgreSQL transaction, Auth, owner RLS,
+real account, or cross-device recovery has been accepted. The local database
+gate was not run because Docker Engine was unavailable. This is a Stage 6
+feature candidate only, not complete Track B, stage PASS, or launch acceptance.
