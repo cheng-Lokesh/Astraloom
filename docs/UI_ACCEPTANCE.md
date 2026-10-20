@@ -787,3 +787,84 @@ GETs in an isolated browser without cookies, so this is functional UI evidence,
 not real-account/Auth/DB acceptance. See the [reality review TDD
 record](testing/reality-review-loop.tdd.md) for command, fixture, screenshots,
 and delivery boundary.
+
+#### New-situation Reality Profile continuation candidate (2026-10-19)
+
+The Scene page and Dashboard offer an explicit route to start a new situation
+with saved Reality Profile input. The intake page prepares the current saved
+Profile through the read-only `prepare_continuation=1` GET. It reuses the
+existing Profile editor to modify only an in-memory new-submission draft; it
+does not PUT the old Profile. The alternative blank intake remains available.
+
+Before submission, the user must review every current Profile field, resource,
+and constraint, separately confirm each retained resource rate, keep unknowns
+explicit, confirm the Profile applies to this new situation, and re-acknowledge
+the privacy and safety boundary. A deadline already expired at preparation is
+shown for update or removal and is never silently extended. A changed source
+returns the user to a fresh read and review. After success, the UI continues to
+People setup; people, relationships, action rules, and prior Run permissions
+must be created or confirmed separately.
+
+For an unknown POST result, keep the full original body and submission key,
+lock the editor and source refresh, and offer only exact retry. Treat a success
+as confirmed only when the continuation receipt has the expected protocol
+version and Profile revision `1`. An authentication failure after an unknown
+result does not release the body. A confirmed stale-source/revision or expired-
+deadline rejection may release it only with fresh review and confirmation.
+The producer component suite passed 5 focused files / 24 tests, including 17
+new DOM cases. A separate reported 17-case run (59.45 seconds) is component/DOM
+test evidence only; it does not establish exact-feature production CSS or an
+actual Next page check. The preliminary screenshots use current React with mock
+HTTP and an older stylesheet, not CSS from an exact-feature production build.
+The original exact-SHA build failed its generated route type check. The route
+signature repair at `c0a8329e5b3c81cbb812d6d15ba0ffe7e9dfa2ab` passed build, but
+its preview exposed a UI defect: Profile is a public, empty, disabled editor
+shell, while its API remains protected. With Supabase unconfigured, the
+unauthenticated Profile GET returned 500; no saved data was shown. The c0
+read-only probe observed the error message revert to loading after it appeared.
+
+Text-layer RED `7ababfec891d04243865e5bf835882f49577e258` reproduced this with
+4/4 actual Chrome cases failing. GREEN `d1d53e5aafdec6ecf592a2fa7737d2075c659cb0`
+changes only `localized-text-layer.tsx` and a new DOM test. It compares current
+DOM text with the last translation output to distinguish a newer React message;
+it does not cancel the translation dictionary or observer. Producer Chrome
+checks passed 4/4 with scoped lint and TypeScript at exit 0; an independent
+4/4 rerun and lint also passed, supporting limited READY only. Attribute-based
+opt-out remains an existing boundary; text-based opt-out passed its test.
+`contenteditable` and external new text identical to the prior translation
+remain existing boundaries; this is not full internationalization acceptance.
+
+The exact d1 build passed and the Profile-only read-only probe kept the correct
+error visible for an additional 1,000 ms after it appeared at 781.1 ms. Save
+remained disabled and real writes were 0. The API's 500 reflected missing
+Supabase configuration and proves fail-closed behavior only, not Auth or DB
+acceptance. See [`profile-status-probe-d1d53e5a.json`](../output/playwright/profile-continuation/profile-status-probe-d1d53e5a.json)
+and [screenshot](../output/playwright/profile-continuation/profile-status-probe-d1d53e5a-375.png).
+Final `production-qa.mjs` on exact d1 preview passed in session `11232` (build
+ID `l1yle0-A9PpLEtJHAZNCB`). At 375px and 1280px, the real Scene route returned
+200, Intake redirected 307 to the login page (final 200), Dashboard showed its
+login prompt (200), and Profile rendered its public empty disabled shell (200).
+The protected Profile API returned 500 because Supabase is unconfigured; the
+correct stable error remained visible. This gate is BLOCKED and is not Auth or
+account acceptance.
+
+Four exact-build CSS files were loaded across three mounted React component
+types—`FormalIntakeClient`, `RealityProfileClient`, and `SandboxLedger`—at both
+375px and 1280px (six component/viewport checks), using mock HTTP and stub
+AppShell/language. The checks covered 18 Profile reviews, one
+separate rate confirmation, correcting an expired deadline, exact body/key
+retry, one old-Profile GET/PUT flow, and Dashboard overflow at both widths.
+There were 0 page errors, 2 console errors (both the expected unconfigured
+Profile API 500), and 0 real write attempts or writes. The focused screenshots
+were visually reviewed; they do not establish global layout, signed-in private
+route, real-account, database/RLS, or full-product acceptance. See
+[QA summary](../output/playwright/profile-continuation/production-qa-summary.md) and
+[result JSON](../output/playwright/profile-continuation/production-qa-result.json).
+See the
+[QA attempt history](../output/playwright/profile-continuation/qa-attempt-history.md) and
+[continuation TDD record](testing/profile-continuation.tdd.md).
+Git delivery is confirmed: the exact d1 feature SHA was normally pushed
+(non-force, `73ff..d1`, exit 0) to the current development ref, and live
+remote/HEAD/upstream all resolved to that SHA with 0/0 divergence. This is not
+main, PR, deployment, Auth/DB/RLS, or nine-stage acceptance. Later docs-only
+changes do not alter d1 feature source or imply a new build.

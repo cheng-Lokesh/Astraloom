@@ -1,6 +1,6 @@
 # 产品交付状态账本
 
-更新日期：2026-10-19
+更新日期：2026-10-20
 仓库：`C:\Users\clf04\Documents\AI推演\Astraloom-stage2`
 
 产品交付权威是用户确认的固定九阶段路线与当前总控交付目标：持续存在的个人数字生命沙盘，并保留独立、有限且明确授权的 Hypothesis。旧[未来模拟器 V2](FUTURE_SIMULATOR_V2.md)文档在此账本中仅作为已验收 V2 Core 不可变边界的依据；与最新用户计划冲突时，以用户计划为准，但不因此改写 V2 Core。[产品宪章](PRODUCT_CONSTITUTION.md)可作实现约束参考，不覆盖最新用户目标。阶段完成度不以猜测百分比表示；目前九阶段均没有足以证明全阶段完成的独立验收证据，也没有阶段级 PASS 裁决。
@@ -340,3 +340,104 @@ push 验证时 divergence 0/0、index 为空。功能已上传到开发分支，
 或部署。后续 docs-only 更新不改变该功能代码，也不据此声称单独重新 build。
 完整证据与边界见
 [reality review loop TDD record](testing/reality-review-loop.tdd.md)。
+
+## 新处境沿用已保存 Reality Profile 候选（2026-10-19；状态更新至 2026-10-20）
+
+本候选为新处境提供显式入口，读取旧 Profile 后逐项复核，并在创建新
+Seed 时以新 revision `1` 保存完整 Profile。旧资料编辑器仅复用为本次草稿
+界面，不写回旧 Profile。未知项保持未知，旧资源变化量先清空并要求单独
+确认；到期限制不会自动延期。旧人物、关系、行动规则与运行授权不会复制。
+产品边界仍受 `docs/FUTURE_SIMULATOR_V2.md` 约束；本候选不改 V2 Core，也不
+缩减九阶段目标。该流程不证明用户先前自述的自身历史真实。
+
+RED 历史 checkpoint `a516fe0` 保存 API/UI 缺口：定向 API 运行 15 项中
+14 failed、1 passed，Chrome intake 运行 5 项失败。后续 checkpoint `94e823a`
+覆盖未知结果后的认证错误释放原请求，以及 continuation receipt 版本错误
+仍被判成功；修复前相应 Chrome 定向运行有 3 项失败。RED 是历史失败证据，
+不是当前验收结果。
+
+当前候选 backend 定向 6 个文件、67 tests PASS，exit 0（3.64s）；owned
+TypeScript 路径 scoped ESLint 8 个文件 exit 0、0 warnings，整仓 TypeScript
+检查 exit 0。独立复核重叠重跑 6 个文件、67 tests PASS；两组结果相互重叠，
+不相加。UI 冻结结果为 5 个文件、24 tests PASS，exit 0（74.50s），包括
+17 项新 DOM 场景；UI scoped ESLint 与 TypeScript 组合检查 exit 0。检查覆盖
+旧 Profile 不被 PUT、375/1280 入口与确认交互、768/1024 英文 Scene 边界、
+source stale、资源变化量、到期限制、未知响应后的 401/403 锁定及错误版本
+receipt。该组件套件的 CSS 使用 fixture。另有一项报告为 17 cases PASS、
+exit 0（59.45s）的组件/DOM 检查；这不是 exact-feature production CSS 或
+真实 Next 页面 QA。现有候选截图使用当前 React、mock HTTP 和较早的样式表，
+不对应 exact-feature 构建产物。`production-qa.mjs` 只执行过 `node --check`，
+exit 0；该语法检查本身不产生页面 QA 结果。此后 c0 exact-SHA 预览已实际
+接受 QA 尝试并进行只读状态 probe；具体失败证据如下。当前没有完整
+Scene/production CSS QA PASS 或真实账户验收。
+
+构建修复的 RED checkpoint 为 `bbd22a0ba34ad608ed82abb8bdb562b1f145609c`：
+`route.test.ts` 的类型守卫触发实际 TypeScript `TS2344`。GREEN 修复提交
+`c0a8329e5b3c81cbb812d6d15ba0ffe7e9dfa2ab` 只改 `route.ts` 和
+`route.test.ts`：GET 改为必需的 `Request` 参数，三个测试调用改为传入 Request；
+没有改生产业务分支。相同类型检查 exit 0；3 个 API 纯逻辑测试文件 48 tests
+PASS，2 文件 scoped lint exit 0。路由专项覆盖率为 statements 84.93%、
+branches 80%、functions 85.71%、lines 92.85%，只针对该路由，不是全库覆盖率。
+独立只读 diff review 确认常规 HTTP、Auth、owner、query 和 RPC 分支未变。
+
+首次 exact-SHA clean build 对原功能提交
+`da52ba21c25da55ec2e650bb78caab47a3fd4de6`（16 paths，`+1489/-429`）运行于
+session `68999`，exit 1：compile 23.1 秒后 Next 生成的 `ParamCheck` 拒绝
+`GET` handler 的 `Request | undefined` 首参数。此失败保留为历史；不得记为
+`da52ba2` build 通过。Root 随后在修复 SHA
+`c0a8329e5b3c81cbb812d6d15ba0ffe7e9dfa2ab` 的 clean detached worktree 重跑，
+session `21670` exit 0：compile 50 秒、TypeScript 55 秒、110/110 static
+pages 用时 5.2 秒。同一 SHA 的预览 session `67447` 在 `127.0.0.1:52340`
+于 407ms Ready。该预览的 QA 已发现资料页状态缺陷：匿名 Profile GET 返回
+500 后，加载文案短暂变为错误提示，又被全局本地化状态缓存改回加载中。
+只读 DOM probe exit 0 观察到 442.4ms loading→error、691.9ms error→loading；
+Save 仍禁用、真实写入为 0，未显示保存资料。Profile 是公开的空编辑壳，
+API 保持保护；此前把该页假设为 page-level login gate 的 QA 断言无效。
+后续 QA 脚本断言错误也有记录（[QA attempt history](../output/playwright/profile-continuation/qa-attempt-history.md)）；这些尝试不是 QA PASS。
+
+共享文案缓存回归的 RED checkpoint `7ababfec891d04243865e5bf835882f49577e258`
+在实际 Chrome 中 4/4 FAIL。GREEN 修复
+`d1d53e5aafdec6ecf592a2fa7737d2075c659cb0` 只改 `localized-text-layer.tsx`
+和新 DOM test：以当前 DOM 与上次翻译输出比较，区分刚更新的 React 文案；
+不取消字典或 observer。producer 4/4 PASS、lint/TSC 0；独立 4/4 PASS、lint 0，
+仅 limited READY。attribute-based opt-out 仍是既有边界；text-based opt-out
+测试通过。`contenteditable` 与新外部文本恰等于旧译文仍是既有边界，不代表全量 i18n 验收。
+
+Root 在 d1 exact-SHA clean worktree 执行 build（session `8228`）exit 0：
+compile 23.5 秒、TypeScript 48 秒、110 pages 用时 4.6 秒。c0 preview
+session `67447` 已停止且 listener 为 0；d1 preview session `30838` 于
+`127.0.0.1:52340` 在 296ms Ready。d1 的 Profile 只读 probe exit 0：781.1ms
+时从 loading 转为正确错误提示，之后 1,000ms 未回退；错误可见、Save disabled、
+真实写入 0。GET 500 是该预览没有 Supabase 配置时的 fail-closed 响应，
+不证明 Auth/DB 通过。证据为
+[probe JSON](../output/playwright/profile-continuation/profile-status-probe-d1d53e5a.json)
+和[375px 截图](../output/playwright/profile-continuation/profile-status-probe-d1d53e5a-375.png)。
+旧 c0 probe 仍保留。d1 是当前功能交付候选 SHA
+`d1d53e5aafdec6ecf592a2fa7737d2075c659cb0`。最终
+`production-qa.mjs` 在该 exact preview 的 session `11232` exit 0，Build ID
+`l1yle0-A9PpLEtJHAZNCB`。375/1280 的真实 Scene 返回 200，Intake 307→`/login`
+（最终 200），Dashboard 登录提示 200，Profile 公共空 disabled editor 壳 200。
+受保护 Profile API 因 Supabase 未配置返回 500，正确错误文案保持可见；此
+Profile gate 是 BLOCKED，不是 Auth 或账户 PASS。
+
+4 个 exact-build CSS 文件用于三个真实 React 组件类型：`FormalIntakeClient`、
+`RealityProfileClient`、`SandboxLedger`；每类均检查 375px 和 1280px，共 6 项
+组件/视口检查，使用 mock HTTP、stub AppShell/language。覆盖 18 项资料复核、
+1 项资源变化量确认、到期限制修正、完整
+body/key 精确重试、旧 Profile GET/PUT 一次，以及 Dashboard 在两种宽度无横溢。
+结果为 pageErrors 0、consoleErrors 2（均为未配置 Profile API 的 500）、真实
+写入尝试/写入均为 0。Root 查看了聚焦截图，确认检查区域清晰；不代表全局布局、
+登录账户私有路由或完整产品验收。报告见[QA summary](../output/playwright/profile-continuation/production-qa-summary.md)
+和[result JSON](../output/playwright/profile-continuation/production-qa-result.json)。
+
+迁移 `20261018180647_reality_profile_new_situation_continuation.sql` 与
+`supabase/tests/reality_profile_continuation_test.sql` 仍只是 authored 候选。
+Docker info 于 2026-10-20 重查 exit 1，Linux Engine pipe 不存在；未执行
+PostgreSQL 编译、migration、pgTAP、Auth/RLS 或真实并发/账户验收。Gitworker 已将
+exact d1 功能 SHA 普通非强制推送到当前开发分支，更新范围 `73ff..d1`、exit 0；
+push 验证时 live `ls-remote`/HEAD/upstream 均为完整 d1 SHA，ahead/behind 为 0/0，
+index 为空。本次文档内容另行 docs-only 收尾，不改变已 build 的 d1 功能源码，
+也不暗示重新 build。此上传不代表 main、PR、部署、DB/Auth/RLS 或九阶段 PASS，
+本候选也不是完整产品 PASS 或上线声明。当前优先完成
+本功能；后续 B3 仅做契约设计，不写代码。
+完整命令、范围和边界见[新处境延续 TDD 记录](testing/profile-continuation.tdd.md)。

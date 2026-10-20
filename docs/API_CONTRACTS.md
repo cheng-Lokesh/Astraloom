@@ -80,6 +80,59 @@ Forbidden:
 - Do not call LLM.
 - Do not create reports.
 
+#### New-situation Reality Profile continuation (authored candidate, 2026-10-19)
+
+This is the authored route and RPC contract, not runtime acceptance. The first
+exact-SHA build of feature commit `da52ba21c25da55ec2e650bb78caab47a3fd4de6`
+failed generated route type validation. A route-signature repair at
+`c0a8329e5b3c81cbb812d6d15ba0ffe7e9dfa2ab` passes the exact-SHA build, but
+its preview exposed a UI failure-state bug. The text-layer repair at
+`d1d53e5aafdec6ecf592a2fa7737d2075c659cb0` has a passing exact-SHA build and a
+narrow production QA script pass (session `11232`). Profile's API returned 500
+without Supabase configuration; this is fail-closed evidence, not Auth or
+database acceptance. Evidence is in `docs/testing/profile-continuation.tdd.md`.
+Git delivery is confirmed: the exact d1 feature SHA was normally pushed
+(non-force, `73ff..d1`, exit 0) to the current development ref, and live
+remote/HEAD/upstream all resolved to that SHA with 0/0 divergence. This is not
+main, PR, deployment, Auth/DB/RLS, or nine-stage acceptance. Later docs-only
+changes do not alter d1 feature source or imply a new build.
+
+`GET /api/seed-context?prepare_continuation=1` is a read-only preparation path
+for a signed-in, non-anonymous owner. It accepts no other query parameter,
+derives the owner's newest submitted and frozen Seed (ordered by
+`submitted_at DESC, id DESC`), and reads that Seed's saved Reality Profile.
+Missing current Seed or Profile returns `409 current_seed_required` or
+`409 reality_profile_required`; malformed query input returns
+`400 invalid_reality_continuation`. The response is `no-store` and contains a
+strict `reality-profile-continuation-v1` envelope with source Seed id, source
+Profile revision, preparation time, a complete reviewed Profile draft at
+revision `0`, and the exact keys for already-expired constraints. Every
+resource's existing `usePerTick` is cleared in the prepared draft. This is a
+pair of read-only lookups, not an atomic source snapshot; POST validation is
+authoritative.
+
+`POST /api/seed-context` keeps the existing body and accepts optional
+`realityContinuation`. When present, the strict object contains the protocol
+version, source Seed id and Profile revision, the complete `reviewedProfile`,
+the exact `reviewedKeys` set, the exact separately confirmed non-null
+`confirmedRateKeys` set, and `confirmedForNewSituation: true`. The reviewed
+Profile uses revision `0`; unknowns remain unknown. The API maps its
+camelCase fields to the database column contract and calls the required
+three-argument `submit_seed_context_phase2` overload. Requests without this
+field keep the legacy two-argument call and response shape.
+
+The writer must recover an existing same-owner submission receipt before
+reading mutable source or deadline state. For a new key it checks the latest
+submitted/frozen Seed and exact Profile revision, locks the source Profile,
+recomputes both exact confirmation sets, then checks constraint deadlines
+against the post-lock clock. Source/revision changes, expired deadlines, and
+same-key content changes return `409`; malformed continuation input returns
+`400`; unauthenticated/anonymous callers return `401`. A new write returns
+`201` and a continuation receipt at Profile revision `1`; exact replay returns
+`200` with the original receipt. The authored SQL is designed to perform Consent,
+Seed, and new Profile inserts in one transaction. These database behaviors remain
+unverified until the migration and RPC run against PostgreSQL.
+
 ### `/api/key-people/extract`
 
 Purpose: Persist deterministic candidate people for one formal submitted Track A

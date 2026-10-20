@@ -39,6 +39,45 @@ The profile's composite `(seed_context_id, user_id)` foreign key binds every
 row to the same owner's canonical Seed. RLS permits only authenticated owner
 access; browser grants exclude owner reassignment and deletion.
 
+#### New-situation continuation candidate (2026-10-19)
+
+The authored continuation contract carries only a complete, user-reviewed
+Reality Profile into a newly submitted formal Seed. Preparation creates a
+revision-`0` client draft and clears every saved resource `usePerTick`; all
+Profile fields, resources, and constraints receive stable review keys, while
+each remaining non-null resource rate has its own confirmation key. Unknown
+items retain their unknown classification and empty value. The user must also
+confirm that the reviewed input applies to the new situation and re-acknowledge
+the situation's privacy/safety boundary.
+
+The authored versioned `submit_seed_context_phase2(uuid, jsonb, jsonb)` candidate
+RPC is designed to validate the complete review/confirmation sets and refuse
+expired constraint deadlines. Under the shared per-owner submission lock and
+key lock, it is intended to check the same owner's prior receipt before
+consulting the current Seed, Profile revision, or time. A new submission is
+intended to validate and lock the source Profile, then create a fresh Consent
+event, a distinct submitted/frozen `seed_contexts` row, and its complete
+`reality_profiles` row at revision `1` in one transaction.
+The old Seed and Profile are not updated. No old people, relationships, action
+rules, Run permission, Graph, or historical artifact are copied. The old
+two-argument submission RPC keeps its legacy payload hash and response
+contract while sharing the owner lock and taking its clock after that lock.
+
+This is an authored source contract, not database acceptance: the forward
+migration and pgTAP file have not been executed. It also does not establish the
+truth or provenance of information the owner previously entered about their
+own life; a user can still author inaccurate history in their own profile.
+The later route-signature repair does not change this SQL or data contract.
+The c0 preview exposed a UI failure-state bug, addressed by a separate text-layer
+repair at `d1d53e5`. The d1 production QA script passed within its stated scope,
+but Profile GET returned 500 without Supabase configuration; it does not
+establish Auth or database behavior. The migration and pgTAP remain unexecuted.
+Git delivery is confirmed: the exact d1 feature SHA was normally pushed
+(non-force, `73ff..d1`, exit 0) to the current development ref, and live
+remote/HEAD/upstream all resolved to that SHA with 0/0 divergence. This is not
+main, PR, deployment, Auth/DB/RLS, or nine-stage acceptance. Later docs-only
+changes do not alter d1 feature source or imply a new build.
+
 `reality_intake_drafts.mode` must distinguish `local_assumption`,
 `manual_reality`, and `external_reality`. When no manual or external sources
 exist, downstream reality confidence stays capped and UI copy must not imply
